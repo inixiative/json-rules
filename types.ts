@@ -1,4 +1,4 @@
-import {ArrayOperator, Operator} from "./operator.ts";
+import {ArrayOperator, DateOperator, Operator} from "./operator.ts";
 
 export type Rule = {
   field: string;
@@ -9,7 +9,19 @@ export type Rule = {
 }
 
 export type ArrayRule = {
+  field: string;
   arrayOperator: ArrayOperator;
+  condition?: Condition;
+  count?: number;
+  error?: string;
+}
+
+export type DateRule = {
+  field: string;
+  dateOperator: DateOperator;
+  value?: any;
+  path?: string;
+  error?: string;
 }
 
 export type All = {
@@ -22,9 +34,18 @@ export type Any = {
   error?: string;
 }
 
+export type IfThenElse = {
+  if: Condition;
+  then: Condition;
+  else?: Condition;
+  error?: string;
+}
+
 export type Condition =
   | Rule
   | ArrayRule
+  | DateRule
   | All
   | Any
+  | IfThenElse
   | boolean;

@@ -3,12 +3,14 @@
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/lodash": "^4.17.20"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "dayjs": "^1.11.13",
     "lodash": "^4.17.21"
   }
 }

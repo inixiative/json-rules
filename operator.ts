@@ -11,14 +11,34 @@ export enum Operator {
   notIn = 'notIn',
   match = 'match',
   notMatch = 'notMatch',
+  between = 'between',
+  notBetween = 'notBetween',
+  isEmpty = 'isEmpty',
+  notEmpty = 'notEmpty',
+  exists = 'exists',
+  notExists = 'notExists',
+  startsWith = 'startsWith',
+  endsWith = 'endsWith',
 }
 
 export enum ArrayOperator {
-  // all members - operator logic
-  // all other members - operator logic
-  // no other members - operator logic
-  // at least x other members - operator logic
-  // at most x other members - operator logic
-  // at least x members - operator logic
-  // at most x members - operator logic
+  all = 'all',
+  any = 'any',
+  none = 'none',
+  atLeast = 'atLeast',
+  atMost = 'atMost',
+  exactly = 'exactly',
+  empty = 'empty',
+  notEmpty = 'notEmpty',
+}
+
+export enum DateOperator {
+  before = 'before',
+  after = 'after',
+  onOrBefore = 'onOrBefore',
+  onOrAfter = 'onOrAfter',
+  between = 'between',
+  notBetween = 'notBetween',
+  dayIn = 'dayIn',  // e.g., ['monday', 'tuesday', 'friday']
+  dayNotIn = 'dayNotIn',
 }

@@ -1,6 +1,19 @@
-# json-rules
+# @inixiative/json-rules
+
+[![npm version](https://badge.fury.io/js/@inixiative%2Fjson-rules.svg)](https://www.npmjs.com/package/@inixiative/json-rules)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A powerful, type-safe JSON-based rules engine for TypeScript/JavaScript applications. Define complex validation and business logic rules using simple JSON structures.
+
+## Installation
+
+```bash
+npm install @inixiative/json-rules
+# or
+yarn add @inixiative/json-rules
+# or
+bun add @inixiative/json-rules
+```
 
 ## Features
 

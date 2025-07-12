@@ -1,4 +1,4 @@
-import { check, DateOperator } from '../index';
+import { check, DateOperator, ArrayOperator } from '../index';
 
 // Example 1: Date comparisons
 const expiryRule = {

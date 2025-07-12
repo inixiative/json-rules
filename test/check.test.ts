@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check, Operator, ArrayOperator, DateOperator } from '../index';
+import type { DateRule } from '../index';
 
 describe('Basic Rule Tests', () => {
   test('equal operator', () => {
@@ -279,6 +280,43 @@ describe('Date Operators', () => {
       dateOperator: DateOperator.dayIn,
       value: ['saturday', 'sunday']
     }, mondayData)).toContain('must be on saturday or sunday');
+  });
+  
+  test('timezone-aware date comparisons', () => {
+    // When condition has no timezone, it uses field's timezone
+    const rule: DateRule = {
+      field: 'eventDate',
+      dateOperator: DateOperator.onOrAfter,
+      value: '2025-01-20'
+    };
+    
+    // Field with explicit offset: Jan 20 10:00 AM Sydney time
+    const sydneyTime = { eventDate: '2025-01-20T10:00:00+11:00' };
+    expect(check(rule, sydneyTime)).toBe(true);
+    
+    // Field with no timezone: treated as local time
+    const localTime = { eventDate: '2025-01-20T10:00:00' };
+    expect(check(rule, localTime)).toBe(true);
+    
+    // Test with explicit timezone in condition
+    const utcRule: DateRule = {
+      field: 'eventDate',
+      dateOperator: DateOperator.after,
+      value: '2025-01-20T00:00:00Z'
+    };
+    
+    expect(check(utcRule, { eventDate: '2025-01-19T23:30:00Z' })).toContain('must be after');
+    expect(check(utcRule, { eventDate: '2025-01-20T00:30:00Z' })).toBe(true);
+    
+    // Test timezone offset format
+    const offsetRule: DateRule = {
+      field: 'eventDate', 
+      dateOperator: DateOperator.after,
+      value: '2025-01-20T00:00:00+11:00' // Sydney midnight
+    };
+    
+    // This is Jan 19 2:00 PM UTC, which is Jan 20 1:00 AM Sydney
+    expect(check(offsetRule, { eventDate: '2025-01-19T14:00:00Z' })).toBe(true);
   });
 });
 

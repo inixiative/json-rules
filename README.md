@@ -97,6 +97,26 @@ const result2 = check(rule, { age: 16 }); // returns "Must be 18 or older"
 - `dayIn` - Day of week is in list
 - `dayNotIn` - Day of week is not in list
 
+#### Timezone Handling
+
+Date comparisons are timezone-aware:
+
+1. **When condition value has no timezone** (e.g., `'2025-01-20'`), it's interpreted in the field's timezone:
+   ```typescript
+   // Field: Jan 20 10:00 AM Sydney time
+   { eventDate: '2025-01-20T10:00:00+11:00' }
+   // Condition: on or after Jan 20 (interpreted as Jan 20 in Sydney)
+   { dateOperator: 'onOrAfter', value: '2025-01-20' } // ✓ passes
+   ```
+
+2. **When condition value has timezone** (e.g., `'2025-01-20T00:00:00Z'`), it's used as-is:
+   ```typescript
+   // Condition: after midnight UTC specifically
+   { dateOperator: 'after', value: '2025-01-20T00:00:00Z' }
+   ```
+
+3. **Fields without timezone** are treated as local time (UTC offset 0)
+
 ## Rule Types
 
 ### Basic Rule

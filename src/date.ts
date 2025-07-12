@@ -23,8 +23,8 @@ export const checkDate = (condition: DateRule, data: any, context: any): boolean
   
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
   
-  // Parse comparison dates
-  const dates = parseCompareDates(condition, data, context);
+  // Parse comparison dates with timezone context - pass the original string to preserve offset info
+  const dates = parseCompareDates(condition, data, context, fieldDate, fieldValue);
   const compareDate = dates[0];
   const endDate = dates[1];
   
@@ -66,14 +66,14 @@ export const checkDate = (condition: DateRule, data: any, context: any): boolean
   }
 }
 
-const parseCompareDates = (condition: DateRule, data: any, context: any): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
+const parseCompareDates = (condition: DateRule, data: any, context: any, fieldDate: dayjs.Dayjs, fieldValue: string): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
   const requiresTwoDates = [DateOperator.between, DateOperator.notBetween];
   
   if (requiresTwoDates.includes(condition.dateOperator)) {
     if (!Array.isArray(condition.value) || condition.value.length !== 2) 
       throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const startDate = dayjs(condition.value[0]);
-    const endDate = dayjs(condition.value[1]);
+    const startDate = parseDateWithTimezone(condition.value[0], fieldValue);
+    const endDate = parseDateWithTimezone(condition.value[1], fieldValue);
     if (!startDate.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
     if (!endDate.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
     return [startDate, endDate];
@@ -100,10 +100,49 @@ const parseCompareDates = (condition: DateRule, data: any, context: any): [dayjs
     } else {
       throw new Error('No value or path specified for date comparison');
     }
-    const date = dayjs(value);
+    const date = parseDateWithTimezone(value, fieldValue);
     if (!date.isValid()) throw new Error(`Invalid comparison date: ${value}`);
     return [date, undefined];
   }
   
   return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+}
+
+const parseDateWithTimezone = (value: any, fieldValue: string): dayjs.Dayjs => {
+  const valueStr = String(value);
+  
+  // Check if value has explicit timezone information
+  const hasTimezone = valueStr.includes('Z') || 
+    (valueStr.includes('T') && (valueStr.includes('+') || valueStr.match(/T.*-\d{2}:/)));
+  
+  if (hasTimezone) return dayjs(value);
+  
+  // No timezone info in value - interpret in field's timezone
+  // Extract offset from field value
+  const fieldStr = String(fieldValue);
+  let offset = 0;
+  
+  if (fieldStr.includes('+') || (fieldStr.includes('T') && fieldStr.match(/T.*-\d{2}:/))) {
+    // Field has explicit offset like +11:00 or -08:00
+    const match = fieldStr.match(/([+-])(\d{2}):(\d{2})/);
+    if (match) {
+      const sign = match[1] === '+' ? 1 : -1;
+      offset = sign * (parseInt(match[2]) * 60 + parseInt(match[3]));
+    }
+  } else if (!fieldStr.includes('Z')) {
+    // Field has no timezone, assume local time (offset 0)
+    offset = 0;
+  }
+  // If field has Z, it's UTC (offset 0)
+  
+  // Create a date representing the same local time as the field's timezone
+  if (valueStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // For date-only, we want midnight in the field's timezone
+    const localMidnight = dayjs(value + 'T00:00:00');
+    return localMidnight.subtract(offset, 'minute');
+  }
+  
+  // For datetime without timezone, interpret as local time in field's timezone
+  const localTime = dayjs(value);
+  return localTime.subtract(offset, 'minute');
 }

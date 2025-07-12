@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { check, Operator, ArrayOperator, DateOperator } from './index';
+import { check, Operator, ArrayOperator, DateOperator } from '../index';
 
 describe('Basic Rule Tests', () => {
   test('equal operator', () => {
@@ -379,6 +379,17 @@ describe('Boolean Conditions', () => {
       ]
     };
     
-    expect(check(ruleFalse, { x: 1 })).toBe('All conditions must pass: false AND x must equal 1');
+    // When x = 1, the second condition passes, so only 'false' fails
+    expect(check(ruleFalse, { x: 1 })).toBe('false');
+    
+    // Test with both conditions failing
+    const ruleBothFail = {
+      all: [
+        false,
+        { field: 'x', operator: Operator.equal, value: 2 }
+      ]
+    };
+    
+    expect(check(ruleBothFail, { x: 1 })).toBe('All conditions must pass: false AND x must equal 2');
   });
 });

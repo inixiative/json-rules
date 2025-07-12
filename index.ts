@@ -1,3 +1,3 @@
-export * from './operator'
-export * from './check'
-export type * from './types.ts'
+export * from './src/operator';
+export * from './src/check';
+export type * from './src/types';

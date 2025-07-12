@@ -1,16 +1,59 @@
 {
-  "name": "json-rules",
-  "module": "index.ts",
+  "name": "@inixiative/json-rules",
+  "version": "1.0.0",
+  "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "json",
+    "rules",
+    "engine",
+    "validation",
+    "typescript",
+    "rules-engine",
+    "business-rules"
+  ],
+  "author": "Aron Greenspan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/inixiative/json-rules"
+  },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/lodash": "^4.17.20"
+    "@types/lodash": "^4.17.20",
+    "tsup": "^8.5.0",
+    "typescript": "^5.0.0"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "dayjs": "^1.11.13",
     "lodash": "^4.17.21"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
   }
 }

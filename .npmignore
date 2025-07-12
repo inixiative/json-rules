@@ -1,0 +1,13 @@
+src/
+test/
+examples/
+*.test.ts
+*.spec.ts
+tsconfig.json
+tsup.config.ts
+bun.lockb
+.gitignore
+run-examples.sh
+node_modules/
+coverage/
+.DS_Store

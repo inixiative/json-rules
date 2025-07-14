@@ -14,7 +14,7 @@ const orderValidationRule = {
         all: [
           { field: 'quantity', operator: Operator.greaterThan, value: 0 },
           { field: 'price', operator: Operator.greaterThan, value: 0 },
-          { field: 'inStock', operator: Operator.equal, value: true }
+          { field: 'inStock', operator: Operator.equals, value: true }
         ]
       }
     },
@@ -24,18 +24,18 @@ const orderValidationRule = {
       all: [
         { field: 'shipping.street', operator: Operator.notEmpty },
         { field: 'shipping.city', operator: Operator.notEmpty },
-        { field: 'shipping.zipCode', operator: Operator.match, value: /^\d{5}(-\d{4})?$/ },
+        { field: 'shipping.zipCode', operator: Operator.matches, value: /^\d{5}(-\d{4})?$/ },
         { field: 'shipping.country', operator: Operator.in, value: ['US', 'CA', 'MX'] }
       ]
     },
     
     // Payment validation
     {
-      if: { field: 'paymentMethod', operator: Operator.equal, value: 'credit_card' },
+      if: { field: 'paymentMethod', operator: Operator.equals, value: 'credit_card' },
       then: {
         all: [
-          { field: 'cardNumber', operator: Operator.match, value: /^\d{16}$/ },
-          { field: 'cvv', operator: Operator.match, value: /^\d{3,4}$/ },
+          { field: 'cardNumber', operator: Operator.matches, value: /^\d{16}$/ },
+          { field: 'cvv', operator: Operator.matches, value: /^\d{3,4}$/ },
           { field: 'expiryDate', dateOperator: DateOperator.after, value: new Date().toISOString() }
         ]
       }
@@ -49,7 +49,7 @@ const registrationRule = {
     // Username validation
     {
       field: 'username',
-      operator: Operator.match,
+      operator: Operator.matches,
       value: /^[a-zA-Z0-9_]{3,20}$/,
       error: 'Username must be 3-20 characters and contain only letters, numbers, and underscores'
     },
@@ -57,7 +57,7 @@ const registrationRule = {
     // Email validation
     {
       field: 'email',
-      operator: Operator.match,
+      operator: Operator.matches,
       value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
       error: 'Please provide a valid email address'
     },
@@ -65,19 +65,19 @@ const registrationRule = {
     // Password strength
     {
       all: [
-        { field: 'password', operator: Operator.match, value: /.{8,}/, error: 'Password must be at least 8 characters' },
-        { field: 'password', operator: Operator.match, value: /[A-Z]/, error: 'Password must contain an uppercase letter' },
-        { field: 'password', operator: Operator.match, value: /[a-z]/, error: 'Password must contain a lowercase letter' },
-        { field: 'password', operator: Operator.match, value: /[0-9]/, error: 'Password must contain a number' },
-        { field: 'password', operator: Operator.match, value: /[^A-Za-z0-9]/, error: 'Password must contain a special character' }
+        { field: 'password', operator: Operator.matches, value: /.{8,}/, error: 'Password must be at least 8 characters' },
+        { field: 'password', operator: Operator.matches, value: /[A-Z]/, error: 'Password must contain an uppercase letter' },
+        { field: 'password', operator: Operator.matches, value: /[a-z]/, error: 'Password must contain a lowercase letter' },
+        { field: 'password', operator: Operator.matches, value: /[0-9]/, error: 'Password must contain a number' },
+        { field: 'password', operator: Operator.matches, value: /[^A-Za-z0-9]/, error: 'Password must contain a special character' }
       ]
     },
     
     // Password confirmation
-    { field: 'confirmPassword', operator: Operator.equal, path: 'password', error: 'Passwords must match' },
+    { field: 'confirmPassword', operator: Operator.equals, path: 'password', error: 'Passwords must match' },
     
     // Terms acceptance
-    { field: 'acceptTerms', operator: Operator.equal, value: true, error: 'You must accept the terms and conditions' }
+    { field: 'acceptTerms', operator: Operator.equals, value: true, error: 'You must accept the terms and conditions' }
   ]
 };
 
@@ -86,13 +86,13 @@ const loanApplicationRule = {
   all: [
     // Basic eligibility
     { field: 'age', operator: Operator.between, value: [18, 65], error: 'Applicant must be between 18 and 65 years old' },
-    { field: 'citizenship', operator: Operator.equal, value: true, error: 'Must be a citizen to apply' },
+    { field: 'citizenship', operator: Operator.equals, value: true, error: 'Must be a citizen to apply' },
     
     // Income requirements
     {
       if: { field: 'loanAmount', operator: Operator.greaterThan, value: 50000 },
-      then: { field: 'annualIncome', operator: Operator.greaterThanEqual, value: 100000 },
-      else: { field: 'annualIncome', operator: Operator.greaterThanEqual, value: 40000 }
+      then: { field: 'annualIncome', operator: Operator.greaterThanEquals, value: 100000 },
+      else: { field: 'annualIncome', operator: Operator.greaterThanEquals, value: 40000 }
     },
     
     // Employment history
@@ -102,15 +102,15 @@ const loanApplicationRule = {
       count: 1,
       condition: {
         all: [
-          { field: 'duration', operator: Operator.greaterThanEqual, value: 24 }, // 24 months
-          { field: 'currentJob', operator: Operator.equal, value: true }
+          { field: 'duration', operator: Operator.greaterThanEquals, value: 24 }, // 24 months
+          { field: 'currentJob', operator: Operator.equals, value: true }
         ]
       },
       error: 'Must have at least 2 years of continuous employment'
     },
     
     // Credit score requirement
-    { field: 'creditScore', operator: Operator.greaterThanEqual, value: 650, error: 'Credit score must be at least 650' }
+    { field: 'creditScore', operator: Operator.greaterThanEquals, value: 650, error: 'Credit score must be at least 650' }
   ]
 };
 
@@ -129,7 +129,7 @@ const eventSchedulingRule = {
       arrayOperator: ArrayOperator.none,
       condition: {
         all: [
-          { field: 'venueId', operator: Operator.equal, path: 'venue.id' },
+          { field: 'venueId', operator: Operator.equals, path: 'venue.id' },
           {
             any: [
               // Our event starts during another event
@@ -154,7 +154,7 @@ const eventSchedulingRule = {
     },
     
     // Capacity check
-    { field: 'attendees', operator: Operator.lessThanEqual, path: 'venue.capacity' }
+    { field: 'attendees', operator: Operator.lessThanEquals, path: 'venue.capacity' }
   ]
 };
 
@@ -164,15 +164,15 @@ const rateLimitRule = {
     // Premium users have higher limits
     {
       all: [
-        { field: 'user.plan', operator: Operator.equal, value: 'premium' },
-        { field: 'requests.count', operator: Operator.lessThanEqual, value: 10000 }
+        { field: 'user.plan', operator: Operator.equals, value: 'premium' },
+        { field: 'requests.count', operator: Operator.lessThanEquals, value: 10000 }
       ]
     },
     // Regular users have standard limits
     {
       all: [
-        { field: 'user.plan', operator: Operator.notEqual, value: 'premium' },
-        { field: 'requests.count', operator: Operator.lessThanEqual, value: 1000 }
+        { field: 'user.plan', operator: Operator.notEquals, value: 'premium' },
+        { field: 'requests.count', operator: Operator.lessThanEquals, value: 1000 }
       ]
     }
   ],

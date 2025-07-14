@@ -4,13 +4,13 @@ import type { DateRule } from '../index';
 
 describe('Basic Rule Tests', () => {
   test('equal operator', () => {
-    const rule = { field: 'name', operator: Operator.equal, value: 'John' };
+    const rule = { field: 'name', operator: Operator.equals, value: 'John' };
     expect(check(rule, { name: 'John' })).toBe(true);
     expect(check(rule, { name: 'Jane' })).toBe('name must equal "John"');
   });
 
   test('notEqual operator', () => {
-    const rule = { field: 'status', operator: Operator.notEqual, value: 'inactive' };
+    const rule = { field: 'status', operator: Operator.notEquals, value: 'inactive' };
     expect(check(rule, { status: 'active' })).toBe(true);
     expect(check(rule, { status: 'inactive' })).toBe('status must not equal "inactive"');
   });
@@ -22,14 +22,14 @@ describe('Basic Rule Tests', () => {
     expect(check({ field: 'age', operator: Operator.greaterThan, value: 30 }, data)).toBe('age must be greater than 30');
     
     expect(check({ field: 'age', operator: Operator.lessThan, value: 30 }, data)).toBe(true);
-    expect(check({ field: 'age', operator: Operator.lessThanEqual, value: 25 }, data)).toBe(true);
-    expect(check({ field: 'age', operator: Operator.greaterThanEqual, value: 25 }, data)).toBe(true);
+    expect(check({ field: 'age', operator: Operator.lessThanEquals, value: 25 }, data)).toBe(true);
+    expect(check({ field: 'age', operator: Operator.greaterThanEquals, value: 25 }, data)).toBe(true);
   });
 
   test('custom error messages', () => {
     const rule = { 
       field: 'age', 
-      operator: Operator.greaterThanEqual, 
+      operator: Operator.greaterThanEquals, 
       value: 18,
       error: 'You must be 18 or older' 
     };
@@ -55,7 +55,7 @@ describe('String Operators', () => {
   });
 
   test('match operator with regex', () => {
-    const rule = { field: 'email', operator: Operator.match, value: /^[^@]+@[^@]+\.[^@]+$/ };
+    const rule = { field: 'email', operator: Operator.matches, value: /^[^@]+@[^@]+\.[^@]+$/ };
     expect(check(rule, { email: 'valid@email.com' })).toBe(true);
     expect(check(rule, { email: 'invalid-email' })).toContain('must match pattern');
   });
@@ -109,8 +109,8 @@ describe('Logical Operators', () => {
   test('all operator (AND)', () => {
     const rule = {
       all: [
-        { field: 'age', operator: Operator.greaterThanEqual, value: 18 },
-        { field: 'status', operator: Operator.equal, value: 'active' }
+        { field: 'age', operator: Operator.greaterThanEquals, value: 18 },
+        { field: 'status', operator: Operator.equals, value: 'active' }
       ]
     };
     
@@ -122,8 +122,8 @@ describe('Logical Operators', () => {
   test('any operator (OR)', () => {
     const rule = {
       any: [
-        { field: 'role', operator: Operator.equal, value: 'admin' },
-        { field: 'isOwner', operator: Operator.equal, value: true }
+        { field: 'role', operator: Operator.equals, value: 'admin' },
+        { field: 'isOwner', operator: Operator.equals, value: true }
       ]
     };
     
@@ -135,11 +135,11 @@ describe('Logical Operators', () => {
   test('nested logical operators', () => {
     const rule = {
       all: [
-        { field: 'type', operator: Operator.equal, value: 'user' },
+        { field: 'type', operator: Operator.equals, value: 'user' },
         {
           any: [
-            { field: 'verified', operator: Operator.equal, value: true },
-            { field: 'trusted', operator: Operator.equal, value: true }
+            { field: 'verified', operator: Operator.equals, value: true },
+            { field: 'trusted', operator: Operator.equals, value: true }
           ]
         }
       ]
@@ -153,7 +153,7 @@ describe('Logical Operators', () => {
 describe('If-Then-Else Logic', () => {
   test('if-then logic', () => {
     const rule = {
-      if: { field: 'type', operator: Operator.equal, value: 'premium' },
+      if: { field: 'type', operator: Operator.equals, value: 'premium' },
       then: { field: 'discount', operator: Operator.greaterThan, value: 0 }
     };
     
@@ -164,9 +164,9 @@ describe('If-Then-Else Logic', () => {
 
   test('if-then-else logic', () => {
     const rule = {
-      if: { field: 'age', operator: Operator.greaterThanEqual, value: 65 },
-      then: { field: 'discount', operator: Operator.equal, value: 0.2 },
-      else: { field: 'discount', operator: Operator.equal, value: 0 }
+      if: { field: 'age', operator: Operator.greaterThanEquals, value: 65 },
+      then: { field: 'discount', operator: Operator.equals, value: 0.2 },
+      else: { field: 'discount', operator: Operator.equals, value: 0 }
     };
     
     expect(check(rule, { age: 70, discount: 0.2 })).toBe(true);
@@ -200,7 +200,7 @@ describe('Array Operators', () => {
     const rule = {
       field: 'users',
       arrayOperator: ArrayOperator.any,
-      condition: { field: 'role', operator: Operator.equal, value: 'admin' }
+      condition: { field: 'role', operator: Operator.equals, value: 'admin' }
     };
     
     const data = { users: [
@@ -221,7 +221,7 @@ describe('Array Operators', () => {
       { active: false }
     ]};
     
-    const condition = { field: 'active', operator: Operator.equal, value: true };
+    const condition = { field: 'active', operator: Operator.equals, value: true };
     
     expect(check({ field: 'items', arrayOperator: ArrayOperator.atLeast, count: 2, condition }, data)).toBe(true);
     expect(check({ field: 'items', arrayOperator: ArrayOperator.atLeast, count: 3, condition }, data)).toBe('items at least 3 elements must match (2 matched)');
@@ -330,13 +330,13 @@ describe('Path-based Value Resolution', () => {
     
     expect(check({
       field: 'password',
-      operator: Operator.equal,
+      operator: Operator.equals,
       path: 'confirmPassword'
     }, data)).toBe(true);
     
     expect(check({
       field: 'password',
-      operator: Operator.equal,
+      operator: Operator.equals,
       path: 'confirmPassword'
     }, { ...data, confirmPassword: 'different' })).toBe('password must equal "different"');
   });
@@ -355,7 +355,7 @@ describe('Path-based Value Resolution', () => {
     
     expect(check({
       field: 'user.profile.age',
-      operator: Operator.greaterThanEqual,
+      operator: Operator.greaterThanEquals,
       path: 'user.profile.settings.minAge'
     }, data)).toBe(true);
   });
@@ -366,7 +366,7 @@ describe('Error Handling', () => {
     expect(() => check({
       field: 'notAnArray',
       arrayOperator: ArrayOperator.all,
-      condition: { field: 'x', operator: Operator.equal, value: 1 }
+      condition: { field: 'x', operator: Operator.equals, value: 1 }
     }, { notAnArray: 'string' })).toThrow('notAnArray must be an array');
   });
 
@@ -374,7 +374,7 @@ describe('Error Handling', () => {
     expect(() => check({
       field: 'items',
       arrayOperator: ArrayOperator.atLeast,
-      condition: { field: 'x', operator: Operator.equal, value: 1 }
+      condition: { field: 'x', operator: Operator.equals, value: 1 }
     }, { items: [] })).toThrow('atLeast requires a count');
   });
 
@@ -404,7 +404,7 @@ describe('Boolean Conditions', () => {
     const rule = {
       all: [
         true,
-        { field: 'x', operator: Operator.equal, value: 1 }
+        { field: 'x', operator: Operator.equals, value: 1 }
       ]
     };
     
@@ -413,7 +413,7 @@ describe('Boolean Conditions', () => {
     const ruleFalse = {
       all: [
         false,
-        { field: 'x', operator: Operator.equal, value: 1 }
+        { field: 'x', operator: Operator.equals, value: 1 }
       ]
     };
     
@@ -424,7 +424,7 @@ describe('Boolean Conditions', () => {
     const ruleBothFail = {
       all: [
         false,
-        { field: 'x', operator: Operator.equal, value: 2 }
+        { field: 'x', operator: Operator.equals, value: 2 }
       ]
     };
     

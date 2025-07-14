@@ -3,7 +3,7 @@ import { check, Operator, ArrayOperator } from '../index';
 // Example 1: Path-based field comparison
 const passwordMatchRule = {
   field: 'confirmPassword',
-  operator: Operator.equal,
+  operator: Operator.equals,
   path: 'password',
   error: 'Passwords do not match'
 };
@@ -23,9 +23,9 @@ console.log(check(passwordMatchRule, invalidPasswords)); // "Passwords do not ma
 
 // Example 2: If-Then-Else conditional logic
 const discountRule = {
-  if: { field: 'membershipLevel', operator: Operator.equal, value: 'premium' },
-  then: { field: 'discount', operator: Operator.greaterThanEqual, value: 0.2 },
-  else: { field: 'discount', operator: Operator.equal, value: 0 }
+  if: { field: 'membershipLevel', operator: Operator.equals, value: 'premium' },
+  then: { field: 'discount', operator: Operator.greaterThanEquals, value: 0.2 },
+  else: { field: 'discount', operator: Operator.equals, value: 0 }
 };
 
 const premiumMember = { membershipLevel: 'premium', discount: 0.25 };
@@ -42,7 +42,7 @@ const budgetComplianceRule = {
   arrayOperator: ArrayOperator.all,
   condition: {
     field: 'total',
-    operator: Operator.lessThanEqual,
+    operator: Operator.lessThanEquals,
     path: '$.maxBudget' // Reference field on the current array element
   }
 };
@@ -61,21 +61,21 @@ console.log(check(budgetComplianceRule, ordersWithBudget)); // true
 const userValidationRule = {
   all: [
     // Basic field validation
-    { field: 'username', operator: Operator.match, value: /^[a-zA-Z0-9_]{3,20}$/ },
-    { field: 'email', operator: Operator.match, value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+    { field: 'username', operator: Operator.matches, value: /^[a-zA-Z0-9_]{3,20}$/ },
+    { field: 'email', operator: Operator.matches, value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
     
     // Conditional age verification
     {
-      if: { field: 'country', operator: Operator.equal, value: 'US' },
-      then: { field: 'age', operator: Operator.greaterThanEqual, value: 21 },
-      else: { field: 'age', operator: Operator.greaterThanEqual, value: 18 }
+      if: { field: 'country', operator: Operator.equals, value: 'US' },
+      then: { field: 'age', operator: Operator.greaterThanEquals, value: 21 },
+      else: { field: 'age', operator: Operator.greaterThanEquals, value: 18 }
     },
     
     // At least one verified contact method
     {
       any: [
-        { field: 'emailVerified', operator: Operator.equal, value: true },
-        { field: 'phoneVerified', operator: Operator.equal, value: true }
+        { field: 'emailVerified', operator: Operator.equals, value: true },
+        { field: 'phoneVerified', operator: Operator.equals, value: true }
       ]
     }
   ]
@@ -86,9 +86,9 @@ const inventoryRule = {
   field: 'products',
   arrayOperator: ArrayOperator.all,
   condition: {
-    if: { field: 'category', operator: Operator.equal, value: 'perishable' },
+    if: { field: 'category', operator: Operator.equals, value: 'perishable' },
     then: { field: 'stock', operator: Operator.lessThan, path: '$.maxStock' },
-    else: { field: 'stock', operator: Operator.lessThanEqual, path: '$.maxStock' }
+    else: { field: 'stock', operator: Operator.lessThanEquals, path: '$.maxStock' }
   }
 };
 
@@ -107,7 +107,7 @@ const orderLimitRule = {
   arrayOperator: ArrayOperator.all,
   condition: {
     field: 'amount',
-    operator: Operator.lessThanEqual,
+    operator: Operator.lessThanEquals,
     path: 'user.creditLimit' // Reference root context, not array element
   }
 };
@@ -127,14 +127,14 @@ console.log(check(orderLimitRule, userWithOrders)); // true
 const complexBusinessRule = {
   all: [
     // User must be active
-    { field: 'status', operator: Operator.equal, value: 'active' },
+    { field: 'status', operator: Operator.equals, value: 'active' },
     
     // Subscription validation
     {
-      if: { field: 'subscription.type', operator: Operator.equal, value: 'enterprise' },
+      if: { field: 'subscription.type', operator: Operator.equals, value: 'enterprise' },
       then: {
         all: [
-          { field: 'subscription.seats', operator: Operator.greaterThanEqual, value: 10 },
+          { field: 'subscription.seats', operator: Operator.greaterThanEquals, value: 10 },
           { field: 'subscription.budget', operator: Operator.greaterThan, value: 10000 }
         ]
       }
@@ -146,12 +146,12 @@ const complexBusinessRule = {
       arrayOperator: ArrayOperator.all,
       condition: {
         all: [
-          { field: 'budget', operator: Operator.lessThanEqual, path: 'company.maxProjectBudget' },
-          { field: 'teamSize', operator: Operator.lessThanEqual, value: 50 },
+          { field: 'budget', operator: Operator.lessThanEquals, path: 'company.maxProjectBudget' },
+          { field: 'teamSize', operator: Operator.lessThanEquals, value: 50 },
           {
             field: 'technologies',
             arrayOperator: ArrayOperator.any,
-            condition: { field: 'approved', operator: Operator.equal, value: true }
+            condition: { field: 'approved', operator: Operator.equals, value: true }
           }
         ]
       }

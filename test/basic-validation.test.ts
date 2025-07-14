@@ -5,7 +5,7 @@ describe('Basic Validation Examples', () => {
   test('age validation', () => {
     const ageRule = {
       field: 'age',
-      operator: Operator.greaterThanEqual,
+      operator: Operator.greaterThanEquals,
       value: 18,
       error: 'You must be 18 or older to register'
     };
@@ -17,7 +17,7 @@ describe('Basic Validation Examples', () => {
   test('email validation with regex', () => {
     const emailRule = {
       field: 'email',
-      operator: Operator.match,
+      operator: Operator.matches,
       value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
       error: 'Please enter a valid email address'
     };

@@ -14,17 +14,17 @@ export const checkField = (condition: Rule, data: any, context: any): boolean | 
   const getError = (op: string) => condition.error || `${condition.field} ${op}${needsValue ? ' ' + JSON.stringify(value) : ''}`;
 
   switch (condition.operator) {
-    case Operator.equal:
+    case Operator.equals:
       return fieldValue === value || getError(`must equal`);
-    case Operator.notEqual:
+    case Operator.notEquals:
       return fieldValue !== value || getError(`must not equal`);
     case Operator.lessThan:
       return fieldValue < value || getError(`must be less than`);
-    case Operator.lessThanEqual:
+    case Operator.lessThanEquals:
       return fieldValue <= value || getError(`must be less than or equal to`);
     case Operator.greaterThan:
       return fieldValue > value || getError(`must be greater than`);
-    case Operator.greaterThanEqual:
+    case Operator.greaterThanEquals:
       return fieldValue >= value || getError(`must be greater than or equal to`);
     case Operator.in:
       return value?.includes(fieldValue) || getError(`must be one of`);
@@ -34,9 +34,9 @@ export const checkField = (condition: Rule, data: any, context: any): boolean | 
       return fieldValue?.includes(value) || getError(`must contain`);
     case Operator.notContains:
       return !fieldValue?.includes(value) || getError(`must not contain`);
-    case Operator.match:
+    case Operator.matches:
       return !!fieldValue?.match(value) || getError(`must match pattern`);
-    case Operator.notMatch:
+    case Operator.notMatches:
       return !fieldValue?.match(value) || getError(`must not match pattern`);
     case Operator.between:
       if (!Array.isArray(value) || value.length !== 2) 

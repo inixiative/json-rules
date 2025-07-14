@@ -1,9 +1,9 @@
 {
   "name": "@inixiative/json-rules",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
   "files": [
@@ -52,8 +52,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   }
 }

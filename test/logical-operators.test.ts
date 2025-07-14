@@ -5,8 +5,8 @@ describe('Logical Operators Examples', () => {
   test('AND logic - user eligibility', () => {
     const userEligibilityRule = {
       all: [
-        { field: 'age', operator: Operator.greaterThanEqual, value: 18 },
-        { field: 'hasLicense', operator: Operator.equal, value: true },
+        { field: 'age', operator: Operator.greaterThanEquals, value: 18 },
+        { field: 'hasLicense', operator: Operator.equals, value: true },
         { field: 'violations', operator: Operator.lessThan, value: 3 }
       ],
       error: 'User is not eligible for driving privileges'
@@ -31,8 +31,8 @@ describe('Logical Operators Examples', () => {
   test('OR logic - access control', () => {
     const accessRule = {
       any: [
-        { field: 'role', operator: Operator.equal, value: 'admin' },
-        { field: 'isOwner', operator: Operator.equal, value: true },
+        { field: 'role', operator: Operator.equals, value: 'admin' },
+        { field: 'isOwner', operator: Operator.equals, value: true },
         { field: 'permissions', operator: Operator.contains, value: 'write' }
       ],
       error: 'Access denied'
@@ -50,10 +50,10 @@ describe('Logical Operators Examples', () => {
   test('nested logic', () => {
     const complexRule = {
       all: [
-        { field: 'type', operator: Operator.equal, value: 'premium' },
+        { field: 'type', operator: Operator.equals, value: 'premium' },
         {
           any: [
-            { field: 'paymentMethod', operator: Operator.equal, value: 'credit' },
+            { field: 'paymentMethod', operator: Operator.equals, value: 'credit' },
             { field: 'balance', operator: Operator.greaterThan, value: 100 }
           ]
         }
@@ -80,7 +80,7 @@ describe('Logical Operators Examples', () => {
     const conditionalRule = {
       all: [
         true, // Always passes
-        { field: 'active', operator: Operator.equal, value: true },
+        { field: 'active', operator: Operator.equals, value: true },
         false // Always fails - useful for temporarily disabling rules
       ]
     };

@@ -4,7 +4,7 @@ import { check, Operator, ArrayOperator } from '../index';
 const allItemsActiveRule = {
   field: 'items',
   arrayOperator: ArrayOperator.all,
-  condition: { field: 'active', operator: Operator.equal, value: true }
+  condition: { field: 'active', operator: Operator.equals, value: true }
 };
 
 const allActive = {
@@ -30,7 +30,7 @@ console.log(check(allItemsActiveRule, someInactive)); // "items all elements mus
 const hasAdminRule = {
   field: 'users',
   arrayOperator: ArrayOperator.any,
-  condition: { field: 'role', operator: Operator.equal, value: 'admin' }
+  condition: { field: 'role', operator: Operator.equals, value: 'admin' }
 };
 
 const teamWithAdmin = {
@@ -56,7 +56,7 @@ const minimumOrdersRule = {
   field: 'orders',
   arrayOperator: ArrayOperator.atLeast,
   count: 2,
-  condition: { field: 'status', operator: Operator.equal, value: 'completed' }
+  condition: { field: 'status', operator: Operator.equals, value: 'completed' }
 };
 
 const customerOrders = {
@@ -75,7 +75,7 @@ const singleLeaderRule = {
   field: 'team',
   arrayOperator: ArrayOperator.exactly,
   count: 1,
-  condition: { field: 'role', operator: Operator.equal, value: 'leader' },
+  condition: { field: 'role', operator: Operator.equals, value: 'leader' },
   error: 'Team must have exactly one leader'
 };
 
@@ -115,7 +115,7 @@ const qualityCheckRule = {
   condition: {
     all: [
       { field: 'price', operator: Operator.greaterThan, value: 0 },
-      { field: 'stock', operator: Operator.greaterThanEqual, value: 0 },
+      { field: 'stock', operator: Operator.greaterThanEquals, value: 0 },
       { field: 'name', operator: Operator.notEmpty }
     ]
   }

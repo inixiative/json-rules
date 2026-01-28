@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import { toSql, Operator, DateOperator } from '../index';
+import { toSql, Operator, DateOperator, ArrayOperator } from '../index';
 
 describe('toSql integration', () => {
   let db: PGlite;
@@ -20,17 +20,19 @@ describe('toSql integration', () => {
         credits INT DEFAULT 0,
         "deletedAt" TIMESTAMP,
         "createdAt" TIMESTAMP DEFAULT NOW(),
-        settings JSONB DEFAULT '{}'
+        settings JSONB DEFAULT '{}',
+        tags JSONB DEFAULT '[]',
+        roles TEXT[] DEFAULT '{}'
       )
     `);
 
     await db.exec(`
-      INSERT INTO users (name, email, age, role, status, verified, credits, "deletedAt", settings) VALUES
-        ('Alice', 'alice@example.com', 30, 'admin', 'active', true, 100, NULL, '{"theme": "dark", "notifications": {"email": true}}'),
-        ('Bob', 'bob@test.org', 25, 'user', 'active', true, 50, NULL, '{"theme": "light"}'),
-        ('Charlie', 'charlie@example.com', 17, 'user', 'pending', false, 0, NULL, '{}'),
-        ('Deleted User', 'deleted@example.com', 40, 'user', 'inactive', false, 0, '2024-01-01', '{}'),
-        ('Eve', 'eve@gmail.com', 35, 'moderator', 'active', true, 75, NULL, '{"theme": "dark"}')
+      INSERT INTO users (name, email, age, role, status, verified, credits, "deletedAt", settings, tags, roles) VALUES
+        ('Alice', 'alice@example.com', 30, 'admin', 'active', true, 100, NULL, '{"theme": "dark", "notifications": {"email": true}}', '["vip", "beta"]', '{"admin", "editor"}'),
+        ('Bob', 'bob@test.org', 25, 'user', 'active', true, 50, NULL, '{"theme": "light"}', '["beta"]', '{"viewer"}'),
+        ('Charlie', 'charlie@example.com', 17, 'user', 'pending', false, 0, NULL, '{}', '[]', '{}'),
+        ('Deleted User', 'deleted@example.com', 40, 'user', 'inactive', false, 0, '2024-01-01', '{}', '[]', NULL),
+        ('Eve', 'eve@gmail.com', 35, 'moderator', 'active', true, 75, NULL, '{"theme": "dark"}', '["vip"]', '{"moderator"}')
     `);
   });
 
@@ -204,6 +206,32 @@ describe('toSql integration', () => {
         ],
       });
       expect(names).toEqual(['Alice', 'Eve']);
+    });
+  });
+
+  describe('array operators', () => {
+    describe('jsonb arrays', () => {
+      it('empty - users with no tags', async () => {
+        const names = await query({ field: 'tags', arrayOperator: ArrayOperator.empty });
+        expect(names).toEqual(['Charlie', 'Deleted User']);
+      });
+
+      it('notEmpty - users with tags', async () => {
+        const names = await query({ field: 'tags', arrayOperator: ArrayOperator.notEmpty });
+        expect(names).toEqual(['Alice', 'Bob', 'Eve']);
+      });
+    });
+
+    describe('native arrays (TEXT[])', () => {
+      it('empty - users with no roles', async () => {
+        const names = await query({ field: 'roles', arrayOperator: ArrayOperator.empty, arrayType: 'native' });
+        expect(names).toEqual(['Charlie', 'Deleted User']);
+      });
+
+      it('notEmpty - users with roles', async () => {
+        const names = await query({ field: 'roles', arrayOperator: ArrayOperator.notEmpty, arrayType: 'native' });
+        expect(names).toEqual(['Alice', 'Bob', 'Eve']);
+      });
     });
   });
 });

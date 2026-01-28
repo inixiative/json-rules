@@ -1,3 +1,4 @@
+import { escapeIdentifier } from 'pg';
 import type { BuilderState } from './types';
 
 export const nextParam = (state: BuilderState, value: unknown): string => {
@@ -5,22 +6,44 @@ export const nextParam = (state: BuilderState, value: unknown): string => {
   return `$${++state.paramIndex}`;
 };
 
+/**
+ * Escape a value for use in a LIKE pattern.
+ * Escapes \, %, and _ which are special characters in PostgreSQL LIKE.
+ */
+export const escapeLikePattern = (value: string): string => {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+};
+
+/**
+ * Quote a field name as a SQL identifier, handling JSON paths.
+ * Uses pg's escapeIdentifier for proper SQL injection prevention.
+ *
+ * Examples:
+ *   "name" → "name"
+ *   "data.theme" → "data"->>'theme'
+ *   "settings.display.mode" → "settings"->'display'->>'mode'
+ */
 export const quoteField = (field: string): string => {
-  // Handle nested JSON paths: data.settings.theme → "data"->>'settings'->>'theme'
   const parts = field.split('.');
-  if (parts.length === 1) return `"${field}"`;
+  if (parts.length === 1) return escapeIdentifier(field);
 
   const [column, ...jsonPath] = parts;
-  if (jsonPath.length === 0) return `"${column}"`;
+  if (jsonPath.length === 0) return escapeIdentifier(column);
 
-  // Build JSON path: "column"->'path1'->>'leaf'
-  const pathParts = jsonPath.slice(0, -1).map((p) => `'${p}'`).join('->');
-  const leaf = jsonPath[jsonPath.length - 1];
+  // Build JSON path: "column"->'path1'->'path2'->>'leaf'
+  // JSON keys need single quote escaping ('' for literal ')
+  const escapeJsonKey = (key: string) => `'${key.replace(/'/g, "''")}'`;
+
+  const pathParts = jsonPath.slice(0, -1).map(escapeJsonKey).join('->');
+  const leaf = escapeJsonKey(jsonPath[jsonPath.length - 1]);
 
   if (pathParts) {
-    return `"${column}"->${pathParts}->>'${leaf}'`;
+    return `${escapeIdentifier(column)}->${pathParts}->>${leaf}`;
   }
-  return `"${column}"->>'${leaf}'`;
+  return `${escapeIdentifier(column)}->>${leaf}`;
 };
 
 export const mapDayNames = (days: string[]): number[] => {

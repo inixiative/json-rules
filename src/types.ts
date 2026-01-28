@@ -8,9 +8,12 @@ export type Rule = {
   error?: string;
 }
 
+export type ArrayType = 'jsonb' | 'native';
+
 export type ArrayRule = {
   field: string;
   arrayOperator: ArrayOperator;
+  arrayType?: ArrayType;  // default: 'jsonb'
   condition?: Condition;
   count?: number;
   error?: string;

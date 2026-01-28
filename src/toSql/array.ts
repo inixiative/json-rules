@@ -5,13 +5,26 @@ import { quoteField } from './utils';
 
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
   const field = quoteField(rule.field);
+  const isNative = rule.arrayType === 'native';
+
+  // Different length functions for JSONB vs native PostgreSQL arrays
+  const lengthFn = isNative
+    ? `array_length(${field}, 1)`      // Native: TEXT[], INT[], etc.
+    : `jsonb_array_length(${field})`;  // JSONB arrays
 
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
-      return `(${field} IS NULL OR jsonb_array_length(${field}) = 0)`;
+      if (isNative) {
+        // Native arrays: NULL or empty (array_length returns NULL for empty)
+        return `(${field} IS NULL OR ${lengthFn} IS NULL)`;
+      }
+      return `(${field} IS NULL OR ${lengthFn} = 0)`;
 
     case ArrayOperator.notEmpty:
-      return `(${field} IS NOT NULL AND jsonb_array_length(${field}) > 0)`;
+      if (isNative) {
+        return `(${field} IS NOT NULL AND ${lengthFn} IS NOT NULL)`;
+      }
+      return `(${field} IS NOT NULL AND ${lengthFn} > 0)`;
 
     case ArrayOperator.all:
     case ArrayOperator.any:

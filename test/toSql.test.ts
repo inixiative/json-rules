@@ -213,16 +213,32 @@ describe('toSql', () => {
   });
 
   describe('array operators', () => {
-    it('empty', () => {
-      const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty });
-      expect(sql).toBe('("tags" IS NULL OR jsonb_array_length("tags") = 0)');
-      expect(params).toEqual([]);
+    describe('jsonb (default)', () => {
+      it('empty', () => {
+        const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty });
+        expect(sql).toBe('("tags" IS NULL OR jsonb_array_length("tags") = 0)');
+        expect(params).toEqual([]);
+      });
+
+      it('notEmpty', () => {
+        const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty });
+        expect(sql).toBe('("items" IS NOT NULL AND jsonb_array_length("items") > 0)');
+        expect(params).toEqual([]);
+      });
     });
 
-    it('notEmpty', () => {
-      const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty });
-      expect(sql).toBe('("items" IS NOT NULL AND jsonb_array_length("items") > 0)');
-      expect(params).toEqual([]);
+    describe('native (TEXT[], INT[], etc.)', () => {
+      it('empty', () => {
+        const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty, arrayType: 'native' });
+        expect(sql).toBe('("tags" IS NULL OR array_length("tags", 1) IS NULL)');
+        expect(params).toEqual([]);
+      });
+
+      it('notEmpty', () => {
+        const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty, arrayType: 'native' });
+        expect(sql).toBe('("items" IS NOT NULL AND array_length("items", 1) IS NOT NULL)');
+        expect(params).toEqual([]);
+      });
     });
 
     it('throws for complex array operators', () => {

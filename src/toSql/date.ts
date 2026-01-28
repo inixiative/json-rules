@@ -31,13 +31,15 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       }
       return `${field} NOT BETWEEN ${nextParam(state, rule.value[0])} AND ${nextParam(state, rule.value[1])}`;
 
-    case DateOperator.dayIn:
-      const daysIn = mapDayNames(rule.value);
-      return `EXTRACT(DOW FROM ${field}) = ANY(${nextParam(state, daysIn)})`;
+    case DateOperator.dayIn: {
+      const days = mapDayNames(rule.value);
+      return `EXTRACT(DOW FROM ${field}) = ANY(${nextParam(state, days)})`;
+    }
 
-    case DateOperator.dayNotIn:
-      const daysNotIn = mapDayNames(rule.value);
-      return `EXTRACT(DOW FROM ${field}) <> ALL(${nextParam(state, daysNotIn)})`;
+    case DateOperator.dayNotIn: {
+      const days = mapDayNames(rule.value);
+      return `EXTRACT(DOW FROM ${field}) <> ALL(${nextParam(state, days)})`;
+    }
 
     default:
       throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);

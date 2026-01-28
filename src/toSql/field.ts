@@ -1,7 +1,7 @@
 import type { Rule } from '../types';
 import { Operator } from '../operator';
 import type { BuilderState } from './types';
-import { nextParam, quoteField } from './utils';
+import { nextParam, quoteField, escapeLikePattern } from './utils';
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const field = quoteField(rule.field);
@@ -36,16 +36,16 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       return `${field} <> ALL(${nextParam(state, rule.value)})`;
 
     case Operator.contains:
-      return `${field} LIKE ${nextParam(state, `%${rule.value}%`)}`;
+      return `${field} LIKE ${nextParam(state, `%${escapeLikePattern(String(rule.value))}%`)}`;
 
     case Operator.notContains:
-      return `${field} NOT LIKE ${nextParam(state, `%${rule.value}%`)}`;
+      return `${field} NOT LIKE ${nextParam(state, `%${escapeLikePattern(String(rule.value))}%`)}`;
 
     case Operator.startsWith:
-      return `${field} LIKE ${nextParam(state, `${rule.value}%`)}`;
+      return `${field} LIKE ${nextParam(state, `${escapeLikePattern(String(rule.value))}%`)}`;
 
     case Operator.endsWith:
-      return `${field} LIKE ${nextParam(state, `%${rule.value}`)}`;
+      return `${field} LIKE ${nextParam(state, `%${escapeLikePattern(String(rule.value))}`)}`;
 
     case Operator.matches:
       return `${field} ~ ${nextParam(state, rule.value)}`;

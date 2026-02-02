@@ -37,6 +37,32 @@ describe('Date Operations Examples', () => {
     expect(check(eventDateRule, invalidEvent)).toBe('Event must be scheduled in 2024');
   });
 
+  test('date between auto-sorts reversed range', () => {
+    // ['2024-12-31', '2024-01-01'] should work the same as ['2024-01-01', '2024-12-31']
+    const reversedRule = {
+      field: 'eventDate',
+      dateOperator: DateOperator.between,
+      value: ['2024-12-31', '2024-01-01'],
+    };
+
+    expect(check(reversedRule, { eventDate: '2024-06-15' })).toBe(true);
+    expect(check(reversedRule, { eventDate: '2024-01-01' })).toBe(true);
+    expect(check(reversedRule, { eventDate: '2024-12-31' })).toBe(true);
+    expect(check(reversedRule, { eventDate: '2025-01-15' })).toContain('must be between');
+  });
+
+  test('date notBetween auto-sorts reversed range', () => {
+    const reversedRule = {
+      field: 'eventDate',
+      dateOperator: DateOperator.notBetween,
+      value: ['2024-12-31', '2024-01-01'],
+    };
+
+    expect(check(reversedRule, { eventDate: '2024-06-15' })).toContain('must not be between');
+    expect(check(reversedRule, { eventDate: '2023-12-31' })).toBe(true);
+    expect(check(reversedRule, { eventDate: '2025-01-01' })).toBe(true);
+  });
+
   test('day of week validation', () => {
     const weekdayOnlyRule = {
       field: 'appointmentDate',

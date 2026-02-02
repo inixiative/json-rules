@@ -70,6 +70,23 @@ describe('Range and Membership Operators', () => {
     expect(check(rule, { score: 101 })).toBe('score must be between [0,100]');
   });
 
+  test('between operator auto-sorts reversed range', () => {
+    // [100, 0] should work the same as [0, 100]
+    const rule = { field: 'score', operator: Operator.between, value: [100, 0] };
+    expect(check(rule, { score: 50 })).toBe(true);
+    expect(check(rule, { score: 0 })).toBe(true);
+    expect(check(rule, { score: 100 })).toBe(true);
+    expect(check(rule, { score: 101 })).toContain('must be between');
+  });
+
+  test('notBetween operator auto-sorts reversed range', () => {
+    // [100, 0] should work the same as [0, 100]
+    const rule = { field: 'score', operator: Operator.notBetween, value: [100, 0] };
+    expect(check(rule, { score: 50 })).toContain('must not be between');
+    expect(check(rule, { score: -1 })).toBe(true);
+    expect(check(rule, { score: 101 })).toBe(true);
+  });
+
   test('in operator', () => {
     const rule = { field: 'role', operator: Operator.in, value: ['admin', 'moderator', 'user'] };
     expect(check(rule, { role: 'admin' })).toBe(true);

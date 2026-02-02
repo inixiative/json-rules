@@ -70,12 +70,16 @@ const parseCompareDates = (condition: DateRule, data: any, context: any, fieldDa
   const requiresTwoDates = [DateOperator.between, DateOperator.notBetween];
   
   if (requiresTwoDates.includes(condition.dateOperator)) {
-    if (!Array.isArray(condition.value) || condition.value.length !== 2) 
+    if (!Array.isArray(condition.value) || condition.value.length !== 2)
       throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const startDate = parseDateWithTimezone(condition.value[0], fieldValue);
-    const endDate = parseDateWithTimezone(condition.value[1], fieldValue);
-    if (!startDate.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
-    if (!endDate.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
+    const date1 = parseDateWithTimezone(condition.value[0], fieldValue);
+    const date2 = parseDateWithTimezone(condition.value[1], fieldValue);
+    if (!date1.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
+    if (!date2.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
+    // Auto-sort: ensure startDate <= endDate
+    const [startDate, endDate] = date1.isBefore(date2) || date1.isSame(date2)
+      ? [date1, date2]
+      : [date2, date1];
     return [startDate, endDate];
   }
   

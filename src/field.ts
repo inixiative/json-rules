@@ -38,14 +38,18 @@ export const checkField = (condition: Rule, data: any, context: any): boolean | 
       return !!fieldValue?.match(value) || getError(`must match pattern`);
     case Operator.notMatches:
       return !fieldValue?.match(value) || getError(`must not match pattern`);
-    case Operator.between:
-      if (!Array.isArray(value) || value.length !== 2) 
+    case Operator.between: {
+      if (!Array.isArray(value) || value.length !== 2)
         throw new Error('between operator requires an array of two values');
-      return (fieldValue >= value[0] && fieldValue <= value[1]) || getError(`must be between`);
-    case Operator.notBetween:
-      if (!Array.isArray(value) || value.length !== 2) 
+      const [min, max] = value[0] <= value[1] ? value : [value[1], value[0]];
+      return (fieldValue >= min && fieldValue <= max) || getError(`must be between`);
+    }
+    case Operator.notBetween: {
+      if (!Array.isArray(value) || value.length !== 2)
         throw new Error('notBetween operator requires an array of two values');
-      return (fieldValue < value[0] || fieldValue > value[1]) || getError(`must not be between`);
+      const [min, max] = value[0] <= value[1] ? value : [value[1], value[0]];
+      return (fieldValue < min || fieldValue > max) || getError(`must not be between`);
+    }
     case Operator.isEmpty:
       return isEmpty(fieldValue) || getError(`must be empty`);
     case Operator.notEmpty:

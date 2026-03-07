@@ -1,46 +1,8 @@
 import { describe, it, expect } from 'bun:test';
 import { toPrisma, executePrismaQueryPlan, Operator, ArrayOperator, DateOperator } from '../index';
-import type { FieldMap, ToPrismaResult, GroupByStep, WhereStep } from '../index';
-
-// ─── Shared mock FieldMap ─────────────────────────────────────────────────────
-const map: FieldMap = {
-  User: {
-    fields: {
-      id:        { kind: 'scalar', type: 'String' },
-      email:     { kind: 'scalar', type: 'String' },
-      name:      { kind: 'scalar', type: 'String' },
-      role:      { kind: 'enum',   type: 'UserRole' },
-      metadata:  { kind: 'scalar', type: 'Json' },
-      createdAt: { kind: 'scalar', type: 'DateTime' },
-      posts:     { kind: 'object', type: 'Post',    isList: true,  fromFields: [],           toFields: [] },
-      profile:   { kind: 'object', type: 'Profile', isList: false, fromFields: [],           toFields: [] },
-    },
-  },
-  Post: {
-    fields: {
-      id:        { kind: 'scalar', type: 'String' },
-      title:     { kind: 'scalar', type: 'String' },
-      published: { kind: 'scalar', type: 'Boolean' },
-      authorId:  { kind: 'scalar', type: 'String' },
-      author:    { kind: 'object', type: 'User',   isList: false, fromFields: ['authorId'], toFields: ['id'] },
-      settings:  { kind: 'scalar', type: 'Json' },
-    },
-  },
-  Profile: {
-    fields: {
-      id:     { kind: 'scalar', type: 'String' },
-      userId: { kind: 'scalar', type: 'String' },
-      bio:    { kind: 'scalar', type: 'String' },
-      user:   { kind: 'object', type: 'User', isList: false, fromFields: ['userId'], toFields: ['id'] },
-    },
-  },
-};
-
-// ─── Helper: extract the final WhereStep's where ─────────────────────────────
-const where = (result: ToPrismaResult) => {
-  const last = result.steps[result.steps.length - 1] as WhereStep;
-  return last.where;
-};
+import type { ToPrismaResult, GroupByStep, WhereStep } from '../index';
+import { blogMap, multiRelMap, implicitM2MMap, compositeFkMap } from './fixtures/maps';
+import { getWhere } from './fixtures/helpers';
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
 describe('toPrisma result shape', () => {
@@ -66,102 +28,102 @@ describe('toPrisma result shape', () => {
 // ─── Scalar operators ─────────────────────────────────────────────────────────
 describe('toPrisma scalar operators', () => {
   it('equals', () => {
-    expect(where(toPrisma({ field: 'status', operator: Operator.equals, value: 'active' })))
+    expect(getWhere(toPrisma({ field: 'status', operator: Operator.equals, value: 'active' })))
       .toEqual({ status: { equals: 'active' } });
   });
 
   it('equals null', () => {
-    expect(where(toPrisma({ field: 'deletedAt', operator: Operator.equals, value: null })))
+    expect(getWhere(toPrisma({ field: 'deletedAt', operator: Operator.equals, value: null })))
       .toEqual({ deletedAt: { equals: null } });
   });
 
   it('notEquals', () => {
-    expect(where(toPrisma({ field: 'role', operator: Operator.notEquals, value: 'guest' })))
+    expect(getWhere(toPrisma({ field: 'role', operator: Operator.notEquals, value: 'guest' })))
       .toEqual({ role: { not: 'guest' } });
   });
 
   it('lessThan', () => {
-    expect(where(toPrisma({ field: 'age', operator: Operator.lessThan, value: 18 })))
+    expect(getWhere(toPrisma({ field: 'age', operator: Operator.lessThan, value: 18 })))
       .toEqual({ age: { lt: 18 } });
   });
 
   it('lessThanEquals', () => {
-    expect(where(toPrisma({ field: 'price', operator: Operator.lessThanEquals, value: 100 })))
+    expect(getWhere(toPrisma({ field: 'price', operator: Operator.lessThanEquals, value: 100 })))
       .toEqual({ price: { lte: 100 } });
   });
 
   it('greaterThan', () => {
-    expect(where(toPrisma({ field: 'score', operator: Operator.greaterThan, value: 50 })))
+    expect(getWhere(toPrisma({ field: 'score', operator: Operator.greaterThan, value: 50 })))
       .toEqual({ score: { gt: 50 } });
   });
 
   it('greaterThanEquals', () => {
-    expect(where(toPrisma({ field: 'rating', operator: Operator.greaterThanEquals, value: 4.5 })))
+    expect(getWhere(toPrisma({ field: 'rating', operator: Operator.greaterThanEquals, value: 4.5 })))
       .toEqual({ rating: { gte: 4.5 } });
   });
 
   it('in', () => {
-    expect(where(toPrisma({ field: 'status', operator: Operator.in, value: ['active', 'pending'] })))
+    expect(getWhere(toPrisma({ field: 'status', operator: Operator.in, value: ['active', 'pending'] })))
       .toEqual({ status: { in: ['active', 'pending'] } });
   });
 
   it('notIn', () => {
-    expect(where(toPrisma({ field: 'role', operator: Operator.notIn, value: ['banned'] })))
+    expect(getWhere(toPrisma({ field: 'role', operator: Operator.notIn, value: ['banned'] })))
       .toEqual({ role: { notIn: ['banned'] } });
   });
 
   it('contains', () => {
-    expect(where(toPrisma({ field: 'name', operator: Operator.contains, value: 'Alice' })))
+    expect(getWhere(toPrisma({ field: 'name', operator: Operator.contains, value: 'Alice' })))
       .toEqual({ name: { contains: 'Alice' } });
   });
 
   it('notContains', () => {
-    expect(where(toPrisma({ field: 'email', operator: Operator.notContains, value: 'spam' })))
+    expect(getWhere(toPrisma({ field: 'email', operator: Operator.notContains, value: 'spam' })))
       .toEqual({ email: { not: { contains: 'spam' } } });
   });
 
   it('startsWith', () => {
-    expect(where(toPrisma({ field: 'name', operator: Operator.startsWith, value: 'Admin' })))
+    expect(getWhere(toPrisma({ field: 'name', operator: Operator.startsWith, value: 'Admin' })))
       .toEqual({ name: { startsWith: 'Admin' } });
   });
 
   it('endsWith', () => {
-    expect(where(toPrisma({ field: 'email', operator: Operator.endsWith, value: '@acme.com' })))
+    expect(getWhere(toPrisma({ field: 'email', operator: Operator.endsWith, value: '@acme.com' })))
       .toEqual({ email: { endsWith: '@acme.com' } });
   });
 
   it('between', () => {
-    expect(where(toPrisma({ field: 'age', operator: Operator.between, value: [18, 65] })))
+    expect(getWhere(toPrisma({ field: 'age', operator: Operator.between, value: [18, 65] })))
       .toEqual({ age: { gte: 18, lte: 65 } });
   });
 
   it('notBetween', () => {
-    expect(where(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 10] })))
+    expect(getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 10] })))
       .toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
   });
 
   it('isEmpty', () => {
-    expect(where(toPrisma({ field: 'bio', operator: Operator.isEmpty })))
+    expect(getWhere(toPrisma({ field: 'bio', operator: Operator.isEmpty })))
       .toEqual({ bio: { in: [null, ''] } });
   });
 
   it('notEmpty', () => {
-    expect(where(toPrisma({ field: 'name', operator: Operator.notEmpty })))
+    expect(getWhere(toPrisma({ field: 'name', operator: Operator.notEmpty })))
       .toEqual({ name: { notIn: [null, ''] } });
   });
 
   it('exists', () => {
-    expect(where(toPrisma({ field: 'avatar', operator: Operator.exists })))
+    expect(getWhere(toPrisma({ field: 'avatar', operator: Operator.exists })))
       .toEqual({ avatar: { not: null } });
   });
 
   it('notExists', () => {
-    expect(where(toPrisma({ field: 'deletedAt', operator: Operator.notExists })))
+    expect(getWhere(toPrisma({ field: 'deletedAt', operator: Operator.notExists })))
       .toEqual({ deletedAt: { equals: null } });
   });
 
   it('dot-notation → nested relation filter (no map)', () => {
-    expect(where(toPrisma({ field: 'user.email', operator: Operator.equals, value: 'x@y.com' })))
+    expect(getWhere(toPrisma({ field: 'user.email', operator: Operator.equals, value: 'x@y.com' })))
       .toEqual({ user: { email: { equals: 'x@y.com' } } });
   });
 });
@@ -173,7 +135,7 @@ describe('toPrisma path ref', () => {
       { field: 'userId', operator: Operator.equals, path: 'currentUser.id' },
       { context: { currentUser: { id: '123' } } },
     );
-    expect(where(result)).toEqual({ userId: { equals: '123' } });
+    expect(getWhere(result)).toEqual({ userId: { equals: '123' } });
   });
 
   it('nested context.path', () => {
@@ -181,7 +143,7 @@ describe('toPrisma path ref', () => {
       { field: 'orgId', operator: Operator.equals, path: 'session.org.id' },
       { context: { session: { org: { id: 'org-abc' } } } },
     );
-    expect(where(result)).toEqual({ orgId: { equals: 'org-abc' } });
+    expect(getWhere(result)).toEqual({ orgId: { equals: 'org-abc' } });
   });
 
   it('$.field → throws (no column-to-column in Prisma WHERE)', () => {
@@ -202,7 +164,7 @@ describe('toPrisma path ref', () => {
       { field: 'createdAt', dateOperator: DateOperator.after, path: 'filters.since' },
       { context: { filters: { since } } },
     );
-    expect(where(result)).toEqual({ createdAt: { gt: since } });
+    expect(getWhere(result)).toEqual({ createdAt: { gt: since } });
   });
 
   it('date rule: $.field → throws', () => {
@@ -217,57 +179,54 @@ describe('toPrisma map-aware traversal', () => {
   it('scalar field → direct filter (no JSON path)', () => {
     const result = toPrisma(
       { field: 'email', operator: Operator.equals, value: 'a@b.com' },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
-    expect(where(result)).toEqual({ email: { equals: 'a@b.com' } });
+    expect(getWhere(result)).toEqual({ email: { equals: 'a@b.com' } });
   });
 
   it('json field with one sub-key → Prisma JSON path', () => {
     const result = toPrisma(
       { field: 'metadata.theme', operator: Operator.equals, value: 'dark' },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
-    expect(where(result)).toEqual({ metadata: { path: ['theme'], equals: 'dark' } });
+    expect(getWhere(result)).toEqual({ metadata: { path: ['theme'], equals: 'dark' } });
   });
 
   it('json field with nested sub-keys → Prisma JSON path array', () => {
     const result = toPrisma(
       { field: 'metadata.display.mode', operator: Operator.equals, value: 'compact' },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
-    expect(where(result)).toEqual({ metadata: { path: ['display', 'mode'], equals: 'compact' } });
+    expect(getWhere(result)).toEqual({ metadata: { path: ['display', 'mode'], equals: 'compact' } });
   });
 
   it('json field after relation traversal', () => {
-    // User.posts is a back-relation to Post; Post.settings is Json
-    // posts.settings.theme: posts (relation→Post) → settings (Json) → theme (JSON path key)
-    // → { posts: { settings: { path: ['theme'], equals: 'dark' } } }
     const result = toPrisma(
       { field: 'posts.settings.theme', operator: Operator.equals, value: 'dark' },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
-    expect(where(result)).toEqual({ posts: { settings: { path: ['theme'], equals: 'dark' } } });
+    expect(getWhere(result)).toEqual({ posts: { settings: { path: ['theme'], equals: 'dark' } } });
   });
 
   it('relation traversal → nested relation filter (not JSON path)', () => {
     const result = toPrisma(
       { field: 'author.email', operator: Operator.equals, value: 'test@test.com' },
-      { map, model: 'Post' },
+      { map: blogMap, model: 'Post' },
     );
-    expect(where(result)).toEqual({ author: { email: { equals: 'test@test.com' } } });
+    expect(getWhere(result)).toEqual({ author: { email: { equals: 'test@test.com' } } });
   });
 
   it('field not in map → falls back to nested filter', () => {
     const result = toPrisma(
       { field: 'unknownField.sub', operator: Operator.equals, value: 'x' },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
-    expect(where(result)).toEqual({ unknownField: { sub: { equals: 'x' } } });
+    expect(getWhere(result)).toEqual({ unknownField: { sub: { equals: 'x' } } });
   });
 
   it('no map provided → nested filter (unchanged behavior)', () => {
     const result = toPrisma({ field: 'metadata.theme', operator: Operator.equals, value: 'dark' });
-    expect(where(result)).toEqual({ metadata: { theme: { equals: 'dark' } } });
+    expect(getWhere(result)).toEqual({ metadata: { theme: { equals: 'dark' } } });
   });
 });
 
@@ -281,7 +240,7 @@ describe('toPrisma multi-step count operators', () => {
         count: 3,
         condition: { field: 'published', operator: Operator.equals, value: true },
       },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
 
     expect(result.steps).toHaveLength(2);
@@ -301,7 +260,7 @@ describe('toPrisma multi-step count operators', () => {
   it('atMost → having lte', () => {
     const result = toPrisma(
       { field: 'posts', arrayOperator: ArrayOperator.atMost, count: 5 },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
     expect(groupBy.args.having).toEqual({ _count: { _all: { lte: 5 } } });
@@ -310,7 +269,7 @@ describe('toPrisma multi-step count operators', () => {
   it('exactly → having equals', () => {
     const result = toPrisma(
       { field: 'posts', arrayOperator: ArrayOperator.exactly, count: 2 },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
     expect(groupBy.args.having).toEqual({ _count: { _all: { equals: 2 } } });
@@ -319,7 +278,7 @@ describe('toPrisma multi-step count operators', () => {
   it('count defaults to 1 when not specified', () => {
     const result = toPrisma(
       { field: 'posts', arrayOperator: ArrayOperator.atLeast },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
     expect(groupBy.args.having).toEqual({ _count: { _all: { gte: 1 } } });
@@ -351,9 +310,8 @@ describe('toPrisma multi-step count operators', () => {
           { field: 'posts', arrayOperator: ArrayOperator.atMost, count: 10 },
         ],
       },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
-    // 2 groupBy steps + 1 where step
     expect(result.steps).toHaveLength(3);
     expect(result.steps[0].operation).toBe('groupBy');
     expect(result.steps[1].operation).toBe('groupBy');
@@ -385,7 +343,7 @@ describe('executePrismaQueryPlan', () => {
         count: 1,
         condition: { field: 'published', operator: Operator.equals, value: true },
       },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
 
     const mockDelegate = {
@@ -425,7 +383,7 @@ describe('executePrismaQueryPlan', () => {
   it('throws when delegate missing for model', async () => {
     const result = toPrisma(
       { field: 'posts', arrayOperator: ArrayOperator.atLeast, count: 1 },
-      { map, model: 'User' },
+      { map: blogMap, model: 'User' },
     );
     await expect(executePrismaQueryPlan(result, {})).rejects.toThrow('post');
   });
@@ -443,34 +401,34 @@ describe('toPrisma date operators', () => {
   const d = new Date('2024-01-01');
 
   it('before', () => {
-    expect(where(toPrisma({ field: 'createdAt', dateOperator: DateOperator.before, value: d })))
+    expect(getWhere(toPrisma({ field: 'createdAt', dateOperator: DateOperator.before, value: d })))
       .toEqual({ createdAt: { lt: d } });
   });
 
   it('after', () => {
-    expect(where(toPrisma({ field: 'createdAt', dateOperator: DateOperator.after, value: d })))
+    expect(getWhere(toPrisma({ field: 'createdAt', dateOperator: DateOperator.after, value: d })))
       .toEqual({ createdAt: { gt: d } });
   });
 
   it('onOrBefore', () => {
-    expect(where(toPrisma({ field: 'expiresAt', dateOperator: DateOperator.onOrBefore, value: d })))
+    expect(getWhere(toPrisma({ field: 'expiresAt', dateOperator: DateOperator.onOrBefore, value: d })))
       .toEqual({ expiresAt: { lte: d } });
   });
 
   it('onOrAfter', () => {
-    expect(where(toPrisma({ field: 'startDate', dateOperator: DateOperator.onOrAfter, value: d })))
+    expect(getWhere(toPrisma({ field: 'startDate', dateOperator: DateOperator.onOrAfter, value: d })))
       .toEqual({ startDate: { gte: d } });
   });
 
   it('between', () => {
     const end = new Date('2024-12-31');
-    expect(where(toPrisma({ field: 'eventDate', dateOperator: DateOperator.between, value: [d, end] })))
+    expect(getWhere(toPrisma({ field: 'eventDate', dateOperator: DateOperator.between, value: [d, end] })))
       .toEqual({ eventDate: { gte: d, lte: end } });
   });
 
   it('notBetween', () => {
     const end = new Date('2024-12-31');
-    expect(where(toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [d, end] })))
+    expect(getWhere(toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [d, end] })))
       .toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
   });
 
@@ -490,13 +448,13 @@ describe('toPrisma logical operators', () => {
         { field: 'verified', operator: Operator.equals, value: true },
       ],
     });
-    expect(where(result)).toEqual({
+    expect(getWhere(result)).toEqual({
       AND: [{ status: { equals: 'active' } }, { verified: { equals: true } }],
     });
   });
 
   it('empty all → {}', () => {
-    expect(where(toPrisma({ all: [] }))).toEqual({});
+    expect(getWhere(toPrisma({ all: [] }))).toEqual({});
   });
 
   it('any (OR)', () => {
@@ -506,7 +464,7 @@ describe('toPrisma logical operators', () => {
         { field: 'role', operator: Operator.equals, value: 'superadmin' },
       ],
     });
-    expect(where(result)).toEqual({
+    expect(getWhere(result)).toEqual({
       OR: [{ role: { equals: 'admin' } }, { role: { equals: 'superadmin' } }],
     });
   });
@@ -516,7 +474,7 @@ describe('toPrisma logical operators', () => {
       if: { field: 'type', operator: Operator.equals, value: 'premium' },
       then: { field: 'credits', operator: Operator.greaterThan, value: 0 },
     });
-    expect(where(result)).toEqual({
+    expect(getWhere(result)).toEqual({
       OR: [
         { NOT: { type: { equals: 'premium' } } },
         { credits: { gt: 0 } },
@@ -525,7 +483,7 @@ describe('toPrisma logical operators', () => {
   });
 
   it('boolean true → empty where', () => {
-    expect(where(toPrisma(true))).toEqual({});
+    expect(getWhere(toPrisma(true))).toEqual({});
   });
 
   it('boolean false → throws', () => {
@@ -541,7 +499,7 @@ describe('toPrisma array operators', () => {
       arrayOperator: ArrayOperator.all,
       condition: { field: 'published', operator: Operator.equals, value: true },
     });
-    expect(where(result)).toEqual({ posts: { every: { published: { equals: true } } } });
+    expect(getWhere(result)).toEqual({ posts: { every: { published: { equals: true } } } });
   });
 
   it('any → some', () => {
@@ -550,7 +508,7 @@ describe('toPrisma array operators', () => {
       arrayOperator: ArrayOperator.any,
       condition: { field: 'approved', operator: Operator.equals, value: true },
     });
-    expect(where(result)).toEqual({ comments: { some: { approved: { equals: true } } } });
+    expect(getWhere(result)).toEqual({ comments: { some: { approved: { equals: true } } } });
   });
 
   it('none → none', () => {
@@ -559,16 +517,16 @@ describe('toPrisma array operators', () => {
       arrayOperator: ArrayOperator.none,
       condition: { field: 'resolved', operator: Operator.equals, value: false },
     });
-    expect(where(result)).toEqual({ reports: { none: { resolved: { equals: false } } } });
+    expect(getWhere(result)).toEqual({ reports: { none: { resolved: { equals: false } } } });
   });
 
   it('empty → none: {}', () => {
-    expect(where(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.empty })))
+    expect(getWhere(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.empty })))
       .toEqual({ tags: { none: {} } });
   });
 
   it('notEmpty → some: {}', () => {
-    expect(where(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.notEmpty })))
+    expect(getWhere(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.notEmpty })))
       .toEqual({ tags: { some: {} } });
   });
 });
@@ -595,28 +553,6 @@ describe('toPrisma error cases', () => {
 });
 
 // ─── Multiple relations between same two models ───────────────────────────────
-const multiRelMap: FieldMap = {
-  Post: {
-    fields: {
-      id:          { kind: 'scalar', type: 'String' },
-      authorId:    { kind: 'scalar', type: 'String' },
-      editorId:    { kind: 'scalar', type: 'String' },
-      // Two separate relations to User, distinguished by relationName
-      author:      { kind: 'object', type: 'User', isList: false, fromFields: ['authorId'], toFields: ['id'], relationName: 'PostAuthor' },
-      editor:      { kind: 'object', type: 'User', isList: false, fromFields: ['editorId'], toFields: ['id'], relationName: 'PostEditor' },
-    },
-  },
-  User: {
-    fields: {
-      id:           { kind: 'scalar', type: 'String' },
-      name:         { kind: 'scalar', type: 'String' },
-      // Back-relations disambiguated by relationName
-      authoredPosts: { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostAuthor' },
-      editedPosts:   { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostEditor' },
-    },
-  },
-};
-
 describe('toPrisma multiple relations between same two models', () => {
   it('count on first back-relation finds correct FK via relationName', () => {
     const result = toPrisma(
@@ -640,21 +576,6 @@ describe('toPrisma multiple relations between same two models', () => {
 });
 
 // ─── Implicit many-to-many error ─────────────────────────────────────────────
-const implicitM2MMap: FieldMap = {
-  Post: {
-    fields: {
-      id:         { kind: 'scalar', type: 'String' },
-      categories: { kind: 'object', type: 'Category', isList: true, fromFields: [], toFields: [] },
-    },
-  },
-  Category: {
-    fields: {
-      id:    { kind: 'scalar', type: 'String' },
-      posts: { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [] },
-    },
-  },
-};
-
 describe('toPrisma implicit many-to-many', () => {
   it('count operator on implicit M2M → descriptive error', () => {
     expect(() =>
@@ -667,22 +588,6 @@ describe('toPrisma implicit many-to-many', () => {
 });
 
 // ─── Composite FK error in count operators ────────────────────────────────────
-const compositeFkMap: FieldMap = {
-  Order: {
-    fields: {
-      id:         { kind: 'scalar', type: 'String' },
-      items:      { kind: 'object', type: 'OrderItem', isList: true, fromFields: [], toFields: [] },
-    },
-  },
-  OrderItem: {
-    fields: {
-      orderId:    { kind: 'scalar', type: 'String' },
-      productId:  { kind: 'scalar', type: 'String' },
-      order:      { kind: 'object', type: 'Order', isList: false, fromFields: ['orderId', 'productId'], toFields: ['id', 'code'] },
-    },
-  },
-};
-
 describe('toPrisma composite FK', () => {
   it('count operator on composite FK relation → descriptive error', () => {
     expect(() =>

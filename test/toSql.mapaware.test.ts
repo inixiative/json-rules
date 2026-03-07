@@ -1,40 +1,8 @@
 import { describe, it, expect } from 'bun:test';
 import { toSql, Operator, DateOperator } from '../index';
-import type { FieldMap } from '../index';
+import { blogMap, multiRelMap, compositeFkMap } from './fixtures/maps';
 
-// ─── Shared mock FieldMap ─────────────────────────────────────────────────────
-const map: FieldMap = {
-  User: {
-    fields: {
-      id:       { kind: 'scalar', type: 'String' },
-      email:    { kind: 'scalar', type: 'String' },
-      name:     { kind: 'scalar', type: 'String' },
-      metadata: { kind: 'scalar', type: 'Json' },
-      posts:    { kind: 'object', type: 'Post',    isList: true,  fromFields: [],           toFields: [] },
-      profile:  { kind: 'object', type: 'Profile', isList: false, fromFields: [],           toFields: [] },
-    },
-  },
-  Post: {
-    fields: {
-      id:        { kind: 'scalar', type: 'String' },
-      title:     { kind: 'scalar', type: 'String' },
-      published: { kind: 'scalar', type: 'Boolean' },
-      authorId:  { kind: 'scalar', type: 'String' },
-      author:    { kind: 'object', type: 'User', isList: false, fromFields: ['authorId'], toFields: ['id'] },
-      settings:  { kind: 'scalar', type: 'Json' },
-    },
-  },
-  Profile: {
-    fields: {
-      id:     { kind: 'scalar', type: 'String' },
-      userId: { kind: 'scalar', type: 'String' },
-      bio:    { kind: 'scalar', type: 'String' },
-      user:   { kind: 'object', type: 'User', isList: false, fromFields: ['userId'], toFields: ['id'] },
-    },
-  },
-};
-
-// ─── joins always present ─────────────────────────────────────────────────────
+// ─── Result shape ─────────────────────────────────────────────────────────────
 describe('toSql result shape', () => {
   it('always returns joins array even without map', () => {
     const result = toSql({ field: 'status', operator: Operator.equals, value: 'active' });
@@ -45,7 +13,7 @@ describe('toSql result shape', () => {
   it('joins empty when no relations traversed', () => {
     const result = toSql(
       { field: 'email', operator: Operator.equals, value: 'a@b.com' },
-      { map, model: 'User', alias: 't0' },
+      { map: blogMap, model: 'User', alias: 't0' },
     );
     expect(result.joins).toHaveLength(0);
   });
@@ -63,13 +31,12 @@ describe('toSql path ref: $.field', () => {
     expect(params).toEqual([]);
   });
 
-  it('$.field with equals → IS comparison', () => {
+  it('$.field with equals → column = column', () => {
     const { sql, params } = toSql({
       field: 'confirmedAt',
       operator: Operator.equals,
       path: '$.createdAt',
     });
-    // not null, not IS NULL — treated as column = column
     expect(sql).toBe('"confirmedAt" = "createdAt"');
     expect(params).toEqual([]);
   });
@@ -99,7 +66,6 @@ describe('toSql path ref: $.field', () => {
       { field: 'endDate', operator: Operator.greaterThan, path: '$.startDate' },
       { alias: 't0' },
     );
-    // field side falls back to quoteField (no map), ref side uses alias
     expect(sql).toBe('"endDate" > "t0"."startDate"');
     expect(params).toEqual([]);
   });
@@ -147,20 +113,18 @@ describe('toSql map-aware JOINs (forward relation)', () => {
   it('traverses forward relation and qualifies column', () => {
     const { sql, params, joins } = toSql(
       { field: 'author.email', operator: Operator.equals, value: 'a@b.com' },
-      { map, model: 'Post', alias: 't0' },
+      { map: blogMap, model: 'Post', alias: 't0' },
     );
     expect(sql).toBe('"t1"."email" = $1');
     expect(params).toEqual(['a@b.com']);
     expect(joins).toHaveLength(1);
-    // Post.author has fromFields: ['authorId'], toFields: ['id']
-    // → JOIN User ON User.id = Post.authorId
     expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
   });
 
   it('qualifies root scalar without joining', () => {
     const { sql, joins } = toSql(
       { field: 'title', operator: Operator.equals, value: 'Hello' },
-      { map, model: 'Post', alias: 't0' },
+      { map: blogMap, model: 'Post', alias: 't0' },
     );
     expect(sql).toBe('"t0"."title" = $1');
     expect(joins).toHaveLength(0);
@@ -172,11 +136,9 @@ describe('toSql map-aware JOINs (back-relation)', () => {
   it('traverses back-relation by finding reverse FK on target', () => {
     const { sql, joins } = toSql(
       { field: 'posts.title', operator: Operator.contains, value: 'Hello' },
-      { map, model: 'User', alias: 't0' },
+      { map: blogMap, model: 'User', alias: 't0' },
     );
     expect(sql).toBe('"t1"."title" LIKE $1');
-    // User.posts is back-relation; Post.author has fromFields: ['authorId'], toFields: ['id']
-    // → JOIN Post ON Post.authorId = User.id
     expect(joins[0]).toBe('LEFT JOIN "Post" AS "t1" ON "t1"."authorId" = "t0"."id"');
   });
 });
@@ -191,7 +153,7 @@ describe('toSql JOIN deduplication', () => {
           { field: 'author.name', operator: Operator.contains, value: 'Alice' },
         ],
       },
-      { map, model: 'Post', alias: 't0' },
+      { map: blogMap, model: 'Post', alias: 't0' },
     );
     expect(joins).toHaveLength(1);
     expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
@@ -204,7 +166,7 @@ describe('toSql map-aware JSON path with alias', () => {
   it('json field at root → qualified JSON path expression', () => {
     const { sql, params, joins } = toSql(
       { field: 'metadata.theme', operator: Operator.equals, value: 'dark' },
-      { map, model: 'User', alias: 't0' },
+      { map: blogMap, model: 'User', alias: 't0' },
     );
     expect(sql).toBe(`"t0"."metadata"->>'theme' = $1`);
     expect(params).toEqual(['dark']);
@@ -214,7 +176,7 @@ describe('toSql map-aware JSON path with alias', () => {
   it('nested json path → qualified multi-level JSON expression', () => {
     const { sql } = toSql(
       { field: 'settings.display.mode', operator: Operator.equals, value: 'compact' },
-      { map, model: 'Post', alias: 't0' },
+      { map: blogMap, model: 'Post', alias: 't0' },
     );
     expect(sql).toBe(`"t0"."settings"->'display'->>'mode' = $1`);
   });
@@ -222,7 +184,7 @@ describe('toSql map-aware JSON path with alias', () => {
   it('json field after relation → joined alias + JSON path', () => {
     const { sql, joins } = toSql(
       { field: 'author.metadata.theme', operator: Operator.equals, value: 'dark' },
-      { map, model: 'Post', alias: 't0' },
+      { map: blogMap, model: 'Post', alias: 't0' },
     );
     expect(joins).toHaveLength(1);
     expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
@@ -231,26 +193,6 @@ describe('toSql map-aware JSON path with alias', () => {
 });
 
 // ─── Multiple relations between same two models ───────────────────────────────
-const multiRelMap: FieldMap = {
-  Post: {
-    fields: {
-      id:       { kind: 'scalar', type: 'String' },
-      authorId: { kind: 'scalar', type: 'String' },
-      editorId: { kind: 'scalar', type: 'String' },
-      author:   { kind: 'object', type: 'User', isList: false, fromFields: ['authorId'], toFields: ['id'], relationName: 'PostAuthor' },
-      editor:   { kind: 'object', type: 'User', isList: false, fromFields: ['editorId'], toFields: ['id'], relationName: 'PostEditor' },
-    },
-  },
-  User: {
-    fields: {
-      id:            { kind: 'scalar', type: 'String' },
-      name:          { kind: 'scalar', type: 'String' },
-      authoredPosts: { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostAuthor' },
-      editedPosts:   { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostEditor' },
-    },
-  },
-};
-
 describe('toSql multiple relations between same two models', () => {
   it('forward relation author → correct authorId FK in JOIN', () => {
     const { joins } = toSql(
@@ -288,24 +230,6 @@ describe('toSql multiple relations between same two models', () => {
 });
 
 // ─── Composite FK JOINs ───────────────────────────────────────────────────────
-const compositeFkMap: FieldMap = {
-  OrderItem: {
-    fields: {
-      orderId:   { kind: 'scalar', type: 'String' },
-      productId: { kind: 'scalar', type: 'String' },
-      order:     { kind: 'object', type: 'Order', isList: false, fromFields: ['orderId', 'productId'], toFields: ['id', 'code'] },
-      qty:       { kind: 'scalar', type: 'Int' },
-    },
-  },
-  Order: {
-    fields: {
-      id:    { kind: 'scalar', type: 'String' },
-      code:  { kind: 'scalar', type: 'String' },
-      items: { kind: 'object', type: 'OrderItem', isList: true, fromFields: [], toFields: [] },
-    },
-  },
-};
-
 describe('toSql composite FK JOINs', () => {
   it('composite forward relation → multi-condition ON clause', () => {
     const { sql, joins } = toSql(
@@ -320,7 +244,7 @@ describe('toSql composite FK JOINs', () => {
   });
 });
 
-// ─── Map-aware: no map falls back to existing behavior ───────────────────────
+// ─── No map falls back to existing behavior ───────────────────────────────────
 describe('toSql without map falls back to existing behavior', () => {
   it('dot path treated as JSON path (original behavior)', () => {
     const { sql } = toSql({ field: 'data.theme', operator: Operator.equals, value: 'dark' });

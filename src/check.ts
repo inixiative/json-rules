@@ -90,7 +90,7 @@ const checkArray = <TData extends Record<string, unknown>>(
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 
   // Operators that require a condition
-  const requiresCondition = [
+  const requiresCondition: ArrayOperator[] = [
     ArrayOperator.all,
     ArrayOperator.any,
     ArrayOperator.none,
@@ -100,7 +100,11 @@ const checkArray = <TData extends Record<string, unknown>>(
   ];
 
   // Operators that require a count
-  const requiresCount = [ArrayOperator.atLeast, ArrayOperator.atMost, ArrayOperator.exactly];
+  const requiresCount: ArrayOperator[] = [
+    ArrayOperator.atLeast,
+    ArrayOperator.atMost,
+    ArrayOperator.exactly,
+  ];
 
   const itemCondition = condition.condition;
   if (requiresCondition.includes(condition.arrayOperator) && !itemCondition)

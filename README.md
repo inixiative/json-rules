@@ -364,10 +364,13 @@ Useful exports:
 - `toPrisma`
 - `executePrismaQueryPlan`
 - `toSql`
+- `validateRule`
+- `assertValidRule`
 - `Operator`
 - `ArrayOperator`
 - `DateOperator`
 - `Condition`
+- `StrictCondition`
 - `Rule`
 - `ArrayRule`
 - `DateRule`
@@ -382,6 +385,19 @@ The library throws when a rule is structurally invalid, for example:
 - unsupported backend translations
 
 It returns string errors only from runtime `check()`.
+
+If rules come from JSON, a database, an API, or an editor, validate them first:
+
+```ts
+import { assertValidRule, validateRule } from '@inixiative/json-rules';
+
+const result = validateRule(rule, { target: 'check' });
+if (!result.ok) {
+  console.error(result.errors);
+}
+
+assertValidRule(rule, { target: 'toPrisma' });
+```
 
 ## Examples
 

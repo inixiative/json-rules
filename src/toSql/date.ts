@@ -37,7 +37,8 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('between date operator requires an array of two values');
       }
-      return `${field} BETWEEN ${nextParam(state, v[0])} AND ${nextParam(state, v[1])}`;
+      const [start, end] = normalizeDateRange(v);
+      return `${field} BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)}`;
     }
 
     case DateOperator.notBetween: {
@@ -45,7 +46,8 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('notBetween date operator requires an array of two values');
       }
-      return `${field} NOT BETWEEN ${nextParam(state, v[0])} AND ${nextParam(state, v[1])}`;
+      const [start, end] = normalizeDateRange(v);
+      return `${field} NOT BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)}`;
     }
 
     case DateOperator.dayIn: {
@@ -67,6 +69,23 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
     default:
       throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
   }
+};
+
+const normalizeDateRange = (value: unknown[]): [unknown, unknown] => {
+  const [first, second] = value;
+  return compareDateValues(first, second) <= 0 ? [first, second] : [second, first];
+};
+
+const compareDateValues = (left: unknown, right: unknown): number => {
+  const lhs = normalizeComparableDateValue(left);
+  const rhs = normalizeComparableDateValue(right);
+  return lhs < rhs ? -1 : lhs > rhs ? 1 : 0;
+};
+
+const normalizeComparableDateValue = (value: unknown): string | number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  return String(value);
 };
 
 type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };

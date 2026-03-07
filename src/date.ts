@@ -99,7 +99,7 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   _fieldDate: dayjs.Dayjs,
   fieldValue: DateInputValue,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
-  const requiresTwoDates = [DateOperator.between, DateOperator.notBetween];
+  const requiresTwoDates: DateOperator[] = [DateOperator.between, DateOperator.notBetween];
 
   if (requiresTwoDates.includes(condition.dateOperator)) {
     if (!Array.isArray(condition.value) || condition.value.length !== 2)
@@ -115,7 +115,7 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     return [startDate, endDate];
   }
 
-  const requiresOneDate = [
+  const requiresOneDate: DateOperator[] = [
     DateOperator.before,
     DateOperator.after,
     DateOperator.onOrBefore,

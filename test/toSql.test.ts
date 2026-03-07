@@ -291,6 +291,30 @@ describe('toSql', () => {
       expect(params).toEqual([start, end]);
     });
 
+    it('[P2] between dates auto-sorts reversed range', () => {
+      const start = new Date('2024-01-01');
+      const end = new Date('2024-12-31');
+      const { sql, params } = toSql({
+        field: 'eventDate',
+        dateOperator: DateOperator.between,
+        value: [end, start],
+      });
+      expect(sql).toBe('"eventDate" BETWEEN $1 AND $2');
+      expect(params).toEqual([start, end]);
+    });
+
+    it('[P2] notBetween dates auto-sorts reversed range', () => {
+      const start = new Date('2024-01-01');
+      const end = new Date('2024-12-31');
+      const { sql, params } = toSql({
+        field: 'eventDate',
+        dateOperator: DateOperator.notBetween,
+        value: [end, start],
+      });
+      expect(sql).toBe('"eventDate" NOT BETWEEN $1 AND $2');
+      expect(params).toEqual([start, end]);
+    });
+
     it('dayIn', () => {
       const { sql, params } = toSql({
         field: 'scheduledAt',

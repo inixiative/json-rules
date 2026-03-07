@@ -467,11 +467,29 @@ describe('toPrisma date operators', () => {
     ).toEqual({ eventDate: { gte: d, lte: end } });
   });
 
+  it('[P2] between auto-sorts reversed date range', () => {
+    const end = new Date('2024-12-31');
+    expect(
+      getWhere(
+        toPrisma({ field: 'eventDate', dateOperator: DateOperator.between, value: [end, d] }),
+      ),
+    ).toEqual({ eventDate: { gte: d, lte: end } });
+  });
+
   it('notBetween', () => {
     const end = new Date('2024-12-31');
     expect(
       getWhere(
         toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [d, end] }),
+      ),
+    ).toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
+  });
+
+  it('[P2] notBetween auto-sorts reversed date range', () => {
+    const end = new Date('2024-12-31');
+    expect(
+      getWhere(
+        toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [end, d] }),
       ),
     ).toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
   });

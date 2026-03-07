@@ -1,6 +1,6 @@
 import { get } from 'lodash';
 import { DateOperator } from '../operator';
-import type { DateRule, DateRuleValue } from '../types';
+import type { DateRule } from '../types';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -15,10 +15,7 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
  * - rule.path starting with '$.' → throw (no column-to-column in Prisma WHERE)
  * - rule.path (context ref) → look up from options.context
  */
-const resolveDateValue = <TValue = DateRuleValue>(
-  rule: DateRule<TValue>,
-  options?: BuildOptions,
-): TValue | undefined => {
+const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
   if (rule.path) {
     if (rule.path.startsWith('$.')) {
@@ -33,7 +30,7 @@ const resolveDateValue = <TValue = DateRuleValue>(
           `Pass context when calling toPrisma().`,
       );
     }
-    return get(options.context, rule.path) as TValue | undefined;
+    return get(options.context, rule.path);
   }
   return undefined;
 };
@@ -59,7 +56,8 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('between date operator requires an array of two values');
       }
-      return { gte: v[0], lte: v[1] };
+      const [start, end] = normalizeDateRange(v);
+      return { gte: start, lte: end };
     }
 
     case DateOperator.notBetween: {
@@ -67,7 +65,8 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('notBetween date operator requires an array of two values');
       }
-      return { NOT: { gte: v[0], lte: v[1] } };
+      const [start, end] = normalizeDateRange(v);
+      return { NOT: { gte: start, lte: end } };
     }
 
     case DateOperator.dayIn:
@@ -83,4 +82,21 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
     default:
       throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
   }
+};
+
+const normalizeDateRange = (value: unknown[]): [unknown, unknown] => {
+  const [first, second] = value;
+  return compareDateValues(first, second) <= 0 ? [first, second] : [second, first];
+};
+
+const compareDateValues = (left: unknown, right: unknown): number => {
+  const lhs = normalizeComparableDateValue(left);
+  const rhs = normalizeComparableDateValue(right);
+  return lhs < rhs ? -1 : lhs > rhs ? 1 : 0;
+};
+
+const normalizeComparableDateValue = (value: unknown): string | number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  return String(value);
 };

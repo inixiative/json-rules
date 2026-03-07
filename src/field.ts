@@ -11,7 +11,12 @@ export const checkField = <TData extends Record<string, unknown>>(
   const fieldValue = get(data, condition.field) as unknown;
 
   // Operators that don't need a value
-  const noValueOps = [Operator.isEmpty, Operator.notEmpty, Operator.exists, Operator.notExists];
+  const noValueOps: Operator[] = [
+    Operator.isEmpty,
+    Operator.notEmpty,
+    Operator.exists,
+    Operator.notExists,
+  ];
   const needsValue = !noValueOps.includes(condition.operator);
   const value = needsValue ? getValue(condition, data, context) : undefined;
 

@@ -7,7 +7,7 @@ describe('Basic Validation Examples', () => {
       field: 'age',
       operator: Operator.greaterThanEquals,
       value: 18,
-      error: 'You must be 18 or older to register'
+      error: 'You must be 18 or older to register',
     };
 
     expect(check(ageRule, { age: 21 })).toBe(true);
@@ -19,7 +19,7 @@ describe('Basic Validation Examples', () => {
       field: 'email',
       operator: Operator.matches,
       value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-      error: 'Please enter a valid email address'
+      error: 'Please enter a valid email address',
     };
 
     expect(check(emailRule, { email: 'user@example.com' })).toBe(true);
@@ -31,7 +31,7 @@ describe('Basic Validation Examples', () => {
       field: 'score',
       operator: Operator.between,
       value: [0, 100],
-      error: 'Score must be between 0 and 100'
+      error: 'Score must be between 0 and 100',
     };
 
     expect(check(scoreRule, { score: 85 })).toBe(true);
@@ -43,7 +43,7 @@ describe('Basic Validation Examples', () => {
       field: 'role',
       operator: Operator.in,
       value: ['admin', 'editor', 'viewer'],
-      error: 'Invalid role selected'
+      error: 'Invalid role selected',
     };
 
     expect(check(roleRule, { role: 'admin' })).toBe(true);
@@ -55,7 +55,7 @@ describe('Basic Validation Examples', () => {
       field: 'website',
       operator: Operator.startsWith,
       value: 'https://',
-      error: 'Website must use HTTPS'
+      error: 'Website must use HTTPS',
     };
 
     expect(check(urlRule, { website: 'https://example.com' })).toBe(true);
@@ -66,7 +66,7 @@ describe('Basic Validation Examples', () => {
     const phoneRule = {
       field: 'phone',
       operator: Operator.notEmpty,
-      error: 'Phone number is required'
+      error: 'Phone number is required',
     };
 
     expect(check(phoneRule, { phone: '+1-555-0123' })).toBe(true);

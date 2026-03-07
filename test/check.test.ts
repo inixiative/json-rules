@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { check, Operator, ArrayOperator, DateOperator } from '../index';
 import type { DateRule } from '../index';
+import { ArrayOperator, check, DateOperator, Operator } from '../index';
 
 describe('Basic Rule Tests', () => {
   test('equal operator', () => {
@@ -17,21 +17,25 @@ describe('Basic Rule Tests', () => {
 
   test('numeric comparisons', () => {
     const data = { age: 25 };
-    
+
     expect(check({ field: 'age', operator: Operator.greaterThan, value: 20 }, data)).toBe(true);
-    expect(check({ field: 'age', operator: Operator.greaterThan, value: 30 }, data)).toBe('age must be greater than 30');
-    
+    expect(check({ field: 'age', operator: Operator.greaterThan, value: 30 }, data)).toBe(
+      'age must be greater than 30',
+    );
+
     expect(check({ field: 'age', operator: Operator.lessThan, value: 30 }, data)).toBe(true);
     expect(check({ field: 'age', operator: Operator.lessThanEquals, value: 25 }, data)).toBe(true);
-    expect(check({ field: 'age', operator: Operator.greaterThanEquals, value: 25 }, data)).toBe(true);
+    expect(check({ field: 'age', operator: Operator.greaterThanEquals, value: 25 }, data)).toBe(
+      true,
+    );
   });
 
   test('custom error messages', () => {
-    const rule = { 
-      field: 'age', 
-      operator: Operator.greaterThanEquals, 
+    const rule = {
+      field: 'age',
+      operator: Operator.greaterThanEquals,
       value: 18,
-      error: 'You must be 18 or older' 
+      error: 'You must be 18 or older',
     };
     expect(check(rule, { age: 16 })).toBe('You must be 18 or older');
   });
@@ -46,12 +50,18 @@ describe('String Operators', () => {
 
   test('startsWith and endsWith', () => {
     const data = { url: 'https://example.com' };
-    
-    expect(check({ field: 'url', operator: Operator.startsWith, value: 'https://' }, data)).toBe(true);
-    expect(check({ field: 'url', operator: Operator.startsWith, value: 'http://' }, data)).toBe('url must start with "http://"');
-    
+
+    expect(check({ field: 'url', operator: Operator.startsWith, value: 'https://' }, data)).toBe(
+      true,
+    );
+    expect(check({ field: 'url', operator: Operator.startsWith, value: 'http://' }, data)).toBe(
+      'url must start with "http://"',
+    );
+
     expect(check({ field: 'url', operator: Operator.endsWith, value: '.com' }, data)).toBe(true);
-    expect(check({ field: 'url', operator: Operator.endsWith, value: '.org' }, data)).toBe('url must end with ".org"');
+    expect(check({ field: 'url', operator: Operator.endsWith, value: '.org' }, data)).toBe(
+      'url must end with ".org"',
+    );
   });
 
   test('match operator with regex', () => {
@@ -96,14 +106,16 @@ describe('Range and Membership Operators', () => {
   test('notIn operator', () => {
     const rule = { field: 'status', operator: Operator.notIn, value: ['banned', 'suspended'] };
     expect(check(rule, { status: 'active' })).toBe(true);
-    expect(check(rule, { status: 'banned' })).toBe('status must not be one of ["banned","suspended"]');
+    expect(check(rule, { status: 'banned' })).toBe(
+      'status must not be one of ["banned","suspended"]',
+    );
   });
 });
 
 describe('Existence Operators', () => {
   test('exists and notExists', () => {
     const data = { name: 'John', age: undefined };
-    
+
     expect(check({ field: 'name', operator: Operator.exists }, data)).toBe(true);
     expect(check({ field: 'age', operator: Operator.exists }, data)).toBe('age must exist');
     expect(check({ field: 'missing', operator: Operator.notExists }, data)).toBe(true);
@@ -114,11 +126,15 @@ describe('Existence Operators', () => {
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: [] })).toBe(true);
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: {} })).toBe(true);
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: null })).toBe(true);
-    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: 'text' })).toBe('val must be empty');
-    
+    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: 'text' })).toBe(
+      'val must be empty',
+    );
+
     expect(check({ field: 'val', operator: Operator.notEmpty }, { val: 'text' })).toBe(true);
     expect(check({ field: 'val', operator: Operator.notEmpty }, { val: [1] })).toBe(true);
-    expect(check({ field: 'val', operator: Operator.notEmpty }, { val: '' })).toBe('val must not be empty');
+    expect(check({ field: 'val', operator: Operator.notEmpty }, { val: '' })).toBe(
+      'val must not be empty',
+    );
   });
 });
 
@@ -127,12 +143,14 @@ describe('Logical Operators', () => {
     const rule = {
       all: [
         { field: 'age', operator: Operator.greaterThanEquals, value: 18 },
-        { field: 'status', operator: Operator.equals, value: 'active' }
-      ]
+        { field: 'status', operator: Operator.equals, value: 'active' },
+      ],
     };
-    
+
     expect(check(rule, { age: 20, status: 'active' })).toBe(true);
-    expect(check(rule, { age: 16, status: 'active' })).toBe('age must be greater than or equal to 18');
+    expect(check(rule, { age: 16, status: 'active' })).toBe(
+      'age must be greater than or equal to 18',
+    );
     expect(check(rule, { age: 16, status: 'inactive' })).toContain('All conditions must pass');
   });
 
@@ -140,13 +158,15 @@ describe('Logical Operators', () => {
     const rule = {
       any: [
         { field: 'role', operator: Operator.equals, value: 'admin' },
-        { field: 'isOwner', operator: Operator.equals, value: true }
-      ]
+        { field: 'isOwner', operator: Operator.equals, value: true },
+      ],
     };
-    
+
     expect(check(rule, { role: 'admin', isOwner: false })).toBe(true);
     expect(check(rule, { role: 'user', isOwner: true })).toBe(true);
-    expect(check(rule, { role: 'user', isOwner: false })).toContain('At least one condition must pass');
+    expect(check(rule, { role: 'user', isOwner: false })).toContain(
+      'At least one condition must pass',
+    );
   });
 
   test('nested logical operators', () => {
@@ -156,14 +176,16 @@ describe('Logical Operators', () => {
         {
           any: [
             { field: 'verified', operator: Operator.equals, value: true },
-            { field: 'trusted', operator: Operator.equals, value: true }
-          ]
-        }
-      ]
+            { field: 'trusted', operator: Operator.equals, value: true },
+          ],
+        },
+      ],
     };
-    
+
     expect(check(rule, { type: 'user', verified: true, trusted: false })).toBe(true);
-    expect(check(rule, { type: 'user', verified: false, trusted: false })).toContain('At least one condition must pass');
+    expect(check(rule, { type: 'user', verified: false, trusted: false })).toContain(
+      'At least one condition must pass',
+    );
   });
 });
 
@@ -171,9 +193,9 @@ describe('If-Then-Else Logic', () => {
   test('if-then logic', () => {
     const rule = {
       if: { field: 'type', operator: Operator.equals, value: 'premium' },
-      then: { field: 'discount', operator: Operator.greaterThan, value: 0 }
+      then: { field: 'discount', operator: Operator.greaterThan, value: 0 },
     };
-    
+
     expect(check(rule, { type: 'premium', discount: 10 })).toBe(true);
     expect(check(rule, { type: 'premium', discount: 0 })).toBe('discount must be greater than 0');
     expect(check(rule, { type: 'basic', discount: 0 })).toBe(true); // if fails, no else, returns true
@@ -183,9 +205,9 @@ describe('If-Then-Else Logic', () => {
     const rule = {
       if: { field: 'age', operator: Operator.greaterThanEquals, value: 65 },
       then: { field: 'discount', operator: Operator.equals, value: 0.2 },
-      else: { field: 'discount', operator: Operator.equals, value: 0 }
+      else: { field: 'discount', operator: Operator.equals, value: 0 },
     };
-    
+
     expect(check(rule, { age: 70, discount: 0.2 })).toBe(true);
     expect(check(rule, { age: 70, discount: 0 })).toBe('discount must equal 0.2');
     expect(check(rule, { age: 30, discount: 0 })).toBe(true);
@@ -196,88 +218,120 @@ describe('If-Then-Else Logic', () => {
 describe('Array Operators', () => {
   test('empty and notEmpty', () => {
     expect(check({ field: 'items', arrayOperator: ArrayOperator.empty }, { items: [] })).toBe(true);
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.empty }, { items: [1] })).toBe('items must be empty');
-    
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.notEmpty }, { items: [1] })).toBe(true);
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.notEmpty }, { items: [] })).toBe('items must not be empty');
+    expect(check({ field: 'items', arrayOperator: ArrayOperator.empty }, { items: [1] })).toBe(
+      'items must be empty',
+    );
+
+    expect(check({ field: 'items', arrayOperator: ArrayOperator.notEmpty }, { items: [1] })).toBe(
+      true,
+    );
+    expect(check({ field: 'items', arrayOperator: ArrayOperator.notEmpty }, { items: [] })).toBe(
+      'items must not be empty',
+    );
   });
 
   test('all elements match', () => {
     const rule = {
       field: 'scores',
       arrayOperator: ArrayOperator.all,
-      condition: { field: 'value', operator: Operator.greaterThan, value: 50 }
+      condition: { field: 'value', operator: Operator.greaterThan, value: 50 },
     };
-    
+
     expect(check(rule, { scores: [{ value: 60 }, { value: 70 }, { value: 80 }] })).toBe(true);
-    expect(check(rule, { scores: [{ value: 60 }, { value: 40 }] })).toBe('scores all elements must match (1 failed)');
+    expect(check(rule, { scores: [{ value: 60 }, { value: 40 }] })).toBe(
+      'scores all elements must match (1 failed)',
+    );
   });
 
   test('any element matches', () => {
     const rule = {
       field: 'users',
       arrayOperator: ArrayOperator.any,
-      condition: { field: 'role', operator: Operator.equals, value: 'admin' }
+      condition: { field: 'role', operator: Operator.equals, value: 'admin' },
     };
-    
-    const data = { users: [
-      { name: 'John', role: 'user' },
-      { name: 'Jane', role: 'admin' },
-      { name: 'Bob', role: 'user' }
-    ]};
-    
+
+    const data = {
+      users: [
+        { name: 'John', role: 'user' },
+        { name: 'Jane', role: 'admin' },
+        { name: 'Bob', role: 'user' },
+      ],
+    };
+
     expect(check(rule, data)).toBe(true);
-    expect(check(rule, { users: [{ role: 'user' }, { role: 'user' }] })).toBe('users at least one element must match');
+    expect(check(rule, { users: [{ role: 'user' }, { role: 'user' }] })).toBe(
+      'users at least one element must match',
+    );
   });
 
   test('count-based operators', () => {
-    const data = { items: [
-      { active: true },
-      { active: true },
-      { active: false },
-      { active: false }
-    ]};
-    
+    const data = {
+      items: [{ active: true }, { active: true }, { active: false }, { active: false }],
+    };
+
     const condition = { field: 'active', operator: Operator.equals, value: true };
-    
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.atLeast, count: 2, condition }, data)).toBe(true);
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.atLeast, count: 3, condition }, data)).toBe('items at least 3 elements must match (2 matched)');
-    
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.exactly, count: 2, condition }, data)).toBe(true);
-    expect(check({ field: 'items', arrayOperator: ArrayOperator.exactly, count: 3, condition }, data)).toBe('items exactly 3 elements must match (2 matched)');
+
+    expect(
+      check({ field: 'items', arrayOperator: ArrayOperator.atLeast, count: 2, condition }, data),
+    ).toBe(true);
+    expect(
+      check({ field: 'items', arrayOperator: ArrayOperator.atLeast, count: 3, condition }, data),
+    ).toBe('items at least 3 elements must match (2 matched)');
+
+    expect(
+      check({ field: 'items', arrayOperator: ArrayOperator.exactly, count: 2, condition }, data),
+    ).toBe(true);
+    expect(
+      check({ field: 'items', arrayOperator: ArrayOperator.exactly, count: 3, condition }, data),
+    ).toBe('items exactly 3 elements must match (2 matched)');
   });
 });
 
 describe('Date Operators', () => {
   test('date comparisons', () => {
     const data = { createdAt: '2024-01-15' };
-    
-    expect(check({ 
-      field: 'createdAt', 
-      dateOperator: DateOperator.after, 
-      value: '2024-01-01' 
-    }, data)).toBe(true);
-    
-    expect(check({ 
-      field: 'createdAt', 
-      dateOperator: DateOperator.before, 
-      value: '2024-02-01' 
-    }, data)).toBe(true);
-    
-    expect(check({ 
-      field: 'createdAt', 
-      dateOperator: DateOperator.before, 
-      value: '2024-01-01' 
-    }, data)).toContain('must be before');
+
+    expect(
+      check(
+        {
+          field: 'createdAt',
+          dateOperator: DateOperator.after,
+          value: '2024-01-01',
+        },
+        data,
+      ),
+    ).toBe(true);
+
+    expect(
+      check(
+        {
+          field: 'createdAt',
+          dateOperator: DateOperator.before,
+          value: '2024-02-01',
+        },
+        data,
+      ),
+    ).toBe(true);
+
+    expect(
+      check(
+        {
+          field: 'createdAt',
+          dateOperator: DateOperator.before,
+          value: '2024-01-01',
+        },
+        data,
+      ),
+    ).toContain('must be before');
   });
 
   test('date between', () => {
     const rule = {
       field: 'date',
       dateOperator: DateOperator.between,
-      value: ['2024-01-01', '2024-12-31']
+      value: ['2024-01-01', '2024-12-31'],
     };
-    
+
     expect(check(rule, { date: '2024-06-15' })).toBe(true);
     expect(check(rule, { date: '2023-12-31' })).toContain('must be between');
   });
@@ -285,53 +339,63 @@ describe('Date Operators', () => {
   test('day of week checking', () => {
     // Using a known Monday (2024-01-01)
     const mondayData = { date: '2024-01-01' };
-    
-    expect(check({
-      field: 'date',
-      dateOperator: DateOperator.dayIn,
-      value: ['monday', 'tuesday', 'wednesday']
-    }, mondayData)).toBe(true);
-    
-    expect(check({
-      field: 'date',
-      dateOperator: DateOperator.dayIn,
-      value: ['saturday', 'sunday']
-    }, mondayData)).toContain('must be on saturday or sunday');
+
+    expect(
+      check(
+        {
+          field: 'date',
+          dateOperator: DateOperator.dayIn,
+          value: ['monday', 'tuesday', 'wednesday'],
+        },
+        mondayData,
+      ),
+    ).toBe(true);
+
+    expect(
+      check(
+        {
+          field: 'date',
+          dateOperator: DateOperator.dayIn,
+          value: ['saturday', 'sunday'],
+        },
+        mondayData,
+      ),
+    ).toContain('must be on saturday or sunday');
   });
-  
+
   test('timezone-aware date comparisons', () => {
     // When condition has no timezone, it uses field's timezone
     const rule: DateRule = {
       field: 'eventDate',
       dateOperator: DateOperator.onOrAfter,
-      value: '2025-01-20'
+      value: '2025-01-20',
     };
-    
+
     // Field with explicit offset: Jan 20 10:00 AM Sydney time
     const sydneyTime = { eventDate: '2025-01-20T10:00:00+11:00' };
     expect(check(rule, sydneyTime)).toBe(true);
-    
+
     // Field with no timezone: treated as local time
     const localTime = { eventDate: '2025-01-20T10:00:00' };
     expect(check(rule, localTime)).toBe(true);
-    
+
     // Test with explicit timezone in condition
     const utcRule: DateRule = {
       field: 'eventDate',
       dateOperator: DateOperator.after,
-      value: '2025-01-20T00:00:00Z'
+      value: '2025-01-20T00:00:00Z',
     };
-    
+
     expect(check(utcRule, { eventDate: '2025-01-19T23:30:00Z' })).toContain('must be after');
     expect(check(utcRule, { eventDate: '2025-01-20T00:30:00Z' })).toBe(true);
-    
+
     // Test timezone offset format
     const offsetRule: DateRule = {
-      field: 'eventDate', 
+      field: 'eventDate',
       dateOperator: DateOperator.after,
-      value: '2025-01-20T00:00:00+11:00' // Sydney midnight
+      value: '2025-01-20T00:00:00+11:00', // Sydney midnight
     };
-    
+
     // This is Jan 19 2:00 PM UTC, which is Jan 20 1:00 AM Sydney
     expect(check(offsetRule, { eventDate: '2025-01-19T14:00:00Z' })).toBe(true);
   });
@@ -342,20 +406,30 @@ describe('Path-based Value Resolution', () => {
     const data = {
       password: 'secret123',
       confirmPassword: 'secret123',
-      minLength: 8
+      minLength: 8,
     };
-    
-    expect(check({
-      field: 'password',
-      operator: Operator.equals,
-      path: 'confirmPassword'
-    }, data)).toBe(true);
-    
-    expect(check({
-      field: 'password',
-      operator: Operator.equals,
-      path: 'confirmPassword'
-    }, { ...data, confirmPassword: 'different' })).toBe('password must equal "different"');
+
+    expect(
+      check(
+        {
+          field: 'password',
+          operator: Operator.equals,
+          path: 'confirmPassword',
+        },
+        data,
+      ),
+    ).toBe(true);
+
+    expect(
+      check(
+        {
+          field: 'password',
+          operator: Operator.equals,
+          path: 'confirmPassword',
+        },
+        { ...data, confirmPassword: 'different' },
+      ),
+    ).toBe('password must equal "different"');
   });
 
   test('nested path access', () => {
@@ -364,50 +438,75 @@ describe('Path-based Value Resolution', () => {
         profile: {
           age: 25,
           settings: {
-            minAge: 18
-          }
-        }
-      }
+            minAge: 18,
+          },
+        },
+      },
     };
-    
-    expect(check({
-      field: 'user.profile.age',
-      operator: Operator.greaterThanEquals,
-      path: 'user.profile.settings.minAge'
-    }, data)).toBe(true);
+
+    expect(
+      check(
+        {
+          field: 'user.profile.age',
+          operator: Operator.greaterThanEquals,
+          path: 'user.profile.settings.minAge',
+        },
+        data,
+      ),
+    ).toBe(true);
   });
 });
 
 describe('Error Handling', () => {
   test('throws on invalid array field', () => {
-    expect(() => check({
-      field: 'notAnArray',
-      arrayOperator: ArrayOperator.all,
-      condition: { field: 'x', operator: Operator.equals, value: 1 }
-    }, { notAnArray: 'string' })).toThrow('notAnArray must be an array');
+    expect(() =>
+      check(
+        {
+          field: 'notAnArray',
+          arrayOperator: ArrayOperator.all,
+          condition: { field: 'x', operator: Operator.equals, value: 1 },
+        },
+        { notAnArray: 'string' },
+      ),
+    ).toThrow('notAnArray must be an array');
   });
 
   test('throws on missing count for count-based operators', () => {
-    expect(() => check({
-      field: 'items',
-      arrayOperator: ArrayOperator.atLeast,
-      condition: { field: 'x', operator: Operator.equals, value: 1 }
-    }, { items: [] })).toThrow('atLeast requires a count');
+    expect(() =>
+      check(
+        {
+          field: 'items',
+          arrayOperator: ArrayOperator.atLeast,
+          condition: { field: 'x', operator: Operator.equals, value: 1 },
+        },
+        { items: [] },
+      ),
+    ).toThrow('atLeast requires a count');
   });
 
   test('throws on invalid date', () => {
-    expect(() => check({
-      field: 'date',
-      dateOperator: DateOperator.after,
-      value: '2024-01-01'
-    }, { date: 'not-a-date' })).toThrow('date is not a valid date');
+    expect(() =>
+      check(
+        {
+          field: 'date',
+          dateOperator: DateOperator.after,
+          value: '2024-01-01',
+        },
+        { date: 'not-a-date' },
+      ),
+    ).toThrow('date is not a valid date');
   });
 
   test('throws on missing value', () => {
-    expect(() => check({
-      field: 'age',
-      operator: Operator.greaterThan
-    }, { age: 25 })).toThrow('No value or path specified');
+    expect(() =>
+      check(
+        {
+          field: 'age',
+          operator: Operator.greaterThan,
+        },
+        { age: 25 },
+      ),
+    ).toThrow('No value or path specified');
   });
 });
 
@@ -419,32 +518,25 @@ describe('Boolean Conditions', () => {
 
   test('boolean in logical operators', () => {
     const rule = {
-      all: [
-        true,
-        { field: 'x', operator: Operator.equals, value: 1 }
-      ]
+      all: [true, { field: 'x', operator: Operator.equals, value: 1 }],
     };
-    
+
     expect(check(rule, { x: 1 })).toBe(true);
-    
+
     const ruleFalse = {
-      all: [
-        false,
-        { field: 'x', operator: Operator.equals, value: 1 }
-      ]
+      all: [false, { field: 'x', operator: Operator.equals, value: 1 }],
     };
-    
+
     // When x = 1, the second condition passes, so only 'false' fails
     expect(check(ruleFalse, { x: 1 })).toBe('false');
-    
+
     // Test with both conditions failing
     const ruleBothFail = {
-      all: [
-        false,
-        { field: 'x', operator: Operator.equals, value: 2 }
-      ]
+      all: [false, { field: 'x', operator: Operator.equals, value: 2 }],
     };
-    
-    expect(check(ruleBothFail, { x: 1 })).toBe('All conditions must pass: false AND x must equal 2');
+
+    expect(check(ruleBothFail, { x: 1 })).toBe(
+      'All conditions must pass: false AND x must equal 2',
+    );
   });
 });

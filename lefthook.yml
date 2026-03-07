@@ -1,0 +1,8 @@
+pre-commit:
+  parallel: true
+  commands:
+    typecheck:
+      run: bun run typecheck
+    lint:
+      run: bunx biome check --no-errors-on-unmatched --diagnostic-level=error {staged_files}
+      glob: "*.{ts,tsx}"

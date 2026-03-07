@@ -1,16 +1,16 @@
-import type { ArrayRule } from '../types';
 import { ArrayOperator } from '../operator';
+import type { ArrayRule } from '../types';
+import { quoteField } from './quoting';
 import type { BuilderState } from './types';
-import { quoteField } from './utils';
 
-export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
+export const buildArrayRule = (rule: ArrayRule, _state: BuilderState): string => {
   const field = quoteField(rule.field);
   const isNative = rule.arrayType === 'native';
 
   // Different length functions for JSONB vs native PostgreSQL arrays
   const lengthFn = isNative
-    ? `array_length(${field}, 1)`      // Native: TEXT[], INT[], etc.
-    : `jsonb_array_length(${field})`;  // JSONB arrays
+    ? `array_length(${field}, 1)` // Native: TEXT[], INT[], etc.
+    : `jsonb_array_length(${field})`; // JSONB arrays
 
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:

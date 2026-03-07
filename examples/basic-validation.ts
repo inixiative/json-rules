@@ -5,7 +5,7 @@ const ageRule = {
   field: 'age',
   operator: Operator.greaterThanEquals,
   value: 18,
-  error: 'You must be 18 or older to register'
+  error: 'You must be 18 or older to register',
 };
 
 console.log(check(ageRule, { age: 21 })); // true
@@ -16,7 +16,7 @@ const emailRule = {
   field: 'email',
   operator: Operator.matches,
   value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  error: 'Please enter a valid email address'
+  error: 'Please enter a valid email address',
 };
 
 console.log(check(emailRule, { email: 'user@example.com' })); // true
@@ -27,7 +27,7 @@ const scoreRule = {
   field: 'score',
   operator: Operator.between,
   value: [0, 100],
-  error: 'Score must be between 0 and 100'
+  error: 'Score must be between 0 and 100',
 };
 
 console.log(check(scoreRule, { score: 85 })); // true
@@ -38,7 +38,7 @@ const roleRule = {
   field: 'role',
   operator: Operator.in,
   value: ['admin', 'editor', 'viewer'],
-  error: 'Invalid role selected'
+  error: 'Invalid role selected',
 };
 
 console.log(check(roleRule, { role: 'admin' })); // true
@@ -49,7 +49,7 @@ const urlRule = {
   field: 'website',
   operator: Operator.startsWith,
   value: 'https://',
-  error: 'Website must use HTTPS'
+  error: 'Website must use HTTPS',
 };
 
 console.log(check(urlRule, { website: 'https://example.com' })); // true
@@ -59,7 +59,7 @@ console.log(check(urlRule, { website: 'http://example.com' })); // "Website must
 const phoneRule = {
   field: 'phone',
   operator: Operator.notEmpty,
-  error: 'Phone number is required'
+  error: 'Phone number is required',
 };
 
 console.log(check(phoneRule, { phone: '+1-555-0123' })); // true

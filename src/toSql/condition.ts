@@ -1,9 +1,9 @@
 import type { Condition } from '../types';
-import type { BuilderState } from './types';
-import { buildFieldRule } from './field';
-import { buildDateRule } from './date';
 import { buildArrayRule } from './array';
+import { buildDateRule } from './date';
+import { buildFieldRule } from './field';
 import { buildAll, buildAny, buildIfThenElse, setConditionBuilder } from './logical';
+import type { BuilderState } from './types';
 
 export const buildCondition = (condition: Condition, state: BuilderState): string => {
   if (typeof condition === 'boolean') {

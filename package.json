@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/json-rules",
-  "version": "1.1.2",
+  "version": "0.0.1",
   "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -35,6 +35,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/inixiative/json-rules"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",

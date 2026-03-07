@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/json-rules",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/inixiative/json-rules"
+    "url": "git+https://github.com/inixiative/json-rules.git"
   },
   "publishConfig": {
     "access": "public"

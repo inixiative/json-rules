@@ -593,3 +593,103 @@ describe('toPrisma error cases', () => {
     ).toThrow('array');
   });
 });
+
+// ─── Multiple relations between same two models ───────────────────────────────
+const multiRelMap: FieldMap = {
+  Post: {
+    fields: {
+      id:          { kind: 'scalar', type: 'String' },
+      authorId:    { kind: 'scalar', type: 'String' },
+      editorId:    { kind: 'scalar', type: 'String' },
+      // Two separate relations to User, distinguished by relationName
+      author:      { kind: 'object', type: 'User', isList: false, fromFields: ['authorId'], toFields: ['id'], relationName: 'PostAuthor' },
+      editor:      { kind: 'object', type: 'User', isList: false, fromFields: ['editorId'], toFields: ['id'], relationName: 'PostEditor' },
+    },
+  },
+  User: {
+    fields: {
+      id:           { kind: 'scalar', type: 'String' },
+      name:         { kind: 'scalar', type: 'String' },
+      // Back-relations disambiguated by relationName
+      authoredPosts: { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostAuthor' },
+      editedPosts:   { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostEditor' },
+    },
+  },
+};
+
+describe('toPrisma multiple relations between same two models', () => {
+  it('count on first back-relation finds correct FK via relationName', () => {
+    const result = toPrisma(
+      { field: 'authoredPosts', arrayOperator: ArrayOperator.atLeast, count: 2 },
+      { map: multiRelMap, model: 'User' },
+    );
+    const groupBy = result.steps[0] as GroupByStep;
+    expect(groupBy.args.by).toEqual(['authorId']);
+    expect(groupBy.extract).toBe('authorId');
+  });
+
+  it('count on second back-relation finds correct FK via relationName', () => {
+    const result = toPrisma(
+      { field: 'editedPosts', arrayOperator: ArrayOperator.atLeast, count: 1 },
+      { map: multiRelMap, model: 'User' },
+    );
+    const groupBy = result.steps[0] as GroupByStep;
+    expect(groupBy.args.by).toEqual(['editorId']);
+    expect(groupBy.extract).toBe('editorId');
+  });
+});
+
+// ─── Implicit many-to-many error ─────────────────────────────────────────────
+const implicitM2MMap: FieldMap = {
+  Post: {
+    fields: {
+      id:         { kind: 'scalar', type: 'String' },
+      categories: { kind: 'object', type: 'Category', isList: true, fromFields: [], toFields: [] },
+    },
+  },
+  Category: {
+    fields: {
+      id:    { kind: 'scalar', type: 'String' },
+      posts: { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [] },
+    },
+  },
+};
+
+describe('toPrisma implicit many-to-many', () => {
+  it('count operator on implicit M2M → descriptive error', () => {
+    expect(() =>
+      toPrisma(
+        { field: 'categories', arrayOperator: ArrayOperator.atLeast, count: 2 },
+        { map: implicitM2MMap, model: 'Post' },
+      ),
+    ).toThrow('implicit many-to-many');
+  });
+});
+
+// ─── Composite FK error in count operators ────────────────────────────────────
+const compositeFkMap: FieldMap = {
+  Order: {
+    fields: {
+      id:         { kind: 'scalar', type: 'String' },
+      items:      { kind: 'object', type: 'OrderItem', isList: true, fromFields: [], toFields: [] },
+    },
+  },
+  OrderItem: {
+    fields: {
+      orderId:    { kind: 'scalar', type: 'String' },
+      productId:  { kind: 'scalar', type: 'String' },
+      order:      { kind: 'object', type: 'Order', isList: false, fromFields: ['orderId', 'productId'], toFields: ['id', 'code'] },
+    },
+  },
+};
+
+describe('toPrisma composite FK', () => {
+  it('count operator on composite FK relation → descriptive error', () => {
+    expect(() =>
+      toPrisma(
+        { field: 'items', arrayOperator: ArrayOperator.atLeast, count: 2 },
+        { map: compositeFkMap, model: 'Order' },
+      ),
+    ).toThrow('composite FK');
+  });
+});

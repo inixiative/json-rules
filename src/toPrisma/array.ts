@@ -114,15 +114,37 @@ const buildCountStep = (
 
   if (fieldEntry.fromFields && fieldEntry.fromFields.length > 0) {
     // Forward relation (current model has FK) — unusual for list relations but handle it
+    if (fieldEntry.fromFields.length > 1) {
+      throw new Error(
+        `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
+          `('${currentModel}.${rule.field}'). Use prisma.$queryRaw for composite FK count filtering.`,
+      );
+    }
     fkOnTarget = fieldEntry.toFields?.[0] ?? 'id';
     pkOnCurrent = fieldEntry.fromFields[0];
   } else {
     // Back-relation: FK is on the target model. Find the reverse relation.
-    const reverseRelation = findReverseRelation(map, targetModel, currentModel);
+    // Pass relationName so multiple relations between the same two models are disambiguated.
+    const reverseRelation = findReverseRelation(map, targetModel, currentModel, fieldEntry.relationName);
     if (!reverseRelation) {
+      // Detect implicit many-to-many: both sides are lists with no FK info (hidden join table)
+      const targetFields = Object.values(map[targetModel]?.fields ?? {});
+      const isImplicitM2M = targetFields.some(
+        f => f.kind === 'object' && f.type === currentModel && f.isList && !(f.fromFields?.length),
+      );
       throw new Error(
-        `Cannot determine FK relationship between '${currentModel}' and '${targetModel}'. ` +
-          `Ensure the FieldMap contains both sides of the relation.`,
+        isImplicitM2M
+          ? `'${currentModel}.${rule.field}' is an implicit many-to-many relation. ` +
+            `Count operators require an explicit join model with a FK — convert to an explicit ` +
+            `@relation or use prisma.$queryRaw.`
+          : `Cannot determine FK relationship between '${currentModel}' and '${targetModel}'. ` +
+            `Ensure the FieldMap contains both sides of the relation.`,
+      );
+    }
+    if (reverseRelation.fromFields!.length > 1) {
+      throw new Error(
+        `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
+          `('${currentModel}.${rule.field}'). Use prisma.$queryRaw for composite FK count filtering.`,
       );
     }
     fkOnTarget = reverseRelation.fromFields![0];    // e.g. 'authorId'
@@ -160,6 +182,7 @@ const findReverseRelation = (
   map: FieldMap,
   targetModel: string,
   currentModel: string,
+  relationName?: string,
 ): FieldMapEntry | null => {
   const targetEntry = map[targetModel];
   if (!targetEntry) return null;
@@ -169,7 +192,8 @@ const findReverseRelation = (
       fieldDef.kind === 'object' &&
       fieldDef.type === currentModel &&
       (fieldDef.fromFields?.length ?? 0) > 0 &&
-      (fieldDef.toFields?.length ?? 0) > 0
+      (fieldDef.toFields?.length ?? 0) > 0 &&
+      (relationName === undefined || fieldDef.relationName === relationName)
     ) {
       return fieldDef;
     }

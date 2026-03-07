@@ -150,19 +150,24 @@ const buildJoinClause = (
 
   if (fieldEntry.fromFields && fieldEntry.fromFields.length > 0 &&
       fieldEntry.toFields && fieldEntry.toFields.length > 0) {
-    // Forward relation: current model has FK
-    // JOIN "Target" AS "tN" ON "tN"."toField" = "currentAlias"."fromField"
-    onCondition =
-      `${escapeIdentifier(targetAlias)}.${escapeIdentifier(fieldEntry.toFields[0])} = ` +
-      `${escapeIdentifier(currentAlias)}.${escapeIdentifier(fieldEntry.fromFields[0])}`;
+    // Forward relation: current model has FK (composite FK supported via multi-condition AND)
+    onCondition = fieldEntry.fromFields
+      .map((from, i) =>
+        `${escapeIdentifier(targetAlias)}.${escapeIdentifier(fieldEntry.toFields![i])} = ` +
+        `${escapeIdentifier(currentAlias)}.${escapeIdentifier(from)}`,
+      )
+      .join(' AND ');
   } else {
-    // Back-relation: FK is on the target model — find the reverse relation
-    const reverse = findReverseRelation(map, targetModel, currentModel);
+    // Back-relation: FK is on the target model — find the reverse relation.
+    // Pass relationName so multiple relations between the same two models are disambiguated.
+    const reverse = findReverseRelation(map, targetModel, currentModel, fieldEntry.relationName);
     if (!reverse) return null;
-    // JOIN "Target" AS "tN" ON "tN"."fkOnTarget" = "currentAlias"."pkOnCurrent"
-    onCondition =
-      `${escapeIdentifier(targetAlias)}.${escapeIdentifier(reverse.fromFields![0])} = ` +
-      `${escapeIdentifier(currentAlias)}.${escapeIdentifier(reverse.toFields![0])}`;
+    onCondition = reverse.fromFields!
+      .map((from, i) =>
+        `${escapeIdentifier(targetAlias)}.${escapeIdentifier(from)} = ` +
+        `${escapeIdentifier(currentAlias)}.${escapeIdentifier(reverse.toFields![i])}`,
+      )
+      .join(' AND ');
   }
 
   return `LEFT JOIN ${escapeIdentifier(targetDbName as string)} AS ${escapeIdentifier(targetAlias)} ON ${onCondition}`;
@@ -172,6 +177,7 @@ const findReverseRelation = (
   map: FieldMap,
   targetModel: string,
   currentModel: string,
+  relationName?: string,
 ): FieldMapEntry | null => {
   const targetEntry = map[targetModel];
   if (!targetEntry) return null;
@@ -181,7 +187,8 @@ const findReverseRelation = (
       fieldDef.kind === 'object' &&
       fieldDef.type === currentModel &&
       (fieldDef.fromFields?.length ?? 0) > 0 &&
-      (fieldDef.toFields?.length ?? 0) > 0
+      (fieldDef.toFields?.length ?? 0) > 0 &&
+      (relationName === undefined || fieldDef.relationName === relationName)
     ) {
       return fieldDef;
     }

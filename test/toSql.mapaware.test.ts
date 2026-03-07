@@ -230,6 +230,96 @@ describe('toSql map-aware JSON path with alias', () => {
   });
 });
 
+// ─── Multiple relations between same two models ───────────────────────────────
+const multiRelMap: FieldMap = {
+  Post: {
+    fields: {
+      id:       { kind: 'scalar', type: 'String' },
+      authorId: { kind: 'scalar', type: 'String' },
+      editorId: { kind: 'scalar', type: 'String' },
+      author:   { kind: 'object', type: 'User', isList: false, fromFields: ['authorId'], toFields: ['id'], relationName: 'PostAuthor' },
+      editor:   { kind: 'object', type: 'User', isList: false, fromFields: ['editorId'], toFields: ['id'], relationName: 'PostEditor' },
+    },
+  },
+  User: {
+    fields: {
+      id:            { kind: 'scalar', type: 'String' },
+      name:          { kind: 'scalar', type: 'String' },
+      authoredPosts: { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostAuthor' },
+      editedPosts:   { kind: 'object', type: 'Post', isList: true, fromFields: [], toFields: [], relationName: 'PostEditor' },
+    },
+  },
+};
+
+describe('toSql multiple relations between same two models', () => {
+  it('forward relation author → correct authorId FK in JOIN', () => {
+    const { joins } = toSql(
+      { field: 'author.name', operator: Operator.equals, value: 'Alice' },
+      { map: multiRelMap, model: 'Post', alias: 't0' },
+    );
+    expect(joins).toHaveLength(1);
+    expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
+  });
+
+  it('forward relation editor → correct editorId FK in JOIN', () => {
+    const { joins } = toSql(
+      { field: 'editor.name', operator: Operator.equals, value: 'Bob' },
+      { map: multiRelMap, model: 'Post', alias: 't0' },
+    );
+    expect(joins).toHaveLength(1);
+    expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."editorId"');
+  });
+
+  it('both author and editor in same condition → two distinct JOINs', () => {
+    const { sql, joins } = toSql(
+      {
+        all: [
+          { field: 'author.name', operator: Operator.equals, value: 'Alice' },
+          { field: 'editor.name', operator: Operator.equals, value: 'Bob' },
+        ],
+      },
+      { map: multiRelMap, model: 'Post', alias: 't0' },
+    );
+    expect(joins).toHaveLength(2);
+    expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
+    expect(joins[1]).toBe('LEFT JOIN "User" AS "t2" ON "t2"."id" = "t0"."editorId"');
+    expect(sql).toBe('("t1"."name" = $1 AND "t2"."name" = $2)');
+  });
+});
+
+// ─── Composite FK JOINs ───────────────────────────────────────────────────────
+const compositeFkMap: FieldMap = {
+  OrderItem: {
+    fields: {
+      orderId:   { kind: 'scalar', type: 'String' },
+      productId: { kind: 'scalar', type: 'String' },
+      order:     { kind: 'object', type: 'Order', isList: false, fromFields: ['orderId', 'productId'], toFields: ['id', 'code'] },
+      qty:       { kind: 'scalar', type: 'Int' },
+    },
+  },
+  Order: {
+    fields: {
+      id:    { kind: 'scalar', type: 'String' },
+      code:  { kind: 'scalar', type: 'String' },
+      items: { kind: 'object', type: 'OrderItem', isList: true, fromFields: [], toFields: [] },
+    },
+  },
+};
+
+describe('toSql composite FK JOINs', () => {
+  it('composite forward relation → multi-condition ON clause', () => {
+    const { sql, joins } = toSql(
+      { field: 'order.id', operator: Operator.equals, value: 'ord-1' },
+      { map: compositeFkMap, model: 'OrderItem', alias: 't0' },
+    );
+    expect(joins).toHaveLength(1);
+    expect(joins[0]).toBe(
+      'LEFT JOIN "Order" AS "t1" ON "t1"."id" = "t0"."orderId" AND "t1"."code" = "t0"."productId"',
+    );
+    expect(sql).toBe('"t1"."id" = $1');
+  });
+});
+
 // ─── Map-aware: no map falls back to existing behavior ───────────────────────
 describe('toSql without map falls back to existing behavior', () => {
   it('dot path treated as JSON path (original behavior)', () => {

@@ -9,6 +9,7 @@ export type FieldMapEntry = {
   isList?: boolean;
   fromFields?: string[];
   toFields?: string[];
+  relationName?: string; // disambiguates multiple relations between same two models
 };
 
 export interface FieldMap {

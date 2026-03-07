@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'bun:test';
 import { toPrisma, executePrismaQueryPlan, Operator, ArrayOperator, DateOperator } from '../index';
 import type { ToPrismaResult, GroupByStep, WhereStep } from '../index';
-import { blogMap, multiRelMap, implicitM2MMap, compositeFkMap } from './fixtures/maps';
+import { blogMap } from './fixtures/blogMap';
+import { multiRelMap } from './fixtures/multiRelMap';
+import { implicitM2MMap } from './fixtures/implicitM2MMap';
+import { compositeFkMap } from './fixtures/compositeFkMap';
 import { getWhere } from './fixtures/helpers';
 
 // ─── Result shape ─────────────────────────────────────────────────────────────

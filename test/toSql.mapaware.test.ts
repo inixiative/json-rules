@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'bun:test';
 import { toSql, Operator, DateOperator } from '../index';
-import { blogMap, multiRelMap, compositeFkMap } from './fixtures/maps';
+import { blogMap } from './fixtures/blogMap';
+import { multiRelMap } from './fixtures/multiRelMap';
+import { compositeFkMap } from './fixtures/compositeFkMap';
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
 describe('toSql result shape', () => {

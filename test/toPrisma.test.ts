@@ -114,9 +114,21 @@ describe('toPrisma scalar operators', () => {
     ).toEqual({ age: { gte: 18, lte: 65 } });
   });
 
+  it('[P2] between auto-sorts reversed range', () => {
+    expect(
+      getWhere(toPrisma({ field: 'age', operator: Operator.between, value: [65, 18] })),
+    ).toEqual({ age: { gte: 18, lte: 65 } });
+  });
+
   it('notBetween', () => {
     expect(
       getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 10] })),
+    ).toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
+  });
+
+  it('[P2] notBetween auto-sorts reversed range', () => {
+    expect(
+      getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [10, 0] })),
     ).toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
   });
 

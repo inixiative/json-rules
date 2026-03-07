@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { check, Operator } from '../index';
+import { ArrayOperator, check, Operator } from '../index';
 
 describe('Logical Operators Examples', () => {
   test('AND logic - user eligibility', () => {
@@ -88,5 +88,24 @@ describe('Logical Operators Examples', () => {
     };
 
     expect(check(conditionalRule, { active: true })).toBe('false');
+  });
+
+  test('[P0] any: boolean false sub-conditions should fail, not pass', () => {
+    // typeof false !== 'string' is true — any must check result === true, not typeof !== 'string'
+    expect(check({ any: [false, false] }, {})).not.toBe(true);
+    expect(check({ any: [false] }, {})).not.toBe(true);
+    // boolean true still passes
+    expect(check({ any: [false, true] }, {})).toBe(true);
+  });
+
+  test('[P1] checkArray reads from data (current element), not always root context', () => {
+    // In a nested all, data is the current element. checkArray should use data.
+    const rule = {
+      all: [{ field: 'items', arrayOperator: ArrayOperator.notEmpty }],
+    };
+    // data = element with its own 'items'; context = root (no 'items')
+    const element = { items: ['a', 'b'] };
+    const rootContext = { noItems: [] } as unknown as typeof element;
+    expect(check(rule as Parameters<typeof check>[0], element, rootContext)).toBe(true);
   });
 });

@@ -92,7 +92,8 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('between operator requires an array of two values');
       }
-      return { gte: v[0], lte: v[1] };
+      const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
+      return { gte: min, lte: max };
     }
 
     case Operator.notBetween: {
@@ -100,7 +101,8 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('notBetween operator requires an array of two values');
       }
-      return { NOT: { gte: v[0], lte: v[1] } };
+      const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
+      return { NOT: { gte: min, lte: max } };
     }
 
     case Operator.isEmpty:

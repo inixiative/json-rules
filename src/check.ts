@@ -57,8 +57,9 @@ const any = <TData extends object>(
 
   for (const condition of conditions) {
     const result = check(condition, data, context);
-    if (typeof result !== 'string') return true;
-    errors.push(result);
+    if (result === true) return true;
+    if (typeof result === 'string') errors.push(result);
+    // boolean false: record as failure but continue checking other conditions
   }
 
   if (error) return error;
@@ -79,10 +80,10 @@ const checkIfThenElse = <TData extends object>(
 
 const checkArray = <TData extends object>(
   condition: ArrayRule,
-  _data: TData,
+  data: TData,
   context: TData,
 ): boolean | string => {
-  const arrayValue = get(context, condition.field);
+  const arrayValue = get(data, condition.field);
 
   if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
 

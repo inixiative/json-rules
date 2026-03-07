@@ -39,13 +39,13 @@ export const buildIfThenElse = (
   // if → then is equivalent to: NOT(if) OR then
   // With else: (NOT(if) OR then) AND (if OR else)
   //
-  // The `if` condition must be built twice as independent objects
-  // (SQL reuses the same string; Prisma WHERE objects cannot be shared references)
-  const notIf = { NOT: buildCondition(cond.if, options, state) };
+  // Build the `if` clause once to avoid pushing duplicate GroupBySteps into state
+  // when the `if` clause contains a count-based array operator (atLeast/atMost/exactly).
+  const ifClause = buildCondition(cond.if, options, state);
+  const notIf = { NOT: ifClause };
   const thenClause = buildCondition(cond.then, options, state);
 
   if (cond.else) {
-    const ifClause = buildCondition(cond.if, options, state);
     const elseClause = buildCondition(cond.else, options, state);
     return {
       AND: [{ OR: [notIf, thenClause] }, { OR: [ifClause, elseClause] }],

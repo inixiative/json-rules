@@ -157,11 +157,27 @@ describe('toSql', () => {
       expect(params).toEqual([18, 65]);
     });
 
+    it('[P2] between auto-sorts reversed range', () => {
+      const { sql, params } = toSql({ field: 'age', operator: Operator.between, value: [65, 18] });
+      expect(sql).toBe('"age" BETWEEN $1 AND $2');
+      expect(params).toEqual([18, 65]);
+    });
+
     it('notBetween', () => {
       const { sql, params } = toSql({
         field: 'score',
         operator: Operator.notBetween,
         value: [0, 10],
+      });
+      expect(sql).toBe('"score" NOT BETWEEN $1 AND $2');
+      expect(params).toEqual([0, 10]);
+    });
+
+    it('[P2] notBetween auto-sorts reversed range', () => {
+      const { sql, params } = toSql({
+        field: 'score',
+        operator: Operator.notBetween,
+        value: [10, 0],
       });
       expect(sql).toBe('"score" NOT BETWEEN $1 AND $2');
       expect(params).toEqual([0, 10]);

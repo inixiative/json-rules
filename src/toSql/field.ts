@@ -73,7 +73,8 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('between operator requires an array of two values');
       }
-      return `${field} BETWEEN ${nextParam(state, v[0])} AND ${nextParam(state, v[1])}`;
+      const [min, max] = (v[0] as number) <= (v[1] as number) ? v : [v[1], v[0]];
+      return `${field} BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
     }
 
     case Operator.notBetween: {
@@ -81,7 +82,8 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('notBetween operator requires an array of two values');
       }
-      return `${field} NOT BETWEEN ${nextParam(state, v[0])} AND ${nextParam(state, v[1])}`;
+      const [min, max] = (v[0] as number) <= (v[1] as number) ? v : [v[1], v[0]];
+      return `${field} NOT BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
     }
 
     case Operator.isEmpty:

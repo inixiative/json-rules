@@ -43,7 +43,7 @@ describe('toSql integration', () => {
   const query = async (rule: Parameters<typeof toSql>[0]) => {
     const { sql, params } = toSql(rule);
     const result = await db.query(`SELECT name FROM users WHERE ${sql} ORDER BY name`, params);
-    return result.rows.map((r: any) => r.name);
+    return (result.rows as Array<{ name: string }>).map((row) => row.name);
   };
 
   describe('field operators', () => {

@@ -1,6 +1,6 @@
 import { get } from 'lodash';
 import { DateOperator } from '../operator';
-import type { DateRule } from '../types';
+import type { DateRule, DateRuleValue } from '../types';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -15,7 +15,10 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
  * - rule.path starting with '$.' → throw (no column-to-column in Prisma WHERE)
  * - rule.path (context ref) → look up from options.context
  */
-const resolveDateValue = (rule: DateRule, options?: BuildOptions): any => {
+const resolveDateValue = <TValue = DateRuleValue>(
+  rule: DateRule<TValue>,
+  options?: BuildOptions,
+): TValue | undefined => {
   if (rule.value !== undefined) return rule.value;
   if (rule.path) {
     if (rule.path.startsWith('$.')) {
@@ -30,7 +33,7 @@ const resolveDateValue = (rule: DateRule, options?: BuildOptions): any => {
           `Pass context when calling toPrisma().`,
       );
     }
-    return get(options.context, rule.path);
+    return get(options.context, rule.path) as TValue | undefined;
   }
   return undefined;
 };

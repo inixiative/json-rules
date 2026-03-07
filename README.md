@@ -1,9 +1,12 @@
 # @inixiative/json-rules
 
-[![npm version](https://badge.fury.io/js/@inixiative%2Fjson-rules.svg)](https://www.npmjs.com/package/@inixiative/json-rules)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A TypeScript-first JSON rules library for:
 
-A powerful, type-safe JSON-based rules engine for TypeScript/JavaScript applications. Define complex validation and business logic rules using simple JSON structures.
+- runtime validation with custom error messages
+- Prisma query planning
+- PostgreSQL `WHERE` generation
+
+The same rule AST can be evaluated against in-memory data with `check()`, converted into a Prisma query plan with `toPrisma()`, or compiled into SQL with `toSql()`.
 
 ## Installation
 
@@ -15,325 +18,374 @@ yarn add @inixiative/json-rules
 bun add @inixiative/json-rules
 ```
 
-## Features
-
-- 🎯 **Type-safe**: Full TypeScript support with strict type checking
-- 🔧 **Flexible**: 22 standard operators, 8 array operators, and 8 date operators
-- 🌳 **Composable**: Nest rules with logical operators (all/any) and conditional logic (if-then-else)
-- 📊 **Array validation**: Rich array validation with element-wise conditions
-- 📅 **Date handling**: Comprehensive date comparison with timezone support
-- 🔍 **Path-based access**: Reference values from anywhere in your data structure
-- 💬 **Custom errors**: Every rule supports custom error messages
-
-## Installation
-
-```bash
-npm install json-rules
-# or
-yarn add json-rules
-# or
-bun add json-rules
-```
-
 ## Quick Start
 
-```typescript
-import { check, Operator } from 'json-rules';
+```ts
+import { check, Operator } from '@inixiative/json-rules';
 
-// Simple rule
 const rule = {
   field: 'age',
-  operator: Operator.greaterThanEqual,
+  operator: Operator.greaterThanEquals,
   value: 18,
-  error: 'Must be 18 or older'
+  error: 'Must be 18 or older',
 };
 
-const result = check(rule, { age: 21 });  // returns true
-const result2 = check(rule, { age: 16 }); // returns "Must be 18 or older"
+check(rule, { age: 21 }); // true
+check(rule, { age: 16 }); // "Must be 18 or older"
 ```
+
+## What It Supports
+
+- scalar comparisons
+- nested logical conditions with `all` / `any`
+- `if` / `then` / `else`
+- array validation against nested object elements
+- date comparisons with timezone-aware runtime evaluation
+- relative value references via `path`
+- custom error messages on every rule
+- compilation to Prisma and PostgreSQL for supported subsets
 
 ## Operators
 
-### Standard Operators (22)
+### Field Operators
 
-#### Comparison
-- `equal` - Exact equality check
-- `notEqual` - Not equal check
-- `lessThan` - Less than comparison
-- `lessThanEqual` - Less than or equal
-- `greaterThan` - Greater than comparison
-- `greaterThanEqual` - Greater than or equal
+- `equals`
+- `notEquals`
+- `lessThan`
+- `lessThanEquals`
+- `greaterThan`
+- `greaterThanEquals`
+- `contains`
+- `notContains`
+- `in`
+- `notIn`
+- `matches`
+- `notMatches`
+- `between`
+- `notBetween`
+- `isEmpty`
+- `notEmpty`
+- `exists`
+- `notExists`
+- `startsWith`
+- `endsWith`
 
-#### Range
-- `between` - Value within range (inclusive)
-- `notBetween` - Value outside range
+### Array Operators
 
-#### Membership
-- `in` - Value in array
-- `notIn` - Value not in array
-- `contains` - Array/string contains value
-- `notContains` - Array/string doesn't contain value
+- `all`
+- `any`
+- `none`
+- `atLeast`
+- `atMost`
+- `exactly`
+- `empty`
+- `notEmpty`
 
-#### String
-- `startsWith` - String starts with value
-- `endsWith` - String ends with value
+### Date Operators
 
-#### Pattern
-- `match` - Regex pattern match
-- `notMatch` - Regex pattern doesn't match
+- `before`
+- `after`
+- `onOrBefore`
+- `onOrAfter`
+- `between`
+- `notBetween`
+- `dayIn`
+- `dayNotIn`
 
-#### Existence
-- `isEmpty` - Check if value is empty (null, undefined, "", [], {})
-- `notEmpty` - Check if value is not empty
-- `exists` - Field exists (not undefined)
-- `notExists` - Field doesn't exist (undefined)
+## Rule Shapes
 
-### Array Operators (8)
+### Field Rule
 
-- `all` - All elements match condition
-- `any` - At least one element matches
-- `none` - No elements match
-- `atLeast` - At least X elements match
-- `atMost` - At most X elements match
-- `exactly` - Exactly X elements match
-- `empty` - Array is empty
-- `notEmpty` - Array has elements
-
-### Date Operators (8)
-
-- `before` - Date is before comparison date
-- `after` - Date is after comparison date
-- `onOrBefore` - Date is on or before
-- `onOrAfter` - Date is on or after
-- `between` - Date is between two dates
-- `notBetween` - Date is outside range
-- `dayIn` - Day of week is in list
-- `dayNotIn` - Day of week is not in list
-
-#### Timezone Handling
-
-Date comparisons are timezone-aware:
-
-1. **When condition value has no timezone** (e.g., `'2025-01-20'`), it's interpreted in the field's timezone:
-   ```typescript
-   // Field: Jan 20 10:00 AM Sydney time
-   { eventDate: '2025-01-20T10:00:00+11:00' }
-   // Condition: on or after Jan 20 (interpreted as Jan 20 in Sydney)
-   { dateOperator: 'onOrAfter', value: '2025-01-20' } // ✓ passes
-   ```
-
-2. **When condition value has timezone** (e.g., `'2025-01-20T00:00:00Z'`), it's used as-is:
-   ```typescript
-   // Condition: after midnight UTC specifically
-   { dateOperator: 'after', value: '2025-01-20T00:00:00Z' }
-   ```
-
-3. **Fields without timezone** are treated as local time (UTC offset 0)
-
-## Rule Types
-
-### Basic Rule
-
-```typescript
+```ts
 {
   field: 'status',
-  operator: Operator.equal,
+  operator: Operator.equals,
   value: 'active'
 }
 ```
 
-### Logical Operators
+### Logical Rules
 
-```typescript
-// All conditions must pass (AND)
+```ts
 {
   all: [
-    { field: 'age', operator: Operator.greaterThanEqual, value: 18 },
-    { field: 'hasLicense', operator: Operator.equal, value: true }
+    { field: 'age', operator: Operator.greaterThanEquals, value: 18 },
+    { field: 'hasLicense', operator: Operator.equals, value: true }
   ]
 }
 
-// At least one must pass (OR)
 {
   any: [
-    { field: 'role', operator: Operator.equal, value: 'admin' },
-    { field: 'isOwner', operator: Operator.equal, value: true }
+    { field: 'role', operator: Operator.equals, value: 'admin' },
+    { field: 'isOwner', operator: Operator.equals, value: true }
   ]
 }
 ```
 
-### Conditional Logic (If-Then-Else)
+### Conditional Rule
 
-```typescript
+```ts
 {
-  if: { field: 'type', operator: Operator.equal, value: 'premium' },
+  if: { field: 'type', operator: Operator.equals, value: 'premium' },
   then: { field: 'discount', operator: Operator.greaterThan, value: 0 },
-  else: { field: 'discount', operator: Operator.equal, value: 0 }
+  else: { field: 'discount', operator: Operator.equals, value: 0 }
 }
 ```
 
-### Array Validation
+### Array Rule
 
-```typescript
+```ts
 {
   field: 'orders',
   arrayOperator: ArrayOperator.all,
   condition: {
     field: 'total',
-    operator: Operator.lessThan,
-    value: 1000
+    operator: Operator.lessThanEquals,
+    path: '$.maxBudget'
   }
 }
 ```
 
-### Date Validation
+### Date Rule
 
-```typescript
+```ts
 {
   field: 'expiryDate',
   dateOperator: DateOperator.after,
-  value: '2024-12-31'
+  value: '2026-01-01'
 }
 ```
 
-## Advanced Features
+## Path Semantics
 
-### Path-Based Value Resolution
+`path` lets a rule resolve its comparison value from somewhere other than `value`.
 
-Compare fields against each other using paths:
+### Root Context Reference
 
-```typescript
+In runtime validation, a plain path is resolved from the root context:
+
+```ts
 {
   field: 'confirmPassword',
-  operator: Operator.equal,
-  path: 'password'  // Compare against another field
+  operator: Operator.equals,
+  path: 'password'
 }
 ```
 
-### Array Element Context
+### Current Array Element Reference
 
-Use `$.` prefix to reference the current array element:
+Inside array conditions, `$.` means "read from the current element":
 
-```typescript
+```ts
 {
-  field: 'items',
+  field: 'orders',
   arrayOperator: ArrayOperator.all,
   condition: {
-    field: 'price',
-    operator: Operator.lessThan,
-    path: '$.maxPrice'  // Reference field on current array element
+    field: 'total',
+    operator: Operator.lessThanEquals,
+    path: '$.maxBudget'
   }
 }
 ```
 
-### Custom Error Messages
+## Runtime Validation
 
-Every rule supports custom error messages:
+`check()` evaluates a rule against data and returns:
 
-```typescript
+- `true` when the rule passes
+- a string when the rule fails
+
+```ts
+import { ArrayOperator, check, Operator } from '@inixiative/json-rules';
+
+const rule = {
+  all: [
+    { field: 'status', operator: Operator.equals, value: 'active' },
+    {
+      field: 'orders',
+      arrayOperator: ArrayOperator.atLeast,
+      count: 2,
+      condition: { field: 'status', operator: Operator.equals, value: 'completed' },
+    },
+  ],
+};
+
+check(rule, {
+  status: 'active',
+  orders: [
+    { status: 'completed' },
+    { status: 'pending' },
+    { status: 'completed' },
+  ],
+}); // true
+```
+
+### Custom Errors
+
+Every rule can define its own error:
+
+```ts
 {
   field: 'email',
-  operator: Operator.match,
+  operator: Operator.matches,
   value: /^[^@]+@[^@]+\.[^@]+$/,
   error: 'Please enter a valid email address'
 }
 ```
 
-## Complex Example
+## Prisma Query Planning
 
-```typescript
-const rule = {
-  all: [
-    // User must be active
-    { field: 'status', operator: Operator.equal, value: 'active' },
-    
-    // Age requirement
-    { field: 'age', operator: Operator.between, value: [18, 65] },
-    
-    // Must have at least one verified email
-    {
-      field: 'emails',
-      arrayOperator: ArrayOperator.any,
-      condition: { field: 'verified', operator: Operator.equal, value: true }
+`toPrisma()` converts a rule into a Prisma query plan.
+
+```ts
+import { Operator, toPrisma } from '@inixiative/json-rules';
+
+const plan = toPrisma({
+  field: 'status',
+  operator: Operator.equals,
+  value: 'active',
+});
+
+// plan.steps => [{ operation: 'where', where: { status: { equals: 'active' } } }]
+```
+
+Count-based relation filters such as `atLeast`, `atMost`, and `exactly` can produce multi-step plans. Use `executePrismaQueryPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
+
+```ts
+import {
+  ArrayOperator,
+  Operator,
+  executePrismaQueryPlan,
+  toPrisma,
+} from '@inixiative/json-rules';
+
+const plan = toPrisma(
+  {
+    field: 'posts',
+    arrayOperator: ArrayOperator.atLeast,
+    count: 3,
+    condition: {
+      field: 'published',
+      operator: Operator.equals,
+      value: true,
     },
-    
-    // Conditional premium features
-    {
-      if: { field: 'subscription', operator: Operator.equal, value: 'premium' },
-      then: {
-        field: 'features',
-        arrayOperator: ArrayOperator.all,
-        condition: { field: 'enabled', operator: Operator.equal, value: true }
-      }
-    }
-  ]
-};
+  },
+  { map, model: 'User' },
+);
 
-const userData = {
-  status: 'active',
-  age: 25,
-  emails: [
-    { address: 'user@example.com', verified: true },
-    { address: 'alt@example.com', verified: false }
-  ],
-  subscription: 'premium',
-  features: [
-    { name: 'advanced', enabled: true },
-    { name: 'analytics', enabled: true }
-  ]
-};
-
-const result = check(rule, userData); // returns true
+const where = await executePrismaQueryPlan(plan, { post: prisma.post });
+await prisma.user.findMany({ where });
 ```
 
-## API Reference
+## PostgreSQL SQL Generation
 
-### `check(condition: Condition, data: any, context?: any): boolean | string`
+`toSql()` converts a rule into a parameterized PostgreSQL `WHERE` clause.
 
-The main validation function.
+```ts
+import { Operator, toSql } from '@inixiative/json-rules';
 
-- **condition**: The rule to evaluate
-- **data**: The data to validate against
-- **context**: Optional context (defaults to data)
-- **Returns**: `true` if validation passes, error string if it fails
+const result = toSql({
+  field: 'status',
+  operator: Operator.equals,
+  value: 'active',
+});
 
-### Types
-
-```typescript
-type Condition = Rule | ArrayRule | DateRule | All | Any | IfThenElse | boolean;
-
-type Rule = {
-  field: string;
-  operator: Operator;
-  value?: any;
-  path?: string;
-  error?: string;
-};
-
-type ArrayRule = {
-  field: string;
-  arrayOperator: ArrayOperator;
-  condition?: Condition;
-  count?: number;
-  error?: string;
-};
-
-type DateRule = {
-  field: string;
-  dateOperator: DateOperator;
-  value?: any;
-  path?: string;
-  error?: string;
-};
+// {
+//   sql: '"status" = $1',
+//   params: ['active'],
+//   joins: []
+// }
 ```
+
+With a field map and model, `toSql()` can generate `LEFT JOIN`s for relation traversal:
+
+```ts
+const result = toSql(
+  { field: 'author.email', operator: Operator.equals, value: 'a@b.com' },
+  { map, model: 'Post', alias: 't0' },
+);
+
+// result.sql   => '"t1"."email" = $1'
+// result.joins => ['LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"']
+```
+
+## Backend Support Matrix
+
+Not every backend supports every rule shape.
+
+| Capability | `check()` | `toPrisma()` | `toSql()` |
+| --- | --- | --- | --- |
+| Field operators | Yes | Most | Yes |
+| `matches` / `notMatches` | Yes | No | Yes |
+| Logical operators | Yes | Yes | Yes |
+| Array `all` / `any` / `none` | Yes | Yes | No |
+| Array `atLeast` / `atMost` / `exactly` | Yes | Yes, with `map` + `model` | No |
+| Array `empty` / `notEmpty` | Yes | Yes | Yes |
+| Date comparisons | Yes | Most | Yes |
+| `dayIn` / `dayNotIn` | Yes | No | Yes |
+| `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
+
+### Prisma Limitations
+
+- `matches` and `notMatches` are not supported by Prisma output
+- `dayIn` and `dayNotIn` are not supported by Prisma output
+- `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`
+- count-based relation operators require `{ map, model }`
+
+### SQL Limitations
+
+- complex array element operators are not supported in SQL output:
+  - `all`
+  - `any`
+  - `none`
+  - `atLeast`
+  - `atMost`
+  - `exactly`
+- `toSql()` generates `WHERE` fragments and `LEFT JOIN`s, not complete queries
+
+## TypeScript Types
+
+The public rule types are generic over comparison payloads:
+
+```ts
+type Condition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
+  | Rule<TRuleValue>
+  | ArrayRule<TRuleValue, TDateValue>
+  | DateRule<TDateValue>
+  | All<TRuleValue, TDateValue>
+  | Any<TRuleValue, TDateValue>
+  | IfThenElse<TRuleValue, TDateValue>
+  | boolean;
+```
+
+Useful exports:
+
+- `check`
+- `toPrisma`
+- `executePrismaQueryPlan`
+- `toSql`
+- `Operator`
+- `ArrayOperator`
+- `DateOperator`
+- `Condition`
+- `Rule`
+- `ArrayRule`
+- `DateRule`
 
 ## Error Handling
 
-The engine throws errors for:
-- Invalid array fields when using array operators
-- Missing required parameters (e.g., count for atLeast)
-- Invalid dates in date comparisons
-- Primitive arrays with array operators (use `contains` or `in` instead)
+The library throws when a rule is structurally invalid, for example:
+
+- array operators used against non-arrays
+- missing `count` for count-based array rules
+- invalid date values
+- unsupported backend translations
+
+It returns string errors only from runtime `check()`.
+
+## Examples
+
+See [`examples/basic-validation.ts`](./examples/basic-validation.ts), [`examples/array-operations.ts`](./examples/array-operations.ts), [`examples/date-operations.ts`](./examples/date-operations.ts), and [`examples/advanced-features.ts`](./examples/advanced-features.ts).
 
 ## License
 

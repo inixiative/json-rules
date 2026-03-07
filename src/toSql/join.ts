@@ -31,12 +31,16 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
     if (fieldEntry.kind === 'object') {
       // Traverse relation: generate (or reuse) a JOIN
       const registryKey = `${currentAlias}.${parts[i]}`;
+      const existingAlias = state.joinRegistry?.get(registryKey);
       let targetAlias: string;
 
-      if (state.joinRegistry?.has(registryKey)) {
-        targetAlias = state.joinRegistry.get(registryKey)!;
+      if (existingAlias) {
+        targetAlias = existingAlias;
       } else {
-        targetAlias = `t${++state.joinCounter!.n}`;
+        const joinCounter = state.joinCounter;
+        if (!joinCounter) return quoteField(field);
+
+        targetAlias = `t${++joinCounter.n}`;
         const joinClause = buildJoinClause(
           state.map,
           currentModel,

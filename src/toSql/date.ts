@@ -49,12 +49,18 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
     }
 
     case DateOperator.dayIn: {
-      const days = mapDayNames(rule.value);
+      if (!Array.isArray(rule.value)) {
+        throw new Error('dayIn operator requires an array of day names');
+      }
+      const days = mapDayNames(rule.value.map((day) => String(day)));
       return `EXTRACT(DOW FROM ${field}) = ANY(${nextParam(state, days)})`;
     }
 
     case DateOperator.dayNotIn: {
-      const days = mapDayNames(rule.value);
+      if (!Array.isArray(rule.value)) {
+        throw new Error('dayNotIn operator requires an array of day names');
+      }
+      const days = mapDayNames(rule.value.map((day) => String(day)));
       return `EXTRACT(DOW FROM ${field}) <> ALL(${nextParam(state, days)})`;
     }
 

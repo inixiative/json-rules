@@ -5,21 +5,23 @@ import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
 import { get } from 'lodash';
 import { DateOperator } from './operator';
-import type { DateRule } from './types';
+import type { DateInputValue, DateRule } from './types';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
-export const checkDate = <TData extends object>(
+export const checkDate = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
   context: TData,
 ): boolean | string => {
-  const fieldValue = get(data, condition.field);
+  const fieldValue = get(data, condition.field) as unknown;
 
   if (!fieldValue) throw new Error(`${condition.field} is null or undefined`);
+  if (!isDateInputValue(fieldValue))
+    throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
   const fieldDate = dayjs(fieldValue);
 
@@ -52,24 +54,28 @@ export const checkDate = <TData extends object>(
         getError(`must be on or after ${compareDate.format()}`)
       );
 
-    case DateOperator.between:
+    case DateOperator.between: {
+      if (!endDate) throw new Error('between operator requires an end date');
       return (
-        (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate!)) ||
+        (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate)) ||
         getError(`must be between ${compareDate.format()} and ${endDate?.format()}`)
       );
+    }
 
-    case DateOperator.notBetween:
+    case DateOperator.notBetween: {
+      if (!endDate) throw new Error('notBetween operator requires an end date');
       return (
         fieldDate.isBefore(compareDate) ||
-        fieldDate.isAfter(endDate!) ||
+        fieldDate.isAfter(endDate) ||
         getError(`must not be between ${compareDate.format()} and ${endDate?.format()}`)
       );
+    }
 
     case DateOperator.dayIn: {
       if (!Array.isArray(condition.value))
         throw new Error('dayIn operator requires an array of day names');
       const dayName = fieldDate.format('dddd').toLowerCase();
-      const allowedDays = condition.value.map((d) => d.toLowerCase());
+      const allowedDays = condition.value.map((day) => String(day).toLowerCase());
       return allowedDays.includes(dayName) || getError(`must be on ${allowedDays.join(' or ')}`);
     }
 
@@ -77,7 +83,7 @@ export const checkDate = <TData extends object>(
       if (!Array.isArray(condition.value))
         throw new Error('dayNotIn operator requires an array of day names');
       const day = fieldDate.format('dddd').toLowerCase();
-      const excludedDays = condition.value.map((d) => d.toLowerCase());
+      const excludedDays = condition.value.map((excludedDay) => String(excludedDay).toLowerCase());
       return !excludedDays.includes(day) || getError(`must not be on ${excludedDays.join(' or ')}`);
     }
 
@@ -86,20 +92,21 @@ export const checkDate = <TData extends object>(
   }
 };
 
-const parseCompareDates = <TData extends object>(
+const parseCompareDates = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
   context: TData,
   _fieldDate: dayjs.Dayjs,
-  fieldValue: string,
+  fieldValue: DateInputValue,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
   const requiresTwoDates = [DateOperator.between, DateOperator.notBetween];
 
   if (requiresTwoDates.includes(condition.dateOperator)) {
     if (!Array.isArray(condition.value) || condition.value.length !== 2)
       throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const date1 = parseDateWithTimezone(condition.value[0], fieldValue);
-    const date2 = parseDateWithTimezone(condition.value[1], fieldValue);
+    const [rawDate1, rawDate2] = condition.value as [DateInputValue, DateInputValue];
+    const date1 = parseDateWithTimezone(rawDate1, fieldValue);
+    const date2 = parseDateWithTimezone(rawDate2, fieldValue);
     if (!date1.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
     if (!date2.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
     // Auto-sort: ensure startDate <= endDate
@@ -116,15 +123,20 @@ const parseCompareDates = <TData extends object>(
   ];
 
   if (requiresOneDate.includes(condition.dateOperator)) {
-    let value;
+    let value: DateInputValue | undefined;
     if (condition.value !== undefined) {
-      value = condition.value;
+      if (Array.isArray(condition.value)) {
+        throw new Error(`${condition.dateOperator} operator requires a single date value`);
+      }
+      value = condition.value as DateInputValue;
     } else if (condition.path) {
       // Support $.path for current element
       if (condition.path.startsWith('$.')) {
-        value = get(data, condition.path.substring(2));
+        const pathValue = get(data, condition.path.substring(2)) as unknown;
+        value = isDateInputValue(pathValue) ? pathValue : undefined;
       } else {
-        value = get(context, condition.path);
+        const pathValue = get(context, condition.path) as unknown;
+        value = isDateInputValue(pathValue) ? pathValue : undefined;
       }
     } else {
       throw new Error('No value or path specified for date comparison');
@@ -137,8 +149,10 @@ const parseCompareDates = <TData extends object>(
   return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: date value from runtime data is inherently untyped
-const parseDateWithTimezone = (value: any, fieldValue: string): dayjs.Dayjs => {
+const parseDateWithTimezone = (
+  value: DateInputValue | undefined,
+  fieldValue: DateInputValue,
+): dayjs.Dayjs => {
   const valueStr = String(value);
 
   // Check if value has explicit timezone information
@@ -177,3 +191,6 @@ const parseDateWithTimezone = (value: any, fieldValue: string): dayjs.Dayjs => {
   const localTime = dayjs(value);
   return localTime.subtract(offset, 'minute');
 };
+
+const isDateInputValue = (value: unknown): value is DateInputValue =>
+  typeof value === 'string' || typeof value === 'number' || value instanceof Date;

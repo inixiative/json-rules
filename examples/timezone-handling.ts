@@ -7,7 +7,7 @@ console.log('=== Date-only comparisons ===');
 const dateOnlyRule = {
   field: 'eventDate',
   dateOperator: DateOperator.onOrAfter,
-  value: '2025-01-20' // No timezone - will use field's timezone
+  value: '2025-01-20', // No timezone - will use field's timezone
 };
 
 // Sydney time: Jan 20 10:00 AM (UTC+11)
@@ -28,7 +28,7 @@ console.log('\n=== Explicit timezone in condition ===');
 const utcMidnightRule = {
   field: 'eventDate',
   dateOperator: DateOperator.after,
-  value: '2025-01-20T00:00:00Z' // Explicit UTC midnight
+  value: '2025-01-20T00:00:00Z', // Explicit UTC midnight
 };
 
 console.log('Before UTC midnight:', check(utcMidnightRule, { eventDate: '2025-01-19T23:59:59Z' })); // false
@@ -40,7 +40,7 @@ console.log('\n=== Business hours validation ===');
 const businessHoursRule = {
   field: 'submittedAt',
   dateOperator: DateOperator.between,
-  value: ['2025-01-20T09:00:00', '2025-01-20T17:00:00'] // 9 AM to 5 PM in submission timezone
+  value: ['2025-01-20T09:00:00', '2025-01-20T17:00:00'], // 9 AM to 5 PM in submission timezone
 };
 
 // Submission from Sydney at 10 AM local time
@@ -58,7 +58,7 @@ const deadlineRule = {
   field: 'submittedAt',
   dateOperator: DateOperator.before,
   value: '2025-01-20T23:59:59',
-  error: 'Submission deadline has passed'
+  error: 'Submission deadline has passed',
 };
 
 // Someone in Tokyo submits on Jan 20 at 11:30 PM their time
@@ -76,7 +76,7 @@ const weekdayOnlyRule = {
   field: 'appointmentDate',
   dateOperator: DateOperator.dayIn,
   value: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-  error: 'Appointments must be on weekdays'
+  error: 'Appointments must be on weekdays',
 };
 
 // Friday 11 PM in Hawaii could be Saturday in Sydney
@@ -89,7 +89,7 @@ console.log('\n=== No timezone handling ===');
 const noTimezoneRule = {
   field: 'date',
   dateOperator: DateOperator.after,
-  value: '2025-01-20'
+  value: '2025-01-20',
 };
 
 // When field has no timezone, both are treated as local time

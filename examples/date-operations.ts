@@ -1,19 +1,19 @@
-import { check, DateOperator, ArrayOperator } from '../index';
+import { ArrayOperator, check, DateOperator } from '../index';
 
 // Example 1: Date comparisons
 const expiryRule = {
   field: 'expiryDate',
   dateOperator: DateOperator.after,
   value: new Date().toISOString(), // Must be after today
-  error: 'Product has expired'
+  error: 'Product has expired',
 };
 
 const validProduct = {
-  expiryDate: '2025-12-31'
+  expiryDate: '2025-12-31',
 };
 
 const expiredProduct = {
-  expiryDate: '2023-01-01'
+  expiryDate: '2023-01-01',
 };
 
 console.log(check(expiryRule, validProduct)); // true
@@ -24,7 +24,7 @@ const eventDateRule = {
   field: 'eventDate',
   dateOperator: DateOperator.between,
   value: ['2024-01-01', '2024-12-31'],
-  error: 'Event must be scheduled in 2024'
+  error: 'Event must be scheduled in 2024',
 };
 
 const validEvent = { eventDate: '2024-06-15' };
@@ -38,7 +38,7 @@ const weekdayOnlyRule = {
   field: 'appointmentDate',
   dateOperator: DateOperator.dayIn,
   value: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-  error: 'Appointments are only available on weekdays'
+  error: 'Appointments are only available on weekdays',
 };
 
 const weekdayAppointment = { appointmentDate: '2024-01-15' }; // Monday
@@ -52,17 +52,17 @@ const endAfterStartRule = {
   field: 'endDate',
   dateOperator: DateOperator.after,
   path: 'startDate', // Compare against another field
-  error: 'End date must be after start date'
+  error: 'End date must be after start date',
 };
 
 const validRange = {
   startDate: '2024-01-01',
-  endDate: '2024-01-31'
+  endDate: '2024-01-31',
 };
 
 const invalidRange = {
   startDate: '2024-01-31',
-  endDate: '2024-01-01'
+  endDate: '2024-01-01',
 };
 
 console.log(check(endAfterStartRule, validRange)); // true
@@ -75,21 +75,21 @@ const bookingRule = {
     {
       field: 'bookingDate',
       dateOperator: DateOperator.after,
-      value: new Date().toISOString()
+      value: new Date().toISOString(),
     },
     // Must be within next 90 days
     {
       field: 'bookingDate',
       dateOperator: DateOperator.before,
-      value: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+      value: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     },
     // Not on weekends
     {
       field: 'bookingDate',
       dateOperator: DateOperator.dayNotIn,
-      value: ['saturday', 'sunday']
-    }
-  ]
+      value: ['saturday', 'sunday'],
+    },
+  ],
 };
 
 // Example 6: Date validation in arrays
@@ -99,17 +99,17 @@ const upcomingEventsRule = {
   condition: {
     field: 'date',
     dateOperator: DateOperator.onOrAfter,
-    value: new Date().toISOString()
+    value: new Date().toISOString(),
   },
-  error: 'All events must be in the future'
+  error: 'All events must be in the future',
 };
 
 const events = {
   events: [
     { name: 'Conference', date: '2025-03-15' },
     { name: 'Workshop', date: '2025-04-20' },
-    { name: 'Seminar', date: '2025-05-10' }
-  ]
+    { name: 'Seminar', date: '2025-05-10' },
+  ],
 };
 
 console.log(check(upcomingEventsRule, events)); // true

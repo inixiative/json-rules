@@ -1,73 +1,7 @@
 import { escapeIdentifier } from 'pg';
-import type { BuilderState, FieldMap } from './types';
 import type { FieldMapEntry } from '../toPrisma/types';
-
-export const nextParam = (state: BuilderState, value: unknown): string => {
-  state.params.push(value);
-  return `$${++state.paramIndex}`;
-};
-
-/**
- * Escape a value for use in a LIKE pattern.
- * Escapes \, %, and _ which are special characters in PostgreSQL LIKE.
- */
-export const escapeLikePattern = (value: string): string => {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/%/g, '\\%')
-    .replace(/_/g, '\\_');
-};
-
-/**
- * Quote a field name as a SQL identifier, handling JSON paths.
- * Uses pg's escapeIdentifier for proper SQL injection prevention.
- *
- * Examples:
- *   "name" → "name"
- *   "data.theme" → "data"->>'theme'
- *   "settings.display.mode" → "settings"->'display'->>'mode'
- */
-export const quoteField = (field: string): string => {
-  const parts = field.split('.');
-  if (parts.length === 1) return escapeIdentifier(field);
-
-  const [column, ...jsonPath] = parts;
-  if (jsonPath.length === 0) return escapeIdentifier(column);
-
-  return buildJsonPath(escapeIdentifier(column), jsonPath);
-};
-
-/**
- * Quote a field (with possible JSON sub-path) qualified with a table alias.
- *
- * Examples:
- *   quoteQualifiedField('name', 't0')           → "t0"."name"
- *   quoteQualifiedField('data.theme', 't0')      → "t0"."data"->>'theme'
- *   quoteQualifiedField('data.a.b', 't0')        → "t0"."data"->'a'->>'b'
- */
-export const quoteQualifiedField = (field: string, alias: string): string => {
-  const parts = field.split('.');
-  if (parts.length === 1) {
-    return `${escapeIdentifier(alias)}.${escapeIdentifier(field)}`;
-  }
-
-  const [column, ...jsonPath] = parts;
-  return buildJsonPath(`${escapeIdentifier(alias)}.${escapeIdentifier(column)}`, jsonPath);
-};
-
-const escapeJsonKey = (key: string) => `'${key.replace(/'/g, "''")}'`;
-
-const buildJsonPath = (columnExpr: string, jsonPath: string[]): string => {
-  if (jsonPath.length === 0) return columnExpr;
-
-  const pathParts = jsonPath.slice(0, -1).map(escapeJsonKey).join('->');
-  const leaf = escapeJsonKey(jsonPath[jsonPath.length - 1]);
-
-  if (pathParts) {
-    return `${columnExpr}->${pathParts}->>${leaf}`;
-  }
-  return `${columnExpr}->>${leaf}`;
-};
+import { quoteField, quoteQualifiedField } from './quoting';
+import type { BuilderState, FieldMap } from './types';
 
 /**
  * Resolve a dot-notation field to a fully-qualified SQL expression,
@@ -108,13 +42,12 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
           currentModel,
           currentAlias,
           fieldEntry,
-          parts[i],
           targetAlias,
         );
         if (!joinClause) return quoteField(field); // fallback: can't determine FK
 
-        state.joins!.push(joinClause);
-        state.joinRegistry!.set(registryKey, targetAlias);
+        state.joins?.push(joinClause);
+        state.joinRegistry?.set(registryKey, targetAlias);
       }
 
       currentModel = fieldEntry.type;
@@ -140,7 +73,6 @@ const buildJoinClause = (
   currentModel: string,
   currentAlias: string,
   fieldEntry: FieldMapEntry,
-  _fieldName: string,
   targetAlias: string,
 ): string | null => {
   const targetModel = fieldEntry.type;
@@ -148,13 +80,18 @@ const buildJoinClause = (
 
   let onCondition: string;
 
-  if (fieldEntry.fromFields && fieldEntry.fromFields.length > 0 &&
-      fieldEntry.toFields && fieldEntry.toFields.length > 0) {
+  if (
+    fieldEntry.fromFields &&
+    fieldEntry.fromFields.length > 0 &&
+    fieldEntry.toFields &&
+    fieldEntry.toFields.length > 0
+  ) {
     // Forward relation: current model has FK (composite FK supported via multi-condition AND)
     onCondition = fieldEntry.fromFields
-      .map((from, i) =>
-        `${escapeIdentifier(targetAlias)}.${escapeIdentifier(fieldEntry.toFields![i])} = ` +
-        `${escapeIdentifier(currentAlias)}.${escapeIdentifier(from)}`,
+      .map(
+        (from, i) =>
+          `${escapeIdentifier(targetAlias)}.${escapeIdentifier(fieldEntry.toFields?.[i] ?? '')} = ` +
+          `${escapeIdentifier(currentAlias)}.${escapeIdentifier(from)}`,
       )
       .join(' AND ');
   } else {
@@ -162,10 +99,11 @@ const buildJoinClause = (
     // Pass relationName so multiple relations between the same two models are disambiguated.
     const reverse = findReverseRelation(map, targetModel, currentModel, fieldEntry.relationName);
     if (!reverse) return null;
-    onCondition = reverse.fromFields!
-      .map((from, i) =>
-        `${escapeIdentifier(targetAlias)}.${escapeIdentifier(from)} = ` +
-        `${escapeIdentifier(currentAlias)}.${escapeIdentifier(reverse.toFields![i])}`,
+    onCondition = (reverse.fromFields ?? [])
+      .map(
+        (from, i) =>
+          `${escapeIdentifier(targetAlias)}.${escapeIdentifier(from)} = ` +
+          `${escapeIdentifier(currentAlias)}.${escapeIdentifier(reverse.toFields?.[i] ?? '')}`,
       )
       .join(' AND ');
   }
@@ -194,16 +132,4 @@ const findReverseRelation = (
     }
   }
   return null;
-};
-
-export const mapDayNames = (days: string[]): number[] => {
-  const dayMap: Record<string, number> = {
-    sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
-    thursday: 4, friday: 5, saturday: 6,
-  };
-  return days.map((d) => {
-    const num = dayMap[d.toLowerCase()];
-    if (num === undefined) throw new Error(`Unknown day name: ${d}`);
-    return num;
-  });
 };

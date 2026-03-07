@@ -1,4 +1,4 @@
-import type { All, Any, IfThenElse, Condition } from '../types';
+import type { All, Any, Condition, IfThenElse } from '../types';
 import type { BuilderState } from './types';
 
 // Forward declaration - will be provided by condition.ts

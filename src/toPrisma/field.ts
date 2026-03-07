@@ -1,9 +1,9 @@
 import { get } from 'lodash';
-import type { Rule } from '../types';
 import { Operator } from '../operator';
-import type { PrismaWhere, BuildOptions } from './types';
-import { buildNestedFilter } from './utils';
+import type { Rule } from '../types';
 import { walkFieldPath } from './mapWalk';
+import type { BuildOptions, PrismaWhere } from './types';
+import { buildNestedFilter } from './utils';
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
   const filter = buildLeafFilter(rule, options);

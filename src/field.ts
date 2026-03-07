@@ -1,17 +1,22 @@
 import { get, isEmpty } from 'lodash';
-import type { Rule } from './types';
 import { Operator } from './operator';
+import type { Rule } from './types';
 
-export const checkField = (condition: Rule, data: any, context: any): boolean | string => {
+export const checkField = <TData extends object>(
+  condition: Rule,
+  data: TData,
+  context: TData,
+): boolean | string => {
   // Use data for field access (current element) but context remains available for path references
   const fieldValue = get(data, condition.field);
-  
+
   // Operators that don't need a value
   const noValueOps = [Operator.isEmpty, Operator.notEmpty, Operator.exists, Operator.notExists];
   const needsValue = !noValueOps.includes(condition.operator);
   const value = needsValue ? getValue(condition, data, context) : undefined;
-  
-  const getError = (op: string) => condition.error || `${condition.field} ${op}${needsValue ? ' ' + JSON.stringify(value) : ''}`;
+
+  const getError = (op: string) =>
+    condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
   switch (condition.operator) {
     case Operator.equals:
@@ -48,7 +53,7 @@ export const checkField = (condition: Rule, data: any, context: any): boolean | 
       if (!Array.isArray(value) || value.length !== 2)
         throw new Error('notBetween operator requires an array of two values');
       const [min, max] = value[0] <= value[1] ? value : [value[1], value[0]];
-      return (fieldValue < min || fieldValue > max) || getError(`must not be between`);
+      return fieldValue < min || fieldValue > max || getError(`must not be between`);
     }
     case Operator.isEmpty:
       return isEmpty(fieldValue) || getError(`must be empty`);
@@ -67,7 +72,8 @@ export const checkField = (condition: Rule, data: any, context: any): boolean | 
   }
 };
 
-const getValue = (condition: Rule, data: any, context: any): any => {
+// biome-ignore lint/suspicious/noExplicitAny: runtime field value is inherently untyped
+const getValue = <TData extends object>(condition: Rule, data: TData, context: TData): any => {
   if (condition.value !== undefined) return condition.value;
   if (condition.path) {
     // Special case: if path starts with "$." use data (current element)

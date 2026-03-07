@@ -1,9 +1,11 @@
 import { get } from 'lodash';
 import { escapeIdentifier } from 'pg';
-import type { Rule } from '../types';
 import { Operator } from '../operator';
+import type { Rule } from '../types';
+import { resolveFieldSql } from './join';
+import { nextParam } from './params';
+import { escapeLikePattern, quoteField } from './quoting';
 import type { BuilderState } from './types';
-import { nextParam, quoteField, escapeLikePattern, resolveFieldSql } from './utils';
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
@@ -99,9 +101,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   }
 };
 
-type ResolvedRhs =
-  | { type: 'value'; value: unknown }
-  | { type: 'column'; sql: string };
+type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
 
 /**
  * Resolve the right-hand side of a comparison from a Rule.

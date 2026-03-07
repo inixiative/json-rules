@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'bun:test';
-import { toSql, Operator, DateOperator } from '../index';
+import { describe, expect, it } from 'bun:test';
+import { DateOperator, Operator, toSql } from '../index';
 import { blogMap } from './fixtures/blogMap';
-import { multiRelMap } from './fixtures/multiRelMap';
 import { compositeFkMap } from './fixtures/compositeFkMap';
+import { multiRelMap } from './fixtures/multiRelMap';
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
 describe('toSql result shape', () => {
@@ -254,7 +254,11 @@ describe('toSql without map falls back to existing behavior', () => {
   });
 
   it('nested dot path treated as JSON path', () => {
-    const { sql } = toSql({ field: 'settings.display.mode', operator: Operator.equals, value: 'compact' });
+    const { sql } = toSql({
+      field: 'settings.display.mode',
+      operator: Operator.equals,
+      value: 'compact',
+    });
     expect(sql).toBe(`"settings"->'display'->>'mode' = $1`);
   });
 });

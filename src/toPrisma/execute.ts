@@ -1,4 +1,4 @@
-import type { ToPrismaResult, GroupByStep, WhereStep } from './types';
+import type { GroupByStep, ToPrismaResult, WhereStep } from './types';
 
 /**
  * Execute a Prisma query plan produced by toPrisma().
@@ -19,7 +19,7 @@ import type { ToPrismaResult, GroupByStep, WhereStep } from './types';
  */
 export const executePrismaQueryPlan = async (
   result: ToPrismaResult,
-  prismaDelegate: Record<string, any>,
+  prismaDelegate: Record<string, Record<string, (...args: unknown[]) => unknown>>,
 ): Promise<Record<string, unknown>> => {
   const groupBySteps = result.steps.filter((s): s is GroupByStep => s.operation === 'groupBy');
   const whereStep = result.steps.find((s): s is WhereStep => s.operation === 'where');
@@ -28,7 +28,7 @@ export const executePrismaQueryPlan = async (
     throw new Error('executePrismaQueryPlan: result has no where step');
   }
 
-  const stepResults: any[][] = [];
+  const stepResults: unknown[][] = [];
 
   for (const step of groupBySteps) {
     const modelKey = step.model.charAt(0).toLowerCase() + step.model.slice(1);
@@ -40,7 +40,7 @@ export const executePrismaQueryPlan = async (
       );
     }
     const rows = await delegate[step.operation](step.args);
-    stepResults.push(rows.map((r: any) => r[step.extract]));
+    stepResults.push((rows as Record<string, unknown>[]).map((r) => r[step.extract]));
   }
 
   return resolveStepRefs(whereStep.where, stepResults) as Record<string, unknown>;
@@ -49,7 +49,7 @@ export const executePrismaQueryPlan = async (
 /**
  * Recursively replace { __step: N } sentinels with the corresponding step result array.
  */
-const resolveStepRefs = (obj: unknown, stepResults: any[][]): unknown => {
+const resolveStepRefs = (obj: unknown, stepResults: unknown[][]): unknown => {
   if (obj === null || obj === undefined) return obj;
 
   if (Array.isArray(obj)) {
@@ -62,7 +62,9 @@ const resolveStepRefs = (obj: unknown, stepResults: any[][]): unknown => {
     if ('__step' in record && typeof record.__step === 'number') {
       const idx = record.__step;
       if (idx >= stepResults.length) {
-        throw new Error(`Step ref __step: ${idx} out of range (${stepResults.length} steps executed)`);
+        throw new Error(
+          `Step ref __step: ${idx} out of range (${stepResults.length} steps executed)`,
+        );
       }
       return stepResults[idx];
     }

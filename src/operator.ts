@@ -39,6 +39,6 @@ export enum DateOperator {
   onOrAfter = 'onOrAfter',
   between = 'between',
   notBetween = 'notBetween',
-  dayIn = 'dayIn',  // e.g., ['monday', 'tuesday', 'friday']
+  dayIn = 'dayIn', // e.g., ['monday', 'tuesday', 'friday']
   dayNotIn = 'dayNotIn',
 }

@@ -1,7 +1,7 @@
 import { get } from 'lodash';
-import type { DateRule } from '../types';
 import { DateOperator } from '../operator';
-import type { PrismaWhere, BuildOptions } from './types';
+import type { DateRule } from '../types';
+import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {

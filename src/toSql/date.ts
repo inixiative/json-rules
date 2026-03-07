@@ -1,9 +1,12 @@
 import { get } from 'lodash';
 import { escapeIdentifier } from 'pg';
-import type { DateRule } from '../types';
 import { DateOperator } from '../operator';
+import type { DateRule } from '../types';
+import { mapDayNames } from './dayNames';
+import { resolveFieldSql } from './join';
+import { nextParam } from './params';
+import { quoteField } from './quoting';
 import type { BuilderState } from './types';
-import { nextParam, quoteField, mapDayNames, resolveFieldSql } from './utils';
 
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
@@ -60,9 +63,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   }
 };
 
-type ResolvedRhs =
-  | { type: 'value'; value: unknown }
-  | { type: 'column'; sql: string };
+type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
 
 const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) {

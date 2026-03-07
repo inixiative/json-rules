@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import { toSql, Operator, DateOperator, ArrayOperator } from '../index';
+import { ArrayOperator, Operator, toSql } from '../index';
 
 describe('toSql integration', () => {
   let db: PGlite;
@@ -73,12 +73,20 @@ describe('toSql integration', () => {
     });
 
     it('in', async () => {
-      const names = await query({ field: 'role', operator: Operator.in, value: ['admin', 'moderator'] });
+      const names = await query({
+        field: 'role',
+        operator: Operator.in,
+        value: ['admin', 'moderator'],
+      });
       expect(names).toEqual(['Alice', 'Eve']);
     });
 
     it('notIn', async () => {
-      const names = await query({ field: 'status', operator: Operator.notIn, value: ['pending', 'inactive'] });
+      const names = await query({
+        field: 'status',
+        operator: Operator.notIn,
+        value: ['pending', 'inactive'],
+      });
       expect(names).toEqual(['Alice', 'Bob', 'Eve']);
     });
 
@@ -98,7 +106,11 @@ describe('toSql integration', () => {
     });
 
     it('matches (regex)', async () => {
-      const names = await query({ field: 'email', operator: Operator.matches, value: '^[a-c].*@example' });
+      const names = await query({
+        field: 'email',
+        operator: Operator.matches,
+        value: '^[a-c].*@example',
+      });
       expect(names).toEqual(['Alice', 'Charlie']);
     });
 
@@ -120,7 +132,11 @@ describe('toSql integration', () => {
 
   describe('JSON path fields', () => {
     it('queries nested JSON field', async () => {
-      const names = await query({ field: 'settings.theme', operator: Operator.equals, value: 'dark' });
+      const names = await query({
+        field: 'settings.theme',
+        operator: Operator.equals,
+        value: 'dark',
+      });
       expect(names).toEqual(['Alice', 'Eve']);
     });
   });
@@ -224,12 +240,20 @@ describe('toSql integration', () => {
 
     describe('native arrays (TEXT[])', () => {
       it('empty - users with no roles', async () => {
-        const names = await query({ field: 'roles', arrayOperator: ArrayOperator.empty, arrayType: 'native' });
+        const names = await query({
+          field: 'roles',
+          arrayOperator: ArrayOperator.empty,
+          arrayType: 'native',
+        });
         expect(names).toEqual(['Charlie', 'Deleted User']);
       });
 
       it('notEmpty - users with roles', async () => {
-        const names = await query({ field: 'roles', arrayOperator: ArrayOperator.notEmpty, arrayType: 'native' });
+        const names = await query({
+          field: 'roles',
+          arrayOperator: ArrayOperator.notEmpty,
+          arrayType: 'native',
+        });
         expect(names).toEqual(['Alice', 'Bob', 'Eve']);
       });
     });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { check, Operator, ArrayOperator } from '../index';
+import { ArrayOperator, check, Operator } from '../index';
 
 describe('Advanced Features Examples', () => {
   test('path-based field comparison', () => {
@@ -7,17 +7,17 @@ describe('Advanced Features Examples', () => {
       field: 'confirmPassword',
       operator: Operator.equals,
       path: 'password',
-      error: 'Passwords do not match'
+      error: 'Passwords do not match',
     };
 
     const validPasswords = {
       password: 'SecurePass123!',
-      confirmPassword: 'SecurePass123!'
+      confirmPassword: 'SecurePass123!',
     };
 
     const invalidPasswords = {
       password: 'SecurePass123!',
-      confirmPassword: 'SecurePass456!'
+      confirmPassword: 'SecurePass456!',
     };
 
     expect(check(passwordMatchRule, validPasswords)).toBe(true);
@@ -28,7 +28,7 @@ describe('Advanced Features Examples', () => {
     const discountRule = {
       if: { field: 'membershipLevel', operator: Operator.equals, value: 'premium' },
       then: { field: 'discount', operator: Operator.greaterThanEquals, value: 0.2 },
-      else: { field: 'discount', operator: Operator.equals, value: 0 }
+      else: { field: 'discount', operator: Operator.equals, value: 0 },
     };
 
     const premiumMember = { membershipLevel: 'premium', discount: 0.25 };
@@ -37,7 +37,9 @@ describe('Advanced Features Examples', () => {
 
     expect(check(discountRule, premiumMember)).toBe(true);
     expect(check(discountRule, regularMember)).toBe(true);
-    expect(check(discountRule, invalidPremium)).toBe('discount must be greater than or equal to 0.2');
+    expect(check(discountRule, invalidPremium)).toBe(
+      'discount must be greater than or equal to 0.2',
+    );
   });
 
   test('array element context with $.path', () => {
@@ -47,16 +49,16 @@ describe('Advanced Features Examples', () => {
       condition: {
         field: 'total',
         operator: Operator.lessThanEquals,
-        path: '$.maxBudget'
-      }
+        path: '$.maxBudget',
+      },
     };
 
     const ordersWithBudget = {
       orders: [
         { id: 1, total: 100, maxBudget: 150 },
         { id: 2, total: 200, maxBudget: 250 },
-        { id: 3, total: 50, maxBudget: 100 }
-      ]
+        { id: 3, total: 50, maxBudget: 100 },
+      ],
     };
 
     expect(check(budgetComplianceRule, ordersWithBudget)).toBe(true);
@@ -70,15 +72,15 @@ describe('Advanced Features Examples', () => {
         {
           if: { field: 'country', operator: Operator.equals, value: 'US' },
           then: { field: 'age', operator: Operator.greaterThanEquals, value: 21 },
-          else: { field: 'age', operator: Operator.greaterThanEquals, value: 18 }
+          else: { field: 'age', operator: Operator.greaterThanEquals, value: 18 },
         },
         {
           any: [
             { field: 'emailVerified', operator: Operator.equals, value: true },
-            { field: 'phoneVerified', operator: Operator.equals, value: true }
-          ]
-        }
-      ]
+            { field: 'phoneVerified', operator: Operator.equals, value: true },
+          ],
+        },
+      ],
     };
 
     const validUSUser = {
@@ -87,7 +89,7 @@ describe('Advanced Features Examples', () => {
       country: 'US',
       age: 21,
       emailVerified: true,
-      phoneVerified: false
+      phoneVerified: false,
     };
 
     expect(check(userValidationRule, validUSUser)).toBe(true);
@@ -100,15 +102,15 @@ describe('Advanced Features Examples', () => {
       condition: {
         if: { field: 'category', operator: Operator.equals, value: 'perishable' },
         then: { field: 'stock', operator: Operator.lessThan, path: '$.maxStock' },
-        else: { field: 'stock', operator: Operator.lessThanEquals, path: '$.maxStock' }
-      }
+        else: { field: 'stock', operator: Operator.lessThanEquals, path: '$.maxStock' },
+      },
     };
 
     const inventory = {
       products: [
         { name: 'Milk', category: 'perishable', stock: 50, maxStock: 100 },
-        { name: 'Cereal', category: 'non-perishable', stock: 200, maxStock: 200 }
-      ]
+        { name: 'Cereal', category: 'non-perishable', stock: 200, maxStock: 200 },
+      ],
     };
 
     expect(check(inventoryRule, inventory)).toBe(true);
@@ -121,8 +123,8 @@ describe('Advanced Features Examples', () => {
       condition: {
         field: 'amount',
         operator: Operator.lessThanEquals,
-        path: 'user.creditLimit'
-      }
+        path: 'user.creditLimit',
+      },
     };
 
     const userWithOrders = {
@@ -130,8 +132,8 @@ describe('Advanced Features Examples', () => {
       orders: [
         { id: 1, amount: 300 },
         { id: 2, amount: 500 },
-        { id: 3, amount: 200 }
-      ]
+        { id: 3, amount: 200 },
+      ],
     };
 
     expect(check(orderLimitRule, userWithOrders)).toBe(true);
@@ -146,21 +148,25 @@ describe('Advanced Features Examples', () => {
           then: {
             all: [
               { field: 'subscription.seats', operator: Operator.greaterThanEquals, value: 10 },
-              { field: 'subscription.budget', operator: Operator.greaterThan, value: 10000 }
-            ]
-          }
+              { field: 'subscription.budget', operator: Operator.greaterThan, value: 10000 },
+            ],
+          },
         },
         {
           field: 'projects',
           arrayOperator: ArrayOperator.all,
           condition: {
             all: [
-              { field: 'budget', operator: Operator.lessThanEquals, path: 'company.maxProjectBudget' },
-              { field: 'teamSize', operator: Operator.lessThanEquals, value: 50 }
-            ]
-          }
-        }
-      ]
+              {
+                field: 'budget',
+                operator: Operator.lessThanEquals,
+                path: 'company.maxProjectBudget',
+              },
+              { field: 'teamSize', operator: Operator.lessThanEquals, value: 50 },
+            ],
+          },
+        },
+      ],
     };
 
     const validCompany = {
@@ -168,15 +174,15 @@ describe('Advanced Features Examples', () => {
       subscription: {
         type: 'enterprise',
         seats: 15,
-        budget: 15000
+        budget: 15000,
       },
       company: {
-        maxProjectBudget: 50000
+        maxProjectBudget: 50000,
       },
       projects: [
         { name: 'Project A', budget: 30000, teamSize: 20 },
-        { name: 'Project B', budget: 45000, teamSize: 35 }
-      ]
+        { name: 'Project B', budget: 45000, teamSize: 35 },
+      ],
     };
 
     expect(check(complexBusinessRule, validCompany)).toBe(true);

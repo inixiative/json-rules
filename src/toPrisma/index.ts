@@ -1,9 +1,19 @@
 import type { Condition } from '../types';
-import type { BuildOptions, ToPrismaResult, PrismaBuildState } from './types';
 import { buildCondition } from './condition';
+import type { BuildOptions, PrismaBuildState, ToPrismaResult } from './types';
 
-export type { PrismaWhere, ToPrismaResult, PrismaStep, GroupByStep, WhereStep, FieldMap, FieldMapEntry, StepRef, BuildOptions } from './types';
 export { executePrismaQueryPlan } from './execute';
+export type {
+  BuildOptions,
+  FieldMap,
+  FieldMapEntry,
+  GroupByStep,
+  PrismaStep,
+  PrismaWhere,
+  StepRef,
+  ToPrismaResult,
+  WhereStep,
+} from './types';
 
 /**
  * Convert a json-rules Condition to a Prisma query plan.

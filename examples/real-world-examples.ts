@@ -1,11 +1,15 @@
-import { check, Operator, ArrayOperator, DateOperator } from '../index';
+import { ArrayOperator, check, DateOperator, Operator } from '../index';
 
 // Example 1: E-commerce Order Validation
 const orderValidationRule = {
   all: [
     // Order must have items
-    { field: 'items', arrayOperator: ArrayOperator.notEmpty, error: 'Order must contain at least one item' },
-    
+    {
+      field: 'items',
+      arrayOperator: ArrayOperator.notEmpty,
+      error: 'Order must contain at least one item',
+    },
+
     // All items must be valid
     {
       field: 'items',
@@ -14,21 +18,21 @@ const orderValidationRule = {
         all: [
           { field: 'quantity', operator: Operator.greaterThan, value: 0 },
           { field: 'price', operator: Operator.greaterThan, value: 0 },
-          { field: 'inStock', operator: Operator.equals, value: true }
-        ]
-      }
+          { field: 'inStock', operator: Operator.equals, value: true },
+        ],
+      },
     },
-    
+
     // Shipping address validation
     {
       all: [
         { field: 'shipping.street', operator: Operator.notEmpty },
         { field: 'shipping.city', operator: Operator.notEmpty },
         { field: 'shipping.zipCode', operator: Operator.matches, value: /^\d{5}(-\d{4})?$/ },
-        { field: 'shipping.country', operator: Operator.in, value: ['US', 'CA', 'MX'] }
-      ]
+        { field: 'shipping.country', operator: Operator.in, value: ['US', 'CA', 'MX'] },
+      ],
     },
-    
+
     // Payment validation
     {
       if: { field: 'paymentMethod', operator: Operator.equals, value: 'credit_card' },
@@ -36,11 +40,15 @@ const orderValidationRule = {
         all: [
           { field: 'cardNumber', operator: Operator.matches, value: /^\d{16}$/ },
           { field: 'cvv', operator: Operator.matches, value: /^\d{3,4}$/ },
-          { field: 'expiryDate', dateOperator: DateOperator.after, value: new Date().toISOString() }
-        ]
-      }
-    }
-  ]
+          {
+            field: 'expiryDate',
+            dateOperator: DateOperator.after,
+            value: new Date().toISOString(),
+          },
+        ],
+      },
+    },
+  ],
 };
 
 // Example 2: User Registration Form
@@ -51,50 +59,95 @@ const registrationRule = {
       field: 'username',
       operator: Operator.matches,
       value: /^[a-zA-Z0-9_]{3,20}$/,
-      error: 'Username must be 3-20 characters and contain only letters, numbers, and underscores'
+      error: 'Username must be 3-20 characters and contain only letters, numbers, and underscores',
     },
-    
+
     // Email validation
     {
       field: 'email',
       operator: Operator.matches,
       value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-      error: 'Please provide a valid email address'
+      error: 'Please provide a valid email address',
     },
-    
+
     // Password strength
     {
       all: [
-        { field: 'password', operator: Operator.matches, value: /.{8,}/, error: 'Password must be at least 8 characters' },
-        { field: 'password', operator: Operator.matches, value: /[A-Z]/, error: 'Password must contain an uppercase letter' },
-        { field: 'password', operator: Operator.matches, value: /[a-z]/, error: 'Password must contain a lowercase letter' },
-        { field: 'password', operator: Operator.matches, value: /[0-9]/, error: 'Password must contain a number' },
-        { field: 'password', operator: Operator.matches, value: /[^A-Za-z0-9]/, error: 'Password must contain a special character' }
-      ]
+        {
+          field: 'password',
+          operator: Operator.matches,
+          value: /.{8,}/,
+          error: 'Password must be at least 8 characters',
+        },
+        {
+          field: 'password',
+          operator: Operator.matches,
+          value: /[A-Z]/,
+          error: 'Password must contain an uppercase letter',
+        },
+        {
+          field: 'password',
+          operator: Operator.matches,
+          value: /[a-z]/,
+          error: 'Password must contain a lowercase letter',
+        },
+        {
+          field: 'password',
+          operator: Operator.matches,
+          value: /[0-9]/,
+          error: 'Password must contain a number',
+        },
+        {
+          field: 'password',
+          operator: Operator.matches,
+          value: /[^A-Za-z0-9]/,
+          error: 'Password must contain a special character',
+        },
+      ],
     },
-    
+
     // Password confirmation
-    { field: 'confirmPassword', operator: Operator.equals, path: 'password', error: 'Passwords must match' },
-    
+    {
+      field: 'confirmPassword',
+      operator: Operator.equals,
+      path: 'password',
+      error: 'Passwords must match',
+    },
+
     // Terms acceptance
-    { field: 'acceptTerms', operator: Operator.equals, value: true, error: 'You must accept the terms and conditions' }
-  ]
+    {
+      field: 'acceptTerms',
+      operator: Operator.equals,
+      value: true,
+      error: 'You must accept the terms and conditions',
+    },
+  ],
 };
 
 // Example 3: Loan Application
 const loanApplicationRule = {
   all: [
     // Basic eligibility
-    { field: 'age', operator: Operator.between, value: [18, 65], error: 'Applicant must be between 18 and 65 years old' },
-    { field: 'citizenship', operator: Operator.equals, value: true, error: 'Must be a citizen to apply' },
-    
+    {
+      field: 'age',
+      operator: Operator.between,
+      value: [18, 65],
+      error: 'Applicant must be between 18 and 65 years old',
+    },
+    {
+      field: 'citizenship',
+      operator: Operator.equals,
+      value: true,
+      error: 'Must be a citizen to apply',
+    },
+
     // Income requirements
     {
       if: { field: 'loanAmount', operator: Operator.greaterThan, value: 50000 },
       then: { field: 'annualIncome', operator: Operator.greaterThanEquals, value: 100000 },
-      else: { field: 'annualIncome', operator: Operator.greaterThanEquals, value: 40000 }
+      else: { field: 'annualIncome', operator: Operator.greaterThanEquals, value: 40000 },
     },
-    
+
     // Employment history
     {
       field: 'employmentHistory',
@@ -103,15 +156,20 @@ const loanApplicationRule = {
       condition: {
         all: [
           { field: 'duration', operator: Operator.greaterThanEquals, value: 24 }, // 24 months
-          { field: 'currentJob', operator: Operator.equals, value: true }
-        ]
+          { field: 'currentJob', operator: Operator.equals, value: true },
+        ],
       },
-      error: 'Must have at least 2 years of continuous employment'
+      error: 'Must have at least 2 years of continuous employment',
     },
-    
+
     // Credit score requirement
-    { field: 'creditScore', operator: Operator.greaterThanEquals, value: 650, error: 'Credit score must be at least 650' }
-  ]
+    {
+      field: 'creditScore',
+      operator: Operator.greaterThanEquals,
+      value: 650,
+      error: 'Credit score must be at least 650',
+    },
+  ],
 };
 
 // Example 4: Event Scheduling System
@@ -119,10 +177,10 @@ const eventSchedulingRule = {
   all: [
     // Event must be in the future
     { field: 'startDate', dateOperator: DateOperator.after, value: new Date().toISOString() },
-    
+
     // End date must be after start date
     { field: 'endDate', dateOperator: DateOperator.after, path: 'startDate' },
-    
+
     // Venue availability (no conflicts)
     {
       field: 'conflicts',
@@ -135,27 +193,31 @@ const eventSchedulingRule = {
               // Our event starts during another event
               {
                 all: [
-                  { field: 'startDate', dateOperator: DateOperator.onOrBefore, path: '$.startDate' },
-                  { field: 'endDate', dateOperator: DateOperator.after, path: '$.startDate' }
-                ]
+                  {
+                    field: 'startDate',
+                    dateOperator: DateOperator.onOrBefore,
+                    path: '$.startDate',
+                  },
+                  { field: 'endDate', dateOperator: DateOperator.after, path: '$.startDate' },
+                ],
               },
               // Our event ends during another event
               {
                 all: [
                   { field: 'startDate', dateOperator: DateOperator.before, path: '$.endDate' },
-                  { field: 'endDate', dateOperator: DateOperator.onOrAfter, path: '$.endDate' }
-                ]
-              }
-            ]
-          }
-        ]
+                  { field: 'endDate', dateOperator: DateOperator.onOrAfter, path: '$.endDate' },
+                ],
+              },
+            ],
+          },
+        ],
       },
-      error: 'Venue is not available for the selected dates'
+      error: 'Venue is not available for the selected dates',
     },
-    
+
     // Capacity check
-    { field: 'attendees', operator: Operator.lessThanEquals, path: 'venue.capacity' }
-  ]
+    { field: 'attendees', operator: Operator.lessThanEquals, path: 'venue.capacity' },
+  ],
 };
 
 // Example 5: API Rate Limiting
@@ -165,24 +227,24 @@ const rateLimitRule = {
     {
       all: [
         { field: 'user.plan', operator: Operator.equals, value: 'premium' },
-        { field: 'requests.count', operator: Operator.lessThanEquals, value: 10000 }
-      ]
+        { field: 'requests.count', operator: Operator.lessThanEquals, value: 10000 },
+      ],
     },
     // Regular users have standard limits
     {
       all: [
         { field: 'user.plan', operator: Operator.notEquals, value: 'premium' },
-        { field: 'requests.count', operator: Operator.lessThanEquals, value: 1000 }
-      ]
-    }
+        { field: 'requests.count', operator: Operator.lessThanEquals, value: 1000 },
+      ],
+    },
   ],
-  error: 'Rate limit exceeded'
+  error: 'Rate limit exceeded',
 };
 
 // Example usage with error handling
 function validateOrder(orderData: any) {
   const result = check(orderValidationRule, orderData);
-  
+
   if (result === true) {
     console.log('Order is valid');
     return { success: true };
@@ -196,18 +258,18 @@ function validateOrder(orderData: any) {
 const validOrder = {
   items: [
     { id: 1, quantity: 2, price: 29.99, inStock: true },
-    { id: 2, quantity: 1, price: 49.99, inStock: true }
+    { id: 2, quantity: 1, price: 49.99, inStock: true },
   ],
   shipping: {
     street: '123 Main St',
     city: 'New York',
     zipCode: '10001',
-    country: 'US'
+    country: 'US',
   },
   paymentMethod: 'credit_card',
   cardNumber: '1234567812345678',
   cvv: '123',
-  expiryDate: '2025-12-31'
+  expiryDate: '2025-12-31',
 };
 
 console.log(validateOrder(validOrder)); // { success: true }

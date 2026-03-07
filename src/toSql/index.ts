@@ -1,14 +1,14 @@
 import type { Condition } from '../types';
-import type { SqlResult, BuilderState, FieldMap } from './types';
 import { buildCondition } from './condition';
+import type { BuilderState, FieldMap, SqlResult } from './types';
 
-export type { SqlResult, FieldMap } from './types';
+export type { FieldMap, SqlResult } from './types';
 
 type SqlBuildOptions = {
   map?: FieldMap;
   model?: string;
-  alias?: string;    // root table alias, defaults to 't0' when map is provided
-  context?: Record<string, any>;
+  alias?: string; // root table alias, defaults to 't0' when map is provided
+  context?: Record<string, unknown>;
 };
 
 /**

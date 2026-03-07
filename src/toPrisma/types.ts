@@ -50,7 +50,7 @@ export type ToPrismaResult = {
 export type BuildOptions = {
   map?: FieldMap;
   model?: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 };
 
 // Mutable state threaded through build calls to accumulate intermediate groupBy steps

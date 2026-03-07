@@ -1,9 +1,9 @@
 import type { Condition } from '../types';
-import type { PrismaWhere, BuildOptions, PrismaBuildState } from './types';
-import { buildFieldRule } from './field';
-import { buildDateRule } from './date';
 import { buildArrayRule, setConditionBuilderForArray } from './array';
+import { buildDateRule } from './date';
+import { buildFieldRule } from './field';
 import { buildAll, buildAny, buildIfThenElse, setConditionBuilder } from './logical';
+import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 
 export const buildCondition = (
   condition: Condition,

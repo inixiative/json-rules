@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'bun:test';
-import { toPrisma, executePrismaQueryPlan, Operator, ArrayOperator, DateOperator } from '../index';
-import type { ToPrismaResult, GroupByStep, WhereStep } from '../index';
+import { describe, expect, it } from 'bun:test';
+import type { GroupByStep, ToPrismaResult, WhereStep } from '../index';
+import { ArrayOperator, DateOperator, executePrismaQueryPlan, Operator, toPrisma } from '../index';
 import { blogMap } from './fixtures/blogMap';
-import { multiRelMap } from './fixtures/multiRelMap';
-import { implicitM2MMap } from './fixtures/implicitM2MMap';
 import { compositeFkMap } from './fixtures/compositeFkMap';
 import { getWhere } from './fixtures/helpers';
+import { implicitM2MMap } from './fixtures/implicitM2MMap';
+import { multiRelMap } from './fixtures/multiRelMap';
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
 describe('toPrisma result shape', () => {
@@ -31,103 +31,123 @@ describe('toPrisma result shape', () => {
 // ─── Scalar operators ─────────────────────────────────────────────────────────
 describe('toPrisma scalar operators', () => {
   it('equals', () => {
-    expect(getWhere(toPrisma({ field: 'status', operator: Operator.equals, value: 'active' })))
-      .toEqual({ status: { equals: 'active' } });
+    expect(
+      getWhere(toPrisma({ field: 'status', operator: Operator.equals, value: 'active' })),
+    ).toEqual({ status: { equals: 'active' } });
   });
 
   it('equals null', () => {
-    expect(getWhere(toPrisma({ field: 'deletedAt', operator: Operator.equals, value: null })))
-      .toEqual({ deletedAt: { equals: null } });
+    expect(
+      getWhere(toPrisma({ field: 'deletedAt', operator: Operator.equals, value: null })),
+    ).toEqual({ deletedAt: { equals: null } });
   });
 
   it('notEquals', () => {
-    expect(getWhere(toPrisma({ field: 'role', operator: Operator.notEquals, value: 'guest' })))
-      .toEqual({ role: { not: 'guest' } });
+    expect(
+      getWhere(toPrisma({ field: 'role', operator: Operator.notEquals, value: 'guest' })),
+    ).toEqual({ role: { not: 'guest' } });
   });
 
   it('lessThan', () => {
-    expect(getWhere(toPrisma({ field: 'age', operator: Operator.lessThan, value: 18 })))
-      .toEqual({ age: { lt: 18 } });
+    expect(getWhere(toPrisma({ field: 'age', operator: Operator.lessThan, value: 18 }))).toEqual({
+      age: { lt: 18 },
+    });
   });
 
   it('lessThanEquals', () => {
-    expect(getWhere(toPrisma({ field: 'price', operator: Operator.lessThanEquals, value: 100 })))
-      .toEqual({ price: { lte: 100 } });
+    expect(
+      getWhere(toPrisma({ field: 'price', operator: Operator.lessThanEquals, value: 100 })),
+    ).toEqual({ price: { lte: 100 } });
   });
 
   it('greaterThan', () => {
-    expect(getWhere(toPrisma({ field: 'score', operator: Operator.greaterThan, value: 50 })))
-      .toEqual({ score: { gt: 50 } });
+    expect(
+      getWhere(toPrisma({ field: 'score', operator: Operator.greaterThan, value: 50 })),
+    ).toEqual({ score: { gt: 50 } });
   });
 
   it('greaterThanEquals', () => {
-    expect(getWhere(toPrisma({ field: 'rating', operator: Operator.greaterThanEquals, value: 4.5 })))
-      .toEqual({ rating: { gte: 4.5 } });
+    expect(
+      getWhere(toPrisma({ field: 'rating', operator: Operator.greaterThanEquals, value: 4.5 })),
+    ).toEqual({ rating: { gte: 4.5 } });
   });
 
   it('in', () => {
-    expect(getWhere(toPrisma({ field: 'status', operator: Operator.in, value: ['active', 'pending'] })))
-      .toEqual({ status: { in: ['active', 'pending'] } });
+    expect(
+      getWhere(toPrisma({ field: 'status', operator: Operator.in, value: ['active', 'pending'] })),
+    ).toEqual({ status: { in: ['active', 'pending'] } });
   });
 
   it('notIn', () => {
-    expect(getWhere(toPrisma({ field: 'role', operator: Operator.notIn, value: ['banned'] })))
-      .toEqual({ role: { notIn: ['banned'] } });
+    expect(
+      getWhere(toPrisma({ field: 'role', operator: Operator.notIn, value: ['banned'] })),
+    ).toEqual({ role: { notIn: ['banned'] } });
   });
 
   it('contains', () => {
-    expect(getWhere(toPrisma({ field: 'name', operator: Operator.contains, value: 'Alice' })))
-      .toEqual({ name: { contains: 'Alice' } });
+    expect(
+      getWhere(toPrisma({ field: 'name', operator: Operator.contains, value: 'Alice' })),
+    ).toEqual({ name: { contains: 'Alice' } });
   });
 
   it('notContains', () => {
-    expect(getWhere(toPrisma({ field: 'email', operator: Operator.notContains, value: 'spam' })))
-      .toEqual({ email: { not: { contains: 'spam' } } });
+    expect(
+      getWhere(toPrisma({ field: 'email', operator: Operator.notContains, value: 'spam' })),
+    ).toEqual({ email: { not: { contains: 'spam' } } });
   });
 
   it('startsWith', () => {
-    expect(getWhere(toPrisma({ field: 'name', operator: Operator.startsWith, value: 'Admin' })))
-      .toEqual({ name: { startsWith: 'Admin' } });
+    expect(
+      getWhere(toPrisma({ field: 'name', operator: Operator.startsWith, value: 'Admin' })),
+    ).toEqual({ name: { startsWith: 'Admin' } });
   });
 
   it('endsWith', () => {
-    expect(getWhere(toPrisma({ field: 'email', operator: Operator.endsWith, value: '@acme.com' })))
-      .toEqual({ email: { endsWith: '@acme.com' } });
+    expect(
+      getWhere(toPrisma({ field: 'email', operator: Operator.endsWith, value: '@acme.com' })),
+    ).toEqual({ email: { endsWith: '@acme.com' } });
   });
 
   it('between', () => {
-    expect(getWhere(toPrisma({ field: 'age', operator: Operator.between, value: [18, 65] })))
-      .toEqual({ age: { gte: 18, lte: 65 } });
+    expect(
+      getWhere(toPrisma({ field: 'age', operator: Operator.between, value: [18, 65] })),
+    ).toEqual({ age: { gte: 18, lte: 65 } });
   });
 
   it('notBetween', () => {
-    expect(getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 10] })))
-      .toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
+    expect(
+      getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 10] })),
+    ).toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
   });
 
   it('isEmpty', () => {
-    expect(getWhere(toPrisma({ field: 'bio', operator: Operator.isEmpty })))
-      .toEqual({ bio: { in: [null, ''] } });
+    expect(getWhere(toPrisma({ field: 'bio', operator: Operator.isEmpty }))).toEqual({
+      bio: { in: [null, ''] },
+    });
   });
 
   it('notEmpty', () => {
-    expect(getWhere(toPrisma({ field: 'name', operator: Operator.notEmpty })))
-      .toEqual({ name: { notIn: [null, ''] } });
+    expect(getWhere(toPrisma({ field: 'name', operator: Operator.notEmpty }))).toEqual({
+      name: { notIn: [null, ''] },
+    });
   });
 
   it('exists', () => {
-    expect(getWhere(toPrisma({ field: 'avatar', operator: Operator.exists })))
-      .toEqual({ avatar: { not: null } });
+    expect(getWhere(toPrisma({ field: 'avatar', operator: Operator.exists }))).toEqual({
+      avatar: { not: null },
+    });
   });
 
   it('notExists', () => {
-    expect(getWhere(toPrisma({ field: 'deletedAt', operator: Operator.notExists })))
-      .toEqual({ deletedAt: { equals: null } });
+    expect(getWhere(toPrisma({ field: 'deletedAt', operator: Operator.notExists }))).toEqual({
+      deletedAt: { equals: null },
+    });
   });
 
   it('dot-notation → nested relation filter (no map)', () => {
-    expect(getWhere(toPrisma({ field: 'user.email', operator: Operator.equals, value: 'x@y.com' })))
-      .toEqual({ user: { email: { equals: 'x@y.com' } } });
+    expect(
+      getWhere(toPrisma({ field: 'user.email', operator: Operator.equals, value: 'x@y.com' })),
+    ).toEqual({ user: { email: { equals: 'x@y.com' } } });
   });
 });
 
@@ -200,7 +220,9 @@ describe('toPrisma map-aware traversal', () => {
       { field: 'metadata.display.mode', operator: Operator.equals, value: 'compact' },
       { map: blogMap, model: 'User' },
     );
-    expect(getWhere(result)).toEqual({ metadata: { path: ['display', 'mode'], equals: 'compact' } });
+    expect(getWhere(result)).toEqual({
+      metadata: { path: ['display', 'mode'], equals: 'compact' },
+    });
   });
 
   it('json field after relation traversal', () => {
@@ -322,10 +344,7 @@ describe('toPrisma multi-step count operators', () => {
 
     const w = result.steps[2] as WhereStep;
     expect(w.where).toEqual({
-      AND: [
-        { id: { in: { __step: 0 } } },
-        { id: { in: { __step: 1 } } },
-      ],
+      AND: [{ id: { in: { __step: 0 } } }, { id: { in: { __step: 1 } } }],
     });
   });
 });
@@ -404,35 +423,45 @@ describe('toPrisma date operators', () => {
   const d = new Date('2024-01-01');
 
   it('before', () => {
-    expect(getWhere(toPrisma({ field: 'createdAt', dateOperator: DateOperator.before, value: d })))
-      .toEqual({ createdAt: { lt: d } });
+    expect(
+      getWhere(toPrisma({ field: 'createdAt', dateOperator: DateOperator.before, value: d })),
+    ).toEqual({ createdAt: { lt: d } });
   });
 
   it('after', () => {
-    expect(getWhere(toPrisma({ field: 'createdAt', dateOperator: DateOperator.after, value: d })))
-      .toEqual({ createdAt: { gt: d } });
+    expect(
+      getWhere(toPrisma({ field: 'createdAt', dateOperator: DateOperator.after, value: d })),
+    ).toEqual({ createdAt: { gt: d } });
   });
 
   it('onOrBefore', () => {
-    expect(getWhere(toPrisma({ field: 'expiresAt', dateOperator: DateOperator.onOrBefore, value: d })))
-      .toEqual({ expiresAt: { lte: d } });
+    expect(
+      getWhere(toPrisma({ field: 'expiresAt', dateOperator: DateOperator.onOrBefore, value: d })),
+    ).toEqual({ expiresAt: { lte: d } });
   });
 
   it('onOrAfter', () => {
-    expect(getWhere(toPrisma({ field: 'startDate', dateOperator: DateOperator.onOrAfter, value: d })))
-      .toEqual({ startDate: { gte: d } });
+    expect(
+      getWhere(toPrisma({ field: 'startDate', dateOperator: DateOperator.onOrAfter, value: d })),
+    ).toEqual({ startDate: { gte: d } });
   });
 
   it('between', () => {
     const end = new Date('2024-12-31');
-    expect(getWhere(toPrisma({ field: 'eventDate', dateOperator: DateOperator.between, value: [d, end] })))
-      .toEqual({ eventDate: { gte: d, lte: end } });
+    expect(
+      getWhere(
+        toPrisma({ field: 'eventDate', dateOperator: DateOperator.between, value: [d, end] }),
+      ),
+    ).toEqual({ eventDate: { gte: d, lte: end } });
   });
 
   it('notBetween', () => {
     const end = new Date('2024-12-31');
-    expect(getWhere(toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [d, end] })))
-      .toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
+    expect(
+      getWhere(
+        toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [d, end] }),
+      ),
+    ).toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
   });
 
   it('dayIn → throws (no Prisma equivalent)', () => {
@@ -478,10 +507,7 @@ describe('toPrisma logical operators', () => {
       then: { field: 'credits', operator: Operator.greaterThan, value: 0 },
     });
     expect(getWhere(result)).toEqual({
-      OR: [
-        { NOT: { type: { equals: 'premium' } } },
-        { credits: { gt: 0 } },
-      ],
+      OR: [{ NOT: { type: { equals: 'premium' } } }, { credits: { gt: 0 } }],
     });
   });
 
@@ -524,34 +550,36 @@ describe('toPrisma array operators', () => {
   });
 
   it('empty → none: {}', () => {
-    expect(getWhere(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.empty })))
-      .toEqual({ tags: { none: {} } });
+    expect(getWhere(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.empty }))).toEqual({
+      tags: { none: {} },
+    });
   });
 
   it('notEmpty → some: {}', () => {
-    expect(getWhere(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.notEmpty })))
-      .toEqual({ tags: { some: {} } });
+    expect(getWhere(toPrisma({ field: 'tags', arrayOperator: ArrayOperator.notEmpty }))).toEqual({
+      tags: { some: {} },
+    });
   });
 });
 
 // ─── Error cases ──────────────────────────────────────────────────────────────
 describe('toPrisma error cases', () => {
   it('matches → throws (no Prisma equivalent)', () => {
-    expect(() =>
-      toPrisma({ field: 'phone', operator: Operator.matches, value: '^\\+1' }),
-    ).toThrow('matches');
+    expect(() => toPrisma({ field: 'phone', operator: Operator.matches, value: '^\\+1' })).toThrow(
+      'matches',
+    );
   });
 
   it('notMatches → throws', () => {
-    expect(() =>
-      toPrisma({ field: 'code', operator: Operator.notMatches, value: 'test' }),
-    ).toThrow('notMatches');
+    expect(() => toPrisma({ field: 'code', operator: Operator.notMatches, value: 'test' })).toThrow(
+      'notMatches',
+    );
   });
 
   it('between without array → throws', () => {
-    expect(() =>
-      toPrisma({ field: 'age', operator: Operator.between, value: 18 }),
-    ).toThrow('array');
+    expect(() => toPrisma({ field: 'age', operator: Operator.between, value: 18 })).toThrow(
+      'array',
+    );
   });
 });
 

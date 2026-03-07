@@ -1,10 +1,14 @@
-import { describe, it, expect } from 'bun:test';
-import { toSql, Operator, DateOperator, ArrayOperator } from '../index';
+import { describe, expect, it } from 'bun:test';
+import { ArrayOperator, DateOperator, Operator, toSql } from '../index';
 
 describe('toSql', () => {
   describe('field operators', () => {
     it('equals', () => {
-      const { sql, params } = toSql({ field: 'status', operator: Operator.equals, value: 'active' });
+      const { sql, params } = toSql({
+        field: 'status',
+        operator: Operator.equals,
+        value: 'active',
+      });
       expect(sql).toBe('"status" = $1');
       expect(params).toEqual(['active']);
     });
@@ -16,7 +20,11 @@ describe('toSql', () => {
     });
 
     it('notEquals', () => {
-      const { sql, params } = toSql({ field: 'role', operator: Operator.notEquals, value: 'guest' });
+      const { sql, params } = toSql({
+        field: 'role',
+        operator: Operator.notEquals,
+        value: 'guest',
+      });
       expect(sql).toBe('"role" <> $1');
       expect(params).toEqual(['guest']);
     });
@@ -34,7 +42,11 @@ describe('toSql', () => {
     });
 
     it('lessThanEquals', () => {
-      const { sql, params } = toSql({ field: 'price', operator: Operator.lessThanEquals, value: 100 });
+      const { sql, params } = toSql({
+        field: 'price',
+        operator: Operator.lessThanEquals,
+        value: 100,
+      });
       expect(sql).toBe('"price" <= $1');
       expect(params).toEqual([100]);
     });
@@ -46,13 +58,21 @@ describe('toSql', () => {
     });
 
     it('greaterThanEquals', () => {
-      const { sql, params } = toSql({ field: 'rating', operator: Operator.greaterThanEquals, value: 4.5 });
+      const { sql, params } = toSql({
+        field: 'rating',
+        operator: Operator.greaterThanEquals,
+        value: 4.5,
+      });
       expect(sql).toBe('"rating" >= $1');
       expect(params).toEqual([4.5]);
     });
 
     it('in', () => {
-      const { sql, params } = toSql({ field: 'status', operator: Operator.in, value: ['active', 'pending'] });
+      const { sql, params } = toSql({
+        field: 'status',
+        operator: Operator.in,
+        value: ['active', 'pending'],
+      });
       expect(sql).toBe('"status" = ANY($1)');
       expect(params).toEqual([['active', 'pending']]);
     });
@@ -64,7 +84,11 @@ describe('toSql', () => {
     });
 
     it('notIn', () => {
-      const { sql, params } = toSql({ field: 'type', operator: Operator.notIn, value: ['spam', 'deleted'] });
+      const { sql, params } = toSql({
+        field: 'type',
+        operator: Operator.notIn,
+        value: ['spam', 'deleted'],
+      });
       expect(sql).toBe('"type" <> ALL($1)');
       expect(params).toEqual([['spam', 'deleted']]);
     });
@@ -82,19 +106,31 @@ describe('toSql', () => {
     });
 
     it('notContains', () => {
-      const { sql, params } = toSql({ field: 'email', operator: Operator.notContains, value: 'spam' });
+      const { sql, params } = toSql({
+        field: 'email',
+        operator: Operator.notContains,
+        value: 'spam',
+      });
       expect(sql).toBe('"email" NOT LIKE $1');
       expect(params).toEqual(['%spam%']);
     });
 
     it('startsWith', () => {
-      const { sql, params } = toSql({ field: 'name', operator: Operator.startsWith, value: 'Admin' });
+      const { sql, params } = toSql({
+        field: 'name',
+        operator: Operator.startsWith,
+        value: 'Admin',
+      });
       expect(sql).toBe('"name" LIKE $1');
       expect(params).toEqual(['Admin%']);
     });
 
     it('endsWith', () => {
-      const { sql, params } = toSql({ field: 'email', operator: Operator.endsWith, value: '@gmail.com' });
+      const { sql, params } = toSql({
+        field: 'email',
+        operator: Operator.endsWith,
+        value: '@gmail.com',
+      });
       expect(sql).toBe('"email" LIKE $1');
       expect(params).toEqual(['%@gmail.com']);
     });
@@ -106,7 +142,11 @@ describe('toSql', () => {
     });
 
     it('notMatches', () => {
-      const { sql, params } = toSql({ field: 'code', operator: Operator.notMatches, value: 'test' });
+      const { sql, params } = toSql({
+        field: 'code',
+        operator: Operator.notMatches,
+        value: 'test',
+      });
       expect(sql).toBe('"code" !~ $1');
       expect(params).toEqual(['test']);
     });
@@ -118,7 +158,11 @@ describe('toSql', () => {
     });
 
     it('notBetween', () => {
-      const { sql, params } = toSql({ field: 'score', operator: Operator.notBetween, value: [0, 10] });
+      const { sql, params } = toSql({
+        field: 'score',
+        operator: Operator.notBetween,
+        value: [0, 10],
+      });
       expect(sql).toBe('"score" NOT BETWEEN $1 AND $2');
       expect(params).toEqual([0, 10]);
     });
@@ -142,7 +186,11 @@ describe('toSql', () => {
     });
 
     it('notExists', () => {
-      const { sql, params } = toSql({ field: 'deletedAt', operator: Operator.notExists, value: true });
+      const { sql, params } = toSql({
+        field: 'deletedAt',
+        operator: Operator.notExists,
+        value: true,
+      });
       expect(sql).toBe('"deletedAt" IS NULL');
       expect(params).toEqual([]);
     });
@@ -150,14 +198,22 @@ describe('toSql', () => {
 
   describe('JSON path fields', () => {
     it('single level JSON path', () => {
-      const { sql, params } = toSql({ field: 'data.theme', operator: Operator.equals, value: 'dark' });
+      const { sql, params } = toSql({
+        field: 'data.theme',
+        operator: Operator.equals,
+        value: 'dark',
+      });
       expect(sql).toBe('"data"->>\'theme\' = $1');
       expect(params).toEqual(['dark']);
     });
 
     it('nested JSON path', () => {
-      const { sql, params } = toSql({ field: 'settings.display.mode', operator: Operator.equals, value: 'compact' });
-      expect(sql).toBe('"settings"->\'display\'->>\'mode\' = $1');
+      const { sql, params } = toSql({
+        field: 'settings.display.mode',
+        operator: Operator.equals,
+        value: 'compact',
+      });
+      expect(sql).toBe("\"settings\"->'display'->>'mode' = $1");
       expect(params).toEqual(['compact']);
     });
   });
@@ -165,28 +221,44 @@ describe('toSql', () => {
   describe('date operators', () => {
     it('before', () => {
       const date = new Date('2024-01-01');
-      const { sql, params } = toSql({ field: 'createdAt', dateOperator: DateOperator.before, value: date });
+      const { sql, params } = toSql({
+        field: 'createdAt',
+        dateOperator: DateOperator.before,
+        value: date,
+      });
       expect(sql).toBe('"createdAt" < $1');
       expect(params).toEqual([date]);
     });
 
     it('after', () => {
       const date = new Date('2024-01-01');
-      const { sql, params } = toSql({ field: 'updatedAt', dateOperator: DateOperator.after, value: date });
+      const { sql, params } = toSql({
+        field: 'updatedAt',
+        dateOperator: DateOperator.after,
+        value: date,
+      });
       expect(sql).toBe('"updatedAt" > $1');
       expect(params).toEqual([date]);
     });
 
     it('onOrBefore', () => {
       const date = new Date('2024-12-31');
-      const { sql, params } = toSql({ field: 'expiresAt', dateOperator: DateOperator.onOrBefore, value: date });
+      const { sql, params } = toSql({
+        field: 'expiresAt',
+        dateOperator: DateOperator.onOrBefore,
+        value: date,
+      });
       expect(sql).toBe('"expiresAt" <= $1');
       expect(params).toEqual([date]);
     });
 
     it('onOrAfter', () => {
       const date = new Date('2024-01-01');
-      const { sql, params } = toSql({ field: 'startDate', dateOperator: DateOperator.onOrAfter, value: date });
+      const { sql, params } = toSql({
+        field: 'startDate',
+        dateOperator: DateOperator.onOrAfter,
+        value: date,
+      });
       expect(sql).toBe('"startDate" >= $1');
       expect(params).toEqual([date]);
     });
@@ -194,19 +266,31 @@ describe('toSql', () => {
     it('between dates', () => {
       const start = new Date('2024-01-01');
       const end = new Date('2024-12-31');
-      const { sql, params } = toSql({ field: 'eventDate', dateOperator: DateOperator.between, value: [start, end] });
+      const { sql, params } = toSql({
+        field: 'eventDate',
+        dateOperator: DateOperator.between,
+        value: [start, end],
+      });
       expect(sql).toBe('"eventDate" BETWEEN $1 AND $2');
       expect(params).toEqual([start, end]);
     });
 
     it('dayIn', () => {
-      const { sql, params } = toSql({ field: 'scheduledAt', dateOperator: DateOperator.dayIn, value: ['monday', 'wednesday', 'friday'] });
+      const { sql, params } = toSql({
+        field: 'scheduledAt',
+        dateOperator: DateOperator.dayIn,
+        value: ['monday', 'wednesday', 'friday'],
+      });
       expect(sql).toBe('EXTRACT(DOW FROM "scheduledAt") = ANY($1)');
       expect(params).toEqual([[1, 3, 5]]);
     });
 
     it('dayNotIn', () => {
-      const { sql, params } = toSql({ field: 'deliveryDate', dateOperator: DateOperator.dayNotIn, value: ['saturday', 'sunday'] });
+      const { sql, params } = toSql({
+        field: 'deliveryDate',
+        dateOperator: DateOperator.dayNotIn,
+        value: ['saturday', 'sunday'],
+      });
       expect(sql).toBe('EXTRACT(DOW FROM "deliveryDate") <> ALL($1)');
       expect(params).toEqual([[6, 0]]);
     });
@@ -229,21 +313,34 @@ describe('toSql', () => {
 
     describe('native (TEXT[], INT[], etc.)', () => {
       it('empty', () => {
-        const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty, arrayType: 'native' });
+        const { sql, params } = toSql({
+          field: 'tags',
+          arrayOperator: ArrayOperator.empty,
+          arrayType: 'native',
+        });
         expect(sql).toBe('("tags" IS NULL OR array_length("tags", 1) IS NULL)');
         expect(params).toEqual([]);
       });
 
       it('notEmpty', () => {
-        const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty, arrayType: 'native' });
+        const { sql, params } = toSql({
+          field: 'items',
+          arrayOperator: ArrayOperator.notEmpty,
+          arrayType: 'native',
+        });
         expect(sql).toBe('("items" IS NOT NULL AND array_length("items", 1) IS NOT NULL)');
         expect(params).toEqual([]);
       });
     });
 
     it('throws for complex array operators', () => {
-      expect(() => toSql({ field: 'items', arrayOperator: ArrayOperator.all, condition: { field: 'active', operator: Operator.equals, value: true } }))
-        .toThrow('not supported in SQL');
+      expect(() =>
+        toSql({
+          field: 'items',
+          arrayOperator: ArrayOperator.all,
+          condition: { field: 'active', operator: Operator.equals, value: true },
+        }),
+      ).toThrow('not supported in SQL');
     });
   });
 
@@ -298,7 +395,9 @@ describe('toSql', () => {
         else: { field: 'subscribed', operator: Operator.equals, value: true },
       });
       // Reuses $1 for the if clause in both branches (efficient)
-      expect(sql).toBe('((NOT("type" = $1) OR "daysLeft" > $2) AND ("type" = $1 OR "subscribed" = $3))');
+      expect(sql).toBe(
+        '((NOT("type" = $1) OR "daysLeft" > $2) AND ("type" = $1 OR "subscribed" = $3))',
+      );
       expect(params).toEqual(['trial', 0, true]);
     });
 
@@ -335,13 +434,15 @@ describe('toSql', () => {
 
   describe('error cases', () => {
     it('throws for between without array', () => {
-      expect(() => toSql({ field: 'age', operator: Operator.between, value: 18 }))
-        .toThrow('between operator requires an array of two values');
+      expect(() => toSql({ field: 'age', operator: Operator.between, value: 18 })).toThrow(
+        'between operator requires an array of two values',
+      );
     });
 
     it('throws for unknown day name', () => {
-      expect(() => toSql({ field: 'date', dateOperator: DateOperator.dayIn, value: ['notaday'] }))
-        .toThrow('Unknown day name: notaday');
+      expect(() =>
+        toSql({ field: 'date', dateOperator: DateOperator.dayIn, value: ['notaday'] }),
+      ).toThrow('Unknown day name: notaday');
     });
   });
 });

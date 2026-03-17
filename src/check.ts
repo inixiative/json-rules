@@ -1,8 +1,8 @@
 import { get, isObject, some } from 'lodash';
 import { checkDate } from './date';
 import { checkField } from './field';
-import { ArrayOperator } from './operator';
-import type { ArrayRule, Condition } from './types';
+import { ArrayOperator, Operator } from './operator';
+import type { AggregateRule, ArrayRule, Condition } from './types';
 
 export const check = <TData extends Record<string, unknown>>(
   conditions: Condition,
@@ -14,6 +14,7 @@ export const check = <TData extends Record<string, unknown>>(
   if ('any' in conditions) return any(conditions.any, data, context, conditions.error);
   if ('arrayOperator' in conditions) return checkArray(conditions, data, context);
   if ('dateOperator' in conditions) return checkDate(conditions, data, context);
+  if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, data, context);
   if ('field' in conditions) return checkField(conditions, data, context);
   if ('if' in conditions) return checkIfThenElse(conditions, data, context);
 
@@ -76,6 +77,87 @@ const checkIfThenElse = <TData extends Record<string, unknown>>(
 
   if (ifResult === true) return check(condition.then, data, context);
   return condition.else ? check(condition.else, data, context) : true;
+};
+
+const checkAggregate = <TData extends Record<string, unknown>>(
+  condition: AggregateRule,
+  data: TData,
+  context: TData,
+): boolean | string => {
+  const arrayValue = get(data, condition.field);
+  if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
+
+  const { mode, field: itemField } = condition.aggregate;
+
+  const numbers: number[] = arrayValue.map((item, index) => {
+    const raw = itemField ? get(item as Record<string, unknown>, itemField) : item;
+    if (typeof raw !== 'number' || !isFinite(raw)) {
+      const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
+      throw new Error(`${loc} must be a finite number`);
+    }
+    return raw;
+  });
+
+  // sum([]) = 0, avg([]) = null → comparison fails
+  let result: number | null;
+  if (mode === 'sum') {
+    result = numbers.reduce((s, n) => s + n, 0);
+  } else {
+    result = numbers.length === 0 ? null : numbers.reduce((s, n) => s + n, 0) / numbers.length;
+  }
+
+  if (result === null) {
+    return condition.error || `${condition.field} ${mode} comparison failed (empty array)`;
+  }
+
+  let rhs: unknown;
+  if (condition.value !== undefined) {
+    rhs = condition.value;
+  } else if (condition.path) {
+    rhs = condition.path.startsWith('$.')
+      ? get(data, condition.path.substring(2))
+      : get(context, condition.path);
+  } else {
+    throw new Error('Aggregate rule requires value or path');
+  }
+
+  const getError = (msg: string) =>
+    condition.error || `${condition.field} ${mode} ${msg} ${JSON.stringify(rhs)}`;
+
+  switch (condition.operator) {
+    case Operator.equals:
+      return result === rhs || getError('must equal');
+    case Operator.notEquals:
+      return result !== rhs || getError('must not equal');
+    case Operator.lessThan:
+      return (typeof rhs === 'number' && result < rhs) || getError('must be less than');
+    case Operator.lessThanEquals:
+      return (
+        (typeof rhs === 'number' && result <= rhs) || getError('must be less than or equal to')
+      );
+    case Operator.greaterThan:
+      return (typeof rhs === 'number' && result > rhs) || getError('must be greater than');
+    case Operator.greaterThanEquals:
+      return (
+        (typeof rhs === 'number' && result >= rhs) || getError('must be greater than or equal to')
+      );
+    case Operator.between: {
+      if (!Array.isArray(rhs) || rhs.length !== 2)
+        throw new Error('between requires a two-element array');
+      const [a, b] = rhs as number[];
+      const [min, max] = a <= b ? [a, b] : [b, a];
+      return (result >= min && result <= max) || getError('must be between');
+    }
+    case Operator.notBetween: {
+      if (!Array.isArray(rhs) || rhs.length !== 2)
+        throw new Error('notBetween requires a two-element array');
+      const [a, b] = rhs as number[];
+      const [min, max] = a <= b ? [a, b] : [b, a];
+      return result < min || result > max || getError('must not be between');
+    }
+    default:
+      throw new Error(`Operator '${condition.operator}' is not supported for aggregate rules`);
+  }
 };
 
 const checkArray = <TData extends Record<string, unknown>>(

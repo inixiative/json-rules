@@ -3,9 +3,10 @@ import type { ArrayRule } from '../types';
 import { quoteField } from './quoting';
 import type { BuilderState } from './types';
 
-export const buildArrayRule = (rule: ArrayRule, _state: BuilderState): string => {
+export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
   const field = quoteField(rule.field);
-  const isNative = rule.arrayType === 'native';
+  const fieldEntry = state.map?.[state.currentModel ?? '']?.fields[rule.field];
+  const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
 
   // Different length functions for JSONB vs native PostgreSQL arrays
   const lengthFn = isNative

@@ -1,4 +1,5 @@
 import type { Condition } from '../types';
+import { buildAggregateRule } from './aggregate';
 import { buildArrayRule, setConditionBuilderForArray } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
@@ -22,6 +23,7 @@ export const buildCondition = (
   if ('if' in condition) return buildIfThenElse(condition, options, state);
   if ('arrayOperator' in condition) return buildArrayRule(condition, options, state);
   if ('dateOperator' in condition) return buildDateRule(condition, options);
+  if ('aggregate' in condition) return buildAggregateRule(condition, options, state);
   if ('field' in condition) return buildFieldRule(condition, options);
 
   throw new Error('Unknown condition type');

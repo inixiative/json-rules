@@ -93,6 +93,9 @@ const validateCondition = (condition: unknown, path: string, context: Validation
     case 'field':
       validateFieldRule(condition, path, context);
       break;
+    case 'aggregate':
+      validateAggregateRule(condition, path, context);
+      break;
     case 'array':
       validateArrayRule(condition, path, context);
       break;
@@ -104,18 +107,19 @@ const validateCondition = (condition: unknown, path: string, context: Validation
 
 const detectShape = (
   condition: Record<string, unknown>,
-): 'all' | 'any' | 'if' | 'field' | 'array' | 'date' | null => {
+): 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date' | null => {
   const shapes: string[] = [];
   if ('all' in condition) shapes.push('all');
   if ('any' in condition) shapes.push('any');
   if ('if' in condition || 'then' in condition || 'else' in condition) shapes.push('if');
   if ('arrayOperator' in condition) shapes.push('array');
   if ('dateOperator' in condition) shapes.push('date');
-  if ('operator' in condition) shapes.push('field');
+  if ('aggregate' in condition) shapes.push('aggregate');
+  else if ('operator' in condition) shapes.push('field');
 
   const uniqueShapes = Array.from(new Set(shapes));
   if (uniqueShapes.length !== 1) return null;
-  return uniqueShapes[0] as 'all' | 'any' | 'if' | 'field' | 'array' | 'date';
+  return uniqueShapes[0] as 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
 };
 
 const validateLogicalArray = (value: unknown, path: string, context: ValidationContext): void => {
@@ -237,6 +241,107 @@ const validateFieldRule = (
         );
       }
       break;
+  }
+};
+
+const AGGREGATE_SINGLE_OPERATORS = new Set<string>([
+  Operator.equals,
+  Operator.notEquals,
+  Operator.lessThan,
+  Operator.lessThanEquals,
+  Operator.greaterThan,
+  Operator.greaterThanEquals,
+]);
+
+const AGGREGATE_RANGE_OPERATORS = new Set<string>([Operator.between, Operator.notBetween]);
+
+const validateAggregateRule = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+): void => {
+  if (typeof rule.field !== 'string') {
+    pushIssue(context, `${path}.field`, 'field_required', 'Aggregate rule requires a string field');
+  }
+
+  if (!isPlainObject(rule.aggregate)) {
+    pushIssue(context, `${path}.aggregate`, 'invalid_aggregate', 'aggregate must be an object');
+    return;
+  }
+
+  const agg = rule.aggregate as Record<string, unknown>;
+  if (agg.mode !== 'sum' && agg.mode !== 'avg') {
+    pushIssue(
+      context,
+      `${path}.aggregate.mode`,
+      'invalid_aggregate_mode',
+      "aggregate.mode must be 'sum' or 'avg'",
+    );
+  }
+
+  if ('field' in agg && agg.field !== undefined && typeof agg.field !== 'string') {
+    pushIssue(
+      context,
+      `${path}.aggregate.field`,
+      'invalid_aggregate_field',
+      'aggregate.field must be a string',
+    );
+  }
+
+  const isSingle =
+    typeof rule.operator === 'string' && AGGREGATE_SINGLE_OPERATORS.has(rule.operator);
+  const isRange = typeof rule.operator === 'string' && AGGREGATE_RANGE_OPERATORS.has(rule.operator);
+
+  if (!isSingle && !isRange) {
+    pushIssue(
+      context,
+      `${path}.operator`,
+      'invalid_aggregate_operator',
+      `Aggregate rules only support: equals, notEquals, lessThan, lessThanEquals, greaterThan, greaterThanEquals, between, notBetween`,
+    );
+    return;
+  }
+
+  if (context.target === 'toPrisma' && rule.operator === Operator.notBetween) {
+    pushIssue(
+      context,
+      `${path}.operator`,
+      'unsupported_prisma_aggregate_operator',
+      `Operator 'notBetween' is not supported by toPrisma() for aggregate rules`,
+    );
+  }
+
+  if (context.target === 'toPrisma' && typeof rule.path === 'string') {
+    pushIssue(
+      context,
+      `${path}.path`,
+      'unsupported_prisma_aggregate_path',
+      `path is not supported by toPrisma() for aggregate rules; use value instead`,
+    );
+  }
+
+  if (!requireValueOrPath(rule, path, context)) return;
+  if ('path' in rule && typeof rule.path === 'string') return;
+
+  const value = rule.value;
+  if (isRange) {
+    if (!isNumericRange(value)) {
+      pushIssue(
+        context,
+        `${path}.value`,
+        'invalid_range_value',
+        `Operator '${rule.operator}' requires a two-item numeric range`,
+      );
+    }
+  } else {
+    if (typeof value !== 'number') {
+      pushIssue(
+        context,
+        `${path}.value`,
+        'invalid_aggregate_value',
+        `Aggregate rule value must be a number`,
+      );
+    }
   }
 };
 
@@ -478,6 +583,12 @@ const isOrderedRange = (value: unknown): value is [OrderedRuleValue, OrderedRule
   value.length === 2 &&
   isOrderedRuleValue(value[0]) &&
   isOrderedRuleValue(value[1]);
+
+const isNumericRange = (value: unknown): value is [number, number] =>
+  Array.isArray(value) &&
+  value.length === 2 &&
+  typeof value[0] === 'number' &&
+  typeof value[1] === 'number';
 
 const isDateInputValue = (value: unknown): value is DateInputValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;

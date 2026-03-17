@@ -58,3 +58,26 @@ const buildJsonPath = (columnExpr: string, jsonPath: string[]): string => {
   }
   return `${columnExpr}->>${leaf}`;
 };
+
+/**
+ * Like quoteField but keeps the leaf as JSONB (uses -> instead of ->> at the end).
+ * Required when the result must be a JSONB value, e.g. as input to jsonb_array_elements().
+ *
+ * Examples:
+ *   "scores"           → "scores"
+ *   "settings.scores"  → "settings"->'scores'
+ */
+export const quoteFieldAsJsonb = (field: string): string => {
+  const parts = field.split('.');
+  if (parts.length === 1) return escapeIdentifier(field);
+
+  const [column, ...jsonPath] = parts;
+  if (jsonPath.length === 0) return escapeIdentifier(column);
+
+  return buildJsonPathJsonb(escapeIdentifier(column), jsonPath);
+};
+
+const buildJsonPathJsonb = (columnExpr: string, jsonPath: string[]): string => {
+  const allParts = jsonPath.map(escapeJsonKey).join('->');
+  return `${columnExpr}->${allParts}`;
+};

@@ -1,9 +1,9 @@
 import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
+import { findReverseRelation } from './relationUtils';
 import type {
   BuildOptions,
   FieldMap,
-  FieldMapEntry,
   GroupByStep,
   PrismaBuildState,
   PrismaWhere,
@@ -114,29 +114,6 @@ export const buildCountStep = (
 
   const stepRef: StepRef = { __step: stepIndex };
   return { [pkOnCurrent]: { in: stepRef } };
-};
-
-const findReverseRelation = (
-  map: FieldMap,
-  targetModel: string,
-  currentModel: string,
-  relationName?: string,
-): FieldMapEntry | null => {
-  const targetEntry = map[targetModel];
-  if (!targetEntry) return null;
-
-  for (const fieldDef of Object.values(targetEntry.fields)) {
-    if (
-      fieldDef.kind === 'object' &&
-      fieldDef.type === currentModel &&
-      (fieldDef.fromFields?.length ?? 0) > 0 &&
-      (fieldDef.toFields?.length ?? 0) > 0 &&
-      (relationName === undefined || fieldDef.relationName === relationName)
-    ) {
-      return fieldDef;
-    }
-  }
-  return null;
 };
 
 const buildHaving = (op: ArrayOperator, count: number): Record<string, unknown> => {

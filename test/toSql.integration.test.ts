@@ -1,6 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
+import type { FieldMap } from '../index';
 import { ArrayOperator, Operator, toSql } from '../index';
+
+const usersMap: FieldMap = {
+  User: {
+    fields: {
+      roles: { kind: 'scalar', type: 'Text', isList: true },
+      tags: { kind: 'scalar', type: 'Json' },
+    },
+  },
+};
 
 describe('toSql integration', () => {
   let db: PGlite;
@@ -40,8 +50,11 @@ describe('toSql integration', () => {
     await db.close();
   });
 
-  const query = async (rule: Parameters<typeof toSql>[0]) => {
-    const { sql, params } = toSql(rule);
+  const query = async (
+    rule: Parameters<typeof toSql>[0],
+    options?: Parameters<typeof toSql>[1],
+  ) => {
+    const { sql, params } = toSql(rule, options);
     const result = await db.query(`SELECT name FROM users WHERE ${sql} ORDER BY name`, params);
     return (result.rows as Array<{ name: string }>).map((row) => row.name);
   };
@@ -240,20 +253,18 @@ describe('toSql integration', () => {
 
     describe('native arrays (TEXT[])', () => {
       it('empty - users with no roles', async () => {
-        const names = await query({
-          field: 'roles',
-          arrayOperator: ArrayOperator.empty,
-          arrayType: 'native',
-        });
+        const names = await query(
+          { field: 'roles', arrayOperator: ArrayOperator.empty },
+          { map: usersMap, model: 'User' },
+        );
         expect(names).toEqual(['Charlie', 'Deleted User']);
       });
 
       it('notEmpty - users with roles', async () => {
-        const names = await query({
-          field: 'roles',
-          arrayOperator: ArrayOperator.notEmpty,
-          arrayType: 'native',
-        });
+        const names = await query(
+          { field: 'roles', arrayOperator: ArrayOperator.notEmpty },
+          { map: usersMap, model: 'User' },
+        );
         expect(names).toEqual(['Alice', 'Bob', 'Eve']);
       });
     });

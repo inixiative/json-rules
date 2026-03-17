@@ -40,6 +40,7 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - nested logical conditions with `all` / `any`
 - `if` / `then` / `else`
 - array validation against nested object elements
+- array aggregates — `sum` and `avg` across numeric arrays or relation lists
 - date comparisons with timezone-aware runtime evaluation
 - relative value references via `path`
 - custom error messages on every rule
@@ -80,6 +81,15 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - `exactly`
 - `empty`
 - `notEmpty`
+
+### Aggregate Operators
+
+Used in `aggregate.mode`:
+
+- `sum`
+- `avg`
+
+Supported comparison operators for aggregate rules: `equals`, `notEquals`, `lessThan`, `lessThanEquals`, `greaterThan`, `greaterThanEquals`, `between`, `notBetween`.
 
 ### Date Operators
 
@@ -145,6 +155,30 @@ check(rule, { age: 16 }); // "Must be 18 or older"
   }
 }
 ```
+
+### Aggregate Rule
+
+Computes `sum` or `avg` of an array and compares the result to a value.
+
+```ts
+// Primitive numeric array
+{
+  field: 'scores',
+  aggregate: { mode: 'avg' },
+  operator: Operator.greaterThanEquals,
+  value: 80
+}
+
+// Object array — aggregate.field selects the numeric property per element
+{
+  field: 'orders',
+  aggregate: { mode: 'sum', field: 'total' },
+  operator: Operator.greaterThan,
+  value: 1000
+}
+```
+
+Empty-array semantics: `sum([]) = 0`, `avg([]) = null` (comparison fails).
 
 ### Date Rule
 
@@ -249,7 +283,7 @@ const plan = toPrisma({
 // plan.steps => [{ operation: 'where', where: { status: { equals: 'active' } } }]
 ```
 
-Count-based relation filters such as `atLeast`, `atMost`, and `exactly` can produce multi-step plans. Use `executePrismaQueryPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
+Aggregate relation filters (`sum`, `avg`) and count-based filters (`atLeast`, `atMost`, `exactly`) can produce multi-step plans. Use `executePrismaQueryPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
 
 ```ts
 import {
@@ -275,6 +309,23 @@ const plan = toPrisma(
 
 const where = await executePrismaQueryPlan(plan, { post: prisma.post });
 await prisma.user.findMany({ where });
+```
+
+Aggregate rules on relation lists work the same way:
+
+```ts
+const plan = toPrisma(
+  {
+    field: 'orders',
+    aggregate: { mode: 'sum', field: 'total' },
+    operator: Operator.greaterThan,
+    value: 1000,
+  },
+  { map, model: 'User' },
+);
+
+const where = await executePrismaQueryPlan(plan, { order: prisma.order });
+await prisma.user.findMany({ where }); // users whose orders sum to more than 1000
 ```
 
 ## PostgreSQL SQL Generation
@@ -321,6 +372,8 @@ Not every backend supports every rule shape.
 | Array `all` / `any` / `none` | Yes | Yes | No |
 | Array `atLeast` / `atMost` / `exactly` | Yes | Yes, with `map` + `model` | No |
 | Array `empty` / `notEmpty` | Yes | Yes | Yes |
+| Aggregate `sum` / `avg` — primitive or object array | Yes | No | Yes |
+| Aggregate `sum` / `avg` — relation list | Yes | Yes, with `map` + `model` | No |
 | Date comparisons | Yes | Most | Yes |
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
@@ -330,7 +383,9 @@ Not every backend supports every rule shape.
 - `matches` and `notMatches` are not supported by Prisma output
 - `dayIn` and `dayNotIn` are not supported by Prisma output
 - `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`
-- count-based relation operators require `{ map, model }`
+- count-based and aggregate relation operators require `{ map, model }`
+- aggregate rules with `notBetween` are not supported by Prisma output
+- aggregate rules on JSON/native stored arrays are not supported by Prisma — use `toSql()` or `check()` for those
 
 ### SQL Limitations
 
@@ -350,6 +405,7 @@ The public rule types are generic over comparison payloads:
 ```ts
 type Condition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | Rule<TRuleValue>
+  | AggregateRule
   | ArrayRule<TRuleValue, TDateValue>
   | DateRule<TDateValue>
   | All<TRuleValue, TDateValue>
@@ -372,6 +428,8 @@ Useful exports:
 - `Condition`
 - `StrictCondition`
 - `Rule`
+- `AggregateRule`
+- `AggregateMode`
 - `ArrayRule`
 - `DateRule`
 
@@ -401,7 +459,7 @@ assertValidRule(rule, { target: 'toPrisma' });
 
 ## Examples
 
-See [`examples/basic-validation.ts`](./examples/basic-validation.ts), [`examples/array-operations.ts`](./examples/array-operations.ts), [`examples/date-operations.ts`](./examples/date-operations.ts), and [`examples/advanced-features.ts`](./examples/advanced-features.ts).
+See [`examples/basic-validation.ts`](./examples/basic-validation.ts), [`examples/array-operations.ts`](./examples/array-operations.ts), [`examples/aggregate-rules.ts`](./examples/aggregate-rules.ts), [`examples/date-operations.ts`](./examples/date-operations.ts), and [`examples/advanced-features.ts`](./examples/advanced-features.ts).
 
 ## License
 

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'bun:test';
+import type { FieldMap } from '../index';
 import { ArrayOperator, DateOperator, Operator, toSql } from '../index';
+
+const nativeArrayMap: FieldMap = {
+  Test: {
+    fields: {
+      tags: { kind: 'scalar', type: 'Text', isList: true },
+      items: { kind: 'scalar', type: 'Text', isList: true },
+    },
+  },
+};
 
 describe('toSql', () => {
   describe('field operators', () => {
@@ -353,21 +363,19 @@ describe('toSql', () => {
 
     describe('native (TEXT[], INT[], etc.)', () => {
       it('empty', () => {
-        const { sql, params } = toSql({
-          field: 'tags',
-          arrayOperator: ArrayOperator.empty,
-          arrayType: 'native',
-        });
+        const { sql, params } = toSql(
+          { field: 'tags', arrayOperator: ArrayOperator.empty },
+          { map: nativeArrayMap, model: 'Test' },
+        );
         expect(sql).toBe('("tags" IS NULL OR array_length("tags", 1) IS NULL)');
         expect(params).toEqual([]);
       });
 
       it('notEmpty', () => {
-        const { sql, params } = toSql({
-          field: 'items',
-          arrayOperator: ArrayOperator.notEmpty,
-          arrayType: 'native',
-        });
+        const { sql, params } = toSql(
+          { field: 'items', arrayOperator: ArrayOperator.notEmpty },
+          { map: nativeArrayMap, model: 'Test' },
+        );
         expect(sql).toBe('("items" IS NOT NULL AND array_length("items", 1) IS NOT NULL)');
         expect(params).toEqual([]);
       });

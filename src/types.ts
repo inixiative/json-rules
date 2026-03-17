@@ -6,6 +6,8 @@ type DateOperatorValues = typeof import('./operator.ts').DateOperator;
 
 export type RuleScalar = string | number | boolean | null | undefined;
 
+export type AggregateMode = 'sum' | 'avg';
+
 export type RuleValue = RuleScalar | Date | RegExp | RuleValue[] | { [key: string]: RuleValue };
 export type OrderedRuleValue = string | number | Date;
 
@@ -71,12 +73,9 @@ export type StrictRule<TValue = RuleValue> =
   | StrictRangeRule
   | StrictPresenceRule;
 
-export type ArrayType = 'jsonb' | 'native';
-
 type ArrayRuleBase<TOperator extends ArrayOperator> = {
   field: string;
   arrayOperator: TOperator;
-  arrayType?: ArrayType;
   error?: string;
 };
 
@@ -140,6 +139,35 @@ export type StrictDateDayRule =
 
 export type StrictDateRule = StrictDateComparisonRule | StrictDateRangeRule | StrictDateDayRule;
 
+type AggregateRuleBase = {
+  field: string;
+  aggregate: { mode: AggregateMode; field?: string };
+  error?: string;
+};
+
+type AggregateSingleOperator =
+  | OperatorValues['equals']
+  | OperatorValues['notEquals']
+  | OperatorValues['lessThan']
+  | OperatorValues['lessThanEquals']
+  | OperatorValues['greaterThan']
+  | OperatorValues['greaterThanEquals'];
+
+type AggregateRangeOperator = OperatorValues['between'] | OperatorValues['notBetween'];
+
+export type StrictAggregateRule =
+  | (AggregateRuleBase & { operator: AggregateSingleOperator } & ValueSource<number>)
+  | (AggregateRuleBase & { operator: AggregateRangeOperator } & ValueSource<[number, number]>);
+
+export type AggregateRule = {
+  field: string;
+  aggregate: { mode: AggregateMode; field?: string };
+  operator: Operator;
+  value?: number | [number, number];
+  path?: string;
+  error?: string;
+};
+
 export type Rule<TValue = RuleValue> = {
   field: string;
   operator: Operator;
@@ -151,7 +179,6 @@ export type Rule<TValue = RuleValue> = {
 export type ArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
   field: string;
   arrayOperator: ArrayOperator;
-  arrayType?: ArrayType;
   condition?: Condition<TRuleValue, TDateValue>;
   count?: number;
   error?: string;
@@ -184,6 +211,7 @@ export type IfThenElse<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
 
 export type Condition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | Rule<TRuleValue>
+  | AggregateRule
   | ArrayRule<TRuleValue, TDateValue>
   | DateRule<TDateValue>
   | All<TRuleValue, TDateValue>
@@ -210,6 +238,7 @@ export type StrictIfThenElse<TRuleValue = RuleValue, TDateValue = DateRuleValue>
 
 export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | StrictRule<TRuleValue>
+  | StrictAggregateRule
   | StrictArrayRule<TRuleValue, TDateValue>
   | StrictDateRule
   | StrictAll<TRuleValue, TDateValue>

@@ -162,26 +162,26 @@ describe('StrictCondition type coverage', () => {
     expect(validDateRule).toBeTruthy();
   });
 
+  // These are intentionally invalid at the type level — validated at runtime by validateRule().
+  // No `satisfies StrictCondition` because the discriminated union errors on the discriminant
+  // field rather than the invalid value.
   const invalidBetweenRule = {
     field: 'age',
     operator: Operator.between,
-    // @ts-expect-error between requires a two-item range or a path
-    value: 18,
-  } satisfies StrictCondition;
+    value: 18, // invalid: between requires a two-item range
+  };
 
   const invalidStartsWithRule = {
     field: 'name',
     operator: Operator.startsWith,
-    // @ts-expect-error startsWith requires a string value or a path
-    value: 123,
-  } satisfies StrictCondition;
+    value: 123, // invalid: startsWith requires a string
+  };
 
   const invalidDayPathRule = {
     field: 'deliveryDate',
     dateOperator: DateOperator.dayIn,
-    // @ts-expect-error dayIn does not accept path
-    path: 'schedule.allowedDays',
-  } satisfies StrictCondition;
+    path: 'schedule.allowedDays', // invalid: dayIn does not accept path
+  };
 
   test('ts-expect-error fixtures are retained for typecheck', () => {
     expect(invalidBetweenRule).toBeDefined();

@@ -59,7 +59,7 @@ const buildAggregateStep = (
   }
 
   const targetModel = fieldEntry.type;
-  const itemField = rule.aggregate.field!;
+  const itemField = rule.aggregate.field ?? '';
 
   const targetFieldEntry = map[targetModel]?.fields[itemField];
   if (!targetFieldEntry) {

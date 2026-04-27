@@ -91,7 +91,7 @@ const checkAggregate = <TData extends Record<string, unknown>>(
 
   const numbers: number[] = arrayValue.map((item, index) => {
     const raw = itemField ? get(item as Record<string, unknown>, itemField) : item;
-    if (typeof raw !== 'number' || !isFinite(raw)) {
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
       const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
       throw new Error(`${loc} must be a finite number`);
     }

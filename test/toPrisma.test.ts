@@ -134,13 +134,13 @@ describe('toPrisma scalar operators', () => {
 
   it('isEmpty', () => {
     expect(getWhere(toPrisma({ field: 'bio', operator: Operator.isEmpty }))).toEqual({
-      bio: { in: [null, ''] },
+      OR: [{ bio: { equals: null } }, { bio: { equals: '' } }],
     });
   });
 
   it('notEmpty', () => {
     expect(getWhere(toPrisma({ field: 'name', operator: Operator.notEmpty }))).toEqual({
-      name: { notIn: [null, ''] },
+      AND: [{ name: { not: null } }, { name: { not: '' } }],
     });
   });
 

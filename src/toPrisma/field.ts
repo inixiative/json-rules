@@ -6,6 +6,25 @@ import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+  // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
+  // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
+  if (rule.operator === Operator.isEmpty) {
+    return {
+      OR: [
+        buildMapAwareFilter(rule.field, { equals: null }, options),
+        buildMapAwareFilter(rule.field, { equals: '' }, options),
+      ],
+    };
+  }
+  if (rule.operator === Operator.notEmpty) {
+    return {
+      AND: [
+        buildMapAwareFilter(rule.field, { not: null }, options),
+        buildMapAwareFilter(rule.field, { not: '' }, options),
+      ],
+    };
+  }
+
   const filter = buildLeafFilter(rule, options);
   return buildMapAwareFilter(rule.field, filter, options);
 };
@@ -106,10 +125,9 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
     }
 
     case Operator.isEmpty:
-      return { in: [null, ''] };
-
     case Operator.notEmpty:
-      return { notIn: [null, ''] };
+      // Handled in buildFieldRule — should not reach here
+      throw new Error('isEmpty/notEmpty handled at buildFieldRule level');
 
     case Operator.exists:
       return { not: null };

@@ -1,14 +1,28 @@
 import { Operator } from '../operator';
-import type { AggregateRule } from '../types';
+import type { AggregateRule, Condition } from '../types';
 import { findReverseRelation } from './relationUtils';
 import type {
   BuildOptions,
   FieldMap,
+  FieldMapEntry,
   GroupByStep,
   PrismaBuildState,
   PrismaWhere,
   StepRef,
 } from './types';
+import { buildNestedFilter } from './utils';
+
+// Forward declaration - provided by condition.ts to avoid circular import
+type BuildConditionFn = (
+  condition: Condition,
+  options?: BuildOptions,
+  state?: PrismaBuildState,
+) => PrismaWhere;
+let buildConditionRef: BuildConditionFn;
+
+export const setConditionBuilderForAggregate = (fn: BuildConditionFn) => {
+  buildConditionRef = fn;
+};
 
 export const buildAggregateRule = (
   rule: AggregateRule,
@@ -39,26 +53,81 @@ export const buildAggregateRule = (
   );
 };
 
+/**
+ * Walk a dot-notation field path through the FieldMap to find the terminal list relation.
+ *
+ * Returns the segments traversed, the final list relation entry, and the model it lives on.
+ * E.g. for 'department.employees' on User:
+ *   - segments: ['department', 'employees']
+ *   - intermediate: User → Department (singular)
+ *   - terminal: Department.employees → Employee (list)
+ */
+const walkAggregateFieldPath = (
+  field: string,
+  map: FieldMap,
+  rootModel: string,
+): {
+  segments: string[];
+  intermediateRelations: { fieldName: string; entry: FieldMapEntry; onModel: string }[];
+  terminalModel: string;
+  terminalEntry: FieldMapEntry;
+} => {
+  const segments = field.split('.');
+  const intermediateRelations: { fieldName: string; entry: FieldMapEntry; onModel: string }[] = [];
+  let currentModel = rootModel;
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const fieldEntry = map[currentModel]?.fields[seg];
+    if (!fieldEntry || fieldEntry.kind !== 'object') {
+      throw new Error(
+        `Field '${seg}' is not a relation in model '${currentModel}'. ` +
+          `Prisma aggregate rules only support relation fields.`,
+      );
+    }
+
+    if (i === segments.length - 1) {
+      // Terminal segment — must be a list relation
+      if (!fieldEntry.isList) {
+        throw new Error(`Field '${seg}' is not a list relation in model '${currentModel}'.`);
+      }
+      return {
+        segments,
+        intermediateRelations,
+        terminalModel: currentModel,
+        terminalEntry: fieldEntry,
+      };
+    }
+
+    // Intermediate segment — must be a singular relation
+    if (fieldEntry.isList) {
+      throw new Error(
+        `Intermediate field '${seg}' in path '${field}' is a list relation. ` +
+          `Only the final segment can be a list relation for aggregate rules.`,
+      );
+    }
+
+    intermediateRelations.push({ fieldName: seg, entry: fieldEntry, onModel: currentModel });
+    currentModel = fieldEntry.type;
+  }
+
+  throw new Error(`Field path '${field}' did not terminate at a list relation.`);
+};
+
 const buildAggregateStep = (
   rule: AggregateRule,
   options: BuildOptions & { map: FieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
-  const { map, model: currentModel } = options;
+  const { map, model: rootModel } = options;
 
-  const fieldEntry = map[currentModel]?.fields[rule.field];
-  if (!fieldEntry || fieldEntry.kind !== 'object') {
-    throw new Error(
-      `Field '${rule.field}' is not a relation in model '${currentModel}'. ` +
-        `Prisma aggregate rules only support relation fields.`,
-    );
-  }
+  const { intermediateRelations, terminalModel, terminalEntry } = walkAggregateFieldPath(
+    rule.field,
+    map,
+    rootModel,
+  );
 
-  if (!fieldEntry.isList) {
-    throw new Error(`Field '${rule.field}' is not a list relation in model '${currentModel}'.`);
-  }
-
-  const targetModel = fieldEntry.type;
+  const targetModel = terminalEntry.type;
   const itemField = rule.aggregate.field ?? '';
 
   const targetFieldEntry = map[targetModel]?.fields[itemField];
@@ -78,24 +147,24 @@ const buildAggregateStep = (
   }
 
   let fkOnTarget: string;
-  let pkOnCurrent: string;
+  let pkOnTerminal: string;
 
-  if (fieldEntry.fromFields && fieldEntry.fromFields.length > 0) {
-    if (fieldEntry.fromFields.length > 1) {
+  if (terminalEntry.fromFields && terminalEntry.fromFields.length > 0) {
+    if (terminalEntry.fromFields.length > 1) {
       throw new Error(`Aggregate rules do not support composite FK relations.`);
     }
-    fkOnTarget = fieldEntry.toFields?.[0] ?? 'id';
-    pkOnCurrent = fieldEntry.fromFields[0];
+    fkOnTarget = terminalEntry.toFields?.[0] ?? 'id';
+    pkOnTerminal = terminalEntry.fromFields[0];
   } else {
     const reverseRelation = findReverseRelation(
       map,
       targetModel,
-      currentModel,
-      fieldEntry.relationName,
+      terminalModel,
+      terminalEntry.relationName,
     );
     if (!reverseRelation) {
       throw new Error(
-        `Cannot determine FK relationship between '${currentModel}' and '${targetModel}'. ` +
+        `Cannot determine FK relationship between '${terminalModel}' and '${targetModel}'. ` +
           `Ensure the FieldMap contains both sides of the relation.`,
       );
     }
@@ -103,18 +172,22 @@ const buildAggregateStep = (
       throw new Error(`Aggregate rules do not support composite FK relations.`);
     }
     fkOnTarget = reverseRelation.fromFields?.[0] ?? '';
-    pkOnCurrent = reverseRelation.toFields?.[0] ?? '';
+    pkOnTerminal = reverseRelation.toFields?.[0] ?? '';
   }
 
+  // Build inner WHERE from condition (if present)
+  const innerWhere = rule.condition
+    ? buildConditionRef(rule.condition, { ...options, model: targetModel }, state)
+    : {};
+
   // Prisma 6.x having format: field first, then aggregate operator nested inside.
-  // e.g. { pointsCount: { _sum: { gt: 100 } } } — NOT { _sum: { pointsCount: { gt: 100 } } }
   const aggKey = rule.aggregate.mode === 'sum' ? '_sum' : '_avg';
   const having = { [itemField]: { [aggKey]: buildPrismaFilter(rule) } };
 
   const step: GroupByStep = {
     operation: 'groupBy',
     model: targetModel,
-    args: { by: [fkOnTarget], where: {}, having },
+    args: { by: [fkOnTarget], where: innerWhere, having },
     extract: fkOnTarget,
   };
 
@@ -122,7 +195,17 @@ const buildAggregateStep = (
   state.steps.push(step);
 
   const stepRef: StepRef = { __step: stepIndex };
-  return { [pkOnCurrent]: { in: stepRef } };
+
+  // If there are intermediate relations, nest the filter through them
+  if (intermediateRelations.length > 0) {
+    // The step ref gives us IDs of the model that owns the terminal list relation.
+    // We need to filter back through intermediate relations to the root model.
+    const leafFilter = { [pkOnTerminal]: { in: stepRef } };
+    const relationPath = intermediateRelations.map((r) => r.fieldName).join('.');
+    return buildNestedFilter(relationPath, leafFilter);
+  }
+
+  return { [pkOnTerminal]: { in: stepRef } };
 };
 
 const buildPrismaFilter = (rule: AggregateRule): Record<string, unknown> => {

@@ -6,6 +6,7 @@ import { compositeFkMap } from './fixtures/compositeFkMap';
 import { getWhere } from './fixtures/helpers';
 import { implicitM2MMap } from './fixtures/implicitM2MMap';
 import { multiRelMap } from './fixtures/multiRelMap';
+import { orderMap } from './fixtures/orderMap';
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
 describe('toPrisma result shape', () => {
@@ -704,5 +705,144 @@ describe('toPrisma composite FK', () => {
         { map: compositeFkMap, model: 'Order' },
       ),
     ).toThrow('composite FK');
+  });
+});
+
+// ─── Aggregate condition compositions ────────────────────────────────────────
+
+describe('toPrisma aggregate with date condition', () => {
+  it('date condition generates where with date filter on groupBy step', () => {
+    const result = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        condition: {
+          field: 'createdAt',
+          dateOperator: DateOperator.after,
+          value: '2026-01-01',
+        },
+        operator: Operator.greaterThan,
+        value: 1000,
+      },
+      { map: orderMap, model: 'User' },
+    );
+    expect(result.steps).toHaveLength(2);
+    const step = result.steps[0] as GroupByStep;
+    expect(step.args.where).toEqual({ createdAt: { gt: '2026-01-01' } });
+    expect(step.args.having).toEqual({ total: { _sum: { gt: 1000 } } });
+    expect(getWhere(result)).toEqual({ id: { in: { __step: 0 } } });
+  });
+
+  it('date between condition generates gte/lte where', () => {
+    const result = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        condition: {
+          field: 'createdAt',
+          dateOperator: DateOperator.between,
+          value: ['2026-01-01', '2026-12-31'],
+        },
+        operator: Operator.greaterThan,
+        value: 500,
+      },
+      { map: orderMap, model: 'User' },
+    );
+    const step = result.steps[0] as GroupByStep;
+    const where = step.args.where as Record<string, unknown>;
+    expect(where.createdAt).toBeDefined();
+  });
+});
+
+describe('toPrisma aggregate with compound conditions', () => {
+  it('date + scalar condition combined with all', () => {
+    const result = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        condition: {
+          all: [
+            { field: 'status', operator: Operator.equals, value: 'completed' },
+            { field: 'createdAt', dateOperator: DateOperator.after, value: '2026-01-01' },
+          ],
+        },
+        operator: Operator.greaterThan,
+        value: 1000,
+      },
+      { map: orderMap, model: 'User' },
+    );
+    const step = result.steps[0] as GroupByStep;
+    expect(step.args.where).toEqual({
+      AND: [{ status: { equals: 'completed' } }, { createdAt: { gt: '2026-01-01' } }],
+    });
+  });
+
+  it('any condition — status in multiple values', () => {
+    const result = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'avg', field: 'total' },
+        condition: {
+          any: [
+            { field: 'status', operator: Operator.equals, value: 'completed' },
+            { field: 'status', operator: Operator.equals, value: 'shipped' },
+          ],
+        },
+        operator: Operator.greaterThan,
+        value: 100,
+      },
+      { map: orderMap, model: 'User' },
+    );
+    const step = result.steps[0] as GroupByStep;
+    expect(step.args.where).toEqual({
+      OR: [{ status: { equals: 'completed' } }, { status: { equals: 'shipped' } }],
+    });
+  });
+});
+
+describe('toPrisma aggregate with dot-path and conditions', () => {
+  it('dot-path + date condition', () => {
+    const result = toPrisma(
+      {
+        field: 'department.projects',
+        aggregate: { mode: 'sum', field: 'budget' },
+        condition: { field: 'status', operator: Operator.equals, value: 'active' },
+        operator: Operator.greaterThan,
+        value: 50000,
+      },
+      { map: orderMap, model: 'User' },
+    );
+    expect(result.steps).toHaveLength(2);
+    const step = result.steps[0] as GroupByStep;
+    expect(step.model).toBe('Project');
+    expect(step.args.by).toEqual(['departmentId']);
+    expect(step.args.where).toEqual({ status: { equals: 'active' } });
+    expect(step.args.having).toEqual({ budget: { _sum: { gt: 50000 } } });
+    // Should nest through the intermediate relation
+    expect(getWhere(result)).toEqual({ department: { id: { in: { __step: 0 } } } });
+  });
+
+  it('aggregate inside all with other conditions', () => {
+    const result = toPrisma(
+      {
+        all: [
+          { field: 'departmentId', operator: Operator.exists },
+          {
+            field: 'orders',
+            aggregate: { mode: 'sum', field: 'total' },
+            condition: { field: 'status', operator: Operator.equals, value: 'completed' },
+            operator: Operator.greaterThan,
+            value: 1000,
+          },
+        ],
+      },
+      { map: orderMap, model: 'User' },
+    );
+    const where = getWhere(result);
+    expect(where).toEqual({
+      AND: [{ departmentId: { not: null } }, { id: { in: { __step: 0 } } }],
+    });
+    const step = result.steps[0] as GroupByStep;
+    expect(step.args.where).toEqual({ status: { equals: 'completed' } });
   });
 });

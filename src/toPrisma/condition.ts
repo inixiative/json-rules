@@ -1,5 +1,5 @@
 import type { Condition } from '../types';
-import { buildAggregateRule } from './aggregate';
+import { buildAggregateRule, setConditionBuilderForAggregate } from './aggregate';
 import { buildArrayRule, setConditionBuilderForArray } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
@@ -32,3 +32,4 @@ export const buildCondition = (
 // Wire up circular dependencies
 setConditionBuilder(buildCondition);
 setConditionBuilderForArray(buildCondition);
+setConditionBuilderForAggregate(buildCondition);

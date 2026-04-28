@@ -493,4 +493,29 @@ describe('toSql', () => {
       ).toThrow('Unknown day name: notaday');
     });
   });
+
+  describe('aggregate condition filtering', () => {
+    it('throws for condition on aggregate — not yet supported', () => {
+      expect(() =>
+        toSql({
+          field: 'orders',
+          aggregate: { mode: 'sum', field: 'total' },
+          condition: { field: 'status', operator: Operator.equals, value: 'completed' },
+          operator: Operator.greaterThan,
+          value: 1000,
+        }),
+      ).toThrow('not yet supported by toSql()');
+    });
+
+    it('aggregate without condition still works', () => {
+      const { sql, params } = toSql({
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        operator: Operator.greaterThan,
+        value: 1000,
+      });
+      expect(sql).toContain('SUM');
+      expect(params).toEqual([1000]);
+    });
+  });
 });

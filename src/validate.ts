@@ -320,6 +320,18 @@ const validateAggregateRule = (
     );
   }
 
+  if ('condition' in rule && rule.condition !== undefined) {
+    if (context.target === 'toSql') {
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'unsupported_sql_aggregate_condition',
+        `Aggregate condition filtering is not supported by toSql(); use check() or toPrisma()`,
+      );
+    }
+    validateCondition(rule.condition, `${path}.condition`, context);
+  }
+
   if (!requireValueOrPath(rule, path, context)) return;
   if ('path' in rule && typeof rule.path === 'string') return;
 

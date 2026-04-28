@@ -7,6 +7,13 @@ import { quoteField, quoteFieldAsJsonb } from './quoting';
 import type { BuilderState } from './types';
 
 export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): string => {
+  if (rule.condition) {
+    throw new Error(
+      `Aggregate condition filtering is not yet supported by toSql(). ` +
+        `Use check() for in-memory evaluation or toPrisma() for database queries.`,
+    );
+  }
+
   const subquery = buildAggregateSubquery(rule, state);
   return buildAggregateComparison(subquery, rule, state);
 };

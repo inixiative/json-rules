@@ -176,6 +176,24 @@ Computes `sum` or `avg` of an array and compares the result to a value.
   operator: Operator.greaterThan,
   value: 1000
 }
+
+// Filtered aggregate — only aggregate elements matching a condition
+{
+  field: 'orders',
+  aggregate: { mode: 'sum', field: 'total' },
+  condition: { field: 'status', operator: Operator.equals, value: 'completed' },
+  operator: Operator.greaterThan,
+  value: 1000
+}
+
+// Dot-path field traversal — aggregate through relations
+{
+  field: 'department.projects',
+  aggregate: { mode: 'sum', field: 'budget' },
+  condition: { field: 'status', operator: Operator.equals, value: 'active' },
+  operator: Operator.greaterThan,
+  value: 50000
+}
 ```
 
 Empty-array semantics: `sum([]) = 0`, `avg([]) = null` (comparison fails).

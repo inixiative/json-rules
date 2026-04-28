@@ -139,9 +139,10 @@ export type StrictDateDayRule =
 
 export type StrictDateRule = StrictDateComparisonRule | StrictDateRangeRule | StrictDateDayRule;
 
-type AggregateRuleBase = {
+type AggregateRuleBase<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
   field: string;
   aggregate: { mode: AggregateMode; field?: string };
+  condition?: StrictCondition<TRuleValue, TDateValue>;
   error?: string;
 };
 
@@ -155,13 +156,18 @@ type AggregateSingleOperator =
 
 type AggregateRangeOperator = OperatorValues['between'] | OperatorValues['notBetween'];
 
-export type StrictAggregateRule =
-  | (AggregateRuleBase & { operator: AggregateSingleOperator } & ValueSource<number>)
-  | (AggregateRuleBase & { operator: AggregateRangeOperator } & ValueSource<[number, number]>);
+export type StrictAggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
+  | (AggregateRuleBase<TRuleValue, TDateValue> & {
+      operator: AggregateSingleOperator;
+    } & ValueSource<number>)
+  | (AggregateRuleBase<TRuleValue, TDateValue> & {
+      operator: AggregateRangeOperator;
+    } & ValueSource<[number, number]>);
 
-export type AggregateRule = {
+export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
   field: string;
   aggregate: { mode: AggregateMode; field?: string };
+  condition?: Condition<TRuleValue, TDateValue>;
   operator: Operator;
   value?: number | [number, number];
   path?: string;
@@ -211,7 +217,7 @@ export type IfThenElse<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
 
 export type Condition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | Rule<TRuleValue>
-  | AggregateRule
+  | AggregateRule<TRuleValue, TDateValue>
   | ArrayRule<TRuleValue, TDateValue>
   | DateRule<TDateValue>
   | All<TRuleValue, TDateValue>
@@ -238,7 +244,7 @@ export type StrictIfThenElse<TRuleValue = RuleValue, TDateValue = DateRuleValue>
 
 export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | StrictRule<TRuleValue>
-  | StrictAggregateRule
+  | StrictAggregateRule<TRuleValue, TDateValue>
   | StrictArrayRule<TRuleValue, TDateValue>
   | StrictDateRule
   | StrictAll<TRuleValue, TDateValue>

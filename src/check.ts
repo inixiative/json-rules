@@ -87,9 +87,16 @@ const checkAggregate = <TData extends Record<string, unknown>>(
   const arrayValue = get(data, condition.field);
   if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
 
+  // Filter elements by condition before aggregating
+  const filtered = condition.condition
+    ? arrayValue.filter(
+        (item) => check(condition.condition!, item as Record<string, unknown>, context) === true,
+      )
+    : arrayValue;
+
   const { mode, field: itemField } = condition.aggregate;
 
-  const numbers: number[] = arrayValue.map((item, index) => {
+  const numbers: number[] = filtered.map((item, index) => {
     const raw = itemField ? get(item as Record<string, unknown>, itemField) : item;
     if (typeof raw !== 'number' || !Number.isFinite(raw)) {
       const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;

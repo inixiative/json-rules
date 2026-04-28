@@ -144,6 +144,53 @@ describe('toPrisma scalar operators', () => {
     });
   });
 
+  it('isEmpty composes inside all (AND) with other conditions', () => {
+    const result = toPrisma({
+      all: [
+        { field: 'bio', operator: Operator.isEmpty },
+        { field: 'notes', operator: Operator.isEmpty },
+        { field: 'status', operator: Operator.equals, value: 'active' },
+      ],
+    });
+    expect(getWhere(result)).toEqual({
+      AND: [
+        { OR: [{ bio: { equals: null } }, { bio: { equals: '' } }] },
+        { OR: [{ notes: { equals: null } }, { notes: { equals: '' } }] },
+        { status: { equals: 'active' } },
+      ],
+    });
+  });
+
+  it('notEmpty composes inside any (OR) with other conditions', () => {
+    const result = toPrisma({
+      any: [
+        { field: 'bio', operator: Operator.notEmpty },
+        { field: 'name', operator: Operator.notEmpty },
+      ],
+    });
+    expect(getWhere(result)).toEqual({
+      OR: [
+        { AND: [{ bio: { not: null } }, { bio: { not: '' } }] },
+        { AND: [{ name: { not: null } }, { name: { not: '' } }] },
+      ],
+    });
+  });
+
+  it('isEmpty + notEmpty mixed in compound condition', () => {
+    const result = toPrisma({
+      all: [
+        { field: 'email', operator: Operator.notEmpty },
+        { field: 'deletedAt', operator: Operator.isEmpty },
+      ],
+    });
+    expect(getWhere(result)).toEqual({
+      AND: [
+        { AND: [{ email: { not: null } }, { email: { not: '' } }] },
+        { OR: [{ deletedAt: { equals: null } }, { deletedAt: { equals: '' } }] },
+      ],
+    });
+  });
+
   it('exists', () => {
     expect(getWhere(toPrisma({ field: 'avatar', operator: Operator.exists }))).toEqual({
       avatar: { not: null },

@@ -106,8 +106,10 @@ const buildAggregateStep = (
     pkOnCurrent = reverseRelation.toFields?.[0] ?? '';
   }
 
+  // Prisma 6.x having format: field first, then aggregate operator nested inside.
+  // e.g. { pointsCount: { _sum: { gt: 100 } } } — NOT { _sum: { pointsCount: { gt: 100 } } }
   const aggKey = rule.aggregate.mode === 'sum' ? '_sum' : '_avg';
-  const having = { [aggKey]: { [itemField]: buildPrismaFilter(rule) } };
+  const having = { [itemField]: { [aggKey]: buildPrismaFilter(rule) } };
 
   const step: GroupByStep = {
     operation: 'groupBy',

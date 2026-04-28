@@ -386,7 +386,7 @@ describe('toPrisma() aggregate rules', () => {
     expect(step.operation).toBe('groupBy');
     expect(step.model).toBe('Order');
     expect(step.args.by).toEqual(['userId']);
-    expect(step.args.having).toEqual({ _sum: { total: { gt: 1000 } } });
+    expect(step.args.having).toEqual({ total: { _sum: { gt: 1000 } } });
     expect(getWhere(result)).toEqual({ id: { in: { __step: 0 } } });
   });
 
@@ -401,7 +401,7 @@ describe('toPrisma() aggregate rules', () => {
       { map: orderMap, model: 'User' },
     );
     const step = result.steps[0] as GroupByStep;
-    expect(step.args.having).toEqual({ _avg: { total: { lte: 500 } } });
+    expect(step.args.having).toEqual({ total: { _avg: { lte: 500 } } });
   });
 
   it('between maps to gte/lte in having', () => {
@@ -415,7 +415,7 @@ describe('toPrisma() aggregate rules', () => {
       { map: orderMap, model: 'User' },
     );
     const step = result.steps[0] as GroupByStep;
-    expect(step.args.having).toEqual({ _sum: { total: { gte: 100, lte: 500 } } });
+    expect(step.args.having).toEqual({ total: { _sum: { gte: 100, lte: 500 } } });
   });
 
   it('throws without map/model', () => {

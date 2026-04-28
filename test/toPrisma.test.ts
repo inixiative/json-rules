@@ -286,7 +286,7 @@ describe('toPrisma multi-step count operators', () => {
     expect(groupBy.model).toBe('Post');
     expect(groupBy.args.by).toEqual(['authorId']);
     expect(groupBy.args.where).toEqual({ published: { equals: true } });
-    expect(groupBy.args.having).toEqual({ _count: { _all: { gte: 3 } } });
+    expect(groupBy.args.having).toEqual({ authorId: { _count: { gte: 3 } } });
     expect(groupBy.extract).toBe('authorId');
 
     const w = result.steps[1] as WhereStep;
@@ -300,7 +300,7 @@ describe('toPrisma multi-step count operators', () => {
       { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
-    expect(groupBy.args.having).toEqual({ _count: { _all: { lte: 5 } } });
+    expect(groupBy.args.having).toEqual({ authorId: { _count: { lte: 5 } } });
   });
 
   it('exactly → having equals', () => {
@@ -309,7 +309,7 @@ describe('toPrisma multi-step count operators', () => {
       { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
-    expect(groupBy.args.having).toEqual({ _count: { _all: { equals: 2 } } });
+    expect(groupBy.args.having).toEqual({ authorId: { _count: { equals: 2 } } });
   });
 
   it('count defaults to 1 when not specified', () => {
@@ -318,7 +318,7 @@ describe('toPrisma multi-step count operators', () => {
       { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
-    expect(groupBy.args.having).toEqual({ _count: { _all: { gte: 1 } } });
+    expect(groupBy.args.having).toEqual({ authorId: { _count: { gte: 1 } } });
   });
 
   it('atLeast without map → throws', () => {

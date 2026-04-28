@@ -100,7 +100,7 @@ export const buildCountStep = (
     : {};
 
   const count = rule.count ?? 1;
-  const having = buildHaving(rule.arrayOperator, count);
+  const having = buildHaving(rule.arrayOperator, count, fkOnTarget);
 
   const step: GroupByStep = {
     operation: 'groupBy',
@@ -116,14 +116,20 @@ export const buildCountStep = (
   return { [pkOnCurrent]: { in: stepRef } };
 };
 
-const buildHaving = (op: ArrayOperator, count: number): Record<string, unknown> => {
+// Prisma 6.x having format: field first, then _count nested inside.
+// e.g. { fanUserUuid: { _count: { gte: 3 } } } — NOT { _count: { _all: { gte: 3 } } }
+const buildHaving = (
+  op: ArrayOperator,
+  count: number,
+  groupByField: string,
+): Record<string, unknown> => {
   switch (op) {
     case ArrayOperator.atLeast:
-      return { _count: { _all: { gte: count } } };
+      return { [groupByField]: { _count: { gte: count } } };
     case ArrayOperator.atMost:
-      return { _count: { _all: { lte: count } } };
+      return { [groupByField]: { _count: { lte: count } } };
     case ArrayOperator.exactly:
-      return { _count: { _all: { equals: count } } };
+      return { [groupByField]: { _count: { equals: count } } };
     default:
       throw new Error('unreachable');
   }

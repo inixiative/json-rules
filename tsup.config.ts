@@ -9,5 +9,13 @@ export default defineConfig({
   minify: true,
   treeshake: true,
   outDir: 'dist',
-  external: ['dayjs', 'lodash'],
+  external: [
+    'dayjs',
+    'dayjs/plugin/isSameOrAfter',
+    'dayjs/plugin/isSameOrBefore',
+    'dayjs/plugin/timezone',
+    'dayjs/plugin/utc',
+    'lodash',
+    'pg',
+  ],
 });

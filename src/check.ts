@@ -88,9 +88,10 @@ const checkAggregate = <TData extends Record<string, unknown>>(
   if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
 
   // Filter elements by condition before aggregating
-  const filtered = condition.condition
+  const nestedCondition = condition.condition;
+  const filtered = nestedCondition
     ? arrayValue.filter(
-        (item) => check(condition.condition!, item as Record<string, unknown>, context) === true,
+        (item) => check(nestedCondition, item as Record<string, unknown>, context) === true,
       )
     : arrayValue;
 

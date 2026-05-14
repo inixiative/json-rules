@@ -7,10 +7,19 @@ export type Lens = {
   model: string;
 };
 
-export type LensNarrowing = {
-  // TODO: may need to be an identifier (lens name/uuid) rather than a direct reference for persistence
-  parent: Lens | LensNarrowing;
+export type ModelNarrowing = {
   picks?: string[];
   omits?: string[];
   constrains?: Record<string, unknown>;
+  relations?: Record<string, ModelNarrowing>;
+};
+
+export type MapNarrowing = {
+  models: Record<string, ModelNarrowing>;
+};
+
+export type LensNarrowing = {
+  // TODO: may need to be an identifier (lens name/uuid) rather than a direct reference for persistence
+  parent: Lens | LensNarrowing;
+  maps: Record<string, MapNarrowing>;
 };

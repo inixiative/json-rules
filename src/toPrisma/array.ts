@@ -1,7 +1,7 @@
 import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
 import { buildCountStep } from './countStep';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
 // Forward declaration - provided by condition.ts to avoid circular import
@@ -30,7 +30,7 @@ export const buildArrayRule = (
     if (options?.map && options?.model && state) {
       return buildCountStep(
         rule,
-        options as BuildOptions & { map: NonNullable<BuildOptions['map']>; model: string },
+        options as BuildOptions & { map: FieldMap; model: string },
         state,
         buildCondition,
       );

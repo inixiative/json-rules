@@ -9,9 +9,15 @@ export type FieldMapEntry = {
   kind: 'scalar' | 'object' | 'enum' | 'bridge';
   type: string;
   isList?: boolean;
+  options?: string[]; // valid values for enum/select fields; populated by provider resolution
   fromFields?: string[];
   toFields?: string[];
   relationName?: string; // disambiguates multiple relations between same two models
+};
+
+// Marks a model as having fields sourced dynamically from a DB table at runtime.
+export type FieldProvider = {
+  source: string; // opaque key passed to ProviderResolver
 };
 
 export interface FieldMap {
@@ -20,6 +26,7 @@ export interface FieldMap {
     fields: {
       [fieldName: string]: FieldMapEntry;
     };
+    providers?: FieldProvider[]; // resolved and merged into fields before lens use
   };
 }
 

@@ -4,24 +4,51 @@ import { checkField } from './field';
 import { ArrayOperator, Operator } from './operator';
 import type { AggregateRule, ArrayRule, Condition } from './types';
 
-export const check = <TData extends Record<string, unknown>>(
+const validateRootArrayShape = (rule: Condition): void => {
+  if (typeof rule === 'boolean') return;
+  if ('all' in rule) {
+    for (const c of rule.all) validateRootArrayShape(c);
+    return;
+  }
+  if ('any' in rule) {
+    for (const c of rule.any) validateRootArrayShape(c);
+    return;
+  }
+  if ('arrayOperator' in rule && !('field' in rule)) return;
+  throw new Error(
+    'check: when data is an array, every leaf must be a fieldless arrayOperator (composable with all/any)',
+  );
+};
+
+export const check = <TData extends Record<string, unknown> | unknown[]>(
   conditions: Condition,
   data: TData,
   context: TData = data,
 ): boolean | string => {
+  if (Array.isArray(data)) validateRootArrayShape(conditions);
   if (typeof conditions === 'boolean') return conditions;
   if ('all' in conditions) return all(conditions.all, data, context, conditions.error);
   if ('any' in conditions) return any(conditions.any, data, context, conditions.error);
   if ('arrayOperator' in conditions) return checkArray(conditions, data, context);
-  if ('dateOperator' in conditions) return checkDate(conditions, data, context);
+  if ('dateOperator' in conditions)
+    return checkDate(
+      conditions,
+      data as Record<string, unknown>,
+      context as Record<string, unknown>,
+    );
   if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, data, context);
-  if ('field' in conditions) return checkField(conditions, data, context);
+  if ('field' in conditions)
+    return checkField(
+      conditions,
+      data as Record<string, unknown>,
+      context as Record<string, unknown>,
+    );
   if ('if' in conditions) return checkIfThenElse(conditions, data, context);
 
   return false;
 };
 
-const all = <TData extends Record<string, unknown>>(
+const all = <TData extends Record<string, unknown> | unknown[]>(
   conditions: Condition[],
   data: TData,
   context: TData,
@@ -48,7 +75,7 @@ const all = <TData extends Record<string, unknown>>(
   return `All conditions must pass: ${errors.join(' AND ')}`;
 };
 
-const any = <TData extends Record<string, unknown>>(
+const any = <TData extends Record<string, unknown> | unknown[]>(
   conditions: Condition[],
   data: TData,
   context: TData,
@@ -68,7 +95,7 @@ const any = <TData extends Record<string, unknown>>(
   return `At least one condition must pass: ${errors.join(' OR ')}`;
 };
 
-const checkIfThenElse = <TData extends Record<string, unknown>>(
+const checkIfThenElse = <TData extends Record<string, unknown> | unknown[]>(
   condition: { if: Condition; then: Condition; else?: Condition },
   data: TData,
   context: TData,
@@ -79,7 +106,7 @@ const checkIfThenElse = <TData extends Record<string, unknown>>(
   return condition.else ? check(condition.else, data, context) : true;
 };
 
-const checkAggregate = <TData extends Record<string, unknown>>(
+const checkAggregate = <TData extends Record<string, unknown> | unknown[]>(
   condition: AggregateRule,
   data: TData,
   context: TData,
@@ -91,7 +118,12 @@ const checkAggregate = <TData extends Record<string, unknown>>(
   const nestedCondition = condition.condition;
   const filtered = nestedCondition
     ? arrayValue.filter(
-        (item) => check(nestedCondition, item as Record<string, unknown>, context) === true,
+        (item) =>
+          check(
+            nestedCondition,
+            item as Record<string, unknown>,
+            context as Record<string, unknown>,
+          ) === true,
       )
     : arrayValue;
 
@@ -168,14 +200,15 @@ const checkAggregate = <TData extends Record<string, unknown>>(
   }
 };
 
-const checkArray = <TData extends Record<string, unknown>>(
+const checkArray = <TData extends Record<string, unknown> | unknown[]>(
   condition: ArrayRule,
   data: TData,
   context: TData,
 ): boolean | string => {
-  const arrayValue = get(data, condition.field);
+  const arrayValue = condition.field ? get(data, condition.field) : data;
 
-  if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
+  if (!Array.isArray(arrayValue))
+    throw new Error(`${condition.field || '(root)'} must be an array`);
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 
@@ -225,7 +258,7 @@ const checkArray = <TData extends Record<string, unknown>>(
 
     // Pass item as data (for relative field access) but keep original context (for path access)
     const results = arrayValue.map((item) =>
-      check(itemCondition, item as Record<string, unknown>, context),
+      check(itemCondition, item as Record<string, unknown>, context as Record<string, unknown>),
     );
     matches = results.filter((r) => r === true).length;
     failures = results.filter((r) => typeof r === 'string').length;

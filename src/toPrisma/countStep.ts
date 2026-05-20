@@ -33,7 +33,7 @@ export const buildCountStep = (
 ): PrismaWhere => {
   const { map, model: currentModel } = options;
 
-  const fieldEntry = map[currentModel]?.fields[rule.field];
+  const fieldEntry = map[currentModel]?.fields[rule.field as string];
   if (!fieldEntry || fieldEntry.kind !== 'object') {
     throw new Error(
       `Field '${rule.field}' is not a relation in model '${currentModel}'. ` +

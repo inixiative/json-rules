@@ -183,7 +183,7 @@ export type Rule<TValue = RuleValue> = {
 };
 
 export type ArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
-  field: string;
+  field?: string;
   arrayOperator: ArrayOperator;
   condition?: Condition<TRuleValue, TDateValue>;
   count?: number;

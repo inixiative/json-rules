@@ -42,7 +42,7 @@ export const buildArrayRule = (
   }
 
   const filter = buildArrayLeafFilter(rule, options, state);
-  return buildNestedFilter(rule.field, filter);
+  return buildNestedFilter(rule.field as string, filter);
 };
 
 const buildArrayLeafFilter = (

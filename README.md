@@ -451,6 +451,14 @@ Useful exports:
 - `ArrayRule`
 - `DateRule`
 
+Lens & multi-source:
+
+- `Lens`, `LensNarrowing`, `MapNarrowing`, `ModelNarrowing`
+- `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
+- `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
+- `validateNarrowing`, `projectNarrowing`, `checkRuleAgainstLens`, `applyLens`, `getSources`
+- `checkWithLens`, `LensCheckData`
+
 ## Error Handling
 
 The library throws when a rule is structurally invalid, for example:
@@ -473,6 +481,140 @@ if (!result.ok) {
 }
 
 assertValidRule(rule, { target: 'toPrisma' });
+```
+
+## Root-Array Rules in `check()`
+
+When `data` is an array, the rule must be a tree of `all` / `any` whose leaves are **fieldless** `ArrayRule`s (no `field`, `arrayOperator` operates on the array itself).
+
+```ts
+const users = [
+  { industry: 'tech', status: 'active' },
+  { industry: 'finance', status: 'active' },
+  { industry: 'tech', status: 'inactive' },
+];
+
+// "Is there any tech user AND are at least 2 active?"
+check(
+  {
+    all: [
+      { arrayOperator: ArrayOperator.any, condition: { field: 'industry', operator: Operator.equals, value: 'tech' } },
+      { arrayOperator: ArrayOperator.atLeast, count: 2, condition: { field: 'status', operator: Operator.equals, value: 'active' } },
+    ],
+  },
+  users,
+);
+```
+
+`check()` throws if `data` is an array but the rule contains any field-based leaf, or if the rule is a fieldless `ArrayRule` and `data` is not an array. Root-array compilation to Prisma/SQL is not yet implemented — these are `check()`-only.
+
+## Lens & Multi-Source Data
+
+The `Lens` primitive is a schema-aware view layer over one or more `FieldMap`s. It enables rule authoring against multi-source data (e.g. Prisma + an external CRM), with declarative cross-source `Bridge`s and recursive `Narrowing`s for picks/omits/constraints.
+
+### FieldMapSet & Bridges
+
+A `FieldMapSet` groups one or more `FieldMap`s and declares the cross-source edges between them:
+
+```ts
+import { stitchFieldMaps } from '@inixiative/json-rules';
+
+const set = stitchFieldMaps({
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [
+    {
+      endpoints: [
+        { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+        { fieldMap: 'prisma',     model: 'FanUser', on: 'crmId' },
+      ],
+      cardinality: 'oneToMany',
+    },
+  ],
+});
+```
+
+`stitchFieldMaps()` injects bridge entries as `kind: 'bridge'` fields on each endpoint model — addressable in rules via `<fieldMap>:<Model>` notation (e.g. `salesforce:Contact.industry`). Each endpoint's `on` is the symmetric join field used at eval time for hydration. Bridge cardinality controls list-vs-single on each side.
+
+### Lens
+
+```ts
+const lens: Lens = {
+  map: set,                 // FieldMap | FieldMapSet
+  mapName: 'prisma',        // required when map is a FieldMapSet
+  model: 'FanUser',         // anchor model
+  sources: {                // optional: pre-fetched FE picker data
+    'prisma:FanUser.customFields': [{ uuid, fieldKey, label }, ...],
+  },
+};
+```
+
+`sources` is pure data keyed by `<fieldMap>:<Model>[.field?]`. The caller fetches and attaches; the library never fetches. Used by builder UIs to populate pickers tied to schema paths.
+
+### LensNarrowing & `constrains`
+
+`LensNarrowing` is a recursive tree that narrows a parent `Lens` (or another `LensNarrowing`). Each narrowing can add picks/omits per model + a lens-level constraint:
+
+```ts
+const narrowing: LensNarrowing = {
+  parent: lens,
+  maps: {
+    prisma: {
+      models: {
+        FanUser: { picks: ['email', 'firstName', 'crmId'] },
+      },
+    },
+  },
+  constrains: { field: 'deletedAt', operator: Operator.isEmpty },
+};
+```
+
+Children can only narrow further — chain rules enforce `picks ⊆ ancestor picks`, no re-picking an ancestor-omitted field. Constraints AND into any rule evaluated against the lens.
+
+### Lens Utilities
+
+| Function | Purpose |
+| --- | --- |
+| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable constraint paths) |
+| `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain |
+| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths against the projected surface; returns `{ ok, violations }` |
+| `applyLens(rule, narrowing)` | Returns `{ all: [...chainConstraints, rule] }`; identity if no constraints |
+| `getSources(lens)` | Returns the root lens's `sources` |
+
+### `checkWithLens`
+
+Thin wrapper around `check()` that merges supplemental cross-source rows onto a single anchor row before evaluating:
+
+```ts
+import { checkWithLens } from '@inixiative/json-rules';
+
+// Caller fetches once, indexes by the foreign side's `on` field
+const fanUser = { id: 'u1', email: 'a@b.com', crmId: 'c1' };
+const contact = await fetchContact('c1');
+const events  = await db.marketingEvent.findMany({ where: { userId: 'u1' } });
+
+const result = checkWithLens(rule, lens, {
+  main: fanUser,
+  supplemental: {
+    'salesforce:Contact': contact,   // 1-1: single object
+    'crm:MarketingEvent': events,    // 1-many: array
+  },
+});
+```
+
+Because supplemental keys are `<fieldMap>:<Model>` and the engine's path walker is dotted-key based, paths like `salesforce:Contact.industry` resolve naturally through `lodash.get` — no engine changes for bridge awareness. Cycles in the foreign data are caller-controlled (rules are finite trees, so walks terminate).
+
+For batch evaluation, loop per row:
+
+```ts
+const matching = fanUsers.filter((u) =>
+  checkWithLens(rule, lens, {
+    main: u,
+    supplemental: {
+      'salesforce:Contact': contactsByCrmId[u.crmId],
+      'crm:MarketingEvent': eventsByUserId[u.id],
+    },
+  }) === true,
+);
 ```
 
 ## Examples

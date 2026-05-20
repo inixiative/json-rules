@@ -13,6 +13,7 @@ const prismaMap: FieldMap = {
       email: { kind: 'scalar', type: 'String' },
       name: { kind: 'scalar', type: 'String' },
       deletedAt: { kind: 'scalar', type: 'DateTime' },
+      crmId: { kind: 'scalar', type: 'String' },
       fanMissions: { kind: 'object', type: 'FanMission', isList: true },
     },
   },
@@ -36,13 +37,16 @@ const salesforceMap: FieldMap = {
 
 const bridge: Bridge = {
   endpoints: [
-    { fieldMap: 'salesforce', model: 'Contact' },
-    { fieldMap: 'prisma', model: 'FanUser' },
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
   ],
   cardinality: 'oneToMany',
 };
 
-const stitched = stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [bridge]);
+const stitched = stitchFieldMaps({
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [bridge],
+});
 
 const lens: Lens = {
   map: stitched,

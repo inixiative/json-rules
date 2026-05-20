@@ -27,15 +27,16 @@ const salesforceMap: FieldMap = {
 
 const bridge: Bridge = {
   endpoints: [
-    { fieldMap: 'salesforce', model: 'Contact' },
-    { fieldMap: 'prisma', model: 'FanUser' },
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
   ],
   cardinality: 'oneToMany',
 };
 
-const stitched: FieldMapSet = stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [
-  bridge,
-]);
+const stitched: FieldMapSet = stitchFieldMaps({
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [bridge],
+});
 
 const lens: Lens = {
   map: stitched,

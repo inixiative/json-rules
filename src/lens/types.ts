@@ -6,6 +6,7 @@ export type Lens = {
   map: FieldMap | FieldMapSet;
   mapName?: string;
   model: string;
+  sources?: Record<string, unknown>;
 };
 
 export type ModelNarrowing = {

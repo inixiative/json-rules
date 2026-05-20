@@ -5,7 +5,7 @@ const FORBIDDEN_FIELD_CHARS = /[.:]/;
 
 export const validateFieldMapSet = (set: FieldMapSet): void => {
   const errors: string[] = [];
-  for (const [mapName, fieldMap] of Object.entries(set)) {
+  for (const [mapName, fieldMap] of Object.entries(set.maps)) {
     for (const [modelName, model] of Object.entries(fieldMap)) {
       for (const fieldName of Object.keys(model.fields)) {
         if (FORBIDDEN_FIELD_CHARS.test(fieldName)) {
@@ -20,5 +20,5 @@ export const validateFieldMapSet = (set: FieldMapSet): void => {
 };
 
 export const validateFieldMap = (fieldMap: FieldMap, mapName = 'fieldMap'): void => {
-  validateFieldMapSet({ [mapName]: fieldMap });
+  validateFieldMapSet({ maps: { [mapName]: fieldMap } });
 };

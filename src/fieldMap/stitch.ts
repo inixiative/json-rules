@@ -1,12 +1,12 @@
-import type { Bridge, FieldMapSet } from './types.ts';
+import type { FieldMapSet } from './types.ts';
 
-export const stitchFieldMaps = (set: FieldMapSet, bridges: Bridge[]): FieldMapSet => {
-  const out: FieldMapSet = structuredClone(set);
+export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
+  const out: FieldMapSet = { maps: structuredClone(set.maps), bridges: set.bridges };
 
-  for (const bridge of bridges) {
+  for (const bridge of set.bridges ?? []) {
     const [a, b] = bridge.endpoints;
-    const aOwner = out[a.fieldMap]?.[a.model];
-    const bOwner = out[b.fieldMap]?.[b.model];
+    const aOwner = out.maps[a.fieldMap]?.[a.model];
+    const bOwner = out.maps[b.fieldMap]?.[b.model];
     if (!aOwner) {
       throw new Error(`stitchFieldMaps: endpoint '${a.fieldMap}:${a.model}' not found`);
     }

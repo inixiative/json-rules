@@ -35,13 +35,16 @@ const salesforceMap: FieldMap = {
 
 const bridge: Bridge = {
   endpoints: [
-    { fieldMap: 'salesforce', model: 'Contact' },
-    { fieldMap: 'prisma', model: 'FanUser' },
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
   ],
   cardinality: 'oneToMany',
 };
 
-const stitched = stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [bridge]);
+const stitched = stitchFieldMaps({
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [bridge],
+});
 
 const lens: Lens = {
   map: stitched,
@@ -57,8 +60,8 @@ const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): 
 describe('projectNarrowing', () => {
   test('empty chain returns clone of root set', () => {
     const out = projectNarrowing(lens);
-    expect(out.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.prisma.FanUser.fields.name).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields.name).toBeDefined();
     expect(out).not.toBe(stitched);
   });
 
@@ -67,9 +70,9 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { picks: ['email'] } } },
     });
     const out = projectNarrowing(n);
-    expect(out.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.prisma.FanUser.fields.name).toBeUndefined();
-    expect(out.prisma.FanUser.fields.deletedAt).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields.name).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.deletedAt).toBeUndefined();
   });
 
   test('omits drop listed fields', () => {
@@ -77,9 +80,9 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { omits: ['deletedAt', 'name'] } } },
     });
     const out = projectNarrowing(n);
-    expect(out.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.prisma.FanUser.fields.name).toBeUndefined();
-    expect(out.prisma.FanUser.fields.deletedAt).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields.name).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.deletedAt).toBeUndefined();
   });
 
   test('picks keep relation fields that have nested narrowings', () => {
@@ -94,11 +97,11 @@ describe('projectNarrowing', () => {
       },
     });
     const out = projectNarrowing(n);
-    expect(out.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.prisma.FanUser.fields.fanMissions).toBeDefined();
-    expect(out.prisma.FanMission.fields.missionUuid).toBeDefined();
-    expect(out.prisma.FanMission.fields.status).toBeUndefined();
-    expect(out.prisma.FanMission.fields.id).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields.fanMissions).toBeDefined();
+    expect(out.maps.prisma.FanMission.fields.missionUuid).toBeDefined();
+    expect(out.maps.prisma.FanMission.fields.status).toBeUndefined();
+    expect(out.maps.prisma.FanMission.fields.id).toBeUndefined();
   });
 
   test('cascades through cross-map bridge', () => {
@@ -114,8 +117,8 @@ describe('projectNarrowing', () => {
       },
     });
     const out = projectNarrowing(n);
-    expect(out.salesforce.Contact.fields.industry).toBeDefined();
-    expect(out.salesforce.Contact.fields.id).toBeUndefined();
+    expect(out.maps.salesforce.Contact.fields.industry).toBeDefined();
+    expect(out.maps.salesforce.Contact.fields.id).toBeUndefined();
   });
 
   test('multi-level chain applies all narrowings cumulatively', () => {
@@ -129,10 +132,10 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { omits: ['name'] } } },
     });
     const out = projectNarrowing(n3);
-    expect(out.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.prisma.FanUser.fields.name).toBeUndefined();
-    expect(out.prisma.FanUser.fields.id).toBeUndefined();
-    expect(out.prisma.FanUser.fields.deletedAt).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields.name).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.id).toBeUndefined();
+    expect(out.maps.prisma.FanUser.fields.deletedAt).toBeUndefined();
   });
 
   test('does not mutate input', () => {
@@ -140,7 +143,7 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { picks: ['email'] } } },
     });
     projectNarrowing(n);
-    expect(stitched.prisma.FanUser.fields.email).toBeDefined();
-    expect(stitched.prisma.FanUser.fields.name).toBeDefined();
+    expect(stitched.maps.prisma.FanUser.fields.email).toBeDefined();
+    expect(stitched.maps.prisma.FanUser.fields.name).toBeDefined();
   });
 });

@@ -22,19 +22,22 @@ const salesforceMap: FieldMap = {
 
 const bridge: Bridge = {
   endpoints: [
-    { fieldMap: 'salesforce', model: 'Contact' },
-    { fieldMap: 'prisma', model: 'FanUser' },
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
   ],
   cardinality: 'oneToMany',
 };
 
-const stitched = stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [bridge]);
+const stitched = stitchFieldMaps({
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [bridge],
+});
 
 describe('toSql bridge handling', () => {
   test('standalone bridge predicate compiles to TRUE', () => {
     const result = toSql(
       { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' },
-      { map: stitched.prisma, model: 'FanUser' },
+      { map: stitched.maps.prisma, model: 'FanUser' },
     );
     expect(result.sql).toContain('TRUE');
   });
@@ -47,7 +50,7 @@ describe('toSql bridge handling', () => {
           { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' },
         ],
       },
-      { map: stitched.prisma, model: 'FanUser' },
+      { map: stitched.maps.prisma, model: 'FanUser' },
     );
     expect(result.sql).toContain('TRUE');
     expect(result.sql.toLowerCase()).toContain('email');

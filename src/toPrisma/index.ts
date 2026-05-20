@@ -4,7 +4,8 @@ import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from '.
 
 const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined => {
   if (!options?.map || !options.mapName) return options;
-  const resolved = (options.map as Record<string, FieldMap>)[options.mapName];
+  if (!('maps' in options.map)) return options;
+  const resolved = (options.map as { maps: Record<string, FieldMap> }).maps[options.mapName];
   if (!resolved) {
     throw new Error(`toPrisma: fieldMap set has no entry for '${options.mapName}'`);
   }

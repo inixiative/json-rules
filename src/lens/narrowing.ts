@@ -1,14 +1,10 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import type { FieldMapEntry } from '../toPrisma/types.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
 import type { Lens, LensNarrowing, ModelNarrowing } from './types.ts';
-
-const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
-
-const getRoot = (x: Lens | LensNarrowing): Lens => (isLens(x) ? x : getRoot(x.parent));
+import { asSet, getRoot, isLens, resolveRelationTarget } from './walk.ts';
 
 // Ancestors of `narrowing` between (root Lens, narrowing], in root → parent order.
-// Excludes the lens at the root and includes the immediate parent narrowing chain.
 const collectAncestors = (narrowing: LensNarrowing): LensNarrowing[] => {
   const list: LensNarrowing[] = [];
   let cursor: Lens | LensNarrowing = narrowing.parent;
@@ -17,32 +13,6 @@ const collectAncestors = (narrowing: LensNarrowing): LensNarrowing[] => {
     cursor = cursor.parent;
   }
   return list;
-};
-
-const asSet = (lens: Lens): FieldMapSet => {
-  const first = Object.values(lens.map)[0];
-  if (first && 'fields' in first) {
-    const key = lens.mapName ?? 'default';
-    return { [key]: lens.map as FieldMap };
-  }
-  return lens.map as FieldMapSet;
-};
-
-const resolveRelationTarget = (
-  entry: FieldMapEntry,
-  currentMap: string,
-  set: FieldMapSet,
-): { fields: Record<string, FieldMapEntry>; mapName: string } | null => {
-  if (entry.kind === 'object') {
-    const fields = set[currentMap]?.[entry.type]?.fields;
-    return fields ? { fields, mapName: currentMap } : null;
-  }
-  if (entry.kind === 'bridge') {
-    const [m, n] = entry.type.includes(':') ? entry.type.split(':') : [currentMap, entry.type];
-    const fields = set[m]?.[n]?.fields;
-    return fields ? { fields, mapName: m } : null;
-  }
-  return null;
 };
 
 const validateModelNode = (
@@ -98,8 +68,10 @@ const validateModelNode = (
       errors.push(`${position}.relations: '${relField}' is not a relation (kind=${entry.kind})`);
       continue;
     }
-    const target = resolveRelationTarget(entry, mapName, set);
-    if (!target) {
+    const target = resolveRelationTarget(entry, mapName);
+    if (!target) continue;
+    const targetFields = set.maps[target.mapName]?.[target.modelName]?.fields;
+    if (!targetFields) {
       errors.push(`${position}.relations.${relField}: target model not found in lens`);
       continue;
     }
@@ -109,7 +81,7 @@ const validateModelNode = (
     validateModelNode(
       sub,
       childAncestorChain,
-      target.fields,
+      targetFields,
       target.mapName,
       set,
       `${position}.relations.${relField}`,
@@ -125,7 +97,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const ancestors = collectAncestors(narrowing);
 
   for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
-    const fieldMap = set[mapName];
+    const fieldMap = set.maps[mapName];
     if (!fieldMap) {
       errors.push(`maps.${mapName}: not in lens`);
       continue;

@@ -6,7 +6,7 @@ describe('validateFieldMapSet', () => {
   test('passes for clean set', () => {
     expect(() =>
       validateFieldMapSet({
-        prisma: { FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } } },
+        maps: { prisma: { FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } } } },
       }),
     ).not.toThrow();
   });
@@ -14,8 +14,10 @@ describe('validateFieldMapSet', () => {
   test('throws on dot in field name', () => {
     expect(() =>
       validateFieldMapSet({
-        prisma: {
-          FanUser: { fields: { 'foo.bar': { kind: 'scalar', type: 'String' } } },
+        maps: {
+          prisma: {
+            FanUser: { fields: { 'foo.bar': { kind: 'scalar', type: 'String' } } },
+          },
         },
       }),
     ).toThrow(/'prisma:FanUser\.foo\.bar' contains forbidden character/);
@@ -24,8 +26,10 @@ describe('validateFieldMapSet', () => {
   test('throws on colon in field name', () => {
     expect(() =>
       validateFieldMapSet({
-        prisma: {
-          FanUser: { fields: { 'foo:bar': { kind: 'scalar', type: 'String' } } },
+        maps: {
+          prisma: {
+            FanUser: { fields: { 'foo:bar': { kind: 'scalar', type: 'String' } } },
+          },
         },
       }),
     ).toThrow(/'prisma:FanUser\.foo:bar' contains forbidden character/);
@@ -35,15 +39,17 @@ describe('validateFieldMapSet', () => {
     let err: Error | undefined;
     try {
       validateFieldMapSet({
-        prisma: {
-          FanUser: {
-            fields: {
-              'one.bad': { kind: 'scalar', type: 'String' },
-              'two:bad': { kind: 'scalar', type: 'String' },
+        maps: {
+          prisma: {
+            FanUser: {
+              fields: {
+                'one.bad': { kind: 'scalar', type: 'String' },
+                'two:bad': { kind: 'scalar', type: 'String' },
+              },
             },
-          },
-          Brand: {
-            fields: { 'three.bad': { kind: 'scalar', type: 'String' } },
+            Brand: {
+              fields: { 'three.bad': { kind: 'scalar', type: 'String' } },
+            },
           },
         },
       });

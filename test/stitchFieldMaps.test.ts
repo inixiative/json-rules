@@ -24,50 +24,54 @@ const salesforceMap: FieldMap = {
 
 const oneToManyBridge: Bridge = {
   endpoints: [
-    { fieldMap: 'salesforce', model: 'Contact' },
-    { fieldMap: 'prisma', model: 'FanUser' },
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
   ],
   cardinality: 'oneToMany',
 };
 
 const oneToOneBridge: Bridge = {
   endpoints: [
-    { fieldMap: 'salesforce', model: 'Contact' },
-    { fieldMap: 'prisma', model: 'FanUser' },
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
   ],
   cardinality: 'oneToOne',
 };
 
 describe('stitchFieldMaps', () => {
-  test('empty set + empty bridges returns empty set', () => {
-    expect(stitchFieldMaps({}, [])).toEqual({});
+  test('empty maps + no bridges returns empty set', () => {
+    expect(stitchFieldMaps({ maps: {} })).toEqual({ maps: {}, bridges: undefined });
   });
 
   test('returns clone with no bridges', () => {
-    const set: FieldMapSet = { prisma: prismaMap };
-    const out = stitchFieldMaps(set, []);
-    expect(out).toEqual(set);
+    const set: FieldMapSet = { maps: { prisma: prismaMap } };
+    const out = stitchFieldMaps(set);
+    expect(out.maps).toEqual(set.maps);
     expect(out).not.toBe(set);
-    expect(out.prisma).not.toBe(set.prisma);
+    expect(out.maps.prisma).not.toBe(set.maps.prisma);
   });
 
-  test('does not mutate input', () => {
-    const set: FieldMapSet = { prisma: prismaMap, salesforce: salesforceMap };
+  test('does not mutate input maps', () => {
+    const set: FieldMapSet = {
+      maps: { prisma: prismaMap, salesforce: salesforceMap },
+      bridges: [oneToManyBridge],
+    };
     const before = structuredClone(set);
-    stitchFieldMaps(set, [oneToManyBridge]);
+    stitchFieldMaps(set);
     expect(set).toEqual(before);
   });
 
   test('oneToMany injects list on one side, single on many side', () => {
-    const out = stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [
-      oneToManyBridge,
-    ]);
-    expect(out.salesforce.Contact.fields['prisma:FanUser']).toEqual({
+    const out = stitchFieldMaps({
+      maps: { prisma: prismaMap, salesforce: salesforceMap },
+      bridges: [oneToManyBridge],
+    });
+    expect(out.maps.salesforce.Contact.fields['prisma:FanUser']).toEqual({
       kind: 'bridge',
       type: 'prisma:FanUser',
       isList: true,
     });
-    expect(out.prisma.FanUser.fields['salesforce:Contact']).toEqual({
+    expect(out.maps.prisma.FanUser.fields['salesforce:Contact']).toEqual({
       kind: 'bridge',
       type: 'salesforce:Contact',
       isList: false,
@@ -75,36 +79,39 @@ describe('stitchFieldMaps', () => {
   });
 
   test('oneToOne injects single on both sides', () => {
-    const out = stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [oneToOneBridge]);
-    expect(out.salesforce.Contact.fields['prisma:FanUser'].isList).toBe(false);
-    expect(out.prisma.FanUser.fields['salesforce:Contact'].isList).toBe(false);
+    const out = stitchFieldMaps({
+      maps: { prisma: prismaMap, salesforce: salesforceMap },
+      bridges: [oneToOneBridge],
+    });
+    expect(out.maps.salesforce.Contact.fields['prisma:FanUser'].isList).toBe(false);
+    expect(out.maps.prisma.FanUser.fields['salesforce:Contact'].isList).toBe(false);
   });
 
   test('throws when endpoint fieldMap missing', () => {
-    expect(() => stitchFieldMaps({ prisma: prismaMap }, [oneToManyBridge])).toThrow(
-      /endpoint 'salesforce:Contact' not found/,
-    );
+    expect(() =>
+      stitchFieldMaps({ maps: { prisma: prismaMap }, bridges: [oneToManyBridge] }),
+    ).toThrow(/endpoint 'salesforce:Contact' not found/);
   });
 
   test('throws when endpoint model missing', () => {
     const bridge: Bridge = {
       endpoints: [
-        { fieldMap: 'prisma', model: 'Ghost' },
-        { fieldMap: 'prisma', model: 'FanUser' },
+        { fieldMap: 'prisma', model: 'Ghost', on: 'id' },
+        { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
       ],
       cardinality: 'oneToOne',
     };
-    expect(() => stitchFieldMaps({ prisma: prismaMap }, [bridge])).toThrow(
+    expect(() => stitchFieldMaps({ maps: { prisma: prismaMap }, bridges: [bridge] })).toThrow(
       /endpoint 'prisma:Ghost' not found/,
     );
   });
 
   test('throws when duplicate bridge between same pair', () => {
     expect(() =>
-      stitchFieldMaps({ prisma: prismaMap, salesforce: salesforceMap }, [
-        oneToManyBridge,
-        oneToManyBridge,
-      ]),
+      stitchFieldMaps({
+        maps: { prisma: prismaMap, salesforce: salesforceMap },
+        bridges: [oneToManyBridge, oneToManyBridge],
+      }),
     ).toThrow(/already injected/);
   });
 
@@ -116,19 +123,19 @@ describe('stitchFieldMaps', () => {
       oneToManyBridge,
       {
         endpoints: [
-          { fieldMap: 'salesforce2', model: 'Account' },
-          { fieldMap: 'prisma', model: 'FanUser' },
+          { fieldMap: 'salesforce2', model: 'Account', on: 'id' },
+          { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
         ],
         cardinality: 'oneToMany',
       },
     ];
-    const out = stitchFieldMaps(
-      { prisma: prismaMap, salesforce: salesforceMap, salesforce2: accountMap },
+    const out = stitchFieldMaps({
+      maps: { prisma: prismaMap, salesforce: salesforceMap, salesforce2: accountMap },
       bridges,
-    );
-    expect(out.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
-    expect(out.prisma.FanUser.fields['salesforce2:Account']).toBeDefined();
-    expect(out.salesforce.Contact.fields['prisma:FanUser']).toBeDefined();
-    expect(out.salesforce2.Account.fields['prisma:FanUser']).toBeDefined();
+    });
+    expect(out.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
+    expect(out.maps.prisma.FanUser.fields['salesforce2:Account']).toBeDefined();
+    expect(out.maps.salesforce.Contact.fields['prisma:FanUser']).toBeDefined();
+    expect(out.maps.salesforce2.Account.fields['prisma:FanUser']).toBeDefined();
   });
 });

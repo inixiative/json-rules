@@ -1,4 +1,4 @@
-export { applyLens } from './applyLens';
+export { applyLens, getSources } from './applyLens';
 export type { RuleLensCheck, RuleLensViolation } from './checkRule';
 export { checkRuleAgainstLens } from './checkRule';
 export { validateNarrowing } from './narrowing';

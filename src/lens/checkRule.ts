@@ -3,20 +3,16 @@ import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
 import { projectNarrowing } from './project.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-
-const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
-
-const getRoot = (x: Lens | LensNarrowing): Lens => (isLens(x) ? x : getRoot(x.parent));
+import { getRoot } from './walk.ts';
 
 const resolveAnchor = (lens: Lens): { mapName: string; modelName: string } => {
-  const first = Object.values(lens.map)[0];
-  if (first && 'fields' in first) {
-    return { mapName: lens.mapName ?? 'default', modelName: lens.model };
+  if ('maps' in lens.map) {
+    if (!lens.mapName) {
+      throw new Error('checkRuleAgainstLens: lens.mapName required when map is a FieldMapSet');
+    }
+    return { mapName: lens.mapName, modelName: lens.model };
   }
-  if (!lens.mapName) {
-    throw new Error('checkRuleAgainstLens: lens.mapName required when map is a FieldMapSet');
-  }
-  return { mapName: lens.mapName, modelName: lens.model };
+  return { mapName: lens.mapName ?? 'default', modelName: lens.model };
 };
 
 const resolvePathTerminal = (
@@ -29,7 +25,7 @@ const resolvePathTerminal = (
   let mapName = startMap;
   let modelName = startModel;
   for (let i = 0; i < parts.length; i++) {
-    const model: FieldMap[string] | undefined = set[mapName]?.[modelName];
+    const model: FieldMap[string] | undefined = set.maps[mapName]?.[modelName];
     if (!model) return null;
     const entry = model.fields[parts[i]];
     if (!entry) return null;

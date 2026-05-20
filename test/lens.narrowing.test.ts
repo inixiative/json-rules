@@ -3,6 +3,7 @@ import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
 import { validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing, ModelNarrowing } from '../src/lens/types';
+import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
@@ -312,5 +313,51 @@ describe('validateNarrowing — chain rules', () => {
     expect(() =>
       validateNarrowing(withParent(parent, { prisma: { models: { FanUser: { picks: ['id'] } } } })),
     ).toThrow(/'id' not in ancestor's picks/);
+  });
+});
+
+describe('validateNarrowing — constrains', () => {
+  test('constrains referencing visible field passes', () => {
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        maps: {},
+        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+      }),
+    ).not.toThrow();
+  });
+
+  test('constrains referencing field omitted at this narrowing throws', () => {
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        maps: { prisma: { models: { FanUser: { omits: ['email'] } } } },
+        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+      }),
+    ).toThrow(/constrains: 'email'/);
+  });
+
+  test('constrains referencing field not picked throws', () => {
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        maps: { prisma: { models: { FanUser: { picks: ['id'] } } } },
+        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+      }),
+    ).toThrow(/constrains: 'email'/);
+  });
+
+  test('constrains referencing field omitted by ancestor throws', () => {
+    const parent: LensNarrowing = {
+      parent: lens,
+      maps: { prisma: { models: { FanUser: { omits: ['email'] } } } },
+    };
+    expect(() =>
+      validateNarrowing({
+        parent,
+        maps: {},
+        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+      }),
+    ).toThrow(/constrains: 'email'/);
   });
 });

@@ -1,5 +1,6 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import { checkRuleAgainstLens } from './checkRule.ts';
 import type { Lens, LensNarrowing, ModelNarrowing } from './types.ts';
 
 const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
@@ -147,6 +148,13 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         `maps.${mapName}.models.${modelName}`,
         errors,
       );
+    }
+  }
+
+  if (narrowing.constrains !== undefined) {
+    const check = checkRuleAgainstLens(narrowing.constrains, narrowing);
+    for (const v of check.violations) {
+      errors.push(`constrains: '${v.path}' ${v.reason}`);
     }
   }
 

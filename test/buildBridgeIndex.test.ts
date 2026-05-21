@@ -1,6 +1,21 @@
 import { describe, expect, test } from 'bun:test';
 import { buildBridgeIndex } from '../src/fieldMap/buildBridgeIndex';
-import type { Bridge } from '../src/fieldMap/types';
+import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
+import type { FieldMap } from '../src/toPrisma/types';
+
+const prismaMap: FieldMap = {
+  FanUser: {
+    fields: { id: { kind: 'scalar', type: 'String' }, crmId: { kind: 'scalar', type: 'String' } },
+  },
+};
+const salesforceMap: FieldMap = {
+  Contact: { fields: { id: { kind: 'scalar', type: 'String' } } },
+};
+const crmMap: FieldMap = {
+  MarketingEvent: {
+    fields: { id: { kind: 'scalar', type: 'String' }, userId: { kind: 'scalar', type: 'String' } },
+  },
+};
 
 const oneToOne: Bridge = {
   endpoints: [
@@ -18,9 +33,24 @@ const oneToMany: Bridge = {
   cardinality: 'oneToMany',
 };
 
+const oneToOneSet: FieldMapSet = {
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [oneToOne],
+};
+
+const oneToManySet: FieldMapSet = {
+  maps: { prisma: prismaMap, crm: crmMap },
+  bridges: [oneToMany],
+};
+
+const bothSet: FieldMapSet = {
+  maps: { prisma: prismaMap, salesforce: salesforceMap, crm: crmMap },
+  bridges: [oneToOne, oneToMany],
+};
+
 describe('buildBridgeIndex', () => {
   test('keys 1-1 endpoints by their on field', () => {
-    const out = buildBridgeIndex([oneToOne], {
+    const out = buildBridgeIndex(oneToOneSet, {
       'salesforce:Contact': [
         { id: 'c1', industry: 'tech' },
         { id: 'c2', industry: 'finance' },
@@ -35,7 +65,7 @@ describe('buildBridgeIndex', () => {
   });
 
   test('1-many: "one" side keyed singular, "many" side grouped to arrays', () => {
-    const out = buildBridgeIndex([oneToMany], {
+    const out = buildBridgeIndex(oneToManySet, {
       'prisma:FanUser': [
         { id: 'u1', email: 'a@b.com' },
         { id: 'u2', email: 'd@e.com' },
@@ -52,7 +82,7 @@ describe('buildBridgeIndex', () => {
   });
 
   test('skips endpoints with no raw data provided', () => {
-    const out = buildBridgeIndex([oneToOne], {
+    const out = buildBridgeIndex(oneToOneSet, {
       'salesforce:Contact': [{ id: 'c1', industry: 'tech' }],
     });
     expect(out['salesforce:Contact']).toBeDefined();
@@ -60,7 +90,7 @@ describe('buildBridgeIndex', () => {
   });
 
   test('handles multiple bridges in one call', () => {
-    const out = buildBridgeIndex([oneToOne, oneToMany], {
+    const out = buildBridgeIndex(bothSet, {
       'salesforce:Contact': [{ id: 'c1' }],
       'prisma:FanUser': [{ id: 'u1', crmId: 'c1' }],
       'crm:MarketingEvent': [{ id: 'e1', userId: 'u1' }],
@@ -69,8 +99,7 @@ describe('buildBridgeIndex', () => {
     expect(out['crm:MarketingEvent'].u1).toHaveLength(1);
   });
 
-  test('empty bridges returns empty index', () => {
-    expect(buildBridgeIndex([], { foo: [{ id: '1' }] })).toEqual({});
-    expect(buildBridgeIndex(undefined, { foo: [{ id: '1' }] })).toEqual({});
+  test('no bridges returns empty index', () => {
+    expect(buildBridgeIndex({ maps: {} }, { foo: [{ id: '1' }] })).toEqual({});
   });
 });

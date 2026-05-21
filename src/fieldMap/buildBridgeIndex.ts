@@ -1,16 +1,13 @@
 import { groupBy, keyBy } from 'lodash';
-import type { Bridge } from './types.ts';
+import type { FieldMapSet } from './types.ts';
 
 type Row = Record<string, unknown>;
 
 export type BridgeIndex = Record<string, Record<string, Row | Row[]>>;
 
-export const buildBridgeIndex = (
-  bridges: Bridge[] | undefined,
-  rawData: Record<string, Row[]>,
-): BridgeIndex => {
+export const buildBridgeIndex = (set: FieldMapSet, rawData: Record<string, Row[]>): BridgeIndex => {
   const out: BridgeIndex = {};
-  for (const bridge of bridges ?? []) {
+  for (const bridge of set.bridges ?? []) {
     const [a, b] = bridge.endpoints;
     const aKey = `${a.fieldMap}:${a.model}`;
     const bKey = `${b.fieldMap}:${b.model}`;

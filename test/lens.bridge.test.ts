@@ -39,7 +39,7 @@ const stitched: FieldMapSet = stitchFieldMaps({
 });
 
 const lens: Lens = {
-  map: stitched,
+  ...stitched,
   mapName: 'prisma',
   model: 'FanUser',
 };
@@ -51,7 +51,7 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
       operator: Operator.equals,
       value: 'tech',
     };
-    const result = toPrisma(rule, { ...lens });
+    const result = toPrisma(rule, { map: lens, mapName: lens.mapName, model: lens.model });
     const where = result.steps[result.steps.length - 1];
     expect(where.operation).toBe('where');
     expect((where as { where: object }).where).toEqual({});
@@ -64,7 +64,7 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
         { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' },
       ],
     };
-    const result = toPrisma(rule, { ...lens });
+    const result = toPrisma(rule, { map: lens, mapName: lens.mapName, model: lens.model });
     const where = (result.steps[result.steps.length - 1] as unknown as { where: { AND: object[] } })
       .where;
     expect(where.AND).toEqual([{ email: { equals: 'foo@bar.com' } }, {}]);
@@ -77,7 +77,7 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
         { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' },
       ],
     };
-    const result = toPrisma(rule, { ...lens });
+    const result = toPrisma(rule, { map: lens, mapName: lens.mapName, model: lens.model });
     const where = (result.steps[result.steps.length - 1] as unknown as { where: { OR: object[] } })
       .where;
     expect(where.OR).toEqual([{ email: { equals: 'foo@bar.com' } }, {}]);

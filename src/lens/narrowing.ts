@@ -2,7 +2,7 @@ import type { FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
 import type { Lens, LensNarrowing, ModelNarrowing } from './types.ts';
-import { asSet, getRoot, isLens, resolveRelationTarget } from './walk.ts';
+import { getRoot, isLens, resolveRelationTarget } from './walk.ts';
 
 // Ancestors of `narrowing` between (root Lens, narrowing], in root → parent order.
 const collectAncestors = (narrowing: LensNarrowing): LensNarrowing[] => {
@@ -92,8 +92,7 @@ const validateModelNode = (
 
 export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const errors: string[] = [];
-  const root = getRoot(narrowing);
-  const set = asSet(root);
+  const set = getRoot(narrowing);
   const ancestors = collectAncestors(narrowing);
 
   for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {

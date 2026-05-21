@@ -106,6 +106,8 @@ describe('Logical Operators Examples', () => {
     // data = element with its own 'items'; context = root (no 'items')
     const element = { items: ['a', 'b'] };
     const rootContext = { noItems: [] } as unknown as typeof element;
-    expect(check(rule as Parameters<typeof check>[0], element, rootContext)).toBe(true);
+    expect(check(rule as Parameters<typeof check>[0], element, { context: rootContext })).toBe(
+      true,
+    );
   });
 });

@@ -537,17 +537,19 @@ const set = stitchFieldMaps({
 ### Lens
 
 ```ts
-const lens: Lens = {
-  map: set,                 // FieldMap | FieldMapSet
-  mapName: 'prisma',        // required when map is a FieldMapSet
-  model: 'FanUser',         // anchor model
-  sources: {                // optional: pre-fetched FE picker data
-    'prisma:FanUser.customFields': [{ uuid, fieldKey, label }, ...],
-  },
-};
+// Lens extends FieldMapSet — maps and bridges live at the top level.
+// Use `createLens` (it stitches bridges internally) instead of constructing by hand.
+import { createLens } from '@inixiative/json-rules';
+
+const lens = createLens({
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges,
+  mapName: 'prisma',         // which map in `maps` holds the anchor model
+  model: 'FanUser',          // anchor model
+});
 ```
 
-`sources` is pure data keyed by `<fieldMap>:<Model>[.field?]`. The caller fetches and attaches; the library never fetches. Used by builder UIs to populate pickers tied to schema paths.
+The lens is **schema only** — no data lives on it. Runtime data (rows, foreign tables, FE picker sources) is passed alongside, separately, when you need it.
 
 ### LensNarrowing & `constrains`
 
@@ -580,6 +582,9 @@ Children can only narrow further — chain rules enforce `picks ⊆ ancestor pic
 | `getSources(lens)` | Returns the root lens's `sources` |
 
 ### Evaluating Across Bridges
+
+`path:` refs (used for value comparisons) walk via the same dotted-path mechanism as `field:`. Bridge keys (`'salesforce:Contact'`) are just plain object properties, so `path: 'salesforce:Contact.industry'` works in both `field:` (left side) and `path:` (right side) positions. **Limitation:** 1-many bridges are arrays — to traverse them in a `path:` ref you need a numeric index (`crm:MarketingEvent.0.campaign`). For collection semantics, use `arrayOperator` on the `field:` side.
+
 
 `check()` itself is bridge-unaware — it walks paths via plain property access. The lens primitive is **schema metadata** (what fields exist, what bridges link them, what `on` fields join each side). The caller is responsible for structuring `data` accordingly:
 

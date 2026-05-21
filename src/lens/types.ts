@@ -1,12 +1,9 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 
-export type Lens = {
-  map: FieldMap | FieldMapSet;
-  mapName?: string;
+export type Lens = FieldMapSet & {
+  mapName: string; // which map in `maps` the anchor model lives in
   model: string;
-  sources?: Record<string, unknown>;
 };
 
 export type ModelNarrowing = {

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
 import { validateNarrowing } from '../src/lens/narrowing';
-import type { Lens, LensNarrowing, ModelNarrowing } from '../src/lens/types';
+import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
@@ -49,7 +49,7 @@ const stitched = stitchFieldMaps({
 });
 
 const lens: Lens = {
-  map: stitched,
+  ...stitched,
   mapName: 'prisma',
   model: 'FanUser',
 };

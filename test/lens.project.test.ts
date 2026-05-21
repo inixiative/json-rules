@@ -48,7 +48,7 @@ const stitched = stitchFieldMaps({
 });
 
 const lens: Lens = {
-  map: stitched,
+  ...stitched,
   mapName: 'prisma',
   model: 'FanUser',
 };

@@ -1,5 +1,4 @@
-import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 export const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
@@ -26,12 +25,6 @@ export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
     cursor = cursor.parent;
   }
   return list;
-};
-
-export const asSet = (lens: Lens): FieldMapSet => {
-  if ('maps' in lens.map) return lens.map as FieldMapSet;
-  const key = lens.mapName ?? 'default';
-  return { maps: { [key]: lens.map as FieldMap } };
 };
 
 export const resolveRelationTarget = (

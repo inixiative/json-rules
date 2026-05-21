@@ -5,16 +5,6 @@ import { projectNarrowing } from './project.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { getRoot, resolveRelationTarget } from './walk.ts';
 
-const resolveAnchor = (lens: Lens): { mapName: string; modelName: string } => {
-  if ('maps' in lens.map) {
-    if (!lens.mapName) {
-      throw new Error('checkRuleAgainstLens: lens.mapName required when map is a FieldMapSet');
-    }
-    return { mapName: lens.mapName, modelName: lens.model };
-  }
-  return { mapName: lens.mapName ?? 'default', modelName: lens.model };
-};
-
 const walkPath = (
   set: FieldMapSet,
   startMap: string,
@@ -107,11 +97,8 @@ export const checkRuleAgainstLens = (
   lensOrNarrowing: Lens | LensNarrowing,
 ): RuleLensCheck => {
   const root = getRoot(lensOrNarrowing);
-  const anchor = resolveAnchor(root);
   const projectedSet = projectNarrowing(lensOrNarrowing);
-
   const violations: RuleLensViolation[] = [];
-  visit(rule, projectedSet, anchor.mapName, anchor.modelName, violations);
-
+  visit(rule, projectedSet, root.mapName, root.model, violations);
   return { ok: violations.length === 0, violations };
 };

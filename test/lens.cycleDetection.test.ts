@@ -13,7 +13,7 @@ const map: FieldMap = {
   },
 };
 
-const lens: Lens = { map, mapName: 'prisma', model: 'FanUser' };
+const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'FanUser' };
 
 describe('narrowing parent-chain cycle detection', () => {
   test('getRoot throws on cyclic chain', () => {

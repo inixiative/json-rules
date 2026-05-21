@@ -1,7 +1,7 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Lens, LensNarrowing, ModelNarrowing } from './types.ts';
-import { asSet, collectChain, getRoot, resolveRelationTarget } from './walk.ts';
+import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
 const applyToModel = (
   fieldMap: FieldMap,
@@ -37,10 +37,9 @@ const applyToModel = (
 
 export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMapSet => {
   const root = getRoot(lensOrNarrowing);
-  const source = asSet(root);
   const set: FieldMapSet = {
-    maps: structuredClone(source.maps),
-    bridges: source.bridges ? structuredClone(source.bridges) : undefined,
+    maps: structuredClone(root.maps),
+    bridges: root.bridges ? structuredClone(root.bridges) : undefined,
   };
   const chain = collectChain(lensOrNarrowing);
 

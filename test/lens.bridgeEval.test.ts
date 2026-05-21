@@ -59,7 +59,7 @@ const stitched = stitchFieldMaps({
 });
 
 const lens: Lens = {
-  map: stitched,
+  ...stitched,
   mapName: 'prisma',
   model: 'FanUser',
 };
@@ -215,9 +215,8 @@ describe('bridge schema — on fields are reachable for callers', () => {
   });
 
   test('lens carries the stitched set, including bridges metadata', () => {
-    const lensSet = lens.map as typeof stitched;
-    expect(lensSet.bridges).toBeDefined();
-    expect(lensSet.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
-    expect(lensSet.maps.prisma.FanUser.fields['crm:MarketingEvent']).toBeDefined();
+    expect(lens.bridges).toBeDefined();
+    expect(lens.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
+    expect(lens.maps.prisma.FanUser.fields['crm:MarketingEvent']).toBeDefined();
   });
 });

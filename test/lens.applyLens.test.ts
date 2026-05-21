@@ -15,7 +15,7 @@ const map: FieldMap = {
   },
 };
 
-const lens: Lens = { map, model: 'FanUser' };
+const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'FanUser' };
 
 const rule: Condition = { field: 'email', operator: Operator.equals, value: 'x' };
 

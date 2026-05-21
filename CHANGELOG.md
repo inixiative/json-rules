@@ -33,6 +33,31 @@ No runtime behavior changes for callers not using the new primitives.
 
 - **Root-array `check()` support** — when `data` is an array, the rule must be a tree of `all`/`any` whose leaves are fieldless `ArrayRule`s. Validated upfront via `validateRootArrayShape`; `ArrayRule.field` is now optional. `toPrisma`/`toSql` compilation of fieldless `ArrayRule`s is not yet implemented (future feature).
 
+### Lens extends FieldMapSet (no more `map.maps` nesting)
+
+`Lens` now extends `FieldMapSet` directly — `maps` and `bridges` live on the lens itself instead of being nested under a `map` field. `mapName` is required. Single-FieldMap callers wrap explicitly into `maps: { someName: fieldMap }` at construction.
+
+Before:
+```ts
+const lens: Lens = {
+  map: { maps: { prisma: myMap }, bridges: [...] },
+  mapName: 'prisma',
+  model: 'FanUser',
+};
+```
+
+After:
+```ts
+const lens: Lens = {
+  maps: { prisma: myMap },
+  bridges: [...],
+  mapName: 'prisma',
+  model: 'FanUser',
+};
+```
+
+The `'default'` magic-string fallback for single-map lenses is gone — `mapName` is always explicit.
+
 ### Hardening (adversarial review fixes)
 
 - `stitchFieldMaps` validates `BridgeEndpoint.on` references a real field on the endpoint model; throws on self-bridges.

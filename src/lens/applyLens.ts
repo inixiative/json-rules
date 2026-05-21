@@ -6,7 +6,7 @@ export const applyLens = (rule: Condition, narrowing: Lens | LensNarrowing): Con
   const chain = collectChain(narrowing);
   const all: Condition[] = [];
   for (const n of chain) {
-    if (n.constrains) all.push(n.constrains);
+    if (n.constrains !== undefined) all.push(n.constrains);
   }
   return all.length ? { all: [...all, rule] } : rule;
 };

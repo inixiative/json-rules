@@ -4,8 +4,11 @@ import { quoteField } from './quoting';
 import type { BuilderState } from './types';
 
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
-  const field = quoteField(rule.field as string);
-  const fieldEntry = state.map?.[state.currentModel ?? '']?.fields[rule.field as string];
+  if (!rule.field) {
+    throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
+  }
+  const field = quoteField(rule.field);
+  const fieldEntry = state.map?.[state.currentModel ?? '']?.fields[rule.field];
   const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
 
   // Different length functions for JSONB vs native PostgreSQL arrays

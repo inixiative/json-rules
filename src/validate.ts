@@ -363,7 +363,14 @@ const validateArrayRule = (
   context: ValidationContext,
 ): void => {
   if (typeof rule.field !== 'string') {
-    pushIssue(context, `${path}.field`, 'field_required', 'Array rule requires a string field');
+    if (context.target !== 'check') {
+      pushIssue(
+        context,
+        `${path}.field`,
+        'field_required',
+        'Array rule requires a string field for this target',
+      );
+    }
   }
 
   if (typeof rule.arrayOperator !== 'string' || !ARRAY_OPERATORS.has(rule.arrayOperator)) {

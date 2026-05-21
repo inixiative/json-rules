@@ -7,8 +7,11 @@ import { getRoot, isLens, resolveRelationTarget } from './walk.ts';
 // Ancestors of `narrowing` between (root Lens, narrowing], in root → parent order.
 const collectAncestors = (narrowing: LensNarrowing): LensNarrowing[] => {
   const list: LensNarrowing[] = [];
+  const visited = new Set<LensNarrowing>();
   let cursor: Lens | LensNarrowing = narrowing.parent;
   while (!isLens(cursor)) {
+    if (visited.has(cursor)) throw new Error('cycle detected in narrowing parent chain');
+    visited.add(cursor);
     list.unshift(cursor);
     cursor = cursor.parent;
   }

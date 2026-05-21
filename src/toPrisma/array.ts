@@ -41,8 +41,11 @@ export const buildArrayRule = (
     );
   }
 
+  if (!rule.field) {
+    throw new Error('toPrisma: ArrayRule.field is required (fieldless arrayOps are check-only)');
+  }
   const filter = buildArrayLeafFilter(rule, options, state);
-  return buildNestedFilter(rule.field as string, filter);
+  return buildNestedFilter(rule.field, filter);
 };
 
 const buildArrayLeafFilter = (

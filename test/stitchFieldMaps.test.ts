@@ -115,6 +115,35 @@ describe('stitchFieldMaps', () => {
     ).toThrow(/already injected/);
   });
 
+  test('throws when endpoint has no field for `on`', () => {
+    const bridge: Bridge = {
+      endpoints: [
+        { fieldMap: 'salesforce', model: 'Contact', on: 'GHOST' },
+        { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
+      ],
+      cardinality: 'oneToMany',
+    };
+    expect(() =>
+      stitchFieldMaps({
+        maps: { prisma: prismaMap, salesforce: salesforceMap },
+        bridges: [bridge],
+      }),
+    ).toThrow(/has no field 'GHOST' for join/);
+  });
+
+  test('throws on self-bridge', () => {
+    const bridge: Bridge = {
+      endpoints: [
+        { fieldMap: 'prisma', model: 'FanUser', on: 'id' },
+        { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
+      ],
+      cardinality: 'oneToOne',
+    };
+    expect(() => stitchFieldMaps({ maps: { prisma: prismaMap }, bridges: [bridge] })).toThrow(
+      /self-bridge/,
+    );
+  });
+
   test('injects multiple bridges', () => {
     const accountMap: FieldMap = {
       Account: { fields: { id: { kind: 'scalar', type: 'String' } } },

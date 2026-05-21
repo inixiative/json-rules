@@ -12,6 +12,7 @@ const prismaMap: FieldMap = {
       email: { kind: 'scalar', type: 'String' },
       name: { kind: 'scalar', type: 'String' },
       deletedAt: { kind: 'scalar', type: 'DateTime' },
+      crmId: { kind: 'scalar', type: 'String' },
       fanMissions: { kind: 'object', type: 'FanMission', isList: true },
     },
   },
@@ -145,5 +146,17 @@ describe('projectNarrowing', () => {
     projectNarrowing(n);
     expect(stitched.maps.prisma.FanUser.fields.email).toBeDefined();
     expect(stitched.maps.prisma.FanUser.fields.name).toBeDefined();
+  });
+
+  test('mutating projected bridges does not leak into source', () => {
+    const out = projectNarrowing(lens);
+    out.bridges?.push({
+      endpoints: [
+        { fieldMap: 'x', model: 'Y', on: 'a' },
+        { fieldMap: 'x', model: 'Z', on: 'b' },
+      ],
+      cardinality: 'oneToOne',
+    });
+    expect(stitched.bridges).toHaveLength(1);
   });
 });

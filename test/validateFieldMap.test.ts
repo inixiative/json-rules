@@ -63,6 +63,41 @@ describe('validateFieldMapSet', () => {
   });
 });
 
+describe('validateFieldMapSet — stitched bridges', () => {
+  test('accepts bridge entries with colon in name (stitched output)', () => {
+    expect(() =>
+      validateFieldMapSet({
+        maps: {
+          prisma: {
+            FanUser: {
+              fields: {
+                id: { kind: 'scalar', type: 'String' },
+                'salesforce:Contact': { kind: 'bridge', type: 'salesforce:Contact', isList: false },
+              },
+            },
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  test('still rejects colons on non-bridge field entries', () => {
+    expect(() =>
+      validateFieldMapSet({
+        maps: {
+          prisma: {
+            FanUser: {
+              fields: {
+                'foo:bar': { kind: 'scalar', type: 'String' },
+              },
+            },
+          },
+        },
+      }),
+    ).toThrow(/contains forbidden character/);
+  });
+});
+
 describe('validateFieldMap', () => {
   test('passes for clean map', () => {
     const fm: FieldMap = {

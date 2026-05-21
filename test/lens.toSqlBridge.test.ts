@@ -10,13 +10,17 @@ const prismaMap: FieldMap = {
     fields: {
       id: { kind: 'scalar', type: 'String' },
       email: { kind: 'scalar', type: 'String' },
+      crmId: { kind: 'scalar', type: 'String' },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
   Contact: {
-    fields: { industry: { kind: 'scalar', type: 'String' } },
+    fields: {
+      id: { kind: 'scalar', type: 'String' },
+      industry: { kind: 'scalar', type: 'String' },
+    },
   },
 };
 

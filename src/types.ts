@@ -74,7 +74,7 @@ export type StrictRule<TValue = RuleValue> =
   | StrictPresenceRule;
 
 type ArrayRuleBase<TOperator extends ArrayOperator> = {
-  field: string;
+  field?: string;
   arrayOperator: TOperator;
   error?: string;
 };

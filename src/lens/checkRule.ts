@@ -3,7 +3,7 @@ import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
 import { projectNarrowing } from './project.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { getRoot } from './walk.ts';
+import { getRoot, resolveRelationTarget } from './walk.ts';
 
 const resolveAnchor = (lens: Lens): { mapName: string; modelName: string } => {
   if ('maps' in lens.map) {
@@ -15,12 +15,12 @@ const resolveAnchor = (lens: Lens): { mapName: string; modelName: string } => {
   return { mapName: lens.mapName ?? 'default', modelName: lens.model };
 };
 
-const resolvePathTerminal = (
+const walkPath = (
   set: FieldMapSet,
   startMap: string,
   startModel: string,
   path: string,
-): FieldMapEntry | null => {
+): { entry: FieldMapEntry; mapName: string; modelName: string } | null => {
   const parts = path.split('.');
   let mapName = startMap;
   let modelName = startModel;
@@ -29,7 +29,7 @@ const resolvePathTerminal = (
     if (!model) return null;
     const entry = model.fields[parts[i]];
     if (!entry) return null;
-    if (i === parts.length - 1) return entry;
+    if (i === parts.length - 1) return { entry, mapName, modelName };
     if (entry.kind === 'object') {
       modelName = entry.type;
       continue;
@@ -45,30 +45,6 @@ const resolvePathTerminal = (
   return null;
 };
 
-const collectRuleFields = (condition: Condition, out: string[]): void => {
-  if (typeof condition === 'boolean') return;
-  if ('all' in condition) {
-    for (const c of condition.all) collectRuleFields(c, out);
-    return;
-  }
-  if ('any' in condition) {
-    for (const c of condition.any) collectRuleFields(c, out);
-    return;
-  }
-  if ('if' in condition) {
-    collectRuleFields(condition.if, out);
-    collectRuleFields(condition.then, out);
-    if (condition.else !== undefined) collectRuleFields(condition.else, out);
-    return;
-  }
-  if ('field' in condition && typeof condition.field === 'string') {
-    out.push(condition.field);
-  }
-  if ('condition' in condition && condition.condition !== undefined) {
-    collectRuleFields(condition.condition, out);
-  }
-};
-
 export type RuleLensViolation = {
   path: string;
   reason: string;
@@ -79,6 +55,53 @@ export type RuleLensCheck = {
   violations: RuleLensViolation[];
 };
 
+const visit = (
+  cond: Condition,
+  set: FieldMapSet,
+  mapName: string,
+  modelName: string,
+  violations: RuleLensViolation[],
+): void => {
+  if (typeof cond === 'boolean') return;
+  if ('all' in cond) {
+    for (const c of cond.all) visit(c, set, mapName, modelName, violations);
+    return;
+  }
+  if ('any' in cond) {
+    for (const c of cond.any) visit(c, set, mapName, modelName, violations);
+    return;
+  }
+  if ('if' in cond) {
+    visit(cond.if, set, mapName, modelName, violations);
+    visit(cond.then, set, mapName, modelName, violations);
+    if (cond.else !== undefined) visit(cond.else, set, mapName, modelName, violations);
+    return;
+  }
+
+  let nextMap = mapName;
+  let nextModel = modelName;
+
+  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
+    const resolved = walkPath(set, mapName, modelName, cond.field);
+    if (!resolved) {
+      violations.push({
+        path: cond.field,
+        reason: 'path does not resolve through the narrowed lens',
+      });
+      return;
+    }
+    const target = resolveRelationTarget(resolved.entry, resolved.mapName);
+    if (target) {
+      nextMap = target.mapName;
+      nextModel = target.modelName;
+    }
+  }
+
+  if ('condition' in cond && cond.condition !== undefined) {
+    visit(cond.condition, set, nextMap, nextModel, violations);
+  }
+};
+
 export const checkRuleAgainstLens = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
@@ -87,16 +110,8 @@ export const checkRuleAgainstLens = (
   const anchor = resolveAnchor(root);
   const projectedSet = projectNarrowing(lensOrNarrowing);
 
-  const paths: string[] = [];
-  collectRuleFields(rule, paths);
-
   const violations: RuleLensViolation[] = [];
-  for (const path of paths) {
-    const entry = resolvePathTerminal(projectedSet, anchor.mapName, anchor.modelName, path);
-    if (!entry) {
-      violations.push({ path, reason: 'path does not resolve through the narrowed lens' });
-    }
-  }
+  visit(rule, projectedSet, anchor.mapName, anchor.modelName, violations);
 
   return { ok: violations.length === 0, violations };
 };

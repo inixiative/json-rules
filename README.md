@@ -457,7 +457,6 @@ Lens & multi-source:
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
 - `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
 - `validateNarrowing`, `projectNarrowing`, `checkRuleAgainstLens`, `applyLens`, `getSources`
-- `checkWithLens`, `LensCheckData`
 
 ## Error Handling
 
@@ -574,48 +573,58 @@ Children can only narrow further — chain rules enforce `picks ⊆ ancestor pic
 
 | Function | Purpose |
 | --- | --- |
-| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable constraint paths) |
-| `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain |
+| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable constraint paths). Call this before `projectNarrowing`. |
+| `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain. Assumes `validateNarrowing` has passed — silently ignores unknown picks/omits otherwise. |
 | `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths against the projected surface; returns `{ ok, violations }` |
 | `applyLens(rule, narrowing)` | Returns `{ all: [...chainConstraints, rule] }`; identity if no constraints |
 | `getSources(lens)` | Returns the root lens's `sources` |
 
-### `checkWithLens`
+### Evaluating Across Bridges
 
-Thin wrapper around `check()` that merges supplemental cross-source rows onto a single anchor row before evaluating:
+`check()` itself is bridge-unaware — it walks paths via plain property access. The lens primitive is **schema metadata** (what fields exist, what bridges link them, what `on` fields join each side). The caller is responsible for structuring `data` accordingly:
 
 ```ts
-import { checkWithLens } from '@inixiative/json-rules';
-
-// Caller fetches once, indexes by the foreign side's `on` field
 const fanUser = { id: 'u1', email: 'a@b.com', crmId: 'c1' };
-const contact = await fetchContact('c1');
-const events  = await db.marketingEvent.findMany({ where: { userId: 'u1' } });
+const contact = await fetchContact(fanUser.crmId);
 
-const result = checkWithLens(rule, lens, {
-  main: fanUser,
-  supplemental: {
-    'salesforce:Contact': contact,   // 1-1: single object
-    'crm:MarketingEvent': events,    // 1-many: array
-  },
-});
+// Embed the foreign row under its bridge key
+const data = { ...fanUser, 'salesforce:Contact': contact };
+
+// Rule references the bridge key in the path
+const rule = { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' };
+check(rule, data);
 ```
 
-Because supplemental keys are `<fieldMap>:<Model>` and the engine's path walker is dotted-key based, paths like `salesforce:Contact.industry` resolve naturally through `lodash.get` — no engine changes for bridge awareness. Cycles in the foreign data are caller-controlled (rules are finite trees, so walks terminate).
-
-For batch evaluation, loop per row:
+For **bidirectional traversal**, use JavaScript object references — `check`'s path walker handles circular structures fine because rules are finite trees and only resolve named paths:
 
 ```ts
-const matching = fanUsers.filter((u) =>
-  checkWithLens(rule, lens, {
-    main: u,
-    supplemental: {
-      'salesforce:Contact': contactsByCrmId[u.crmId],
-      'crm:MarketingEvent': eventsByUserId[u.id],
-    },
-  }) === true,
+fanUser['salesforce:Contact'] = contact;
+contact['prisma:FanUser']     = fanUser;   // back-ref
+
+// Rule walks fanUser → contact → fanUser → email
+const rule = { field: 'salesforce:Contact.prisma:FanUser.email', operator: Operator.equals, value: 'a@b.com' };
+check(rule, fanUser);
+```
+
+For **batch evaluation**, build the anchor array yourself (engine supports root-array rules via fieldless arrayOperators):
+
+```ts
+const enriched = fanUsers.map((u) => ({
+  ...u,
+  'salesforce:Contact': contactsByCrmId[u.crmId],
+  'crm:MarketingEvent': eventsByUserId[u.id],
+}));
+
+check(
+  {
+    arrayOperator: ArrayOperator.any,
+    condition: { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' },
+  },
+  enriched,
 );
 ```
+
+The lens schema (with `Bridge.endpoints[*].on`) is what tells the caller how to fetch and index foreign data. The runtime engine just walks the resulting structure.
 
 ## Examples
 

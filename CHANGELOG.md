@@ -27,6 +27,20 @@ No runtime behavior changes for callers not using the new primitives.
 - **`checkRuleAgainstLens(rule, lens)`** — walks rule AST, returns `{ ok, violations }` against the projected surface.
 - **`applyLens(rule, narrowing)`** — composes chain constraints with the user rule (`{ all: [...chainConstraints, rule] }`).
 - **`getSources(lens)`** — returns the root lens's `sources` (or `{}`); sources live on Lens, not on narrowings.
+- **`buildBridgeIndex(bridges, rawData)`** — utility for callers: takes raw foreign arrays, returns dicts keyed by each endpoint's `on` field. 1-1 sides via `keyBy`, 1-many "many" side via `groupBy`. Use the resulting index to attach per-row foreign data before `check()`.
+
+### Engine
+
+- **Root-array `check()` support** — when `data` is an array, the rule must be a tree of `all`/`any` whose leaves are fieldless `ArrayRule`s. Validated upfront via `validateRootArrayShape`; `ArrayRule.field` is now optional. `toPrisma`/`toSql` compilation of fieldless `ArrayRule`s is not yet implemented (future feature).
+
+### Hardening (adversarial review fixes)
+
+- `stitchFieldMaps` validates `BridgeEndpoint.on` references a real field on the endpoint model; throws on self-bridges.
+- `projectNarrowing` clones `bridges` (was aliased by reference) — projected mutations no longer leak into source.
+- `checkRuleAgainstLens` is now context-aware — paths in `arrayRule`/`aggregate` conditions resolve against the relation target, not the lens root.
+- `validateFieldMapSet` skips bridge entries (stitched outputs no longer fail validation for containing `:`).
+- `getRoot` / `collectChain` detect cycles in narrowing parent chains via a visited set; throw clearly instead of looping.
+- `StrictArrayRule.field` is now optional (matches the relaxed `ArrayRule` type).
 
 ### Compile-target changes
 

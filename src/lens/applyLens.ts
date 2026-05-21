@@ -1,13 +1,12 @@
 import type { Condition } from '../types.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { getRoot, isLens } from './walk.ts';
+import { collectChain, getRoot } from './walk.ts';
 
 export const applyLens = (rule: Condition, narrowing: Lens | LensNarrowing): Condition => {
+  const chain = collectChain(narrowing);
   const all: Condition[] = [];
-  let c: Lens | LensNarrowing = narrowing;
-  while (!isLens(c)) {
-    if (c.constrains) all.unshift(c.constrains);
-    c = c.parent;
+  for (const n of chain) {
+    if (n.constrains) all.push(n.constrains);
   }
   return all.length ? { all: [...all, rule] } : rule;
 };

@@ -38,7 +38,10 @@ const applyToModel = (
 export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMapSet => {
   const root = getRoot(lensOrNarrowing);
   const source = asSet(root);
-  const set: FieldMapSet = { maps: structuredClone(source.maps), bridges: source.bridges };
+  const set: FieldMapSet = {
+    maps: structuredClone(source.maps),
+    bridges: source.bridges ? structuredClone(source.bridges) : undefined,
+  };
   const chain = collectChain(lensOrNarrowing);
 
   for (const narrowing of chain) {

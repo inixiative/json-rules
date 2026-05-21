@@ -172,6 +172,32 @@ describe('checkRuleAgainstLens', () => {
     expect(result.ok).toBe(true);
   });
 
+  test('arrayRule inner condition resolves against relation target (not anchor)', () => {
+    const result = checkRuleAgainstLens(
+      {
+        field: 'fanMissions',
+        arrayOperator: 'any',
+        condition: { field: 'missionUuid', operator: Operator.equals, value: 'x' },
+      } as never,
+      lens,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
+
+  test('arrayRule inner condition catches bogus field on relation target', () => {
+    const result = checkRuleAgainstLens(
+      {
+        field: 'fanMissions',
+        arrayOperator: 'any',
+        condition: { field: 'ghostField', operator: Operator.equals, value: 'x' },
+      } as never,
+      lens,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].path).toBe('ghostField');
+  });
+
   test('cross-map bridge path fails when un-picked', () => {
     const n = withParent(lens, {
       prisma: {

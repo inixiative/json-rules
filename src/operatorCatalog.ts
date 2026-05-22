@@ -162,13 +162,13 @@ export const isAggregateRangeOperator = (operator: Operator): boolean => {
 };
 
 export const getValueShape = (operator: Operator | DateOperator | ArrayOperator): ValueShape => {
-  if (operator in FIELD_OPERATOR_CATALOG) {
+  if (Object.hasOwn(FIELD_OPERATOR_CATALOG, operator)) {
     return FIELD_OPERATOR_CATALOG[operator as Operator].valueShape;
   }
-  if (operator in DATE_OPERATOR_CATALOG) {
+  if (Object.hasOwn(DATE_OPERATOR_CATALOG, operator)) {
     return DATE_OPERATOR_CATALOG[operator as DateOperator].valueShape;
   }
-  if (operator in ARRAY_OPERATOR_CATALOG) {
+  if (Object.hasOwn(ARRAY_OPERATOR_CATALOG, operator)) {
     return ARRAY_OPERATOR_CATALOG[operator as ArrayOperator].valueShape;
   }
   throw new Error(`Unknown operator: ${operator}`);
@@ -178,13 +178,13 @@ export const isOperatorSupportedForTarget = (
   operator: Operator | DateOperator | ArrayOperator,
   target: RuleTarget,
 ): boolean => {
-  if (operator in FIELD_OPERATOR_CATALOG) {
+  if (Object.hasOwn(FIELD_OPERATOR_CATALOG, operator)) {
     return FIELD_OPERATOR_CATALOG[operator as Operator].targets.includes(target);
   }
-  if (operator in DATE_OPERATOR_CATALOG) {
+  if (Object.hasOwn(DATE_OPERATOR_CATALOG, operator)) {
     return DATE_OPERATOR_CATALOG[operator as DateOperator].targets.includes(target);
   }
-  if (operator in ARRAY_OPERATOR_CATALOG) {
+  if (Object.hasOwn(ARRAY_OPERATOR_CATALOG, operator)) {
     return ARRAY_OPERATOR_CATALOG[operator as ArrayOperator].targets.includes(target);
   }
   return false;

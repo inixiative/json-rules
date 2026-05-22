@@ -1,20 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { createLens } from '../src/lens/createLens';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
-
-const map: FieldMap = {
-  User: {
-    fields: { id: { kind: 'scalar', type: 'String' } },
-  },
-};
-
-const lens = createLens({
-  maps: { prisma: map },
-  mapName: 'prisma',
-  model: 'User',
-});
 
 describe('check options propagate through recursion', () => {
   test('context is preserved through `all` and resolves path: refs deep', () => {
@@ -153,16 +139,5 @@ describe('check options propagate through recursion', () => {
     };
     // sum=300, caps.total=250 → 300 >= 250 → true
     expect(check(rule, data, { context: ctx })).toBe(true);
-  });
-
-  test('lens + sources are accepted but currently unused — no crash', () => {
-    const data = { email: 'a@b.com' };
-    const rule = { field: 'email', operator: Operator.equals, value: 'a@b.com' };
-    expect(
-      check(rule, data, {
-        lens,
-        sources: { 'prisma:User.list': [{ uuid: 'u1' }] },
-      }),
-    ).toBe(true);
   });
 });

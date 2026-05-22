@@ -56,6 +56,22 @@ const visit = (
     }
   }
 
+  if (
+    'aggregate' in cond &&
+    typeof cond.aggregate === 'object' &&
+    cond.aggregate !== null &&
+    typeof cond.aggregate.field === 'string' &&
+    cond.aggregate.field !== ''
+  ) {
+    const aggField = cond.aggregate.field;
+    if (!walkPath(set, nextMap, nextModel, aggField)) {
+      violations.push({
+        path: aggField,
+        reason: 'aggregate.field does not resolve through the narrowed lens',
+      });
+    }
+  }
+
   if ('condition' in cond && cond.condition !== undefined) {
     visit(cond.condition, set, nextMap, nextModel, violations);
   }

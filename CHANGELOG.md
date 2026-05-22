@@ -12,7 +12,7 @@ First version of the **Lens** primitive — schema-aware view layer with cross-s
 - `stitchFieldMaps` signature changed from `(set, bridges)` to `(set)` — bridges are read from `set.bridges`.
 - `BridgeEndpoint` now requires `on: string` — the field on this endpoint that participates in the join.
 - `RuleValidationTarget` removed; `RuleTarget` (from `operatorCatalog`) takes its place. Same string union.
-- `check(rule, data)` third arg is now an options bag `{ context?, lens?, sources? }` instead of a raw context value.
+- `check(rule, data)` third arg is now an options bag `{ context? }` instead of a raw context value.
 
 No runtime behavior changes for callers not using the new primitives.
 
@@ -39,7 +39,7 @@ No runtime behavior changes for callers not using the new primitives.
 
 ### Engine
 
-- **`check(rule, data, options?)`** — options bag `{ context?, lens?, sources? }`. Propagates through recursive helpers (`all`/`any`/`checkArray`/`checkAggregate`/`checkIfThenElse`). Today the engine consumes `context` only; `lens`/`sources` are plumbed for future lens-aware bridge resolution.
+- **`check(rule, data, options?)`** — options bag `{ context? }`. Propagates through recursive helpers (`all`/`any`/`checkArray`/`checkAggregate`/`checkIfThenElse`).
 - **Root-array `check()`** — when `data` is an array, the rule must be a tree of `all`/`any` whose leaves are fieldless `ArrayRule`s. Validated upfront via `validateRootArrayShape`; `ArrayRule.field` is optional. `toPrisma`/`toSql` compilation of fieldless `ArrayRule`s is not yet implemented.
 - **Bridge keys at eval time** — engine walks paths via plain `lodash.get`; foreign rows attached under `<fieldMap>:<Model>` keys on data work without any lens-aware resolution. 1-many bridges produce arrays; intermediate-index path resolution works (`'crm:Event.0.x'`), no-index intermediate returns undefined (documented).
 

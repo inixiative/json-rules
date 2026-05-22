@@ -1,7 +1,6 @@
 import { get, isObject, some } from 'lodash';
 import { checkDate } from './date';
 import { checkField } from './field';
-import type { Lens } from './lens/types';
 import { ArrayOperator, Operator } from './operator';
 import type { AggregateRule, ArrayRule, Condition } from './types';
 
@@ -10,8 +9,6 @@ type CheckData = Row | unknown[];
 
 export type CheckOptions = {
   context?: CheckData;
-  lens?: Lens;
-  sources?: Record<string, unknown>;
 };
 
 const validateRootArrayShape = (rule: Condition): void => {
@@ -113,12 +110,15 @@ const checkAggregate = <TData extends CheckData>(
   const arrayValue = get(data, condition.field);
   if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
 
+  const { mode, field: itemField } = condition.aggregate;
+  if (mode !== 'sum' && mode !== 'avg') {
+    return condition.error || `${condition.field} aggregate.mode must be 'sum' or 'avg'`;
+  }
+
   const nestedCondition = condition.condition;
   const filtered = nestedCondition
     ? arrayValue.filter((item) => check(nestedCondition, item as Row, opts) === true)
     : arrayValue;
-
-  const { mode, field: itemField } = condition.aggregate;
 
   const numbers: number[] = filtered.map((item, index) => {
     const raw = itemField ? get(item as Row, itemField) : item;
@@ -129,16 +129,8 @@ const checkAggregate = <TData extends CheckData>(
     return raw;
   });
 
-  let result: number | null;
-  if (mode === 'sum') {
-    result = numbers.reduce((s, n) => s + n, 0);
-  } else {
-    result = numbers.length === 0 ? null : numbers.reduce((s, n) => s + n, 0) / numbers.length;
-  }
-
-  if (result === null) {
-    return condition.error || `${condition.field} ${mode} comparison failed (empty array)`;
-  }
+  const sum = numbers.reduce((s, n) => s + n, 0);
+  const result = mode === 'sum' ? sum : numbers.length === 0 ? 0 : sum / numbers.length;
 
   const context = opts.context as TData;
   let rhs: unknown;

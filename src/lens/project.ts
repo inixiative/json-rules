@@ -53,5 +53,16 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
     }
   }
 
+  if (set.bridges) {
+    set.bridges = set.bridges.filter((bridge) => {
+      const [a, b] = bridge.endpoints;
+      const aBridgeKey = `${b.fieldMap}:${b.model}`;
+      const bBridgeKey = `${a.fieldMap}:${a.model}`;
+      const aHasKey = set.maps[a.fieldMap]?.[a.model]?.fields[aBridgeKey] !== undefined;
+      const bHasKey = set.maps[b.fieldMap]?.[b.model]?.fields[bBridgeKey] !== undefined;
+      return aHasKey && bHasKey;
+    });
+  }
+
   return set;
 };

@@ -451,12 +451,20 @@ Useful exports:
 - `ArrayRule`
 - `DateRule`
 
-Lens & multi-source:
+Lens & bridges:
 
 - `Lens`, `LensNarrowing`, `MapNarrowing`, `ModelNarrowing`
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
-- `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
-- `validateNarrowing`, `projectNarrowing`, `checkRuleAgainstLens`, `applyLens`, `getSources`
+- `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
+- `validateNarrowing`, `projectNarrowing`, `checkRuleAgainstLens`, `applyLens`
+- `buildBridgeDictionary`
+
+Operator catalog (builder-facing):
+
+- `FIELD_OPERATOR_CATALOG`, `DATE_OPERATOR_CATALOG`, `ARRAY_OPERATOR_CATALOG`
+- `FieldKind`, `RuleTarget`, `ValueShape`
+- `NUMERIC_KINDS`, `ORDERABLE_KINDS`, `STRINGY_KINDS`, `EQUATABLE_KINDS`, `ALL_KINDS`
+- `getOperatorsForKind`, `getArrayOperators`, `getValueShape`, `isOperatorSupportedForTarget`
 
 ## Error Handling
 
@@ -579,7 +587,6 @@ Children can only narrow further — chain rules enforce `picks ⊆ ancestor pic
 | `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain. Assumes `validateNarrowing` has passed — silently ignores unknown picks/omits otherwise. |
 | `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths against the projected surface; returns `{ ok, violations }` |
 | `applyLens(rule, narrowing)` | Returns `{ all: [...chainConstraints, rule] }`; identity if no constraints |
-| `getSources(lens)` | Returns the root lens's `sources` |
 
 ### Evaluating Across Bridges
 

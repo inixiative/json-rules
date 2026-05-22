@@ -1,7 +1,16 @@
-import { ArrayOperator, DateOperator, Operator } from './operator';
+import { ArrayOperator, type DateOperator, Operator } from './operator';
+import {
+  ARRAY_OPERATOR_CATALOG,
+  DATE_OPERATOR_CATALOG,
+  FIELD_OPERATOR_CATALOG,
+  getValueShape,
+  isAggregateRangeOperator,
+  isAggregateSingleOperator,
+  isOperatorSupportedForTarget,
+  type RuleTarget,
+  type ValueShape,
+} from './operatorCatalog';
 import type { Condition, DateInputValue, OrderedRuleValue } from './types';
-
-export type RuleValidationTarget = 'check' | 'toPrisma' | 'toSql';
 
 export type ValidationIssue = {
   path: string;
@@ -15,17 +24,17 @@ export type ValidationResult = {
 };
 
 type ValidationContext = {
-  target: RuleValidationTarget;
+  target: RuleTarget;
   errors: ValidationIssue[];
 };
 
-const FIELD_OPERATORS = new Set<string>(Object.values(Operator));
-const ARRAY_OPERATORS = new Set<string>(Object.values(ArrayOperator));
-const DATE_OPERATORS = new Set<string>(Object.values(DateOperator));
+const FIELD_OPERATORS = new Set<string>(Object.keys(FIELD_OPERATOR_CATALOG));
+const ARRAY_OPERATORS = new Set<string>(Object.keys(ARRAY_OPERATOR_CATALOG));
+const DATE_OPERATORS = new Set<string>(Object.keys(DATE_OPERATOR_CATALOG));
 
 export const validateRule = (
   condition: unknown,
-  options: { target?: RuleValidationTarget } = {},
+  options: { target?: RuleTarget } = {},
 ): ValidationResult => {
   const context: ValidationContext = {
     target: options.target ?? 'check',
@@ -38,7 +47,7 @@ export const validateRule = (
 
 export const assertValidRule = (
   condition: unknown,
-  options: { target?: RuleValidationTarget } = {},
+  options: { target?: RuleTarget } = {},
 ): asserts condition is Condition => {
   const result = validateRule(condition, options);
   if (result.ok) return;
@@ -154,106 +163,102 @@ const validateFieldRule = (
 
   const operator = rule.operator as Operator;
 
-  if (context.target === 'toPrisma') {
-    if ((operator === Operator.matches || operator === Operator.notMatches) && 'operator' in rule) {
-      pushIssue(
-        context,
-        `${path}.operator`,
-        'unsupported_prisma_operator',
-        `Operator '${operator}' is not supported by toPrisma()`,
-      );
-    }
-    if (typeof rule.path === 'string' && rule.path.startsWith('$.')) {
-      pushIssue(
-        context,
-        `${path}.path`,
-        'unsupported_prisma_path',
-        `Path '${rule.path}' is not supported by toPrisma()`,
-      );
-    }
+  if (!isOperatorSupportedForTarget(operator, context.target)) {
+    pushIssue(
+      context,
+      `${path}.operator`,
+      `unsupported_${targetSlug(context.target)}_operator`,
+      `Operator '${operator}' is not supported by ${context.target}()`,
+    );
   }
 
-  if (isPresenceOperator(operator)) {
+  if (
+    context.target === 'toPrisma' &&
+    typeof rule.path === 'string' &&
+    rule.path.startsWith('$.')
+  ) {
+    pushIssue(
+      context,
+      `${path}.path`,
+      'unsupported_prisma_path',
+      `Path '${rule.path}' is not supported by toPrisma()`,
+    );
+  }
+
+  const shape = getValueShape(operator);
+
+  if (shape === 'none') {
     forbidValueAndPath(rule, path, context);
     return;
   }
 
   if (!requireValueOrPath(rule, path, context)) return;
-
   if ('path' in rule && typeof rule.path === 'string') return;
 
-  const value = rule.value;
-  switch (operator) {
-    case Operator.lessThan:
-    case Operator.lessThanEquals:
-    case Operator.greaterThan:
-    case Operator.greaterThanEquals:
-      if (!isOrderedRuleValue(value)) {
+  validateValueShape(shape, rule.value, operator, `${path}.value`, context);
+};
+
+const validateValueShape = (
+  shape: ValueShape,
+  value: unknown,
+  operator: string,
+  path: string,
+  context: ValidationContext,
+): void => {
+  switch (shape) {
+    case 'scalar':
+    case 'string':
+      if (shape === 'string' && typeof value !== 'string') {
         pushIssue(
           context,
-          `${path}.value`,
-          'invalid_ordered_value',
-          `Operator '${operator}' requires a string, number, or Date value`,
-        );
-      }
-      break;
-    case Operator.in:
-    case Operator.notIn:
-      if (!Array.isArray(value)) {
-        pushIssue(
-          context,
-          `${path}.value`,
-          'invalid_membership_value',
-          `Operator '${operator}' requires an array value`,
-        );
-      }
-      break;
-    case Operator.matches:
-    case Operator.notMatches:
-      if (!(typeof value === 'string' || value instanceof RegExp)) {
-        pushIssue(
-          context,
-          `${path}.value`,
-          'invalid_pattern_value',
-          `Operator '${operator}' requires a string or RegExp value`,
-        );
-      }
-      break;
-    case Operator.startsWith:
-    case Operator.endsWith:
-      if (typeof value !== 'string') {
-        pushIssue(
-          context,
-          `${path}.value`,
+          path,
           'invalid_string_value',
           `Operator '${operator}' requires a string value`,
         );
       }
-      break;
-    case Operator.between:
-    case Operator.notBetween:
+      return;
+    case 'ordered':
+      if (!isOrderedRuleValue(value)) {
+        pushIssue(
+          context,
+          path,
+          'invalid_ordered_value',
+          `Operator '${operator}' requires a string, number, or Date value`,
+        );
+      }
+      return;
+    case 'array':
+      if (!Array.isArray(value)) {
+        pushIssue(
+          context,
+          path,
+          'invalid_membership_value',
+          `Operator '${operator}' requires an array value`,
+        );
+      }
+      return;
+    case 'pattern':
+      if (!(typeof value === 'string' || value instanceof RegExp)) {
+        pushIssue(
+          context,
+          path,
+          'invalid_pattern_value',
+          `Operator '${operator}' requires a string or RegExp value`,
+        );
+      }
+      return;
+    case 'range':
       if (!isOrderedRange(value)) {
         pushIssue(
           context,
-          `${path}.value`,
+          path,
           'invalid_range_value',
           `Operator '${operator}' requires a two-item range`,
         );
       }
-      break;
+      return;
   }
 };
-
-const AGGREGATE_SINGLE_OPERATORS = new Set<string>([
-  Operator.equals,
-  Operator.notEquals,
-  Operator.lessThan,
-  Operator.lessThanEquals,
-  Operator.greaterThan,
-  Operator.greaterThanEquals,
-]);
-
-const AGGREGATE_RANGE_OPERATORS = new Set<string>([Operator.between, Operator.notBetween]);
 
 const validateAggregateRule = (
   rule: Record<string, unknown>,
@@ -289,8 +294,9 @@ const validateAggregateRule = (
   }
 
   const isSingle =
-    typeof rule.operator === 'string' && AGGREGATE_SINGLE_OPERATORS.has(rule.operator);
-  const isRange = typeof rule.operator === 'string' && AGGREGATE_RANGE_OPERATORS.has(rule.operator);
+    typeof rule.operator === 'string' && isAggregateSingleOperator(rule.operator as Operator);
+  const isRange =
+    typeof rule.operator === 'string' && isAggregateRangeOperator(rule.operator as Operator);
 
   if (!isSingle && !isRange) {
     pushIssue(
@@ -380,12 +386,12 @@ const validateArrayRule = (
 
   const operator = rule.arrayOperator as ArrayOperator;
 
-  if (context.target === 'toSql' && isComplexArrayOperator(operator)) {
+  if (!isOperatorSupportedForTarget(operator, context.target)) {
     pushIssue(
       context,
       `${path}.arrayOperator`,
-      'unsupported_sql_array_operator',
-      `Array operator '${operator}' is not supported by toSql()`,
+      `unsupported_${targetSlug(context.target)}_array_operator`,
+      `Array operator '${operator}' is not supported by ${context.target}()`,
     );
   }
 
@@ -474,72 +480,72 @@ const validateDateRule = (
 
   const operator = rule.dateOperator as DateOperator;
 
-  if (context.target === 'toPrisma') {
-    if (
-      (operator === DateOperator.dayIn || operator === DateOperator.dayNotIn) &&
-      'dateOperator' in rule
-    ) {
+  if (!isOperatorSupportedForTarget(operator, context.target)) {
+    pushIssue(
+      context,
+      `${path}.dateOperator`,
+      `unsupported_${targetSlug(context.target)}_date_operator`,
+      `Date operator '${operator}' is not supported by ${context.target}()`,
+    );
+  }
+
+  if (
+    context.target === 'toPrisma' &&
+    typeof rule.path === 'string' &&
+    rule.path.startsWith('$.')
+  ) {
+    pushIssue(
+      context,
+      `${path}.path`,
+      'unsupported_prisma_path',
+      `Path '${rule.path}' is not supported by toPrisma()`,
+    );
+  }
+
+  const shape = getValueShape(operator);
+
+  if (shape === 'dayList') {
+    if (!Array.isArray(rule.value) || !rule.value.every((item) => typeof item === 'string')) {
       pushIssue(
         context,
-        `${path}.dateOperator`,
-        'unsupported_prisma_date_operator',
-        `Date operator '${operator}' is not supported by toPrisma()`,
+        `${path}.value`,
+        'invalid_day_list',
+        `Date operator '${operator}' requires an array of day names`,
       );
     }
-    if (typeof rule.path === 'string' && rule.path.startsWith('$.')) {
+    if ('path' in rule && rule.path !== undefined) {
       pushIssue(
         context,
         `${path}.path`,
-        'unsupported_prisma_path',
-        `Path '${rule.path}' is not supported by toPrisma()`,
+        'unexpected_path',
+        `Date operator '${operator}' does not accept path`,
       );
     }
+    return;
   }
 
-  switch (operator) {
-    case DateOperator.dayIn:
-    case DateOperator.dayNotIn:
-      if (!Array.isArray(rule.value) || !rule.value.every((item) => typeof item === 'string')) {
-        pushIssue(
-          context,
-          `${path}.value`,
-          'invalid_day_list',
-          `Date operator '${operator}' requires an array of day names`,
-        );
-      }
-      if ('path' in rule && rule.path !== undefined) {
-        pushIssue(
-          context,
-          `${path}.path`,
-          'unexpected_path',
-          `Date operator '${operator}' does not accept path`,
-        );
-      }
-      return;
-    case DateOperator.between:
-    case DateOperator.notBetween:
-      if (!requireValueOrPath(rule, path, context)) return;
-      if ('path' in rule && typeof rule.path === 'string') return;
-      if (!isDateRange(rule.value)) {
-        pushIssue(
-          context,
-          `${path}.value`,
-          'invalid_date_range',
-          `Date operator '${operator}' requires a two-item date range`,
-        );
-      }
-      return;
-    default:
-      if (!requireValueOrPath(rule, path, context)) return;
-      if ('path' in rule && typeof rule.path === 'string') return;
-      if (!isDateInputValue(rule.value)) {
-        pushIssue(
-          context,
-          `${path}.value`,
-          'invalid_date_value',
-          `Date operator '${operator}' requires a date-like value`,
-        );
-      }
+  if (!requireValueOrPath(rule, path, context)) return;
+  if ('path' in rule && typeof rule.path === 'string') return;
+
+  if (shape === 'dateRange') {
+    if (!isDateRange(rule.value)) {
+      pushIssue(
+        context,
+        `${path}.value`,
+        'invalid_date_range',
+        `Date operator '${operator}' requires a two-item date range`,
+      );
+    }
+    return;
+  }
+
+  if (!isDateInputValue(rule.value)) {
+    pushIssue(
+      context,
+      `${path}.value`,
+      'invalid_date_value',
+      `Date operator '${operator}' requires a date-like value`,
+    );
   }
 };
 
@@ -577,19 +583,8 @@ const forbidValueAndPath = (
   }
 };
 
-const isPresenceOperator = (operator: Operator): boolean =>
-  operator === Operator.isEmpty ||
-  operator === Operator.notEmpty ||
-  operator === Operator.exists ||
-  operator === Operator.notExists;
-
-const isComplexArrayOperator = (operator: ArrayOperator): boolean =>
-  operator === ArrayOperator.all ||
-  operator === ArrayOperator.any ||
-  operator === ArrayOperator.none ||
-  operator === ArrayOperator.atLeast ||
-  operator === ArrayOperator.atMost ||
-  operator === ArrayOperator.exactly;
+const targetSlug = (target: RuleTarget): string =>
+  target === 'toPrisma' ? 'prisma' : target === 'toSql' ? 'sql' : 'check';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -1,8 +1,8 @@
 import { get } from 'lodash';
-import { escapeIdentifier } from 'pg';
 import { DateOperator } from '../operator';
 import type { DateRule } from '../types';
 import { mapDayNames } from './dayNames';
+import { escapeIdentifier } from './escape';
 import { resolveFieldSql } from './join';
 import { nextParam } from './params';
 import { quoteField } from './quoting';

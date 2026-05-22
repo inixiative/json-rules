@@ -3,6 +3,7 @@ import type { FieldMap } from './types';
 export type MapWalkResult =
   | { kind: 'direct' }
   | { kind: 'json-path'; stopIndex: number; jsonPath: string[] }
+  | { kind: 'bridge' }
   | { kind: 'fallback' };
 
 /**
@@ -24,6 +25,8 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
 
     const fieldEntry = modelEntry.fields[parts[i]];
     if (!fieldEntry) return { kind: 'fallback' };
+
+    if (fieldEntry.kind === 'bridge') return { kind: 'bridge' };
 
     if (fieldEntry.kind === 'scalar' && fieldEntry.type === 'Json' && i < parts.length - 1) {
       // This segment is a Json field and there are more segments → JSON path

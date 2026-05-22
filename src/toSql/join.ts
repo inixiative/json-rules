@@ -1,5 +1,5 @@
-import { escapeIdentifier } from 'pg';
 import type { FieldMapEntry } from '../toPrisma/types';
+import { escapeIdentifier } from './escape';
 import { quoteField, quoteQualifiedField } from './quoting';
 import type { BuilderState, FieldMap } from './types';
 

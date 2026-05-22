@@ -1,7 +1,7 @@
 import { get } from 'lodash';
-import { escapeIdentifier } from 'pg';
 import { Operator } from '../operator';
 import type { AggregateRule } from '../types';
+import { escapeIdentifier } from './escape';
 import { nextParam } from './params';
 import { quoteField, quoteFieldAsJsonb } from './quoting';
 import type { BuilderState } from './types';

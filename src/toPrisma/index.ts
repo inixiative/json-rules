@@ -1,6 +1,16 @@
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
-import type { BuildOptions, PrismaBuildState, ToPrismaResult } from './types';
+import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from './types';
+
+const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined => {
+  if (!options?.map || !options.mapName) return options;
+  if (!('maps' in options.map)) return options;
+  const resolved = (options.map as { maps: Record<string, FieldMap> }).maps[options.mapName];
+  if (!resolved) {
+    throw new Error(`toPrisma: fieldMap set has no entry for '${options.mapName}'`);
+  }
+  return { ...options, map: resolved };
+};
 
 export { executePrismaQueryPlan } from './execute';
 export type {
@@ -51,7 +61,7 @@ export type {
  */
 export const toPrisma = (condition: Condition, options?: BuildOptions): ToPrismaResult => {
   const state: PrismaBuildState = { steps: [] };
-  const where = buildCondition(condition, options, state);
+  const where = buildCondition(condition, normalizeOptions(options), state);
   return {
     steps: [...state.steps, { operation: 'where', where }],
   };

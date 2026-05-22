@@ -33,6 +33,9 @@ export const buildCountStep = (
 ): PrismaWhere => {
   const { map, model: currentModel } = options;
 
+  if (!rule.field) {
+    throw new Error('toPrisma: count-based ArrayRule requires a field path');
+  }
   const fieldEntry = map[currentModel]?.fields[rule.field];
   if (!fieldEntry || fieldEntry.kind !== 'object') {
     throw new Error(

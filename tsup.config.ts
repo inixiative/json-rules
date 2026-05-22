@@ -16,6 +16,5 @@ export default defineConfig({
     'dayjs/plugin/timezone',
     'dayjs/plugin/utc',
     'lodash',
-    'pg',
   ],
 });

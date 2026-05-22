@@ -1,4 +1,4 @@
-import { escapeIdentifier } from 'pg';
+import { escapeIdentifier } from './escape';
 
 /**
  * Escape a value for use in a LIKE pattern.

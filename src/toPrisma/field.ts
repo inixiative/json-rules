@@ -2,7 +2,7 @@ import { get } from 'lodash';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
 import { walkFieldPath } from './mapWalk';
-import type { BuildOptions, PrismaWhere } from './types';
+import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
@@ -154,13 +154,16 @@ const buildMapAwareFilter = (
     return buildNestedFilter(field, filter);
   }
 
-  const walkResult = walkFieldPath(field, options.map, options.model);
+  const walkResult = walkFieldPath(field, options.map as FieldMap, options.model);
   const parts = field.split('.');
 
   switch (walkResult.kind) {
     case 'fallback':
     case 'direct':
       return buildNestedFilter(field, filter);
+
+    case 'bridge':
+      return {};
 
     case 'json-path': {
       // Merge the json path array into the leaf filter, then nest normally

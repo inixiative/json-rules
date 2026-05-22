@@ -1,7 +1,7 @@
 import { get } from 'lodash';
-import { escapeIdentifier } from 'pg';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
+import { escapeIdentifier } from './escape';
 import { resolveFieldSql } from './join';
 import { nextParam } from './params';
 import { escapeLikePattern, quoteField } from './quoting';

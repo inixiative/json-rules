@@ -1,10 +1,12 @@
+import type { FieldMapSet } from '../fieldMap/types';
+
 export type PrismaFilter = Record<string, unknown>;
 export type PrismaWhere = Record<string, unknown>;
 
 // FieldMap is structurally compatible with PrismaMap from @inixiative/prisma-map.
 // It only requires the fields that json-rules needs for traversal.
 export type FieldMapEntry = {
-  kind: 'scalar' | 'object' | 'enum';
+  kind: 'scalar' | 'object' | 'enum' | 'bridge';
   type: string;
   isList?: boolean;
   fromFields?: string[];
@@ -48,7 +50,8 @@ export type ToPrismaResult = {
 };
 
 export type BuildOptions = {
-  map?: FieldMap;
+  map?: FieldMap | FieldMapSet;
+  mapName?: string;
   model?: string;
   context?: Record<string, unknown>;
 };

@@ -3,7 +3,7 @@ import type { FieldMapSet } from './types.ts';
 
 type Row = Record<string, unknown>;
 
-export type BridgeIndex = Record<
+export type BridgeDictionary = Record<
   string, // map name
   Record<
     string, // model name
@@ -11,8 +11,11 @@ export type BridgeIndex = Record<
   >
 >;
 
-export const buildBridgeIndex = (set: FieldMapSet, rawData: Record<string, Row[]>): BridgeIndex => {
-  const out: BridgeIndex = {};
+export const buildBridgeDictionary = (
+  set: FieldMapSet,
+  rawData: Record<string, Row[]>,
+): BridgeDictionary => {
+  const out: BridgeDictionary = {};
   for (const bridge of set.bridges ?? []) {
     const [a, b] = bridge.endpoints;
     const aKey = `${a.fieldMap}:${a.model}`;

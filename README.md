@@ -588,7 +588,7 @@ Children can only narrow further — chain rules enforce `picks ⊆ ancestor pic
 **Limitations to know:**
 
 - **1-many bridge arrays are not iterable mid-path.** `field: 'crm:MarketingEvent.campaign'` or `path: 'crm:MarketingEvent.campaign'` returns `undefined` when the bridge value is an array — `lodash.get` can't fan out across array elements. Use a numeric index (`crm:MarketingEvent.0.campaign`) or `arrayOperator` on the `field:` side to iterate.
-- **Bridge keys are plain object properties.** The engine doesn't consult `lens.bridges` at eval time — callers structure `data` correctly using the schema as a guide. Use `buildBridgeIndex(lens, rawForeign)` to pre-index foreign rows by `on` field, then embed under bridge keys per anchor row.
+- **Bridge keys are plain object properties.** The engine doesn't consult `lens.bridges` at eval time — callers structure `data` correctly using the schema as a guide. Use `buildBridgeDictionary(lens, rawForeign)` to pre-index foreign rows by `on` field, then embed under bridge keys per anchor row.
 
 
 `check()` itself is bridge-unaware — it walks paths via plain property access. The lens primitive is **schema metadata** (what fields exist, what bridges link them, what `on` fields join each side). The caller is responsible for structuring `data` accordingly:

@@ -27,7 +27,7 @@ No runtime behavior changes for callers not using the new primitives.
 - **`checkRuleAgainstLens(rule, lens)`** — walks rule AST, returns `{ ok, violations }` against the projected surface; context-aware (inner conditions resolve against relation target, not lens root).
 - **`validateNarrowing(narrowing)`** — structural + parent-chain cascade rules; validates `constrains` paths.
 - **`stitchFieldMaps(set)`** — injects bridges into a FieldMapSet's maps. Validates `on` references a real field per endpoint; rejects self-bridges.
-- **`buildBridgeIndex(set, rawData)`** — utility for callers: takes raw foreign arrays, returns dicts keyed by each endpoint's `on` field, nested map → model → on → identifier. 1-1 via `keyBy`, 1-many via `groupBy`. Supports the same model on multiple bridges with different `on` fields.
+- **`buildBridgeDictionary(set, rawData)`** — utility for callers: takes raw foreign arrays, returns dicts keyed by each endpoint's `on` field, nested map → model → on → identifier. 1-1 via `keyBy`, 1-many via `groupBy`. Supports the same model on multiple bridges with different `on` fields.
 
 ### Operator catalog (new)
 

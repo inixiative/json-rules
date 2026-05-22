@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { buildBridgeIndex } from '../src/fieldMap/buildBridgeIndex';
+import { buildBridgeDictionary } from '../src/fieldMap/buildBridgeDictionary';
 import { createLens } from '../src/lens/createLens';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -41,7 +41,7 @@ const crmMap: FieldMap = {
   },
 };
 
-describe('end-to-end: buildBridgeIndex → embed → check', () => {
+describe('end-to-end: buildBridgeDictionary → embed → check', () => {
   test('1-1 bridge: build index, embed by lookup, check passes', () => {
     const lens = createLens({
       maps: { prisma: prismaMap, salesforce: salesforceMap },
@@ -68,7 +68,7 @@ describe('end-to-end: buildBridgeIndex → embed → check', () => {
         { id: 'c2', industry: 'finance' },
       ],
     };
-    const index = buildBridgeIndex(lens, rawForeign);
+    const index = buildBridgeDictionary(lens, rawForeign);
 
     const enriched = fanUsers.map((u) => ({
       ...u,
@@ -112,7 +112,7 @@ describe('end-to-end: buildBridgeIndex → embed → check', () => {
         { id: 'e3', userId: 'u2', campaign: 'retention' },
       ],
     };
-    const index = buildBridgeIndex(lens, rawForeign);
+    const index = buildBridgeDictionary(lens, rawForeign);
 
     const enriched = fanUsers.map((u) => ({
       ...u,
@@ -157,7 +157,7 @@ describe('end-to-end: buildBridgeIndex → embed → check', () => {
       'salesforce:Contact': [{ id: 'c1', industry: 'tech', accountId: 'a1' }],
       'billing:Account': [{ id: 'a1', plan: 'enterprise' }],
     };
-    const index = buildBridgeIndex(lens, rawForeign);
+    const index = buildBridgeDictionary(lens, rawForeign);
 
     // Contact indexed by both id (used by FanUser→Contact) and accountId (used by Account→Contact)
     expect(index.salesforce.Contact.id.c1).toBeDefined();

@@ -1,22 +1,8 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
-import type { Lens, LensNarrowing, ModelNarrowing } from './types.ts';
-import { getRoot, isLens, resolveRelationTarget } from './walk.ts';
-
-// Ancestors of `narrowing` between (root Lens, narrowing], in root → parent order.
-const collectAncestors = (narrowing: LensNarrowing): LensNarrowing[] => {
-  const list: LensNarrowing[] = [];
-  const visited = new Set<LensNarrowing>();
-  let cursor: Lens | LensNarrowing = narrowing.parent;
-  while (!isLens(cursor)) {
-    if (visited.has(cursor)) throw new Error('cycle detected in narrowing parent chain');
-    visited.add(cursor);
-    list.unshift(cursor);
-    cursor = cursor.parent;
-  }
-  return list;
-};
+import type { LensNarrowing, ModelNarrowing } from './types.ts';
+import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
 const validateModelNode = (
   narrowing: ModelNarrowing,
@@ -96,7 +82,7 @@ const validateModelNode = (
 export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const errors: string[] = [];
   const set = getRoot(narrowing);
-  const ancestors = collectAncestors(narrowing);
+  const ancestors = collectChain(narrowing.parent);
 
   for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
     const fieldMap = set.maps[mapName];

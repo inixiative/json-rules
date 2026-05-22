@@ -1,39 +1,8 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
 import { projectNarrowing } from './project.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { getRoot, resolveRelationTarget } from './walk.ts';
-
-const walkPath = (
-  set: FieldMapSet,
-  startMap: string,
-  startModel: string,
-  path: string,
-): { entry: FieldMapEntry; mapName: string; modelName: string } | null => {
-  const parts = path.split('.');
-  let mapName = startMap;
-  let modelName = startModel;
-  for (let i = 0; i < parts.length; i++) {
-    const model: FieldMap[string] | undefined = set.maps[mapName]?.[modelName];
-    if (!model) return null;
-    const entry = model.fields[parts[i]];
-    if (!entry) return null;
-    if (i === parts.length - 1) return { entry, mapName, modelName };
-    if (entry.kind === 'object') {
-      modelName = entry.type;
-      continue;
-    }
-    if (entry.kind === 'bridge') {
-      const [m, n] = entry.type.includes(':') ? entry.type.split(':') : [mapName, entry.type];
-      mapName = m;
-      modelName = n;
-      continue;
-    }
-    return null;
-  }
-  return null;
-};
+import { getRoot, resolveRelationTarget, walkPath } from './walk.ts';
 
 export type RuleLensViolation = {
   path: string;

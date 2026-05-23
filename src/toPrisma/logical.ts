@@ -1,5 +1,6 @@
 import type { All, Any, Condition, IfThenElse } from '../types';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import { walkFieldPath } from './mapWalk';
+import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 
 // Forward declaration - provided by condition.ts to avoid circular import
 type BuildConditionFn = (
@@ -11,6 +12,41 @@ let buildCondition: BuildConditionFn;
 
 export const setConditionBuilder = (fn: BuildConditionFn) => {
   buildCondition = fn;
+};
+
+/**
+ * Does this condition's top-level field paths hit any bridge?
+ *
+ * Bridge predicates compile to `{}` in toPrisma (the over-fetch sentinel).
+ * In direct AND/OR contexts that's a no-op or harmless over-fetch. But in
+ * `if/then`, the implication is encoded as `NOT(if) OR then` — and Prisma
+ * evaluates `NOT: {}` as match-nothing, which corrupts the implication.
+ * When the if-clause touches a bridge, we must over-fetch the whole
+ * if/then/else rather than emit the broken NOT form.
+ *
+ * Note: doesn't recurse into arrayRule/aggregate sub-conditions (their
+ * fields resolve against the nested target model, not the root). The
+ * principal case — a bridge field directly in the if-clause — is covered.
+ */
+const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolean => {
+  if (typeof cond === 'boolean') return false;
+  if (!options?.map || !options?.model) return false;
+
+  if ('all' in cond) return cond.all.some((c) => conditionTouchesBridge(c, options));
+  if ('any' in cond) return cond.any.some((c) => conditionTouchesBridge(c, options));
+  if ('if' in cond) {
+    return (
+      conditionTouchesBridge(cond.if, options) ||
+      conditionTouchesBridge(cond.then, options) ||
+      (cond.else !== undefined && conditionTouchesBridge(cond.else, options))
+    );
+  }
+
+  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
+    const result = walkFieldPath(cond.field, options.map as FieldMap, options.model);
+    if (result.kind === 'bridge') return true;
+  }
+  return false;
 };
 
 export const buildAll = (
@@ -39,6 +75,21 @@ export const buildIfThenElse = (
   // if → then is equivalent to: NOT(if) OR then
   // With else: (NOT(if) OR then) AND (if OR else)
   //
+  // When any sub-clause hits a bridge, the precise compilation breaks:
+  //  - bridge in `if`: `NOT({})` becomes match-nothing in Prisma, corrupting the implication.
+  //  - bridge in `then` with `else`: `OR[NOT(if), {}]` collapses to match-all, then
+  //    AND-ed with `OR[if, else]` silently drops the `then` branch.
+  //  - bridge in `else`: symmetric — drops the `else` branch.
+  // Over-fetch the whole expression and let the caller's check() filter against
+  // hydrated cross-source data.
+  if (
+    conditionTouchesBridge(cond.if, options) ||
+    conditionTouchesBridge(cond.then, options) ||
+    (cond.else !== undefined && conditionTouchesBridge(cond.else, options))
+  ) {
+    return {};
+  }
+
   // Build the `if` clause once to avoid pushing duplicate GroupBySteps into state
   // when the `if` clause contains a count-based array operator (atLeast/atMost/exactly).
   const ifClause = buildCondition(cond.if, options, state);

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.0.1
+
+Hardening release surfaced by two adversarial review rounds. No API changes; all fixes are bug fixes or new loud-failure paths replacing prior silent miscompiles.
+
+### Fixes
+
+- **`toPrisma` if/then/else with bridge sub-clauses** — when any of `if`/`then`/`else` referenced a bridge field, the implication encoding `NOT(if) OR then` collapsed in Prisma (because `NOT: {}` is match-nothing), silently dropping the `then` or `else` branch and producing wrong query plans. `buildIfThenElse` now detects bridge-tainted sub-clauses via `conditionTouchesBridge` and short-circuits to `{}` (over-fetch), letting the caller's `check()` filter precisely.
+- **`toPrisma` `FieldMapSet` without `mapName`** — `normalizeOptions` silently passed a `FieldMapSet` through as if it were a `FieldMap`, producing queries lacking JSON-path detection and bridge handling. Now throws `toPrisma: 'map' is a FieldMapSet — 'mapName' is required`.
+- **`buildBridgeDictionary` reversed-endpoint silent dedup** — the convention is endpoint[0] = "one" side, endpoint[1] = "many" side; reversed bridges produced wrong `isList` flags in stitching AND silently deduped rows via `keyBy`. Added `keyByUnique` helper that throws on duplicate `on` values with a fix hint; documented the convention on `Bridge` via JSDoc.
+- **`buildBridgeDictionary` null FK values** — many-side rows with `null`/`undefined` `on` values were grouped under string keys `'null'`/`'undefined'` by lodash `groupBy`, creating spurious joins. Now filtered before grouping.
+- **`check()` `arrayOperator` over primitive arrays** — `all`/`any`/`none`/`atLeast`/`atMost`/`exactly` over a primitive-only array threw, breaking the `boolean | string` contract and allowing a rule-driven crash of the caller process. Now returns a descriptive error string (respects `condition.error` override).
+
+### Tests added (19)
+
+- `test/toPrisma.bridgeIfThen.test.ts` (5)
+- `test/toPrisma.fieldMapSet.test.ts` (4)
+- `test/buildBridgeDictionary.reversed.test.ts` (2)
+- `test/buildBridgeDictionary.nullKey.test.ts` (2)
+- `test/check.primitiveArray.test.ts` (6)
+
 ## 2.0.0
 
 First version of the **Lens** primitive — schema-aware view layer with cross-source bridges and recursive narrowings. New compile-time boundary semantics in `toPrisma` and `toSql`. Operator catalog as canonical source of operator/target/kind/value-shape facts. `pg` removed from runtime dependencies.

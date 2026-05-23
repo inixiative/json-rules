@@ -231,8 +231,8 @@ const checkArray = <TData extends CheckData>(
     }
 
     if (!some(arrayValue, isObject))
-      throw new Error(
-        `${condition.field} contains only primitive values. Use 'in' or 'contains' operators instead of array operators for primitive arrays`,
+      return getError(
+        `contains only primitive values; use 'in' or 'contains' instead of array operators on primitive arrays`,
       );
 
     const results = arrayValue.map((item) => check(itemCondition, item as Row, opts));

@@ -3,8 +3,17 @@ import { buildCondition } from './condition';
 import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from './types';
 
 const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined => {
-  if (!options?.map || !options.mapName) return options;
-  if (!('maps' in options.map)) return options;
+  if (!options?.map) return options;
+  const mapIsSet = 'maps' in options.map;
+  // Catch the silent-degradation case: a FieldMapSet without a mapName would
+  // otherwise be passed through as if it were a FieldMap, producing queries
+  // that lack map-awareness (no JSON-path detection, no bridge handling).
+  if (mapIsSet && !options.mapName) {
+    throw new Error(
+      `toPrisma: 'map' is a FieldMapSet — 'mapName' is required to resolve which map to use.`,
+    );
+  }
+  if (!mapIsSet || !options.mapName) return options;
   const resolved = (options.map as { maps: Record<string, FieldMap> }).maps[options.mapName];
   if (!resolved) {
     throw new Error(`toPrisma: fieldMap set has no entry for '${options.mapName}'`);

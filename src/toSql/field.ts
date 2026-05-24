@@ -1,4 +1,4 @@
-import { get } from 'lodash';
+import { get } from 'lodash-es';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
 import { escapeIdentifier } from './escape';

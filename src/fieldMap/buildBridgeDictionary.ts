@@ -1,4 +1,4 @@
-import { groupBy } from 'lodash';
+import { groupBy } from 'lodash-es';
 import type { FieldMapSet } from './types.ts';
 
 type Row = Record<string, unknown>;

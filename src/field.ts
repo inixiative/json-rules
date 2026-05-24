@@ -1,4 +1,4 @@
-import { get, isEmpty } from 'lodash';
+import { get, isEmpty } from 'lodash-es';
 import { Operator } from './operator';
 import type { Rule } from './types';
 

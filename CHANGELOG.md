@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.2
+
+Second hardening pass — fixes the round-3 review findings: ESM consumers were broken in 2.0.0/2.0.1, plus three more silent miscompiles symmetric to (or missed by) the 2.0.1 fixes.
+
+### Fixes
+
+- **ESM build broken for Node consumers** — `dist/index.js` emitted `import { get, ... } from 'lodash'`, which fails at runtime because lodash is CJS-only and provides no named ESM exports. Switched all source imports from `lodash` to `lodash-es` and bundled it (dropped from tsup `external`) so both ESM and CJS artifacts are self-contained. CJS consumers no longer get an `ExperimentalWarning` from require()-ing an ES Module.
+- **`toSql` bridge if/then under-fetch** — mirror of the 2.0.1 toPrisma fix; bridge predicates compile to `'TRUE'`, then `NOT(TRUE) OR then` collapses to `then`, silently dropping branches in the `else` variant. `toSql/logical.ts` now applies the same `conditionTouchesBridge` guard across `if` / `then` / `else` and emits `'TRUE'` (over-fetch) when any sub-clause hits a bridge.
+- **`else: false` was silently skipped** — `condition.else` truthiness checks in `check.ts`, `toPrisma/logical.ts`, and `toSql/logical.ts` meant `else: false` (a legal deny-branch condition) was treated as no-else. Now use `!== undefined`. `toPrisma` also handles `then: false` / `else: false` by emitting the same match-nothing pattern that `buildAny` uses for empty arrays (instead of letting `buildCondition(false)` throw).
+- **`toPrisma` `some`/`every`/`none` used parent model for inner conditions** — `buildArrayLeafFilter` passed `options` unchanged into the inner `buildCondition`, so JSON-path and bridge detection misfired against the parent model rather than the relation target. Now resolves the relation target via `resolveRelationTarget` and threads `{ ...options, model: targetModel }` into inner calls.
+
+### Dependency changes
+
+- `lodash` removed from runtime dependencies.
+- `lodash-es` added as a devDependency (bundled, not a runtime dep).
+- `@types/lodash` → `@types/lodash-es`.
+
+### Tests added (12)
+
+- `test/toSql.bridgeIfThen.test.ts` (5)
+- `test/elseFalse.test.ts` (4)
+- `test/toPrisma.relationModelContext.test.ts` (3)
+
+ESM/CJS smoke tests via `node` verify both artifacts import cleanly.
+
 ## 2.0.1
 
 Hardening release surfaced by two adversarial review rounds. No API changes; all fixes are bug fixes or new loud-failure paths replacing prior silent miscompiles.

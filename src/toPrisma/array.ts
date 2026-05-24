@@ -48,23 +48,48 @@ export const buildArrayRule = (
   return buildNestedFilter(rule.field, filter);
 };
 
+/**
+ * Walk a relation field path and return the target model name, so inner conditions
+ * resolve against the right model (enables JSON-path and bridge detection inside
+ * some/every/none). Returns null if the path isn't a chain of object relations.
+ */
+const resolveRelationTarget = (field: string, map: FieldMap, rootModel: string): string | null => {
+  const parts = field.split('.');
+  let cur = rootModel;
+  for (const part of parts) {
+    const entry = map[cur]?.fields[part];
+    if (!entry || entry.kind !== 'object') return null;
+    cur = entry.type;
+  }
+  return cur;
+};
+
+const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions | undefined => {
+  if (!options?.map || !options?.model || !rule.field) return options;
+  const target = resolveRelationTarget(rule.field, options.map as FieldMap, options.model);
+  return target ? { ...options, model: target } : options;
+};
+
 const buildArrayLeafFilter = (
   rule: ArrayRule,
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): unknown => {
+  // Inner condition runs against the relation target model, not the parent.
+  // Without this, JSON-path and bridge detection misfire inside some/every/none.
+  const childOptions = childOptionsFor(rule, options);
   switch (rule.arrayOperator) {
     case ArrayOperator.all:
       if (!rule.condition) throw new Error(`ArrayOperator 'all' requires a condition`);
-      return { every: buildCondition(rule.condition, options, state) };
+      return { every: buildCondition(rule.condition, childOptions, state) };
 
     case ArrayOperator.any:
       if (!rule.condition) throw new Error(`ArrayOperator 'any' requires a condition`);
-      return { some: buildCondition(rule.condition, options, state) };
+      return { some: buildCondition(rule.condition, childOptions, state) };
 
     case ArrayOperator.none:
       if (!rule.condition) throw new Error(`ArrayOperator 'none' requires a condition`);
-      return { none: buildCondition(rule.condition, options, state) };
+      return { none: buildCondition(rule.condition, childOptions, state) };
 
     case ArrayOperator.empty:
       return { none: {} };

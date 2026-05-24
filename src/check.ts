@@ -1,4 +1,4 @@
-import { get, isObject, some } from 'lodash';
+import { get, isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
 import { ArrayOperator, Operator } from './operator';
@@ -99,7 +99,9 @@ const checkIfThenElse = <TData extends CheckData>(
 ): boolean | string => {
   const ifResult = check(condition.if, data, opts);
   if (ifResult === true) return check(condition.then, data, opts);
-  return condition.else ? check(condition.else, data, opts) : true;
+  // `false` is a legal else value (deny branch); use !== undefined so it's
+  // evaluated rather than skipped by truthiness.
+  return condition.else !== undefined ? check(condition.else, data, opts) : true;
 };
 
 const checkAggregate = <TData extends CheckData>(

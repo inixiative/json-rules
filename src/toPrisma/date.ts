@@ -1,4 +1,4 @@
-import { get } from 'lodash';
+import { get } from 'lodash-es';
 import { DateOperator } from '../operator';
 import type { DateRule } from '../types';
 import type { BuildOptions, PrismaWhere } from './types';

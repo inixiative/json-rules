@@ -94,10 +94,15 @@ export const buildIfThenElse = (
   // when the `if` clause contains a count-based array operator (atLeast/atMost/exactly).
   const ifClause = buildCondition(cond.if, options, state);
   const notIf = { NOT: ifClause };
-  const thenClause = buildCondition(cond.then, options, state);
+  // `false` as a then/else branch is a legal deny — buildCondition(false) would
+  // throw, so emit the match-nothing pattern that buildAny uses for empty `any: []`.
+  const thenClause =
+    cond.then === false ? MATCH_NOTHING : buildCondition(cond.then, options, state);
 
-  if (cond.else) {
-    const elseClause = buildCondition(cond.else, options, state);
+  // !== undefined so `else: false` (deny branch) is emitted rather than skipped.
+  if (cond.else !== undefined) {
+    const elseClause =
+      cond.else === false ? MATCH_NOTHING : buildCondition(cond.else, options, state);
     return {
       AND: [{ OR: [notIf, thenClause] }, { OR: [ifClause, elseClause] }],
     };
@@ -105,3 +110,7 @@ export const buildIfThenElse = (
 
   return { OR: [notIf, thenClause] };
 };
+
+// Prisma WHERE that matches no rows. Same self-contradiction shape used by buildAny's
+// empty-array path; relies on the model having an `id` field (true for ~all Prisma models).
+const MATCH_NOTHING: PrismaWhere = { AND: [{ id: null }, { id: { not: null } }] };

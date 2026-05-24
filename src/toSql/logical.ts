@@ -32,6 +32,26 @@ const pathHitsBridge = (field: string, map: FieldMap, model: string): boolean =>
   return false;
 };
 
+/**
+ * Walks a relation field path and returns the target model (or null if the path
+ * isn't a chain of object relations). Used to flip model context when descending
+ * into arrayRule.condition / aggregate.condition.
+ */
+const resolveRelationTargetModel = (
+  field: string,
+  map: FieldMap,
+  rootModel: string,
+): string | null => {
+  const parts = field.split('.');
+  let cur = rootModel;
+  for (const part of parts) {
+    const entry = map[cur]?.fields[part];
+    if (!entry || entry.kind !== 'object') return null;
+    cur = entry.type;
+  }
+  return cur;
+};
+
 const conditionTouchesBridge = (cond: Condition, state: BuilderState): boolean => {
   if (typeof cond === 'boolean') return false;
   if (!state.map || !state.currentModel) return false;
@@ -46,6 +66,15 @@ const conditionTouchesBridge = (cond: Condition, state: BuilderState): boolean =
   }
   if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
     if (pathHitsBridge(cond.field, state.map, state.currentModel)) return true;
+
+    // Recurse into arrayRule.condition / aggregate.condition with model context
+    // flipped to the relation target so nested fields resolve correctly.
+    if ('condition' in cond && cond.condition !== undefined) {
+      const target = resolveRelationTargetModel(cond.field, state.map, state.currentModel);
+      if (target) {
+        if (conditionTouchesBridge(cond.condition, { ...state, currentModel: target })) return true;
+      }
+    }
   }
   return false;
 };

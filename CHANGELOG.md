@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.3
+
+Hardening note from external review: the `conditionTouchesBridge` guard added in 2.0.1/2.0.2 stopped at outer field paths and did not recurse into `arrayRule.condition` or `aggregate.condition`. A bridge field hidden inside `some`/`every`/`none`/`aggregate` sub-conditions, under an `if`/`then`/`else`, still corrupted the implication semantics — silently dropping branches.
+
+### Fixes
+
+- **`toPrisma` and `toSql` `conditionTouchesBridge` walkers** now recurse into the nested `condition` of `arrayRule` and `aggregate` rules, flipping the model context to the relation target (via a new `resolveRelationTargetModel` helper). A bridge anywhere in the if-clause subtree — at any depth — now triggers the over-fetch (`{}` / `'TRUE'`).
+
+### Tests added (5)
+
+- `test/bridgeIfThen.nestedSubCondition.test.ts` — bridge inside `if`/`then` `arrayRule.condition`, bridge buried two levels deep inside an `all` inside `arrayRule.condition`, toSql guard-catches-before-throw case.
+
 ## 2.0.2
 
 Second hardening pass — fixes the round-3 review findings: ESM consumers were broken in 2.0.0/2.0.1, plus three more silent miscompiles symmetric to (or missed by) the 2.0.1 fixes.

@@ -15,18 +15,36 @@ export const setConditionBuilder = (fn: BuildConditionFn) => {
 };
 
 /**
- * Does this condition's top-level field paths hit any bridge?
+ * Walks a relation field path and returns the target model name (for descending
+ * into arrayRule/aggregate sub-conditions). Returns null if the path isn't a
+ * chain of object relations (e.g. terminates in a scalar or hits a bridge).
+ */
+const resolveRelationTargetModel = (
+  field: string,
+  map: FieldMap,
+  rootModel: string,
+): string | null => {
+  const parts = field.split('.');
+  let cur = rootModel;
+  for (const part of parts) {
+    const entry = map[cur]?.fields[part];
+    if (!entry || entry.kind !== 'object') return null;
+    cur = entry.type;
+  }
+  return cur;
+};
+
+/**
+ * Does this condition (recursively) hit a bridge field?
  *
  * Bridge predicates compile to `{}` in toPrisma (the over-fetch sentinel).
  * In direct AND/OR contexts that's a no-op or harmless over-fetch. But in
  * `if/then`, the implication is encoded as `NOT(if) OR then` — and Prisma
  * evaluates `NOT: {}` as match-nothing, which corrupts the implication.
- * When the if-clause touches a bridge, we must over-fetch the whole
- * if/then/else rather than emit the broken NOT form.
  *
- * Note: doesn't recurse into arrayRule/aggregate sub-conditions (their
- * fields resolve against the nested target model, not the root). The
- * principal case — a bridge field directly in the if-clause — is covered.
+ * Recurses into arrayRule.condition and aggregate.condition, flipping the
+ * model context to the relation target so nested fields resolve correctly.
+ * A bridge anywhere in the if-clause subtree triggers over-fetch.
  */
 const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolean => {
   if (typeof cond === 'boolean') return false;
@@ -42,9 +60,18 @@ const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolea
     );
   }
 
+  // Field-bearing leaves: arrayRule, aggregate, dateRule, field
   if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
     const result = walkFieldPath(cond.field, options.map as FieldMap, options.model);
     if (result.kind === 'bridge') return true;
+
+    // arrayRule/aggregate may carry a nested condition rooted on the relation target.
+    if ('condition' in cond && cond.condition !== undefined) {
+      const target = resolveRelationTargetModel(cond.field, options.map as FieldMap, options.model);
+      if (target) {
+        if (conditionTouchesBridge(cond.condition, { ...options, model: target })) return true;
+      }
+    }
   }
   return false;
 };

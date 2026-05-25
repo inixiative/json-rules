@@ -517,14 +517,26 @@ check(
 
 ## Lens & Multi-Source Data
 
-The `Lens` primitive is a schema-aware view layer over one or more `FieldMap`s. It enables rule authoring against multi-source data (e.g. Prisma + an external CRM), with declarative cross-source `Bridge`s and recursive `Narrowing`s for picks/omits/constraints.
+> **For the full v2.1 lens guide — including the four anchor layers for `where`,
+> the `all` operator filter-first trick, per-model enum narrowing, and a
+> validate-then-apply usage pattern — see [docs/LENS.md](./docs/LENS.md).**
+> This section covers the high-level shape and the multi-source bridges.
 
-### FieldMapSet & Bridges
+The `Lens` primitive is a schema-aware view layer over one or more `FieldMap`s. It enables rule authoring against multi-source data (e.g. Prisma + an external CRM), with declarative cross-source `Bridge`s and recursive `Narrowing`s for both schema (picks/omits/enumPicks/enumOmits) and data (`where`).
 
-A `FieldMapSet` groups one or more `FieldMap`s and declares the cross-source edges between them:
+### FieldMap & FieldMapSet
+
+A `FieldMap` is `{ models, enums? }` — models keyed by name, plus an optional enum registry scoped to that source. A `FieldMapSet` groups one or more `FieldMap`s and declares the cross-source edges between them:
 
 ```ts
 import { stitchFieldMaps } from '@inixiative/json-rules';
+
+const prismaMap = {
+  models: {
+    FanUser: { fields: { /* ... */ } },
+  },
+  enums: { UserRole: ['admin', 'member'] },
+};
 
 const set = stitchFieldMaps({
   maps: { prisma: prismaMap, salesforce: salesforceMap },
@@ -559,9 +571,9 @@ const lens = createLens({
 
 The lens is **schema only** — no data lives on it. Runtime data (rows, foreign tables, FE picker sources) is passed alongside, separately, when you need it.
 
-### LensNarrowing & `constrains`
+### LensNarrowing & `where`
 
-`LensNarrowing` is a recursive tree that narrows a parent `Lens` (or another `LensNarrowing`). Each narrowing can add picks/omits per model + a lens-level constraint:
+`LensNarrowing` is a recursive tree that narrows a parent `Lens` (or another `LensNarrowing`). Each narrowing can add schema picks/omits per model, per-field enum picks/omits, and `where` clauses for data scope:
 
 ```ts
 const narrowing: LensNarrowing = {
@@ -571,22 +583,28 @@ const narrowing: LensNarrowing = {
       models: {
         FanUser: { picks: ['email', 'firstName', 'crmId'] },
       },
+      defaults: {
+        models: {
+          // applies wherever FanUser appears, root or nested
+          FanUser: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
+        },
+      },
     },
   },
-  constrains: { field: 'deletedAt', operator: Operator.isEmpty },
+  where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
 };
 ```
 
-Children can only narrow further — chain rules enforce `picks ⊆ ancestor picks`, no re-picking an ancestor-omitted field. Constraints AND into any rule evaluated against the lens.
+Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — the lens-level `where` ANDs at the root, model-default `where` injects at every visit of the model, and relation `where` injects when the rule descends. The `all` array operator gets a filter-first rewrite via implication so out-of-scope rows don't fail the user's "every row matches" check. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
 
 ### Lens Utilities
 
 | Function | Purpose |
 | --- | --- |
-| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable constraint paths). Call this before `projectNarrowing`. |
-| `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain. Assumes `validateNarrowing` has passed — silently ignores unknown picks/omits otherwise. |
-| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths against the projected surface; returns `{ ok, violations }` |
-| `applyLens(rule, narrowing)` | Returns `{ all: [...chainConstraints, rule] }`; identity if no constraints |
+| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call this before `projectNarrowing` and at narrowing construction. |
+| `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain. Composition is intersection across all layers. Use for SDK-contract / OpenAPI emission. |
+| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths and enum values against the projected surface, path-aware. Returns `{ ok, violations }`. The security gate. |
+| `applyLens(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
 
 ### Evaluating Across Bridges
 

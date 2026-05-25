@@ -103,13 +103,11 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
   const accs = new Map<string, ModelAcc>();
 
   for (const narrowing of chain) {
-    for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
+    // mapDefaults[X].models[M] applies wherever M is visited in map X.
+    for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
       const fieldMap = set.maps[mapName];
       if (!fieldMap) continue;
-
-      // defaults.models[M] applies wherever M is visited — add to every M's accumulator.
-      const defaultsModels = mapNarrowing.defaults?.models ?? {};
-      for (const [modelName, defaultsForModel] of Object.entries(defaultsModels)) {
+      for (const [modelName, defaultsForModel] of Object.entries(defaults.models ?? {})) {
         const key = `${mapName}::${modelName}`;
         let acc = accs.get(key);
         if (!acc) {
@@ -118,22 +116,22 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
         }
         accumulateModelNarrowing(acc, defaultsForModel);
       }
+    }
 
-      // Path-specific narrowings via models[M] (root) and its relations tree.
-      for (const [modelName, modelNarrowing] of Object.entries(mapNarrowing.models)) {
-        walkPathNarrowing(set, mapName, modelName, modelNarrowing, accs);
-      }
+    // Path-specific narrowings via root (anchored at lens.mapName, lens.model) and its relations.
+    if (narrowing.root) {
+      walkPathNarrowing(set, root.mapName, root.model, narrowing.root, accs);
     }
   }
 
-  // Phase 1.5: narrow the enum registries via chained defaults.enums BEFORE
+  // Phase 1.5: narrow the enum registries via chained mapDefaults.enums BEFORE
   // per-field narrowing reads from them (so field narrowing intersects against
   // the already-narrowed registry).
   for (const narrowing of chain) {
-    for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
+    for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
       const fieldMap = set.maps[mapName];
       if (!fieldMap?.enums) continue;
-      for (const [enumName, enumNarrowing] of Object.entries(mapNarrowing.defaults?.enums ?? {})) {
+      for (const [enumName, enumNarrowing] of Object.entries(defaults.enums ?? {})) {
         const current: readonly string[] | undefined = fieldMap.enums[enumName];
         if (!current) continue;
         fieldMap.enums = {

@@ -37,10 +37,10 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relations', () => {
   test('unrestricted lens: deep path passes', () => {
@@ -55,13 +55,9 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
     // OrgUser narrowed to picks=['role'] strips `organization` relation.
     // Deep path orgUsers.organization.name should be rejected.
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
-            relations: {
-              orgUsers: { picks: ['role'] }, // organization is now invisible
-            },
-          },
+      root: {
+        relations: {
+          orgUsers: { picks: ['role'] }, // organization is now invisible
         },
       },
     });
@@ -75,14 +71,10 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
 
   test('narrowing strips terminal field → terminal path rejected', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
-            relations: {
-              orgUsers: {
-                relations: { organization: { picks: ['id'] } }, // name is invisible
-              },
-            },
+      root: {
+        relations: {
+          orgUsers: {
+            relations: { organization: { picks: ['id'] } }, // name is invisible
           },
         },
       },
@@ -96,14 +88,10 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
 
   test('partial narrowing: declared path passes, sibling rejected', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
-            relations: {
-              orgUsers: {
-                relations: { organization: { picks: ['name'] } },
-              },
-            },
+      root: {
+        relations: {
+          orgUsers: {
+            relations: { organization: { picks: ['name'] } },
           },
         },
       },
@@ -124,9 +112,9 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
     ).toBe(false);
   });
 
-  test('defaults.models[M].omits also rejects rule paths through omitted field', () => {
+  test('mapDefaults.models[M].omits also rejects rule paths through omitted field', () => {
     const n = withParent(lens, {
-      prisma: { models: {}, defaults: { models: { Organization: { omits: ['plan'] } } } },
+      mapDefaults: { prisma: { models: { Organization: { omits: ['plan'] } } } },
     });
     const result = checkRuleAgainstLens(
       { field: 'orgUsers.organization.plan', operator: Operator.equals, value: 'enterprise' },

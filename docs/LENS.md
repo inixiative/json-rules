@@ -1,6 +1,6 @@
-# Lens v2.1 — deep-dive guide
+# Lens v2.2 — deep-dive guide
 
-> The Lens primitive at v2.1. For library basics (operators, `check()`,
+> The Lens primitive at v2.2. For library basics (operators, `check()`,
 > `toPrisma()`, `toSql()`, bridges, multi-source data evaluation), see the
 > [README](../README.md).
 
@@ -18,9 +18,9 @@ so the resulting query/check operates only on rows the lens admits.
 
 ## 2. Two kinds of narrowing
 
-The most important thing to internalize about v2.1: a `MapNarrowing` contains
-two distinct kinds of narrowing, with different concerns. Mixing them up is the
-fastest way to write a lens that "works" but leaks scope.
+The most important thing to internalize: a `LensNarrowing` contains two distinct
+kinds of narrowing, with different concerns. Mixing them up is the fastest way
+to write a lens that "works" but leaks scope.
 
 ### Schema narrowing — what's *visible*
 
@@ -45,24 +45,17 @@ import { Operator } from '@inixiative/json-rules';
 // SCHEMA narrowing — `deletedAt` is gone from the visible surface
 const surfaceNarrowing: LensNarrowing = {
   parent: lens,
-  maps: {
-    prisma: {
-      models: { User: { omits: ['deletedAt'] } },
-    },
-  },
+  root: { omits: ['deletedAt'] },
 };
 
 // DATA narrowing — `deletedAt` is still visible, but only rows with
 // deletedAt = null are in scope
 const scopeNarrowing: LensNarrowing = {
   parent: lens,
-  maps: {
+  mapDefaults: {
     prisma: {
-      models: {},
-      defaults: {
-        models: {
-          User: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
-        },
+      models: {
+        User: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
       },
     },
   },
@@ -82,40 +75,28 @@ describes — and `applyLens` finds that anchor point and injects it there.
 
 | Layer | Where it lives | Semantic |
 | --- | --- | --- |
-| Lens-level | `LensNarrowing.where` | AND at the root of the rule. The ergonomic shortcut for "scope this whole lens." |
-| Model-intrinsic | `defaults.models[M].where` | "Wherever model M appears in the rule." Injected at every visit of M. |
-| Path-specific descent | `relations[R].where` | Only when the rule descends into relation R via the path-specific narrowings tree. |
-
-> **2.1.1 restriction:** the top-level `models[M].where` position is rejected
-> by `validateNarrowing`. It used to be a fourth layer but was redundant — for
-> M=root it produced the same result as `LensNarrowing.where`, and for M≠root
-> it was dead code (the lens never root-visits non-root models). Use
-> `LensNarrowing.where` for root scoping or `defaults.models[M].where` for
-> model-intrinsic scoping. The `where` field on `relations[R]` is still valid
-> (path-specific descent has no equivalent).
+| Root | `root.where` | AND at the lens anchor visit. The path-specific home for "scope this lens's root model." |
+| Model-intrinsic | `mapDefaults[X].models[M].where` | "Wherever model M appears in map X." Injected at every visit of M. |
+| Path-specific descent | `root.relations[R]...where` | Only when the rule descends through R via the path-specific narrowings tree. |
 
 A worked example. Lens root is `User`, with a `posts` relation to `Post`,
 each of which has `comments` to `Comment`.
 
 ```ts
-// Layer 1 — lens-level, root-anchored
+// Layer 1 — root-anchored, scopes the lens's anchor visit
 const n1: LensNarrowing = {
   parent: lens,
-  where: { field: 'id', operator: Operator.equals, value: 'u1' },
-  maps: { prisma: { models: {} } },
+  root: { where: { field: 'id', operator: Operator.equals, value: 'u1' } },
 };
 
 // Layer 2 — Comment-intrinsic: anywhere a comment is reached, only the
 // non-deleted ones are in scope
 const n2: LensNarrowing = {
   parent: lens,
-  maps: {
+  mapDefaults: {
     prisma: {
-      models: {},
-      defaults: {
-        models: {
-          Comment: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
-        },
+      models: {
+        Comment: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
       },
     },
   },
@@ -124,17 +105,11 @@ const n2: LensNarrowing = {
 // Layer 3 — only the comments reached *via User.posts.comments* are scoped
 const n3: LensNarrowing = {
   parent: lens,
-  maps: {
-    prisma: {
-      models: {
-        User: {
-          relations: {
-            posts: {
-              relations: {
-                comments: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
-              },
-            },
-          },
+  root: {
+    relations: {
+      posts: {
+        relations: {
+          comments: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
         },
       },
     },
@@ -144,14 +119,14 @@ const n3: LensNarrowing = {
 
 `n2` is usually what you want for "soft-delete everywhere." `n3` is what you
 want when a different path to the same model has different visibility rules.
-For "scope the lens itself" use `n1` (LensNarrowing.where).
+For "scope the lens itself" use `n1` (`root.where`).
 
 ## 4. The `all` operator filter-first trick
 
 This is the part of v2.1 that justifies the rewrite. Consider:
 
 - Schema: `User { comments: Comment[] }`, `Comment { body, deletedAt }`.
-- Lens scope: `defaults.models.Comment.where = { deletedAt isEmpty }`.
+- Lens scope: `mapDefaults.prisma.models.Comment.where = { deletedAt isEmpty }`.
 - User rule: `comments.all(body matches /foo/)`.
 
 **The intent**: "Every comment that the user can see matches `foo`." The
@@ -159,6 +134,8 @@ deleted comments are not "what the user can see," so they should be filtered
 out before the `all` check.
 
 ### Naive AND injection — wrong
+
+Same setup, but the lens-level scope is `mapDefaults.prisma.models.Comment.where = { deletedAt isEmpty }`.
 
 ```ts
 // `{ all: [scope, original] }` inside the comments arrayRule.condition:
@@ -255,7 +232,7 @@ defaults*. A chained narrowing that re-picks an ancestor-omitted field throws:
 
 ```text
 validateNarrowing:
-maps.prisma.models.User.picks: 'password' was omitted by ancestor
+root.picks: 'password' was omitted by ancestor
 ```
 
 The strict check means you find bad lens code at construction, not at query
@@ -293,17 +270,14 @@ const map: FieldMap = {
 };
 ```
 
-### `defaults.models[M]` — everywhere M appears
+### `mapDefaults[X].models[M]` — everywhere M appears in map X
 
 ```ts
 const n: LensNarrowing = {
   parent: lens,
-  maps: {
+  mapDefaults: {
     prisma: {
-      models: {},
-      defaults: {
-        models: { User: { omits: ['password'] } },
-      },
+      models: { User: { omits: ['password'] } },
     },
   },
 };
@@ -311,38 +285,28 @@ const n: LensNarrowing = {
 // at User.manager (User again), AND at User.posts.author (User again).
 ```
 
-### `models[M]` — only when M is the lens's root
+### `root` — only at the lens anchor visit
 
 ```ts
 const n: LensNarrowing = {
   parent: lens, // anchor model = User
-  maps: {
-    prisma: {
-      models: { User: { omits: ['password'] } },
-    },
-  },
+  root: { omits: ['password'] },
 };
 // Hides password only on the lens's root User visit. User reached via
 // .manager or .posts.author still has password visible.
-// (Use defaults.models.User for "everywhere" semantics.)
+// (Use mapDefaults.prisma.models.User for "everywhere" semantics.)
 ```
 
-### `relations[R]` — only when descending into R
+### `root.relations[R]...` — only when descending into R
 
 ```ts
 const n: LensNarrowing = {
   parent: lens,
-  maps: {
-    prisma: {
-      models: {
-        User: {
-          relations: {
-            posts: {
-              relations: {
-                author: { omits: ['password'] }, // only on the .posts.author User visit
-              },
-            },
-          },
+  root: {
+    relations: {
+      posts: {
+        relations: {
+          author: { omits: ['password'] }, // only on the .posts.author User visit
         },
       },
     },
@@ -353,15 +317,17 @@ const n: LensNarrowing = {
 
 ## 7. Per-model and per-type enum narrowing
 
-Enum value visibility composes from up to four sources, intersected per field:
+Enum value visibility composes from up to five sources, intersected per field:
 
 1. The registry — `FieldMap.enums[enumType]` (declared once per source)
 2. The per-field override — `FieldMapEntry.values` (a field can declare a
    tighter set than its type's registry — useful for narrow-purpose fields)
-3. `defaults.enums[enumType]` — narrow the enum *type* (applies to every
-   field of that type in this map)
-4. `enumPicks` / `enumOmits` on a `ModelNarrowing` or `ModelDefaultNarrowing`
-   — per-field-per-visit narrowing
+3. `mapDefaults[X].enums[enumType]` — narrow the enum *type* (applies to every
+   field of that type in map X)
+4. `mapDefaults[X].models[Y].enumPicks/enumOmits[field]` — per-field on a default
+   model (applies wherever Y appears in map X)
+5. `enumPicks` / `enumOmits` on `root` or `root.relations[...]` — per-field
+   path-specific
 
 ```ts
 const map: FieldMap = {
@@ -374,26 +340,50 @@ const map: FieldMap = {
   },
 };
 
-// (3) defaults.enums.UserRole.omits=[owner] — narrows the registry to
-// admin/member/guest everywhere in this map.
-// (4) enumPicks on User.role — restricts THAT field to a subset.
+// (3) mapDefaults.prisma.enums.UserRole.omits=[guest] — narrows the registry to
+// admin/member/owner everywhere in this map.
+// (4) mapDefaults.prisma.models.User.enumOmits.role=[owner] — drops owner from
+// User.role wherever User appears.
+// (5) root.enumPicks.role=['admin'] — at the lens anchor's User visit, picks admin only.
 const n: LensNarrowing = {
   parent: lens,
-  maps: {
+  root: { enumPicks: { role: ['admin'] } },
+  mapDefaults: {
     prisma: {
-      models: {
-        User: { enumPicks: { role: ['admin', 'member'] } },
-      },
-      defaults: { enums: { UserRole: { omits: ['owner'] } } },
+      enums: { UserRole: { omits: ['guest'] } },
+      models: { User: { enumOmits: { role: ['owner'] } } },
     },
   },
 };
-// User.role allowed = registry ∩ defaults.enums ∩ enumPicks =
-//   ['admin','member','owner','guest'] ∩ ['admin','member','guest'] ∩ ['admin','member']
-//   = ['admin','member']
-// Audit.targetRole is untouched by the per-field enumPicks; gets
-//   ['admin','member','guest'] (registry ∩ defaults.enums).
+// User.role allowed at root visit = registry ∩ mapDefaults.enums ∩ mapDefaults.models.User.enumOmits ∩ root.enumPicks
+//   = ['admin','member','owner','guest'] ∩ ['admin','member','owner'] ∩ ['admin','member'] ∩ ['admin']
+//   = ['admin']
+// Audit.targetRole is untouched by layers 4 & 5; gets registry ∩ mapDefaults.enums
+//   = ['admin','member','owner'].
 ```
+
+Validation enforces this layering at construction time (`validateNarrowing`):
+layer 5 picks can't reference values omitted by layer 4 or 3 or by ancestor's
+same-position layer-5 narrowing. Same for layer 4 against layer 3 and ancestor's
+same-position layer 4. A test in `v2_1.validateNarrowing.test.ts` exercises each
+boundary.
+
+### Surfacing the narrowed enum to a builder/SDK
+
+`projectNarrowing` materializes the per-field allowed set onto `FieldMapEntry.values`
+for any visited field. For an enum field whose model isn't reached via the
+path-specific tree or `mapDefaults.models[Y]`, `values` is left unset and the
+consumer falls back to `fieldMap.enums?.[type]` (which itself reflects the
+layer-3 type-level narrowing). The conservative builder lookup is:
+
+```ts
+const allowed = entry.values ?? projectedSet.maps[mapName].enums?.[entry.type] ?? [];
+```
+
+For per-path enum divergence (e.g. `User.role` picks `['admin']` at root but
+`['member']` via `posts.author`), `projectNarrowing` collapses to the intersection
+across all paths (a safe single view). For path-aware truth at runtime, use
+`resolveVisit(policy, ...)`.
 
 `checkRuleAgainstLens` rejects rule values not in the resolved set — leaf
 rules, plus inside `all`/`any`/`if`/`arrayRule.condition` (it recurses with
@@ -446,24 +436,20 @@ type EnumNarrowing = {
   omits?: readonly string[];
 };
 
-/** Applies-everywhere narrowings — per-model (no relations) + per-enum-type. */
+/** Applies-everywhere narrowings for one map — per-model (no relations) + per-enum-type. */
 type NarrowingDefaults = {
   models?: Record<string, ModelDefaultNarrowing>;
   enums?: Record<string, EnumNarrowing>;
 };
 
-/** One map's narrowing: path-specific + applies-everywhere. */
-type MapNarrowing = {
-  models: Record<string, ModelNarrowing>;                 // path-specific
-  defaults?: NarrowingDefaults;                           // applies-everywhere
-};
-
 /** A narrowing in a chain. Children only narrow further. */
 type LensNarrowing = {
   parent: Lens | LensNarrowing;
-  maps: Record<string, MapNarrowing>;
-  /** Lens-level row filter, anchored to the root model. ANDs into the root rule. */
-  where?: Condition;
+  /** Path-specific narrowing anchored at (lens.mapName, lens.model). Descends
+   *  via .relations and may cross maps through bridge relations. */
+  root?: ModelNarrowing;
+  /** Per-map applies-everywhere narrowings, keyed by map name. */
+  mapDefaults?: Record<string, NarrowingDefaults>;
 };
 ```
 
@@ -535,21 +521,18 @@ import { Operator } from '@inixiative/json-rules';
 
 const narrowing: LensNarrowing = {
   parent: lens,
-  maps: {
+  mapDefaults: {
     prisma: {
-      models: {},
-      defaults: {
-        models: {
-          // every User row visited, anywhere, must match tenantId
-          User: {
-            omits: ['deletedAt'], // schema: hide the field too
-            where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
-          },
-          // every Post: not deleted
-          Post: {
-            omits: ['deletedAt'],
-            where: { field: 'deletedAt', operator: Operator.isEmpty },
-          },
+      models: {
+        // every User row visited, anywhere, must match tenantId
+        User: {
+          omits: ['deletedAt'], // schema: hide the field too
+          where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
+        },
+        // every Post: not deleted
+        Post: {
+          omits: ['deletedAt'],
+          where: { field: 'deletedAt', operator: Operator.isEmpty },
         },
       },
     },
@@ -654,7 +637,44 @@ they only see the composed rule they're given. If you skip
 unnarrowed rule. Treat the two-step (validate → apply) as the bottleneck for
 every rule entering execution.
 
-## 12. Migration from v2.0
+## 12. Migration
+
+### From v2.1 to v2.2
+
+The shape changed; composition didn't. `LensNarrowing.where` and the
+dual-purpose `maps` dictionary are gone. Two top-level siblings replace them:
+`root` (path-specific anchor tree) and `mapDefaults` (per-map applies-everywhere).
+Side-by-side:
+
+```ts
+// 2.1
+{
+  parent: lens,
+  where: rootWhere,
+  maps: {
+    prisma: {
+      models: { Inquiry: { picks, relations: { ... } } },
+      defaults: { enums: { Status: { omits: ['draft'] } } },
+    },
+  },
+}
+
+// 2.2
+{
+  parent: lens,
+  root: { picks, where: rootWhere, relations: { ... } },
+  mapDefaults: {
+    prisma: { enums: { Status: { omits: ['draft'] } } },
+  },
+}
+```
+
+`MapNarrowing` was removed from public exports. `validateNarrowing` also tightens
+enum strictness — same monotonic-restriction rule that already applied to
+picks/omits now applies to per-field `enumPicks/enumOmits` across same-layer +
+ancestor model-wide defaults and ancestor's same-position narrowing.
+
+### From v2.0 to v2.1
 
 Two breaking changes at the type level. Code changes are mechanical.
 
@@ -706,9 +726,10 @@ schema-level additions.
 
 Same shape, renamed. The name reflects the filter-first semantic explicitly:
 it's a SQL-like `where` clause that scopes which rows are in scope, not a
-generic constraint.
+generic constraint. (Note: in 2.2 this moved again to `root.where` — see the
+2.1→2.2 migration above.)
 
-Old:
+Old (2.0):
 
 ```ts
 const n: LensNarrowing = {
@@ -718,7 +739,7 @@ const n: LensNarrowing = {
 };
 ```
 
-New:
+New (2.1):
 
 ```ts
 const n: LensNarrowing = {
@@ -728,16 +749,17 @@ const n: LensNarrowing = {
 };
 ```
 
-Find/replace pattern: `constrains:` → `where:` in narrowing declarations.
+Find/replace pattern (for the 2.0→2.1 step): `constrains:` → `where:` in
+narrowing declarations.
 
 While you're touching narrowings, this is the right time to move
-single-purpose scopes from `LensNarrowing.where` (which always anchors at
-root) to `defaults.models[M].where` (anchors at the model) — *unless* you
-specifically want root-only behavior. Most "soft-delete everywhere" scopes
-were getting root anchoring under v2.0 and silently producing wrong queries
-under nested array operators. v2.1's anchored composition makes the right
-behavior available; you have to opt in by putting the where on the right
-anchor layer.
+single-purpose scopes from the root-anchored `where` to
+`mapDefaults[X].models[M].where` (anchors at every visit of M in map X) —
+*unless* you specifically want root-only behavior. Most "soft-delete
+everywhere" scopes were getting root anchoring under v2.0 and silently
+producing wrong queries under nested array operators. v2.1+'s anchored
+composition makes the right behavior available; you have to opt in by
+putting the where on the right anchor layer.
 
 ## 13. End-to-end worked example
 
@@ -787,21 +809,18 @@ import { Operator } from '@inixiative/json-rules';
 
 const buildNarrowing = (currentTenantId: string): LensNarrowing => ({
   parent: lens,
-  maps: {
+  mapDefaults: {
     prisma: {
-      models: {},
-      defaults: {
-        models: {
-          User: {
-            where: { field: 'tenantId', operator: Operator.equals, value: currentTenantId },
-          },
-          Post: {
-            where: {
-              all: [
-                { field: 'tenantId', operator: Operator.equals, value: currentTenantId },
-                { field: 'deletedAt', operator: Operator.isEmpty },
-              ],
-            },
+      models: {
+        User: {
+          where: { field: 'tenantId', operator: Operator.equals, value: currentTenantId },
+        },
+        Post: {
+          where: {
+            all: [
+              { field: 'tenantId', operator: Operator.equals, value: currentTenantId },
+              { field: 'deletedAt', operator: Operator.isEmpty },
+            ],
           },
         },
       },

@@ -9,7 +9,6 @@ export type {
   EnumNarrowing,
   Lens,
   LensNarrowing,
-  MapNarrowing,
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,

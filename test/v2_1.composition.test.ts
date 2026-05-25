@@ -24,19 +24,19 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('projectNarrowing composition is intersection (not last-write)', () => {
   test('chained picks: A=[email,name,id], B=[name,id,role] → projected={name,id}', () => {
     // Intersection of the two pick sets, not just B's
     const a = withParent(lens, {
-      prisma: { models: { User: { picks: ['email', 'name', 'id'] } } },
+      root: { picks: ['email', 'name', 'id'] },
     });
     const b = withParent(a, {
-      prisma: { models: { User: { picks: ['name', 'id', 'role'] } } },
+      root: { picks: ['name', 'id', 'role'] },
     });
     const out = projectNarrowing(b);
     const fields = Object.keys(out.maps.prisma.models.User.fields).sort();
@@ -49,10 +49,10 @@ describe('projectNarrowing composition is intersection (not last-write)', () => 
 
   test('pick then omit: pick keeps {email,name}, omit drops name → {email}', () => {
     const a = withParent(lens, {
-      prisma: { models: { User: { picks: ['email', 'name'] } } },
+      root: { picks: ['email', 'name'] },
     });
     const b = withParent(a, {
-      prisma: { models: { User: { omits: ['name'] } } },
+      root: { omits: ['name'] },
     });
     const out = projectNarrowing(b);
     expect(Object.keys(out.maps.prisma.models.User.fields).sort()).toEqual(['email']);
@@ -60,10 +60,10 @@ describe('projectNarrowing composition is intersection (not last-write)', () => 
 
   test('omit accumulates: A omits=[name], B omits=[email] → both gone', () => {
     const a = withParent(lens, {
-      prisma: { models: { User: { omits: ['name'] } } },
+      root: { omits: ['name'] },
     });
     const b = withParent(a, {
-      prisma: { models: { User: { omits: ['email'] } } },
+      root: { omits: ['email'] },
     });
     const out = projectNarrowing(b);
     const fields = Object.keys(out.maps.prisma.models.User.fields).sort();

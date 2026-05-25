@@ -32,21 +32,17 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('validateNarrowing — pick/omit inheritance strictness', () => {
   test('omits a field already excluded by defaults → error', () => {
     const n: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: {
-          models: { User: { omits: ['password'] } },
-          defaults: { models: { User: { omits: ['password'] } } },
-        },
-      },
+      root: { omits: ['password'] },
+      mapDefaults: { prisma: { models: { User: { omits: ['password'] } } } },
     };
     expect(() => validateNarrowing(n)).toThrow(/password.*already.*excluded|not.*visible/i);
   });
@@ -54,25 +50,19 @@ describe('validateNarrowing — pick/omit inheritance strictness', () => {
   test('omits a field that was never visible (defaults.picks excluded it) → error', () => {
     const n: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: {
-          models: { User: { omits: ['password'] } },
-          defaults: { models: { User: { picks: ['id', 'email'] } } },
-        },
-      },
+      root: { omits: ['password'] },
+      mapDefaults: { prisma: { models: { User: { picks: ['id', 'email'] } } } },
     };
     expect(() => validateNarrowing(n)).toThrow(/password.*not.*visible|not.*in.*picks/i);
   });
 
   test('picks a field excluded by an ancestor → error', () => {
     const parent = withParent(lens, {
-      prisma: { models: { User: { picks: ['id', 'email'] } } },
+      root: { picks: ['id', 'email'] },
     });
     const child: LensNarrowing = {
       parent,
-      maps: {
-        prisma: { models: { User: { picks: ['password'] } } },
-      },
+      root: { picks: ['password'] },
     };
     expect(() => validateNarrowing(child)).toThrow(/password.*not.*visible|not.*in/i);
   });
@@ -81,12 +71,8 @@ describe('validateNarrowing — pick/omit inheritance strictness', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
-          prisma: {
-            models: { User: { picks: ['id'] } },
-            defaults: { models: { User: { picks: ['id', 'email'] } } },
-          },
-        },
+        root: { picks: ['id'] },
+        mapDefaults: { prisma: { models: { User: { picks: ['id', 'email'] } } } },
       }),
     ).not.toThrow();
   });
@@ -95,42 +81,30 @@ describe('validateNarrowing — pick/omit inheritance strictness', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
-          prisma: {
-            models: { User: { omits: ['email'] } },
-            defaults: { models: { User: { picks: ['id', 'email', 'name'] } } },
-          },
-        },
+        root: { omits: ['email'] },
+        mapDefaults: { prisma: { models: { User: { picks: ['id', 'email', 'name'] } } } },
       }),
     ).not.toThrow();
   });
 });
 
 describe('validateNarrowing — enum inheritance strictness', () => {
-  test('enumPicks references value already excluded by defaults.enums → error', () => {
+  test('enumPicks references value already excluded by mapDefaults.enums → error', () => {
     const n: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: {
-          models: { User: { enumPicks: { role: ['admin', 'guest'] } } },
-          defaults: { enums: { UserRole: { omits: ['guest'] } } },
-        },
-      },
+      root: { enumPicks: { role: ['admin', 'guest'] } },
+      mapDefaults: { prisma: { enums: { UserRole: { omits: ['guest'] } } } },
     };
     expect(() => validateNarrowing(n)).toThrow(
       /guest.*(not.*allowed|not.*visible|already.*excluded)/i,
     );
   });
 
-  test('enumOmits references value already excluded by defaults.enums → error', () => {
+  test('enumOmits references value already excluded by mapDefaults.enums → error', () => {
     const n: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: {
-          models: { User: { enumOmits: { role: ['guest'] } } },
-          defaults: { enums: { UserRole: { omits: ['guest'] } } },
-        },
-      },
+      root: { enumOmits: { role: ['guest'] } },
+      mapDefaults: { prisma: { enums: { UserRole: { omits: ['guest'] } } } },
     };
     expect(() => validateNarrowing(n)).toThrow(/guest.*already.*excluded|not.*visible/i);
   });
@@ -139,12 +113,8 @@ describe('validateNarrowing — enum inheritance strictness', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
-          prisma: {
-            models: { User: { enumPicks: { role: ['admin'] } } },
-            defaults: { enums: { UserRole: { picks: ['admin', 'member'] } } },
-          },
-        },
+        root: { enumPicks: { role: ['admin'] } },
+        mapDefaults: { prisma: { enums: { UserRole: { picks: ['admin', 'member'] } } } },
       }),
     ).not.toThrow();
   });
@@ -153,9 +123,7 @@ describe('validateNarrowing — enum inheritance strictness', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
-          prisma: { models: { User: { enumPicks: { role: ['SUPERVISOR'] } } } },
-        },
+        root: { enumPicks: { role: ['SUPERVISOR'] } },
       }),
     ).toThrow(/SUPERVISOR|unknown.*value/i);
   });
@@ -164,28 +132,22 @@ describe('validateNarrowing — enum inheritance strictness', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
-          prisma: { models: { User: { enumPicks: { email: ['x'] } } } },
-        },
+        root: { enumPicks: { email: ['x'] } },
       }),
     ).toThrow(/email.*not.*enum|not.*enum.*field/i);
   });
 });
 
 describe('validateNarrowing — where anchoring', () => {
-  test('defaults.models[M].where paths validated against model M', () => {
-    // Constrains references User field, declared at defaults.models.User → OK
+  test('mapDefaults.models[M].where paths validated against model M', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
+        mapDefaults: {
           prisma: {
-            models: {},
-            defaults: {
-              models: {
-                User: {
-                  where: { field: 'email', operator: Operator.equals, value: 'x' },
-                },
+            models: {
+              User: {
+                where: { field: 'email', operator: Operator.equals, value: 'x' },
               },
             },
           },
@@ -194,19 +156,16 @@ describe('validateNarrowing — where anchoring', () => {
     ).not.toThrow();
   });
 
-  test('defaults.models[M].where referencing a field not on model M → error', () => {
+  test('mapDefaults.models[M].where referencing a field not on model M → error', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
+        mapDefaults: {
           prisma: {
-            models: {},
-            defaults: {
-              models: {
-                User: {
-                  // 'title' is on Post, not User
-                  where: { field: 'title', operator: Operator.equals, value: 'x' },
-                },
+            models: {
+              User: {
+                // 'title' is on Post, not User
+                where: { field: 'title', operator: Operator.equals, value: 'x' },
               },
             },
           },
@@ -215,22 +174,86 @@ describe('validateNarrowing — where anchoring', () => {
     ).toThrow(/title|not.*on.*User/i);
   });
 
-  test('relations[R].where validated against R target model', () => {
-    // posts → Post. Constrain references Post.title → OK
+  test('root.relations[R].where validated against R target model', () => {
+    // posts → Post. where references Post.title → OK
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {
-          prisma: {
-            models: {
-              User: {
-                relations: {
-                  posts: {
-                    where: { field: 'title', operator: Operator.equals, value: 'x' },
-                  },
-                },
-              },
+        root: {
+          relations: {
+            posts: {
+              where: { field: 'title', operator: Operator.equals, value: 'x' },
             },
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  test('root.where validated against the lens anchor model', () => {
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        root: { where: { field: 'email', operator: Operator.equals, value: 'x' } },
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        // 'title' is on Post, not User (the lens anchor)
+        root: { where: { field: 'title', operator: Operator.equals, value: 'x' } },
+      }),
+    ).toThrow(/title|not.*on.*User/i);
+  });
+});
+
+describe('validateNarrowing — enum cross-layer strictness (2.2.0)', () => {
+  test('root.enumPicks references value already excluded by same-layer mapDefaults.models[lens.model].enumOmits → error', () => {
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        root: { enumPicks: { role: ['admin', 'owner'] } },
+        mapDefaults: { prisma: { models: { User: { enumOmits: { role: ['owner'] } } } } },
+      }),
+    ).toThrow(/owner.*(already.*excluded|not.*allowed)/i);
+  });
+
+  test('root.enumPicks references value already excluded by ancestor mapDefaults.models[lens.model].enumOmits → error', () => {
+    const parent: LensNarrowing = {
+      parent: lens,
+      mapDefaults: { prisma: { models: { User: { enumOmits: { role: ['owner'] } } } } },
+    };
+    expect(() =>
+      validateNarrowing({
+        parent,
+        root: { enumPicks: { role: ['admin', 'owner'] } },
+      }),
+    ).toThrow(/owner.*(already.*excluded|not.*allowed)/i);
+  });
+
+  test('root.enumPicks references value not in ancestor root.enumPicks (same-position chain) → error', () => {
+    const parent: LensNarrowing = {
+      parent: lens,
+      root: { enumPicks: { role: ['admin', 'member'] } },
+    };
+    expect(() =>
+      validateNarrowing({
+        parent,
+        root: { enumPicks: { role: ['admin', 'owner'] } },
+      }),
+    ).toThrow(/owner.*(not.*allowed|already.*excluded)/i);
+  });
+
+  test('all three layers consistent → OK (admin allowed by enums, model defaults, and root picks)', () => {
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        root: { enumPicks: { role: ['admin'] } },
+        mapDefaults: {
+          prisma: {
+            enums: { UserRole: { omits: ['guest'] } },
+            models: { User: { enumOmits: { role: ['owner'] } } },
           },
         },
       }),
@@ -239,18 +262,15 @@ describe('validateNarrowing — where anchoring', () => {
 });
 
 describe('validateNarrowing — ModelDefaultNarrowing rejects relations field', () => {
-  test('declaring `relations` inside defaults.models[M] → error', () => {
+  test('declaring `relations` inside mapDefaults.models[M] → error', () => {
     // Type system rejects this at compile time, but runtime check is safety net.
     const bad: LensNarrowing = {
       parent: lens,
-      maps: {
+      mapDefaults: {
         prisma: {
-          models: {},
-          defaults: {
-            models: {
-              // biome-ignore lint/suspicious/noExplicitAny: testing runtime safety net
-              User: { relations: { posts: { picks: ['id'] } } } as any,
-            },
+          models: {
+            // biome-ignore lint/suspicious/noExplicitAny: testing runtime safety net
+            User: { relations: { posts: { picks: ['id'] } } } as any,
           },
         },
       },

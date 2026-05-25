@@ -30,19 +30,16 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
-// Narrowing: scope to non-deleted comments. Applied at Comment via defaults.
+// Narrowing: scope to non-deleted comments. Applied at Comment via mapDefaults.
 const narrowing = withParent(lens, {
-  prisma: {
-    models: {},
-    defaults: {
-      models: {
-        Comment: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
-      },
+  mapDefaults: {
+    prisma: {
+      models: { Comment: { where: { field: 'deletedAt', operator: Operator.isEmpty } } },
     },
   },
 });

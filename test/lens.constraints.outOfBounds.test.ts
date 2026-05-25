@@ -26,47 +26,47 @@ const map: FieldMap = {
 const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'FanUser' });
 
 describe('constraints — out-of-bounds investigation', () => {
-  test('validateNarrowing rejects where referencing a field the same narrowing omits', () => {
+  test('validateNarrowing rejects root.where referencing a field the same narrowing omits', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: { prisma: { models: { FanUser: { omits: ['secretField'] } } } },
-        where: { field: 'secretField', operator: Operator.equals, value: 'x' },
+        root: {
+          omits: ['secretField'],
+          where: { field: 'secretField', operator: Operator.equals, value: 'x' },
+        },
       }),
-    ).toThrow(/where: 'secretField'/);
+    ).toThrow(/where.*'secretField'/);
   });
 
-  test('validateNarrowing rejects where referencing a field ancestor picked away', () => {
+  test('validateNarrowing rejects root.where referencing a field ancestor picked away', () => {
     const parent: LensNarrowing = {
       parent: lens,
-      maps: { prisma: { models: { FanUser: { picks: ['email'] } } } },
+      root: { picks: ['email'] },
     };
     expect(() =>
       validateNarrowing({
         parent,
-        maps: {},
-        where: { field: 'secretField', operator: Operator.equals, value: 'x' },
+        root: { where: { field: 'secretField', operator: Operator.equals, value: 'x' } },
       }),
-    ).toThrow(/where: 'secretField'/);
+    ).toThrow(/where.*'secretField'/);
   });
 
-  test('ancestor where on a field still applies after child narrows visibility further', () => {
-    // Grandparent where on `email`.
+  test('ancestor root.where on a field still applies after child narrows visibility further', () => {
+    // Grandparent root.where on `email`.
     // Parent picks ['email', 'id'].
     // Child picks ['email'] (more restrictive).
     // applyLens should still AND grandparent's email constraint.
     const grandparent: LensNarrowing = {
       parent: lens,
-      maps: {},
-      where: { field: 'email', operator: Operator.equals, value: 'pinned@example.com' },
+      root: { where: { field: 'email', operator: Operator.equals, value: 'pinned@example.com' } },
     };
     const parent: LensNarrowing = {
       parent: grandparent,
-      maps: { prisma: { models: { FanUser: { picks: ['email', 'id'] } } } },
+      root: { picks: ['email', 'id'] },
     };
     const child: LensNarrowing = {
       parent,
-      maps: { prisma: { models: { FanUser: { picks: ['email'] } } } },
+      root: { picks: ['email'] },
     };
 
     const rule = { field: 'email', operator: Operator.equals, value: 'pinned@example.com' };
@@ -77,17 +77,16 @@ describe('constraints — out-of-bounds investigation', () => {
     });
   });
 
-  test('ancestor where on a field a descendant narrowing OMITS is still valid (constraint references real schema field, just one the user can no longer see)', () => {
-    // Grandparent where on `secretField` — at grandparent's level, secretField is visible
+  test('ancestor root.where on a field a descendant narrowing OMITS is still valid (constraint references real schema field, just one the user can no longer see)', () => {
+    // Grandparent root.where on `secretField` — at grandparent's level, secretField is visible
     const grandparent: LensNarrowing = {
       parent: lens,
-      maps: {},
-      where: { field: 'secretField', operator: Operator.equals, value: 'admin-only' },
+      root: { where: { field: 'secretField', operator: Operator.equals, value: 'admin-only' } },
     };
     // Child omits secretField — but constraint already attached upstream
     const child: LensNarrowing = {
       parent: grandparent,
-      maps: { prisma: { models: { FanUser: { omits: ['secretField'] } } } },
+      root: { omits: ['secretField'] },
     };
     expect(() => validateNarrowing(child)).not.toThrow();
 
@@ -105,11 +104,10 @@ describe('constraints — out-of-bounds investigation', () => {
     expect(validity.violations.map((v) => v.path)).toContain('secretField');
   });
 
-  test('where: false acts as deny-everything and still ANDs in (not dropped)', () => {
+  test('root.where: false acts as deny-everything and still ANDs in (not dropped)', () => {
     const narrowing: LensNarrowing = {
       parent: lens,
-      maps: {},
-      where: false,
+      root: { where: false },
     };
     const rule = { field: 'email', operator: Operator.equals, value: 'x' };
     expect(applyLens(rule, narrowing)).toEqual({ all: [false, rule] });

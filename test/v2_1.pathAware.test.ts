@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { applyLens } from '../src/lens/applyLens';
 import { checkRuleAgainstLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
-import { Operator } from '../src/operator';
+import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
+import type { Condition } from '../src/types';
 
 // P1.1 from Codex review: same model reached via different paths can have
 // different narrowings declared. The pre-2.1 projectNarrowing collapses
@@ -41,10 +43,10 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('checkRuleAgainstLens — path-aware (same model, different narrowings per path)', () => {
   test('User.manager.email allowed, Post.author.email rejected (different narrowings, same model)', () => {
@@ -52,18 +54,14 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
     //   .manager → User, picks ['email', 'name']
     //   .posts → Post → .author → User, picks ['name']  (no email visible via posts.author)
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
-            picks: ['id', 'manager', 'posts'],
+      root: {
+        picks: ['id', 'manager', 'posts'],
+        relations: {
+          manager: { picks: ['email', 'name'] },
+          posts: {
+            picks: ['author'],
             relations: {
-              manager: { picks: ['email', 'name'] },
-              posts: {
-                picks: ['author'],
-                relations: {
-                  author: { picks: ['name'] }, // intentionally no email
-                },
-              },
+              author: { picks: ['name'] }, // intentionally no email
             },
           },
         },
@@ -86,18 +84,14 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
 
   test('Two paths each declare User narrowing; rule must use the right field per path', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
-            picks: ['manager', 'posts'],
+      root: {
+        picks: ['manager', 'posts'],
+        relations: {
+          manager: { picks: ['email'] }, // only email visible via .manager
+          posts: {
+            picks: ['author'],
             relations: {
-              manager: { picks: ['email'] }, // only email visible via .manager
-              posts: {
-                picks: ['author'],
-                relations: {
-                  author: { picks: ['name'] }, // only name visible via .posts.author
-                },
-              },
+              author: { picks: ['name'] }, // only name visible via .posts.author
             },
           },
         },
@@ -121,28 +115,187 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
     ).toBe(false);
   });
 
-  test('defaults.models.User applies at every User visit AND intersects with per-path narrowings', () => {
-    // defaults: password never visible anywhere
-    // manager: picks email/password (but password excluded by defaults → effective just email)
-    // posts.author: picks email
-    const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
-            picks: ['manager', 'posts'],
+  // Realistic recursive schema: a SpaceUser junction has spaceId/orgId/user.
+  // The path User → spaceUsers (their memberships) → user (themselves again) → spaceUsers
+  // (their OTHER memberships, e.g. scoped to a different org) visits SpaceUser twice on one
+  // descent path. Each visit's narrowing is independent.
+  const realMap: FieldMap = {
+    models: {
+      User: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          email: { kind: 'scalar', type: 'String' },
+          spaceUsers: { kind: 'object', type: 'SpaceUser', isList: true },
+        },
+      },
+      SpaceUser: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          spaceId: { kind: 'scalar', type: 'String' },
+          orgId: { kind: 'scalar', type: 'String' },
+          role: { kind: 'scalar', type: 'String' },
+          user: { kind: 'object', type: 'User', isList: false },
+        },
+      },
+    },
+  };
+  const realLens: Lens = {
+    maps: { prisma: realMap },
+    mapName: 'prisma',
+    model: 'User',
+  };
+
+  test('same model recurring in ONE path: picks/omits at each visit are independent', () => {
+    // visit-1 SpaceUser: see spaceId + user (for descent)
+    // visit-2 SpaceUser: see orgId + role
+    const n = withParent(realLens, {
+      root: {
+        relations: {
+          spaceUsers: {
+            picks: ['spaceId', 'user'],
             relations: {
-              // NOTE: cannot pick password if defaults excludes it — strict validation
-              // applies. So we just pick email here.
-              manager: { picks: ['email'] },
-              posts: {
-                picks: ['author'],
-                relations: { author: { picks: ['email'] } },
+              user: {
+                picks: ['spaceUsers'],
+                relations: {
+                  spaceUsers: {
+                    picks: ['orgId', 'role'], // visit-2 picks are independent of visit-1
+                  },
+                },
               },
             },
           },
         },
-        defaults: { models: { User: { omits: ['password'] } } },
       },
+    });
+
+    // visit-1: spaceId visible
+    expect(
+      checkRuleAgainstLens(
+        { field: 'spaceUsers.spaceId', operator: Operator.equals, value: 'space-1' },
+        n,
+      ).ok,
+    ).toBe(true);
+    // visit-1: orgId NOT visible
+    expect(
+      checkRuleAgainstLens(
+        { field: 'spaceUsers.orgId', operator: Operator.equals, value: 'org-1' },
+        n,
+      ).ok,
+    ).toBe(false);
+    // visit-2: orgId IS visible (independent of visit-1)
+    expect(
+      checkRuleAgainstLens(
+        { field: 'spaceUsers.user.spaceUsers.orgId', operator: Operator.equals, value: 'org-1' },
+        n,
+      ).ok,
+    ).toBe(true);
+    // visit-2: spaceId NOT visible (visit-1's having it is irrelevant here)
+    expect(
+      checkRuleAgainstLens(
+        { field: 'spaceUsers.user.spaceUsers.spaceId', operator: Operator.equals, value: 'x' },
+        n,
+      ).ok,
+    ).toBe(false);
+  });
+
+  test('same model recurring in ONE path: where clauses at each visit are independent', () => {
+    // visit-1 SpaceUser: scope to spaceId = 'space-1'
+    // visit-2 SpaceUser: scope to orgId = 'org-1'
+    // Each where applies only at its own visit.
+    const n = withParent(realLens, {
+      root: {
+        relations: {
+          spaceUsers: {
+            where: { field: 'spaceId', operator: Operator.equals, value: 'space-1' },
+            relations: {
+              user: {
+                relations: {
+                  spaceUsers: {
+                    where: { field: 'orgId', operator: Operator.equals, value: 'org-1' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // applyLens should produce a rule where visit-1's where lives at the visit-1 anchor
+    // and visit-2's where lives at the visit-2 anchor — not collapsed.
+    const userRule: Condition = {
+      field: 'spaceUsers',
+      arrayOperator: ArrayOperator.any,
+      condition: {
+        field: 'user',
+        operator: Operator.exists,
+      },
+    };
+    const composed = applyLens(userRule, n) as {
+      condition: { all: Condition[] };
+    };
+    // visit-1's where is ANDed into the spaceUsers arrayRule condition
+    const innerAll = composed.condition.all;
+    expect(innerAll).toContainEqual({
+      field: 'spaceId',
+      operator: Operator.equals,
+      value: 'space-1',
+    });
+    // visit-2's where doesn't appear here — it would only fire if the rule descended via
+    // .user.spaceUsers, which this rule doesn't. Confirming visit-1 isn't a stand-in for visit-2.
+    expect(innerAll).not.toContainEqual({
+      field: 'orgId',
+      operator: Operator.equals,
+      value: 'org-1',
+    });
+  });
+
+  test('mapDefaults.models[SpaceUser] applies at BOTH SpaceUser visits in the recursive path', () => {
+    const n = withParent(realLens, {
+      root: {
+        relations: {
+          spaceUsers: {
+            relations: { user: { relations: { spaceUsers: {} } } },
+          },
+        },
+      },
+      mapDefaults: { prisma: { models: { SpaceUser: { omits: ['role'] } } } },
+    });
+
+    // role blocked at visit-1
+    expect(
+      checkRuleAgainstLens(
+        { field: 'spaceUsers.role', operator: Operator.equals, value: 'admin' },
+        n,
+      ).ok,
+    ).toBe(false);
+    // role blocked at visit-2 too — defaults apply at every visit of SpaceUser
+    expect(
+      checkRuleAgainstLens(
+        { field: 'spaceUsers.user.spaceUsers.role', operator: Operator.equals, value: 'admin' },
+        n,
+      ).ok,
+    ).toBe(false);
+  });
+
+  test('mapDefaults.models.User applies at every User visit AND intersects with per-path narrowings', () => {
+    // defaults: password never visible anywhere
+    // manager: picks email/password (but password excluded by defaults → effective just email)
+    // posts.author: picks email
+    const n = withParent(lens, {
+      root: {
+        picks: ['manager', 'posts'],
+        relations: {
+          // NOTE: cannot pick password if defaults excludes it — strict validation
+          // applies. So we just pick email here.
+          manager: { picks: ['email'] },
+          posts: {
+            picks: ['author'],
+            relations: { author: { picks: ['email'] } },
+          },
+        },
+      },
+      mapDefaults: { prisma: { models: { User: { omits: ['password'] } } } },
     });
 
     expect(

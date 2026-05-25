@@ -8,7 +8,7 @@ import type { FieldMap } from '../src/toPrisma/types';
 // in the allowed set, considering:
 //   1. FieldMap.enums[type] (registry)
 //   2. FieldMapEntry.values (per-field override)
-//   3. defaults.enums[type] (lens-level enum narrowing)
+//   3. mapDefaults.enums[type] (lens-level enum narrowing)
 //   4. ModelNarrowing.enumPicks/enumOmits[fieldName] (per-field-per-visit narrowing)
 
 const map: FieldMap = {
@@ -26,10 +26,10 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('checkRuleAgainstLens — enum value validation', () => {
   test('rule value in registry → passes', () => {
@@ -52,7 +52,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
 
   test('rule value narrowed away by enumPicks → rejected', () => {
     const n = withParent(lens, {
-      prisma: { models: { User: { enumPicks: { role: ['admin', 'member'] } } } },
+      root: { enumPicks: { role: ['admin', 'member'] } },
     });
     const result = checkRuleAgainstLens(
       { field: 'role', operator: Operator.equals, value: 'owner' },
@@ -63,7 +63,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
 
   test('rule value narrowed away by enumOmits → rejected', () => {
     const n = withParent(lens, {
-      prisma: { models: { User: { enumOmits: { role: ['owner'] } } } },
+      root: { enumOmits: { role: ['owner'] } },
     });
     const result = checkRuleAgainstLens(
       { field: 'role', operator: Operator.equals, value: 'owner' },
@@ -72,9 +72,9 @@ describe('checkRuleAgainstLens — enum value validation', () => {
     expect(result.ok).toBe(false);
   });
 
-  test('rule value narrowed away by defaults.enums → rejected', () => {
+  test('rule value narrowed away by mapDefaults.enums → rejected', () => {
     const n = withParent(lens, {
-      prisma: { models: {}, defaults: { enums: { UserRole: { omits: ['owner'] } } } },
+      mapDefaults: { prisma: { enums: { UserRole: { omits: ['owner'] } } } },
     });
     const result = checkRuleAgainstLens(
       { field: 'role', operator: Operator.equals, value: 'owner' },

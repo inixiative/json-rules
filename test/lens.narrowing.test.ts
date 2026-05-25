@@ -58,106 +58,70 @@ const lens: Lens = {
   model: 'FanUser',
 };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('validateNarrowing — structural rules', () => {
   test('empty narrowing passes', () => {
     expect(() => validateNarrowing(withParent(lens, {}))).not.toThrow();
   });
 
-  test('valid picks at root model pass', () => {
+  test('valid picks at root pass', () => {
     expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { FanUser: { picks: ['email', 'name'] } } },
-        }),
-      ),
+      validateNarrowing(withParent(lens, { root: { picks: ['email', 'name'] } })),
     ).not.toThrow();
   });
 
   test('picks + omits at same node throws', () => {
     expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { FanUser: { picks: ['email'], omits: ['name'] } } },
-        }),
-      ),
+      validateNarrowing(withParent(lens, { root: { picks: ['email'], omits: ['name'] } })),
     ).toThrow(/cannot specify both picks and omits/);
   });
 
   test('pick referencing non-existent field throws', () => {
-    expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { FanUser: { picks: ['nope'] } } },
-        }),
-      ),
-    ).toThrow(/'nope' not on model/);
+    expect(() => validateNarrowing(withParent(lens, { root: { picks: ['nope'] } }))).toThrow(
+      /'nope' not on model/,
+    );
   });
 
   test('omit referencing non-existent field throws', () => {
-    expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { FanUser: { omits: ['nope'] } } },
-        }),
-      ),
-    ).toThrow(/'nope' not on model/);
+    expect(() => validateNarrowing(withParent(lens, { root: { omits: ['nope'] } }))).toThrow(
+      /'nope' not on model/,
+    );
   });
 
   test('relations key not on model throws', () => {
     expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { FanUser: { relations: { ghost: { picks: ['x'] } } } } },
-        }),
-      ),
+      validateNarrowing(withParent(lens, { root: { relations: { ghost: { picks: ['x'] } } } })),
     ).toThrow(/'ghost' not on model/);
   });
 
   test('relations key on scalar field throws', () => {
     expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { FanUser: { relations: { email: {} } } } },
-        }),
-      ),
+      validateNarrowing(withParent(lens, { root: { relations: { email: {} } } })),
     ).toThrow(/'email' is not a relation/);
   });
 
-  test('unknown map name throws', () => {
+  test('unknown map name in mapDefaults throws', () => {
     expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          nope: { models: { FanUser: {} } },
-        }),
-      ),
-    ).toThrow(/maps\.nope: not in lens/);
+      validateNarrowing(withParent(lens, { mapDefaults: { nope: { models: { FanUser: {} } } } })),
+    ).toThrow(/mapDefaults\.nope: not in lens/);
   });
 
-  test('unknown model name throws', () => {
+  test('unknown model name in mapDefaults throws', () => {
     expect(() =>
-      validateNarrowing(
-        withParent(lens, {
-          prisma: { models: { Nope: {} } },
-        }),
-      ),
-    ).toThrow(/models\.Nope: not in fieldMap/);
+      validateNarrowing(withParent(lens, { mapDefaults: { prisma: { models: { Nope: {} } } } })),
+    ).toThrow(/Nope: not in fieldMap/);
   });
 
   test('recurses into relation, validates against related model', () => {
     expect(() =>
       validateNarrowing(
         withParent(lens, {
-          prisma: {
-            models: {
-              FanUser: {
-                relations: { fanMissions: { picks: ['missionUuid', 'status'] } },
-              },
-            },
+          root: {
+            relations: { fanMissions: { picks: ['missionUuid', 'status'] } },
           },
         }),
       ),
@@ -168,13 +132,7 @@ describe('validateNarrowing — structural rules', () => {
     expect(() =>
       validateNarrowing(
         withParent(lens, {
-          prisma: {
-            models: {
-              FanUser: {
-                relations: { fanMissions: { picks: ['nope'] } },
-              },
-            },
-          },
+          root: { relations: { fanMissions: { picks: ['nope'] } } },
         }),
       ),
     ).toThrow(/fanMissions\.picks: field 'nope' not on model/);
@@ -184,14 +142,8 @@ describe('validateNarrowing — structural rules', () => {
     expect(() =>
       validateNarrowing(
         withParent(lens, {
-          prisma: {
-            models: {
-              FanUser: {
-                relations: {
-                  'salesforce:Contact': { picks: ['industry'] },
-                },
-              },
-            },
+          root: {
+            relations: { 'salesforce:Contact': { picks: ['industry'] } },
           },
         }),
       ),
@@ -203,11 +155,7 @@ describe('validateNarrowing — structural rules', () => {
     try {
       validateNarrowing(
         withParent(lens, {
-          prisma: {
-            models: {
-              FanUser: { picks: ['nope1', 'nope2'], omits: ['alsoNope'] },
-            },
-          },
+          root: { picks: ['nope1', 'nope2'], omits: ['alsoNope'] },
         }),
       );
     } catch (e) {
@@ -222,150 +170,124 @@ describe('validateNarrowing — structural rules', () => {
 });
 
 describe('validateNarrowing — chain rules', () => {
-  const parentPicksOnFanUser = (picks: string[]): LensNarrowing =>
-    withParent(lens, { prisma: { models: { FanUser: { picks } } } });
+  const parentPicksOnRoot = (picks: string[]): LensNarrowing =>
+    withParent(lens, { root: { picks } });
 
-  const parentOmitsOnFanUser = (omits: string[]): LensNarrowing =>
-    withParent(lens, { prisma: { models: { FanUser: { omits } } } });
+  const parentOmitsOnRoot = (omits: string[]): LensNarrowing =>
+    withParent(lens, { root: { omits } });
 
   test('child pick within ancestor picks passes', () => {
-    const parent = parentPicksOnFanUser(['email', 'name']);
+    const parent = parentPicksOnRoot(['email', 'name']);
     expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { picks: ['email'] } } } }),
-      ),
+      validateNarrowing(withParent(parent, { root: { picks: ['email'] } })),
     ).not.toThrow();
   });
 
   test('child pick outside ancestor picks throws', () => {
-    const parent = parentPicksOnFanUser(['email']);
-    expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { picks: ['name'] } } } }),
-      ),
-    ).toThrow(/'name' not in ancestor's picks/);
+    const parent = parentPicksOnRoot(['email']);
+    expect(() => validateNarrowing(withParent(parent, { root: { picks: ['name'] } }))).toThrow(
+      /'name' not in ancestor's picks/,
+    );
   });
 
   test('child cannot pick ancestor-omitted field', () => {
-    const parent = parentOmitsOnFanUser(['email']);
-    expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { picks: ['email'] } } } }),
-      ),
-    ).toThrow(/'email' was omitted by ancestor/);
+    const parent = parentOmitsOnRoot(['email']);
+    expect(() => validateNarrowing(withParent(parent, { root: { picks: ['email'] } }))).toThrow(
+      /'email' was omitted by ancestor/,
+    );
   });
 
   test('child can switch from ancestor-omit context to its own pick (non-omitted field)', () => {
-    const parent = parentOmitsOnFanUser(['email']);
+    const parent = parentOmitsOnRoot(['email']);
     expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { picks: ['name'] } } } }),
-      ),
+      validateNarrowing(withParent(parent, { root: { picks: ['name'] } })),
     ).not.toThrow();
   });
 
   test('child can omit anything visible in ancestor picks', () => {
-    const parent = parentPicksOnFanUser(['email', 'name']);
+    const parent = parentPicksOnRoot(['email', 'name']);
     expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { omits: ['email'] } } } }),
-      ),
+      validateNarrowing(withParent(parent, { root: { omits: ['email'] } })),
     ).not.toThrow();
   });
 
   test('child cannot omit field already invisible (not in ancestor picks)', () => {
-    const parent = parentPicksOnFanUser(['email']);
-    expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { omits: ['name'] } } } }),
-      ),
-    ).toThrow(/'name' not in ancestor's picks \(already invisible\)/);
+    const parent = parentPicksOnRoot(['email']);
+    expect(() => validateNarrowing(withParent(parent, { root: { omits: ['name'] } }))).toThrow(
+      /'name' not in ancestor's picks \(already invisible\)/,
+    );
   });
 
   test('chain rules recurse into relations', () => {
     const parent: LensNarrowing = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            relations: { fanMissions: { picks: ['missionUuid'] } },
-          },
-        },
-      },
+      root: { relations: { fanMissions: { picks: ['missionUuid'] } } },
     });
     expect(() =>
       validateNarrowing(
         withParent(parent, {
-          prisma: {
-            models: {
-              FanUser: {
-                relations: { fanMissions: { picks: ['status'] } },
-              },
-            },
-          },
+          root: { relations: { fanMissions: { picks: ['status'] } } },
         }),
       ),
     ).toThrow(/fanMissions\.picks: 'status' not in ancestor's picks/);
   });
 
   test('multi-level chain (grandparent → parent → child)', () => {
-    const grandparent = parentPicksOnFanUser(['email', 'name', 'id']);
-    const parent = withParent(grandparent, {
-      prisma: { models: { FanUser: { picks: ['email', 'name'] } } },
-    });
+    const grandparent = parentPicksOnRoot(['email', 'name', 'id']);
+    const parent = withParent(grandparent, { root: { picks: ['email', 'name'] } });
     expect(() =>
-      validateNarrowing(
-        withParent(parent, { prisma: { models: { FanUser: { picks: ['email'] } } } }),
-      ),
+      validateNarrowing(withParent(parent, { root: { picks: ['email'] } })),
     ).not.toThrow();
 
-    expect(() =>
-      validateNarrowing(withParent(parent, { prisma: { models: { FanUser: { picks: ['id'] } } } })),
-    ).toThrow(/'id' not in ancestor's picks/);
+    expect(() => validateNarrowing(withParent(parent, { root: { picks: ['id'] } }))).toThrow(
+      /'id' not in ancestor's picks/,
+    );
   });
 });
 
-describe('validateNarrowing — where', () => {
-  test('where referencing visible field passes', () => {
+describe('validateNarrowing — root.where', () => {
+  test('root.where referencing visible field passes', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: {},
-        where: { field: 'email', operator: Operator.equals, value: 'x' },
+        root: { where: { field: 'email', operator: Operator.equals, value: 'x' } },
       }),
     ).not.toThrow();
   });
 
-  test('where referencing field omitted at this narrowing throws', () => {
+  test('root.where referencing field omitted at this narrowing throws', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: { prisma: { models: { FanUser: { omits: ['email'] } } } },
-        where: { field: 'email', operator: Operator.equals, value: 'x' },
+        root: {
+          omits: ['email'],
+          where: { field: 'email', operator: Operator.equals, value: 'x' },
+        },
       }),
-    ).toThrow(/where: 'email'/);
+    ).toThrow(/where.*'email'/);
   });
 
-  test('where referencing field not picked throws', () => {
+  test('root.where referencing field not picked throws', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
-        maps: { prisma: { models: { FanUser: { picks: ['id'] } } } },
-        where: { field: 'email', operator: Operator.equals, value: 'x' },
+        root: {
+          picks: ['id'],
+          where: { field: 'email', operator: Operator.equals, value: 'x' },
+        },
       }),
-    ).toThrow(/where: 'email'/);
+    ).toThrow(/where.*'email'/);
   });
 
-  test('where referencing field omitted by ancestor throws', () => {
+  test('root.where referencing field omitted by ancestor throws', () => {
     const parent: LensNarrowing = {
       parent: lens,
-      maps: { prisma: { models: { FanUser: { omits: ['email'] } } } },
+      root: { omits: ['email'] },
     };
     expect(() =>
       validateNarrowing({
         parent,
-        maps: {},
-        where: { field: 'email', operator: Operator.equals, value: 'x' },
+        root: { where: { field: 'email', operator: Operator.equals, value: 'x' } },
       }),
-    ).toThrow(/where: 'email'/);
+    ).toThrow(/where.*'email'/);
   });
 });

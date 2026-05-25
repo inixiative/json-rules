@@ -81,9 +81,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: { models: { FanUser: { picks: ['email', 'salesforce:Contact'] } } },
-      },
+      root: { picks: ['email', 'salesforce:Contact'] },
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length).toBe(1);
@@ -94,9 +92,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: { models: { FanUser: { picks: ['email'] } } },
-      },
+      root: { picks: ['email'] },
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length ?? 0).toBe(0);
@@ -107,9 +103,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
-      maps: {
-        prisma: { models: { FanUser: { omits: ['salesforce:Contact'] } } },
-      },
+      root: { omits: ['salesforce:Contact'] },
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length ?? 0).toBe(0);
@@ -120,9 +114,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
-      maps: {
-        salesforce: { models: { Contact: { picks: ['industry'] } } },
-      },
+      mapDefaults: { salesforce: { models: { Contact: { picks: ['industry'] } } } },
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length ?? 0).toBe(0);

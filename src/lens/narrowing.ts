@@ -164,7 +164,7 @@ const checkWhereAgainstModel = (
   return errors;
 };
 
-// Validates defaults.enums entries against the enum registry.
+// Validates mapDefaults[X].enums entries against the enum registry.
 const validateDefaultsEnums = (
   mapName: string,
   defaultsEnums: Record<string, { picks?: readonly string[]; omits?: readonly string[] }>,
@@ -177,7 +177,7 @@ const validateDefaultsEnums = (
   for (const [enumName, enumN] of Object.entries(defaultsEnums)) {
     const registryVals = enumRegistry?.[enumName];
     if (!registryVals) {
-      errors.push(`maps.${mapName}.defaults.enums.${enumName}: enum not in registry`);
+      errors.push(`mapDefaults.${mapName}.enums.${enumName}: enum not in registry`);
       continue;
     }
     // Compute inherited visibility for this enum from ancestor layers
@@ -201,19 +201,19 @@ const validateDefaultsEnums = (
     };
     for (const v of enumN.picks ?? []) {
       if (!registryVals.includes(v)) {
-        errors.push(`maps.${mapName}.defaults.enums.${enumName}.picks: '${v}' not a known value`);
+        errors.push(`mapDefaults.${mapName}.enums.${enumName}.picks: '${v}' not a known value`);
       } else if (!isInheritedVisible(v)) {
         errors.push(
-          `maps.${mapName}.defaults.enums.${enumName}.picks: '${v}' not visible from ancestors`,
+          `mapDefaults.${mapName}.enums.${enumName}.picks: '${v}' not visible from ancestors`,
         );
       }
     }
     for (const v of enumN.omits ?? []) {
       if (!registryVals.includes(v)) {
-        errors.push(`maps.${mapName}.defaults.enums.${enumName}.omits: '${v}' not a known value`);
+        errors.push(`mapDefaults.${mapName}.enums.${enumName}.omits: '${v}' not a known value`);
       } else if (!isInheritedVisible(v)) {
         errors.push(
-          `maps.${mapName}.defaults.enums.${enumName}.omits: '${v}' already excluded by ancestors`,
+          `mapDefaults.${mapName}.enums.${enumName}.omits: '${v}' already excluded by ancestors`,
         );
       }
     }
@@ -221,7 +221,11 @@ const validateDefaultsEnums = (
 };
 
 // For per-field enum narrowing on ModelDefaultNarrowing or ModelNarrowing, validate
-// that values are visible from same-layer defaults.enums + ancestor defaults.enums chain.
+// that values are visible across THREE layers of inherited narrowing (intersection
+// of picks / union of omits across all layers):
+//   A. type-level — same-layer + ancestor mapDefaults[X].enums[type]
+//   B. per-field model-wide — same-layer + ancestor mapDefaults[X].models[Y].enumPicks/enumOmits[field]
+//   C. per-field path-specific — ancestor's same-position narrowings' enumPicks/enumOmits[field]
 const validateEnumFieldAgainstChain = (
   modelFields: Record<string, FieldMapEntry>,
   narrowing: ModelDefaultNarrowing | ModelNarrowing,
@@ -231,6 +235,9 @@ const validateEnumFieldAgainstChain = (
   ancestorDefaultsEnums: Array<
     Record<string, { picks?: readonly string[]; omits?: readonly string[] }>
   >,
+  sameLayerDefaultsForModel: ModelDefaultNarrowing | undefined,
+  ancestorDefaultsForModel: ModelDefaultNarrowing[],
+  ancestorChainAtSamePosition: ModelNarrowing[],
   position: string,
   errors: string[],
 ): void => {
@@ -242,27 +249,58 @@ const validateEnumFieldAgainstChain = (
     const entry = modelFields[fieldName];
     if (!entry || entry.kind !== 'enum') return; // already errored elsewhere
     const enumType = entry.type;
-    // Inherited visible set for enum type
-    let inheritedPicks: Set<string> | null = null;
-    const inheritedOmits = new Set<string>();
-    const allLayers = [...ancestorDefaultsEnums];
-    if (sameLayerDefaultsEnums) allLayers.push(sameLayerDefaultsEnums);
-    for (const layer of allLayers) {
+
+    // Wrapper object: TypeScript can't narrow property reads across closure mutation,
+    // so this keeps the type stable as Set<string> | null instead of collapsing to never.
+    const state: { picks: Set<string> | null; omits: Set<string> } = {
+      picks: null,
+      omits: new Set(),
+    };
+    const addPicks = (vals: readonly string[]): void => {
+      state.picks =
+        state.picks === null ? new Set(vals) : new Set(vals.filter((v) => state.picks?.has(v)));
+    };
+    const addOmits = (vals: readonly string[]): void => {
+      for (const v of vals) state.omits.add(v);
+    };
+
+    // Layer A — type-level (mapDefaults.enums[type])
+    const typeLayers = [...ancestorDefaultsEnums];
+    if (sameLayerDefaultsEnums) typeLayers.push(sameLayerDefaultsEnums);
+    for (const layer of typeLayers) {
       const e = layer[enumType];
       if (!e) continue;
-      if (e.picks) {
-        inheritedPicks =
-          inheritedPicks === null
-            ? new Set(e.picks)
-            : new Set(e.picks.filter((v) => inheritedPicks?.has(v)));
-      }
-      if (e.omits) for (const v of e.omits) inheritedOmits.add(v);
+      if (e.picks) addPicks(e.picks);
+      if (e.omits) addOmits(e.omits);
     }
+
+    // Layer B — per-field model-wide (mapDefaults.models[Y].enumPicks/enumOmits[field])
+    const modelLayers = [...ancestorDefaultsForModel];
+    if (sameLayerDefaultsForModel) modelLayers.push(sameLayerDefaultsForModel);
+    for (const dflt of modelLayers) {
+      const p = dflt.enumPicks?.[fieldName];
+      const o = dflt.enumOmits?.[fieldName];
+      if (p) addPicks(p);
+      if (o) addOmits(o);
+    }
+
+    // Layer C — per-field path-specific ancestor chain at the same position
+    for (const anc of ancestorChainAtSamePosition) {
+      const p = anc.enumPicks?.[fieldName];
+      const o = anc.enumOmits?.[fieldName];
+      if (p) addPicks(p);
+      if (o) addOmits(o);
+    }
+
     for (const v of values) {
-      if (inheritedOmits.has(v)) {
-        errors.push(`${position}.${op}.${fieldName}: '${v}' already excluded by defaults.enums`);
-      } else if (inheritedPicks && !inheritedPicks.has(v)) {
-        errors.push(`${position}.${op}.${fieldName}: '${v}' not allowed by defaults.enums`);
+      if (state.omits.has(v)) {
+        errors.push(
+          `${position}.${op}.${fieldName}: '${v}' already excluded by inherited enum narrowing`,
+        );
+      } else if (state.picks && !state.picks.has(v)) {
+        errors.push(
+          `${position}.${op}.${fieldName}: '${v}' not allowed by inherited enum narrowing`,
+        );
       }
     }
   };
@@ -270,17 +308,16 @@ const validateEnumFieldAgainstChain = (
   for (const [f, vals] of Object.entries(narrowing.enumOmits ?? {})) check('enumOmits', f, vals);
 };
 
+// Per-visit lookup helpers — derive same-layer / ancestor defaults for the model
+// being visited, from the current LensNarrowing + its ancestor chain. Computed
+// fresh per visit so cross-map / cross-model descent picks up the right defaults.
+type TypeEnumMap = Record<string, { picks?: readonly string[]; omits?: readonly string[] }>;
+
 const validatePathNarrowing = (
   narrowing: ModelNarrowing,
   ancestorChain: ModelNarrowing[],
-  ancestorDefaults: ModelDefaultNarrowing[],
-  sameLayerDefaults: ModelDefaultNarrowing | undefined,
-  ancestorDefaultsEnums: Array<
-    Record<string, { picks?: readonly string[]; omits?: readonly string[] }>
-  >,
-  sameLayerDefaultsEnums:
-    | Record<string, { picks?: readonly string[]; omits?: readonly string[] }>
-    | undefined,
+  current: LensNarrowing,
+  chain: LensNarrowing[],
   maps: Record<string, FieldMap>,
   mapName: string,
   modelName: string,
@@ -291,13 +328,26 @@ const validatePathNarrowing = (
   const model = fieldMap?.models[modelName];
   if (!model) return;
 
-  // Synthesize an ancestor-like list for visibility check that includes defaults too
-  const synthAncestors = [...ancestorDefaults.map((d) => d as ModelNarrowing), ...ancestorChain];
+  // Per-visit defaults derived from the chain at THIS (mapName, modelName).
+  const sameLayerDefaultsForModel = current.mapDefaults?.[mapName]?.models?.[modelName];
+  const ancestorDefaultsForModel = chain
+    .map((a) => a.mapDefaults?.[mapName]?.models?.[modelName])
+    .filter((x): x is ModelDefaultNarrowing => x !== undefined);
+  const sameLayerDefaultsEnums: TypeEnumMap | undefined = current.mapDefaults?.[mapName]?.enums;
+  const ancestorDefaultsEnums: TypeEnumMap[] = chain
+    .map((a) => a.mapDefaults?.[mapName]?.enums)
+    .filter((x): x is TypeEnumMap => x !== undefined);
+
+  // Synthesize an ancestor-like list for visibility check that includes defaults too.
+  const synthAncestors = [
+    ...ancestorDefaultsForModel.map((d) => d as ModelNarrowing),
+    ...ancestorChain,
+  ];
 
   validateModelNode(
     narrowing,
     synthAncestors,
-    sameLayerDefaults,
+    sameLayerDefaultsForModel,
     model.fields,
     modelName,
     fieldMap?.enums,
@@ -311,6 +361,9 @@ const validatePathNarrowing = (
     narrowing,
     sameLayerDefaultsEnums,
     ancestorDefaultsEnums,
+    sameLayerDefaultsForModel,
+    ancestorDefaultsForModel,
+    ancestorChain,
     position,
     errors,
   );
@@ -337,10 +390,8 @@ const validatePathNarrowing = (
     validatePathNarrowing(
       sub,
       childAncestorChain,
-      ancestorDefaults,
-      sameLayerDefaults,
-      ancestorDefaultsEnums,
-      sameLayerDefaultsEnums,
+      current,
+      chain,
       maps,
       target.mapName,
       target.modelName,
@@ -355,26 +406,27 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const set = getRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
 
-  for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
+  // Validate mapDefaults[X] for each map
+  for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
     const fieldMap = set.maps[mapName];
     if (!fieldMap) {
-      errors.push(`maps.${mapName}: not in lens`);
+      errors.push(`mapDefaults.${mapName}: not in lens`);
       continue;
     }
 
     const ancestorDefaultsEnums = ancestors
-      .map((anc) => anc.maps[mapName]?.defaults?.enums)
+      .map((anc) => anc.mapDefaults?.[mapName]?.enums)
       .filter((x): x is NonNullable<typeof x> => x !== undefined);
 
-    // Validate defaults.models
-    for (const [modelName, dflt] of Object.entries(mapNarrowing.defaults?.models ?? {})) {
+    // Validate mapDefaults[X].models
+    for (const [modelName, dflt] of Object.entries(defaults.models ?? {})) {
       const model = fieldMap.models[modelName];
       if (!model) {
-        errors.push(`maps.${mapName}.defaults.models.${modelName}: not in fieldMap`);
+        errors.push(`mapDefaults.${mapName}.models.${modelName}: not in fieldMap`);
         continue;
       }
       const ancestorDefaultsForModel = ancestors
-        .map((anc) => anc.maps[mapName]?.defaults?.models?.[modelName])
+        .map((anc) => anc.mapDefaults?.[mapName]?.models?.[modelName])
         .filter((x): x is ModelDefaultNarrowing => x !== undefined);
       validateModelNode(
         dflt,
@@ -383,7 +435,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         model.fields,
         modelName,
         fieldMap.enums,
-        `maps.${mapName}.defaults.models.${modelName}`,
+        `mapDefaults.${mapName}.models.${modelName}`,
         errors,
         true,
       );
@@ -392,68 +444,55 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         dflt,
         undefined,
         ancestorDefaultsEnums,
-        `maps.${mapName}.defaults.models.${modelName}`,
+        undefined, // no broader same-layer model-wide source — this IS the layer
+        ancestorDefaultsForModel, // ancestor's same-position model-wide
+        [], // no path-specific ancestor concept for mapDefaults.models[X]
+        `mapDefaults.${mapName}.models.${modelName}`,
         errors,
       );
     }
 
-    // Validate defaults.enums
-    if (mapNarrowing.defaults?.enums) {
-      validateDefaultsEnums(
-        mapName,
-        mapNarrowing.defaults.enums,
-        fieldMap.enums,
-        ancestorDefaultsEnums,
-        errors,
-      );
+    // Validate mapDefaults[X].enums
+    if (defaults.enums) {
+      validateDefaultsEnums(mapName, defaults.enums, fieldMap.enums, ancestorDefaultsEnums, errors);
     }
+  }
 
-    // Validate path-specific models[*]
-    const sameLayerDefaultsEnums = mapNarrowing.defaults?.enums;
-    for (const [modelName, modelNarrowing] of Object.entries(mapNarrowing.models)) {
-      const model = fieldMap.models[modelName];
-      if (!model) {
-        errors.push(`maps.${mapName}.models.${modelName}: not in fieldMap`);
-        continue;
-      }
-      // Reject `where` at the top-level models[X] position — it's redundant.
-      // For root-anchored scoping use `LensNarrowing.where`; for model-intrinsic
-      // ("wherever X appears") use `defaults.models[X].where`. The `where` field
-      // remains valid inside relations[R] for path-specific descent scoping.
-      if (modelNarrowing.where !== undefined) {
-        errors.push(
-          `maps.${mapName}.models.${modelName}.where: not allowed at top-level. ` +
-            `Use LensNarrowing.where for root scoping, or defaults.models.${modelName}.where ` +
-            `for model-intrinsic scoping. (where on relations[R] still works for descent scoping.)`,
-        );
-      }
-      const ancestorChainForModel = ancestors
-        .map((anc) => anc.maps[mapName]?.models[modelName])
+  // Validate root (path-specific anchor at the lens's mapName + model). Per-visit
+  // defaults are computed inside validatePathNarrowing from `current` + `chain`,
+  // so cross-map / cross-model descent picks up the right defaults at each hop.
+  if (narrowing.root) {
+    const lensMapName = set.mapName;
+    const lensModel = set.model;
+    const fieldMap = set.maps[lensMapName];
+    if (!fieldMap) {
+      errors.push(`root: lens map '${lensMapName}' not in lens`);
+    } else if (!fieldMap.models[lensModel]) {
+      errors.push(`root: lens model '${lensModel}' not in fieldMap`);
+    } else {
+      const ancestorChainForRoot = ancestors
+        .map((anc) => anc.root)
         .filter((x): x is ModelNarrowing => x !== undefined);
-      const ancestorDefaultsForModel = ancestors
-        .map((anc) => anc.maps[mapName]?.defaults?.models?.[modelName])
-        .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-      const sameLayerDefaultsForModel = mapNarrowing.defaults?.models?.[modelName];
       validatePathNarrowing(
-        modelNarrowing,
-        ancestorChainForModel,
-        ancestorDefaultsForModel,
-        sameLayerDefaultsForModel,
-        ancestorDefaultsEnums,
-        sameLayerDefaultsEnums,
+        narrowing.root,
+        ancestorChainForRoot,
+        narrowing,
+        ancestors,
         set.maps,
-        mapName,
-        modelName,
-        `maps.${mapName}.models.${modelName}`,
+        lensMapName,
+        lensModel,
+        'root',
         errors,
       );
     }
   }
 
-  if (narrowing.where !== undefined) {
-    const check = checkRuleAgainstLens(narrowing.where, narrowing);
+  // Visibility check for root.where: verify field paths are visible at the
+  // root visit under this narrowing's full chain projection.
+  if (narrowing.root?.where !== undefined) {
+    const check = checkRuleAgainstLens(narrowing.root.where, narrowing);
     for (const v of check.violations) {
-      errors.push(`where: '${v.path}' ${v.reason}`);
+      errors.push(`root.where: '${v.path}' ${v.reason}`);
     }
   }
 

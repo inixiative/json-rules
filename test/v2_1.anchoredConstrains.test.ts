@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLens } from '../src/lens/applyLens';
-import { validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -10,11 +9,10 @@ import type { Condition } from '../src/types';
 // Naive `{ all: [c, userRule] }` composition can change semantics — see the
 // "deleted comments" example below.
 //
-// Four anchor layers:
-//   1. LensNarrowing.where       — root model (existing)
-//   2. defaults.models[M].where  — wherever M appears
-//   3. models[M].where           — root visit of M (only meaningful when M is the root)
-//   4. relations[R].where        — when descending into R (inside the rule subtree)
+// Three anchor layers (2.2.0):
+//   1. root.where                          — root visit of the lens anchor model
+//   2. mapDefaults[X].models[M].where      — wherever M appears in map X
+//   3. root.relations[R]...relations[R].where — when descending into R (rule subtree)
 
 const map: FieldMap = {
   models: {
@@ -43,30 +41,27 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
-describe('LensNarrowing.where — root-anchored (existing behavior)', () => {
+describe('root.where — root-anchored', () => {
   test('ANDs into the root rule', () => {
     const userRule: Condition = { field: 'tier', operator: Operator.equals, value: 'gold' };
     const scope: Condition = { field: 'id', operator: Operator.equals, value: 'u1' };
-    const n: LensNarrowing = { parent: lens, maps: { prisma: { models: {} } }, where: scope };
+    const n: LensNarrowing = { parent: lens, root: { where: scope } };
     expect(applyLens(userRule, n)).toEqual({ all: [scope, userRule] });
   });
 });
 
-describe('defaults.models[M].where — model-anchored', () => {
+describe('mapDefaults[X].models[M].where — model-anchored', () => {
   test('applies wherever the model appears in the user rule (root visit case)', () => {
     // Constraint on User. Rule operates on User at root. Constraint goes at root.
     const userRule: Condition = { field: 'tier', operator: Operator.equals, value: 'gold' };
     const userConstraint: Condition = { field: 'id', operator: Operator.equals, value: 'u1' };
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { User: { where: userConstraint } } },
-      },
+      mapDefaults: { prisma: { models: { User: { where: userConstraint } } } },
     });
     const composed = applyLens(userRule, n);
     expect(composed).toEqual({ all: [userConstraint, userRule] });
@@ -89,10 +84,7 @@ describe('defaults.models[M].where — model-anchored', () => {
     } as Condition;
     const commentConstraint: Condition = { field: 'deletedAt', operator: Operator.isEmpty };
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentConstraint } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentConstraint } } } },
     });
     const composed = applyLens(userRule, n) as {
       field: string;
@@ -118,10 +110,7 @@ describe('defaults.models[M].where — model-anchored', () => {
     const userRule: Condition = { field: 'tier', operator: Operator.equals, value: 'gold' };
     const commentConstraint: Condition = { field: 'deletedAt', operator: Operator.isEmpty };
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentConstraint } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentConstraint } } } },
     });
     const composed = applyLens(userRule, n);
     // Should NOT have the comment constraint at root (anchored to Comment, never visited)
@@ -129,7 +118,7 @@ describe('defaults.models[M].where — model-anchored', () => {
   });
 });
 
-describe('relations[R].where — path-anchored', () => {
+describe('root.relations[R].where — path-anchored', () => {
   test('constraint on User.posts.comments injects at the comment subtree', () => {
     const userRule = {
       field: 'posts',
@@ -142,15 +131,11 @@ describe('relations[R].where — path-anchored', () => {
     } as Condition;
     const commentConstraint: Condition = { field: 'deletedAt', operator: Operator.isEmpty };
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: {
+      root: {
+        relations: {
+          posts: {
             relations: {
-              posts: {
-                relations: {
-                  comments: { where: commentConstraint },
-                },
-              },
+              comments: { where: commentConstraint },
             },
           },
         },
@@ -178,10 +163,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as {
       condition: { condition: { all: Condition[] } };
@@ -204,10 +186,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as {
       condition: { condition: { any?: Condition[]; all?: Condition[] } };
@@ -234,10 +213,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as {
       condition: { condition: { all: Condition[] } };
@@ -258,10 +234,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as unknown as {
       condition: { count: number; condition: { all: Condition[] } };
@@ -284,10 +257,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as {
       condition: { condition: { all: Condition[] } };
@@ -311,10 +281,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as {
       condition: { condition: { all: Condition[] } };
@@ -334,9 +301,8 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       },
     } as Condition;
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: {
+      mapDefaults: {
+        prisma: {
           models: {
             Comment: {
               // startsWith has no inverse operator in the DSL
@@ -350,34 +316,8 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
   });
 });
 
-describe('models[X].where rejected at top level (2.1.1: redundant with LensNarrowing.where / defaults)', () => {
-  // The top-level `models[X].where` was either redundant with LensNarrowing.where
-  // (when X = root model) or dead (when X != root). 2.1.1 rejects it at validation
-  // time and points the author to the right primitive. `where` inside relations[R]
-  // still works (path-specific descent).
-  test('validateNarrowing rejects models[rootModel].where with a helpful message', () => {
-    const rootConstraint: Condition = { field: 'id', operator: Operator.equals, value: 'u1' };
-    const n = withParent(lens, {
-      prisma: {
-        models: { User: { where: rootConstraint } },
-      },
-    });
-    expect(() => validateNarrowing(n)).toThrow(/models\.User\.where: not allowed/);
-  });
-
-  test('validateNarrowing rejects models[nonRoot].where with a helpful message', () => {
-    const commentScope: Condition = { field: 'deletedAt', operator: Operator.isEmpty };
-    const n = withParent(lens, {
-      prisma: {
-        models: { Comment: { where: commentScope } },
-      },
-    });
-    expect(() => validateNarrowing(n)).toThrow(/models\.Comment\.where: not allowed/);
-  });
-});
-
 describe('multiple where compose at their own anchors', () => {
-  test('root-level + Comment-level both inject at correct anchors', () => {
+  test('root.where + mapDefaults Comment-level both inject at correct anchors', () => {
     const userRule = {
       field: 'posts',
       arrayOperator: ArrayOperator.any,
@@ -391,13 +331,9 @@ describe('multiple where compose at their own anchors', () => {
     const commentScope: Condition = { field: 'deletedAt', operator: Operator.isEmpty };
 
     const n = withParent(lens, {
-      prisma: {
-        models: {},
-        defaults: { models: { Comment: { where: commentScope } } },
-      },
-      // Also a lens-level scope
+      root: { where: rootScope },
+      mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    n.where = rootScope;
 
     const composed = applyLens(userRule, n) as {
       all: [Condition, { field: string; condition: { condition: { all: Condition[] } } }];

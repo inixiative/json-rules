@@ -57,10 +57,10 @@ const lens: Lens = {
   model: 'FanUser',
 };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('projectNarrowing', () => {
   test('empty chain returns clone of root set', () => {
@@ -71,9 +71,7 @@ describe('projectNarrowing', () => {
   });
 
   test('picks restrict to listed fields', () => {
-    const n = withParent(lens, {
-      prisma: { models: { FanUser: { picks: ['email'] } } },
-    });
+    const n = withParent(lens, { root: { picks: ['email'] } });
     const out = projectNarrowing(n);
     expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
     expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
@@ -81,9 +79,7 @@ describe('projectNarrowing', () => {
   });
 
   test('omits drop listed fields', () => {
-    const n = withParent(lens, {
-      prisma: { models: { FanUser: { omits: ['deletedAt', 'name'] } } },
-    });
+    const n = withParent(lens, { root: { omits: ['deletedAt', 'name'] } });
     const out = projectNarrowing(n);
     expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
     expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
@@ -92,13 +88,9 @@ describe('projectNarrowing', () => {
 
   test('picks keep relation fields that have nested narrowings', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            picks: ['email'],
-            relations: { fanMissions: { picks: ['missionUuid'] } },
-          },
-        },
+      root: {
+        picks: ['email'],
+        relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
     const out = projectNarrowing(n);
@@ -111,13 +103,9 @@ describe('projectNarrowing', () => {
 
   test('cascades through cross-map bridge', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            relations: {
-              'salesforce:Contact': { picks: ['industry'] },
-            },
-          },
+      root: {
+        relations: {
+          'salesforce:Contact': { picks: ['industry'] },
         },
       },
     });
@@ -127,15 +115,9 @@ describe('projectNarrowing', () => {
   });
 
   test('multi-level chain applies all narrowings cumulatively', () => {
-    const n1 = withParent(lens, {
-      prisma: { models: { FanUser: { picks: ['email', 'name', 'id'] } } },
-    });
-    const n2 = withParent(n1, {
-      prisma: { models: { FanUser: { picks: ['email', 'name'] } } },
-    });
-    const n3 = withParent(n2, {
-      prisma: { models: { FanUser: { omits: ['name'] } } },
-    });
+    const n1 = withParent(lens, { root: { picks: ['email', 'name', 'id'] } });
+    const n2 = withParent(n1, { root: { picks: ['email', 'name'] } });
+    const n3 = withParent(n2, { root: { omits: ['name'] } });
     const out = projectNarrowing(n3);
     expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
     expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
@@ -144,9 +126,7 @@ describe('projectNarrowing', () => {
   });
 
   test('does not mutate input', () => {
-    const n = withParent(lens, {
-      prisma: { models: { FanUser: { picks: ['email'] } } },
-    });
+    const n = withParent(lens, { root: { picks: ['email'] } });
     projectNarrowing(n);
     expect(stitched.maps.prisma.models.FanUser.fields.email).toBeDefined();
     expect(stitched.maps.prisma.models.FanUser.fields.name).toBeDefined();

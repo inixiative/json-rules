@@ -30,25 +30,25 @@ describe('applyLens', () => {
   });
 
   test('narrowing without where returns rule unchanged', () => {
-    const n: LensNarrowing = { parent: lens, maps: {} };
+    const n: LensNarrowing = { parent: lens };
     expect(applyLens(rule, n)).toBe(rule);
   });
 
-  test('single where ANDs into rule', () => {
-    const n: LensNarrowing = { parent: lens, maps: {}, where: cDeletedNull };
+  test('single root.where ANDs into rule', () => {
+    const n: LensNarrowing = { parent: lens, root: { where: cDeletedNull } };
     expect(applyLens(rule, n)).toEqual({ all: [cDeletedNull, rule] });
   });
 
   test('chain composes where root → leaf, then rule', () => {
-    const a: LensNarrowing = { parent: lens, maps: {}, where: cDeletedNull };
-    const b: LensNarrowing = { parent: a, maps: {}, where: cOrgEq };
+    const a: LensNarrowing = { parent: lens, root: { where: cDeletedNull } };
+    const b: LensNarrowing = { parent: a, root: { where: cOrgEq } };
     expect(applyLens(rule, b)).toEqual({ all: [cDeletedNull, cOrgEq, rule] });
   });
 
   test('chain skips narrowings without where', () => {
-    const a: LensNarrowing = { parent: lens, maps: {}, where: cDeletedNull };
-    const b: LensNarrowing = { parent: a, maps: {} };
-    const c: LensNarrowing = { parent: b, maps: {}, where: cOrgEq };
+    const a: LensNarrowing = { parent: lens, root: { where: cDeletedNull } };
+    const b: LensNarrowing = { parent: a };
+    const c: LensNarrowing = { parent: b, root: { where: cOrgEq } };
     expect(applyLens(rule, c)).toEqual({ all: [cDeletedNull, cOrgEq, rule] });
   });
 });

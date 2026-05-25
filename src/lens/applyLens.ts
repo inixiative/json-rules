@@ -9,11 +9,10 @@ import { resolveRelationTarget } from './walk.ts';
 // Composes a user rule with the lens's narrowing where-clauses, injecting each
 // `where` at its proper anchor in the rule tree (not blindly AND-ing at root).
 //
-// Anchoring rules:
-//   - LensNarrowing.where → AND at root (legacy/lens-level)
-//   - models[rootModel].where → AND at root if visiting root model
-//   - defaults.models[M].where → injected wherever rule visits M
-//   - relations[R].where → injected when rule descends into R
+// Anchoring rules (2.2.0):
+//   - root.where → AND at root (path-specific at lens anchor)
+//   - mapDefaults[M].models[X].where → injected wherever rule visits X in map M
+//   - root.relations[R]...relations[R].where → injected when rule descends through R
 //
 // Operator-specific injection inside an arrayRule.condition:
 //   - any/none/atLeast/atMost/exactly/aggregate.condition: AND with original
@@ -149,7 +148,7 @@ export const applyLens = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing
   // First rewrite the rule, injecting where clauses at their anchors.
   const rewritten = rewriteRule(rule, policy, policy.lens.mapName, policy.lens.model, []);
 
-  // Then wrap with root-anchored where clauses (LensNarrowing.where + models[root].where +
-  // defaults.models[root].where).
+  // Then wrap with root-anchored where clauses (root.where +
+  // mapDefaults[lens.mapName].models[lens.model].where).
   return wrapWithWheres(rewritten, rootEffect.whereClauses);
 };

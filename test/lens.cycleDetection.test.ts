@@ -22,30 +22,30 @@ const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'FanUser' 
 
 describe('narrowing parent-chain cycle detection', () => {
   test('getRoot throws on cyclic chain', () => {
-    const a = { parent: lens, maps: {} } as LensNarrowing;
-    const b = { parent: a, maps: {} } as LensNarrowing;
+    const a = { parent: lens } as LensNarrowing;
+    const b = { parent: a } as LensNarrowing;
     a.parent = b;
     expect(() => getRoot(b)).toThrow(/cycle detected/);
   });
 
   test('projectNarrowing throws on cyclic chain', () => {
-    const a = { parent: lens, maps: {} } as LensNarrowing;
-    const b = { parent: a, maps: {} } as LensNarrowing;
+    const a = { parent: lens } as LensNarrowing;
+    const b = { parent: a } as LensNarrowing;
     a.parent = b;
     expect(() => projectNarrowing(b)).toThrow(/cycle detected/);
   });
 
   test('applyLens throws on cyclic chain', () => {
-    const a = { parent: lens, maps: {} } as LensNarrowing;
-    const b = { parent: a, maps: {} } as LensNarrowing;
+    const a = { parent: lens } as LensNarrowing;
+    const b = { parent: a } as LensNarrowing;
     a.parent = b;
     const rule = { field: 'email', operator: Operator.equals, value: 'x' };
     expect(() => applyLens(rule, b)).toThrow(/cycle detected/);
   });
 
   test('validateNarrowing throws on cyclic chain', () => {
-    const a = { parent: lens, maps: {} } as LensNarrowing;
-    const b = { parent: a, maps: {} } as LensNarrowing;
+    const a = { parent: lens } as LensNarrowing;
+    const b = { parent: a } as LensNarrowing;
     a.parent = b;
     expect(() => validateNarrowing(b)).toThrow(/cycle detected/);
   });

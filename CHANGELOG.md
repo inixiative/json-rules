@@ -1,5 +1,60 @@
 # Changelog
 
+## 2.2.0
+
+Structural cleanup of `LensNarrowing`. The path-specific anchor and per-map applies-everywhere defaults now live as separate top-level fields — `root` and `mapDefaults` — replacing the dual-purpose `maps` dictionary and the root-level `where` outlier. Composition semantics are unchanged.
+
+### The shape
+
+```ts
+type LensNarrowing = {
+  parent: Lens | LensNarrowing;
+  root?: ModelNarrowing;                         // path-specific, anchored at (lens.mapName, lens.model)
+  mapDefaults?: Record<string, NarrowingDefaults>; // per-map applies-everywhere
+};
+```
+
+`root` descends via `.relations` (across maps via bridges). `mapDefaults[X].models[Y]` and `mapDefaults[X].enums[E]` apply wherever Y / E is reached in map X.
+
+### Example
+
+```ts
+// Path-specific scope at the lens anchor + everywhere-soft-delete on Comment
+const narrowing: LensNarrowing = {
+  parent: lens,
+  root: {
+    where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
+    relations: {
+      posts: { picks: ['id', 'title', 'comments'] },
+    },
+  },
+  mapDefaults: {
+    prisma: {
+      models: {
+        Comment: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
+      },
+      enums: {
+        UserRole: { omits: ['guest'] },
+      },
+    },
+  },
+};
+```
+
+The three `where` anchor layers now read as:
+
+- `root.where` — root visit of the lens anchor
+- `mapDefaults[X].models[Y].where` — wherever Y appears in map X
+- `root.relations[R]...where` — only when the rule descends through R
+
+### Strictness expansion: enum validation
+
+`validateNarrowing` now applies the same monotonic-restriction check to enum narrowing that 2.1 already applied to picks/omits. Per-field `enumPicks/enumOmits` are checked against same-layer + ancestor `mapDefaults[X].enums[type]`, same-layer + ancestor `mapDefaults[X].models[Y].enumPicks/enumOmits[field]`, and ancestor's same-position narrowings. Narrowings that previously silently composed to a tighter set than declared now throw at construction.
+
+### Internal cleanup that came with it
+
+`validatePathNarrowing` now derives per-visit defaults from the chain on each hop — cross-map / cross-model descent picks up the right `mapDefaults[targetMap].models[targetModel]` per visit, fixing a pre-existing bug where the lens anchor's defaults were applied at every descended model. The "lens-level where: anchored to root" special case in `policy.ts` is gone; root wheres now flow through the same per-visit accumulator as everything else.
+
 ## 2.1.0
 
 Major lens v2.1: schema-narrowing + data-narrowing as first-class primitives, with composition that respects anchoring instead of blindly AND-ing at root.

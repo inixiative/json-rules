@@ -453,7 +453,7 @@ Useful exports:
 
 Lens & bridges:
 
-- `Lens`, `LensNarrowing`, `MapNarrowing`, `ModelNarrowing`
+- `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
 - `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
 - `validateNarrowing`, `projectNarrowing`, `checkRuleAgainstLens`, `applyLens`
@@ -517,8 +517,8 @@ check(
 
 ## Lens & Multi-Source Data
 
-> **For the full v2.1 lens guide — including the three anchor layers for `where`
-> (lens-level, model-default, relation-descent), the `all` operator filter-first
+> **For the full v2.2 lens guide — including the three anchor layers for `where`
+> (root, model-default, relation-descent), the `all` operator filter-first
 > trick, per-model enum narrowing, and a validate-then-apply usage pattern —
 > see [docs/LENS.md](./docs/LENS.md).**
 > This section covers the high-level shape and the multi-source bridges.
@@ -579,24 +579,23 @@ The lens is **schema only** — no data lives on it. Runtime data (rows, foreign
 ```ts
 const narrowing: LensNarrowing = {
   parent: lens,
-  maps: {
+  root: {
+    // path-specific narrowing at the lens anchor (FanUser)
+    picks: ['email', 'firstName', 'crmId'],
+    where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
+  },
+  mapDefaults: {
     prisma: {
+      // applies wherever FanUser appears, root or nested
       models: {
-        FanUser: { picks: ['email', 'firstName', 'crmId'] },
-      },
-      defaults: {
-        models: {
-          // applies wherever FanUser appears, root or nested
-          FanUser: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
-        },
+        FanUser: { where: { field: 'deletedAt', operator: Operator.isEmpty } },
       },
     },
   },
-  where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
 };
 ```
 
-Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — the lens-level `where` ANDs at the root, model-default `where` injects at every visit of the model, and relation `where` injects when the rule descends. The `all` array operator gets a filter-first rewrite via implication so out-of-scope rows don't fail the user's "every row matches" check. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
+Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. The `all` array operator gets a filter-first rewrite via implication so out-of-scope rows don't fail the user's "every row matches" check. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
 
 ### Lens Utilities
 

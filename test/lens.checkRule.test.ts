@@ -57,10 +57,10 @@ const lens: Lens = {
   model: 'FanUser',
 };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('checkRuleAgainstLens', () => {
   test('rule fully within unrestricted lens passes', () => {
@@ -82,9 +82,7 @@ describe('checkRuleAgainstLens', () => {
   });
 
   test('rule referencing omitted field fails after narrowing', () => {
-    const n = withParent(lens, {
-      prisma: { models: { FanUser: { omits: ['email'] } } },
-    });
+    const n = withParent(lens, { root: { omits: ['email'] } });
     const result = checkRuleAgainstLens(
       { field: 'email', operator: Operator.equals, value: 'x' },
       n,
@@ -94,9 +92,7 @@ describe('checkRuleAgainstLens', () => {
   });
 
   test('rule referencing un-picked field fails after pick narrowing', () => {
-    const n = withParent(lens, {
-      prisma: { models: { FanUser: { picks: ['email'] } } },
-    });
+    const n = withParent(lens, { root: { picks: ['email'] } });
     const result = checkRuleAgainstLens(
       { field: 'name', operator: Operator.equals, value: 'x' },
       n,
@@ -106,9 +102,7 @@ describe('checkRuleAgainstLens', () => {
   });
 
   test('AND rule collects violations for all bad branches', () => {
-    const n = withParent(lens, {
-      prisma: { models: { FanUser: { picks: ['email'] } } },
-    });
+    const n = withParent(lens, { root: { picks: ['email'] } });
     const result = checkRuleAgainstLens(
       {
         all: [
@@ -125,13 +119,9 @@ describe('checkRuleAgainstLens', () => {
 
   test('rule traversing a relation that remains picked passes', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            picks: ['email'],
-            relations: { fanMissions: { picks: ['missionUuid'] } },
-          },
-        },
+      root: {
+        picks: ['email'],
+        relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
     const result = checkRuleAgainstLens(
@@ -143,12 +133,8 @@ describe('checkRuleAgainstLens', () => {
 
   test('rule traversing into un-picked nested field fails', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            relations: { fanMissions: { picks: ['missionUuid'] } },
-          },
-        },
+      root: {
+        relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
     const result = checkRuleAgainstLens(
@@ -161,12 +147,8 @@ describe('checkRuleAgainstLens', () => {
 
   test('cross-map bridge path passes when narrowed in', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            relations: { 'salesforce:Contact': { picks: ['industry'] } },
-          },
-        },
+      root: {
+        relations: { 'salesforce:Contact': { picks: ['industry'] } },
       },
     });
     const result = checkRuleAgainstLens(
@@ -204,12 +186,8 @@ describe('checkRuleAgainstLens', () => {
 
   test('cross-map bridge path fails when un-picked', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          FanUser: {
-            relations: { 'salesforce:Contact': { picks: ['industry'] } },
-          },
-        },
+      root: {
+        relations: { 'salesforce:Contact': { picks: ['industry'] } },
       },
     });
     const result = checkRuleAgainstLens(

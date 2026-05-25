@@ -14,7 +14,7 @@ export type VisitEffect = {
   hiddenFields: Set<string>;
   /** Per-field allowed enum values (after composition with registry + defaults + per-field picks/omits). */
   enumValuesByField: Map<string, readonly string[]>;
-  /** Where clauses anchored at THIS visit (model-default + path-specific + lens-root if root visit). */
+  /** Where clauses anchored at THIS visit (mapDefaults model + path-specific root/relations). */
   whereClauses: Condition[];
   /** Per-relation narrowings declared at this visit's level (for descent). Path-specific only. */
   relations: Map<string, ModelNarrowing>;
@@ -97,7 +97,7 @@ export const resolveVisit = (
   // Track per-field enum picks/omits accumulators (intersection / union)
   const fieldEnumPicks = new Map<string, Set<string>>();
   const fieldEnumOmits = new Map<string, Set<string>>();
-  // Track enum-type-level narrowing from defaults.enums across chain
+  // Track enum-type-level narrowing from mapDefaults.enums across chain
   const typeEnumPicks = new Map<string, Set<string>>();
   const typeEnumOmits = new Map<string, Set<string>>();
 
@@ -121,18 +121,18 @@ export const resolveVisit = (
   };
 
   for (const narrowing of policy.chain) {
-    // 1. defaults.models[modelName] — lives under maps[mapName-of-this-model],
-    //    NOT under the lens's root map. Applies wherever this model appears.
-    const visitMapNarrowing = narrowing.maps[mapName];
-    if (visitMapNarrowing) {
-      const dflt = visitMapNarrowing.defaults?.models?.[modelName];
+    // 1. mapDefaults[mapName].models[modelName] — applies wherever this model
+    //    appears in this map (NOT the lens's root map).
+    const visitMapDefaults = narrowing.mapDefaults?.[mapName];
+    if (visitMapDefaults) {
+      const dflt = visitMapDefaults.models?.[modelName];
       if (dflt) {
         accumulateInto(out, dflt);
         accEnumFields(dflt);
       }
 
-      // 2. defaults.enums — accumulate per type from the current map's defaults
-      for (const [enumName, enumN] of Object.entries(visitMapNarrowing.defaults?.enums ?? {})) {
+      // 2. mapDefaults[mapName].enums — accumulate per type from this map's enums
+      for (const [enumName, enumN] of Object.entries(visitMapDefaults.enums ?? {})) {
         if (enumN.picks) {
           const cur = typeEnumPicks.get(enumName) ?? null;
           typeEnumPicks.set(
@@ -148,50 +148,36 @@ export const resolveVisit = (
       }
     }
 
-    // 3. Path-specific: ALWAYS rooted at the lens's anchor map+model and
-    //    descended via relPath. For root visit (empty relPath and matching map+model),
-    //    that's `narrowing.maps[lens.mapName].models[lens.model]`. Cross-map bridges
-    //    descend into a different map but their narrowing still lives in the lens's
-    //    root map's narrowing tree.
-    const lensRootMap = narrowing.maps[policy.lens.mapName];
-    if (lensRootMap) {
-      let node: ModelNarrowing | undefined = lensRootMap.models[policy.lens.model];
-      if (relPath.length === 0) {
-        // Root visit: node IS the narrowing for (lens.mapName, lens.model).
-        // Only apply if we're actually visiting the root.
-        if (mapName === policy.lens.mapName && modelName === policy.lens.model && node) {
-          accumulateInto(out, node);
-          accEnumFields(node);
-          for (const [rel, sub] of Object.entries(node.relations ?? {})) {
-            out.relations.set(rel, sub);
-          }
+    // 3. Path-specific (root): anchored at (lens.mapName, lens.model), descended
+    //    via relPath. Cross-map bridges descend into a different map but the
+    //    narrowing still lives in narrowing.root's relations tree.
+    let node: ModelNarrowing | undefined = narrowing.root;
+    if (relPath.length === 0) {
+      // Root visit: node IS narrowing.root. Only apply if we're actually visiting the root.
+      if (mapName === policy.lens.mapName && modelName === policy.lens.model && node) {
+        accumulateInto(out, node);
+        accEnumFields(node);
+        for (const [rel, sub] of Object.entries(node.relations ?? {})) {
+          out.relations.set(rel, sub);
         }
-      } else {
-        // Descend along relPath
-        for (const seg of relPath) {
-          node = node?.relations?.[seg];
-          if (!node) break;
-        }
-        if (node) {
-          accumulateInto(out, node);
-          accEnumFields(node);
-          for (const [rel, sub] of Object.entries(node.relations ?? {})) {
-            out.relations.set(rel, sub);
-          }
+      }
+    } else {
+      // Descend along relPath from narrowing.root
+      for (const seg of relPath) {
+        node = node?.relations?.[seg];
+        if (!node) break;
+      }
+      if (node) {
+        accumulateInto(out, node);
+        accEnumFields(node);
+        for (const [rel, sub] of Object.entries(node.relations ?? {})) {
+          out.relations.set(rel, sub);
         }
       }
     }
   }
 
-  // 4. Lens-level where: anchored to root (only applies when this IS the root visit
-  //    of the lens's anchor model).
-  if (relPath.length === 0 && mapName === policy.lens.mapName && modelName === policy.lens.model) {
-    for (const narrowing of policy.chain) {
-      if (narrowing.where !== undefined) out.whereClauses.push(narrowing.where);
-    }
-  }
-
-  // 5. Resolve per-field enum values: per-field picks/omits ∩ type-level ∩ (entry.values ?? registry)
+  // 4. Resolve per-field enum values: per-field picks/omits ∩ type-level ∩ (entry.values ?? registry)
   for (const [fieldName, entry] of Object.entries(model.fields)) {
     if (entry.kind !== 'enum') continue;
     const enumType = entry.type;

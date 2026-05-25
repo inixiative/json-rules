@@ -5,7 +5,7 @@ import type { FieldMap } from '../src/toPrisma/types';
 
 // ModelNarrowing.enumPicks / enumOmits restrict allowed enum values at the
 // per-field, per-visit level. Composes with FieldMap.enums (registry),
-// FieldMapEntry.values (per-field override), and defaults.enums.
+// FieldMapEntry.values (per-field override), and mapDefaults.enums.
 
 const map: FieldMap = {
   models: {
@@ -30,19 +30,15 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 
-const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): LensNarrowing => ({
-  parent,
-  maps,
-});
+const withParent = (
+  parent: Lens | LensNarrowing,
+  rest: Omit<LensNarrowing, 'parent'>,
+): LensNarrowing => ({ parent, ...rest });
 
 describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
   test('enumPicks restricts a single field to specified values', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: { enumPicks: { role: ['admin', 'member'] } },
-        },
-      },
+      root: { enumPicks: { role: ['admin', 'member'] } },
     });
     const out = projectNarrowing(n);
     // The projected field entry carries the resolved allowed values
@@ -51,12 +47,8 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
 
   test('enumPicks on User.role does NOT affect Audit.targetRole (per-field, not per-type)', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: { enumPicks: { role: ['admin'] } },
-          // Audit has no narrowing — should retain registry values
-        },
-      },
+      root: { enumPicks: { role: ['admin'] } },
+      // Audit has no narrowing — should retain registry values
     });
     const out = projectNarrowing(n);
     expect(out.maps.prisma.models.User.fields.role.values).toEqual(['admin']);
@@ -68,11 +60,7 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
 
   test('enumOmits drops listed values', () => {
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: { enumOmits: { role: ['owner', 'guest'] } },
-        },
-      },
+      root: { enumOmits: { role: ['owner', 'guest'] } },
     });
     const out = projectNarrowing(n);
     expect([...(out.maps.prisma.models.User.fields.role.values ?? [])].sort()).toEqual([
@@ -81,16 +69,12 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
     ]);
   });
 
-  test('enumPicks intersects with defaults.enums (both narrow)', () => {
-    // defaults.enums.UserRole drops owner globally; enumPicks on User.role keeps [member, owner]
+  test('enumPicks intersects with mapDefaults.enums (both narrow)', () => {
+    // mapDefaults.enums.UserRole drops owner globally; enumPicks on User.role keeps [member, owner]
     // Intersection: [member]
     const n = withParent(lens, {
-      prisma: {
-        models: {
-          User: { enumPicks: { role: ['member', 'owner'] } },
-        },
-        defaults: { enums: { UserRole: { omits: ['owner'] } } },
-      },
+      root: { enumPicks: { role: ['member', 'owner'] } },
+      mapDefaults: { prisma: { enums: { UserRole: { omits: ['owner'] } } } },
     });
     const out = projectNarrowing(n);
     expect(out.maps.prisma.models.User.fields.role.values).toEqual(['member']);
@@ -98,10 +82,10 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
 
   test('chained enumPicks intersect across narrowing layers', () => {
     const a = withParent(lens, {
-      prisma: { models: { User: { enumPicks: { role: ['admin', 'member', 'owner'] } } } },
+      root: { enumPicks: { role: ['admin', 'member', 'owner'] } },
     });
     const b = withParent(a, {
-      prisma: { models: { User: { enumPicks: { role: ['member', 'owner', 'guest'] } } } },
+      root: { enumPicks: { role: ['member', 'owner', 'guest'] } },
     });
     const out = projectNarrowing(b);
     // Intersection of [admin,member,owner] and [member,owner,guest] = [member,owner]
@@ -109,5 +93,36 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
       'member',
       'owner',
     ]);
+  });
+
+  test('all three enum narrowing layers compose at one visit (root + mapDefaults.enums + mapDefaults.models)', () => {
+    // Three independent narrowings apply simultaneously at User.role at the root visit:
+    //   Registry:                                 UserRole = [admin, member, owner, guest]
+    //   mapDefaults.enums.UserRole.omits         drop 'guest'        → [admin, member, owner]
+    //   mapDefaults.models.User.enumOmits.role   drop 'owner'        → [admin, member]
+    //   root.enumPicks.role                      pick ['admin']      → [admin]
+    // Effective allowed values at User.role: ['admin'].
+    const n = withParent(lens, {
+      root: { enumPicks: { role: ['admin'] } },
+      mapDefaults: {
+        prisma: {
+          enums: { UserRole: { omits: ['guest'] } },
+          models: { User: { enumOmits: { role: ['owner'] } } },
+        },
+      },
+    });
+    const out = projectNarrowing(n);
+    expect(out.maps.prisma.models.User.fields.role.values).toEqual(['admin']);
+    // Audit.targetRole only sees the registry-level narrowing (guest dropped),
+    // since the User-specific enumOmits and root enumPicks don't apply to Audit.
+    // The narrowing for an unvisited model surfaces via the (now-narrowed) registry,
+    // not as per-field `values` on the field entry.
+    expect(
+      [
+        ...(out.maps.prisma.models.Audit.fields.targetRole.values ??
+          out.maps.prisma.enums?.UserRole ??
+          []),
+      ].sort(),
+    ).toEqual(['admin', 'member', 'owner']);
   });
 });

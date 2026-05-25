@@ -40,23 +40,23 @@ export type EnumNarrowing = {
   omits?: readonly string[];
 };
 
-/** Applies-everywhere narrowings — per-model (no relations) + per-enum-type. */
+/** Applies-everywhere narrowings for one map — per-model (no relations) + per-enum-type. */
 export type NarrowingDefaults = {
   models?: Record<string, ModelDefaultNarrowing>;
   enums?: Record<string, EnumNarrowing>;
 };
 
-export type MapNarrowing = {
-  /** Path-specific narrowings, root + relations tree. */
-  models: Record<string, ModelNarrowing>;
-  /** Applies-everywhere narrowings, intersect with path-specific. */
-  defaults?: NarrowingDefaults;
-};
-
 export type LensNarrowing = {
   // TODO: may need to be an identifier (lens name/uuid) rather than a direct reference for persistence
   parent: Lens | LensNarrowing;
-  maps: Record<string, MapNarrowing>;
-  /** Lens-level row filter, anchored to the root model. ANDs into the root rule. */
-  where?: Condition;
+  /**
+   * Path-specific narrowing anchored at (lens.mapName, lens.model). Descends via
+   * `.relations` and may cross maps through bridge relations.
+   */
+  root?: ModelNarrowing;
+  /**
+   * Per-map applies-everywhere narrowings, keyed by map name. Apply wherever the
+   * named model/enum appears in the visit being resolved.
+   */
+  mapDefaults?: Record<string, NarrowingDefaults>;
 };

@@ -243,6 +243,16 @@ layer narrowings per `(map, model)` and applies the intersection once at the
 end, fixing the v2.0 last-write-wins bug where chained narrowings of the same
 model would erase earlier-picked fields.
 
+**v2.3** further fixed `projectNarrowing` for *sibling* paths that target the
+same model (e.g. `Post.author` and `Post.editor` both `→ User`). Pre-2.3 these
+collapsed to a single `prisma::User` accumulator with intersected picks (often
+producing an empty model in the flat projection). 2.3 keys path-specific
+accumulators by `${map}::${dottedPath}` so each sibling stays isolated; the
+flat-projection collapse step then takes the **union** across siblings
+(intersection within a single path is unchanged) and intersects with
+`mapDefaults`. Per-visit semantics (`resolveVisit`, `checkRuleAgainstLens`,
+`applyLens`) were already path-correct and are unchanged.
+
 ## 6. Defaults vs path-specific
 
 `defaults` applies *wherever* a model or enum appears. Path-specific applies
@@ -381,9 +391,11 @@ const allowed = entry.values ?? projectedSet.maps[mapName].enums?.[entry.type] ?
 ```
 
 For per-path enum divergence (e.g. `User.role` picks `['admin']` at root but
-`['member']` via `posts.author`), `projectNarrowing` collapses to the intersection
-across all paths (a safe single view). For path-aware truth at runtime, use
-`resolveVisit(policy, ...)`.
+`['member']` via `posts.author`), `projectNarrowing` takes the **union** across
+sibling paths — a value is visible in the projection if visible at *some* path —
+and then intersects with `mapDefaults` (applies-everywhere still bites). This
+keeps the flat projection useful as a "what can the AI/builder see at all"
+contract. For path-aware truth at runtime, use `resolveVisit(policy, ...)`.
 
 `checkRuleAgainstLens` rejects rule values not in the resolved set — leaf
 rules, plus inside `all`/`any`/`if`/`arrayRule.condition` (it recurses with
@@ -599,13 +611,15 @@ const projected = projectNarrowing(narrowing);
 // Use this to emit OpenAPI specs, generate SDK types, drive a UI rule builder.
 ```
 
-`projectNarrowing` collapses per-path narrowings — the projected
-`FieldMapSet` is a flat schema, not a per-path tree. For rules that depend on
-the path (e.g. `User.manager.password` allowed but `User.posts.author.password`
-not), `checkRuleAgainstLens` is the path-aware authority.
-`projectNarrowing` is intended for the consumer-facing schema contract; the
-runtime check uses path-aware composition through `resolvePolicy` /
-`resolveVisit`.
+`projectNarrowing` flattens per-path narrowings to a model-keyed
+`FieldMapSet` — sibling paths to the same model are **unioned** (a field is
+visible if visible at *some* path; chain composition within a single path is
+still intersected), then intersected with `mapDefaults`. For rules that depend
+on the path (e.g. `User.manager.password` allowed but `User.posts.author.password`
+not), `checkRuleAgainstLens` is the path-aware authority. `projectNarrowing`
+is intended for the consumer-facing schema contract — "what fields can the
+AI/builder reference anywhere in this lens." The runtime check uses path-aware
+composition through `resolvePolicy` / `resolveVisit`.
 
 ## 11. Describe-and-validate vs deny-at-execution
 

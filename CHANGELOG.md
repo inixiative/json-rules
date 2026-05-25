@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.3.0
+
+Bug fix in `projectNarrowing`: sibling relation paths pointing at the same model no longer collapse via intersection.
+
+### What was wrong
+
+`projectNarrowing` keyed its per-model accumulator by `${mapName}::${modelName}`. Two sibling relations to the same target (e.g. `Post.author` and `Post.editor`, both `→ User`) wrote to the same `prisma::User` accumulator, intersecting their `picks` and often producing an empty field set.
+
+Per-visit resolution (`resolveVisit`, used by `checkRuleAgainstLens` and `applyLens`) was already path-correct — it descends `narrowing.root` via the visit's `relPath`, so per-visit semantics weren't affected. The bug was contained to the flat-projection output.
+
+### What changed
+
+- Path-specific narrowings now accumulate per `${mapName}::${dottedPath}` (each sibling path gets its own key). Chain composition WITHIN a path still intersects (monotonic restriction is unchanged).
+- The projected `FieldMapSet` is still flat (model-keyed). To collapse sibling paths down to one model entry, the projection takes the **union** across sibling paths: a field is visible in the projection iff it's visible at *some* path that reaches the model.
+- `mapDefaults[X].models[Y]` still applies everywhere `Y` is reached in map `X` and intersects with the path union — applies-everywhere narrowing still bites in the projection.
+
+### Example
+
+```ts
+// Post.author -> User, Post.editor -> User (multiRelMap)
+const n: LensNarrowing = {
+  parent: postLens,
+  root: {
+    relations: {
+      author: { picks: ['name'] },
+      editor: { picks: ['id'] },
+    },
+  },
+};
+const out = projectNarrowing(n);
+// 2.3: out.maps.prisma.models.User has BOTH name AND id (union across sibling paths)
+// pre-2.3 bug:  prisma::User acc intersected ['name'] ∩ ['id'] = {} — User vanished
+```
+
+For path-specific views into a descended model (where the AI/builder needs to know "at *this* path, only X is visible"), use `resolveVisit(policy, mapName, modelName, relPath)` directly — that's been path-correct since 2.1.
+
 ## 2.2.0
 
 Structural cleanup of `LensNarrowing`. The path-specific anchor and per-map applies-everywhere defaults now live as separate top-level fields — `root` and `mapDefaults` — replacing the dual-purpose `maps` dictionary and the root-level `where` outlier. Composition semantics are unchanged.

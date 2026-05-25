@@ -517,9 +517,10 @@ check(
 
 ## Lens & Multi-Source Data
 
-> **For the full v2.1 lens guide — including the four anchor layers for `where`,
-> the `all` operator filter-first trick, per-model enum narrowing, and a
-> validate-then-apply usage pattern — see [docs/LENS.md](./docs/LENS.md).**
+> **For the full v2.1 lens guide — including the three anchor layers for `where`
+> (lens-level, model-default, relation-descent), the `all` operator filter-first
+> trick, per-model enum narrowing, and a validate-then-apply usage pattern —
+> see [docs/LENS.md](./docs/LENS.md).**
 > This section covers the high-level shape and the multi-source bridges.
 
 The `Lens` primitive is a schema-aware view layer over one or more `FieldMap`s. It enables rule authoring against multi-source data (e.g. Prisma + an external CRM), with declarative cross-source `Bridge`s and recursive `Narrowing`s for both schema (picks/omits/enumPicks/enumOmits) and data (`where`).

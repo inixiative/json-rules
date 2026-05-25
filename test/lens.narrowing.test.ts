@@ -7,30 +7,34 @@ import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      name: { kind: 'scalar', type: 'String' },
-      deletedAt: { kind: 'scalar', type: 'DateTime' },
-      crmId: { kind: 'scalar', type: 'String' },
-      fanMissions: { kind: 'object', type: 'FanMission', isList: true },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        name: { kind: 'scalar', type: 'String' },
+        deletedAt: { kind: 'scalar', type: 'DateTime' },
+        crmId: { kind: 'scalar', type: 'String' },
+        fanMissions: { kind: 'object', type: 'FanMission', isList: true },
+      },
     },
-  },
-  FanMission: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      missionUuid: { kind: 'scalar', type: 'String' },
-      status: { kind: 'scalar', type: 'String' },
+    FanMission: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        missionUuid: { kind: 'scalar', type: 'String' },
+        status: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
@@ -320,38 +324,38 @@ describe('validateNarrowing — chain rules', () => {
   });
 });
 
-describe('validateNarrowing — constrains', () => {
-  test('constrains referencing visible field passes', () => {
+describe('validateNarrowing — where', () => {
+  test('where referencing visible field passes', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
         maps: {},
-        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+        where: { field: 'email', operator: Operator.equals, value: 'x' },
       }),
     ).not.toThrow();
   });
 
-  test('constrains referencing field omitted at this narrowing throws', () => {
+  test('where referencing field omitted at this narrowing throws', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
         maps: { prisma: { models: { FanUser: { omits: ['email'] } } } },
-        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+        where: { field: 'email', operator: Operator.equals, value: 'x' },
       }),
-    ).toThrow(/constrains: 'email'/);
+    ).toThrow(/where: 'email'/);
   });
 
-  test('constrains referencing field not picked throws', () => {
+  test('where referencing field not picked throws', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
         maps: { prisma: { models: { FanUser: { picks: ['id'] } } } },
-        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+        where: { field: 'email', operator: Operator.equals, value: 'x' },
       }),
-    ).toThrow(/constrains: 'email'/);
+    ).toThrow(/where: 'email'/);
   });
 
-  test('constrains referencing field omitted by ancestor throws', () => {
+  test('where referencing field omitted by ancestor throws', () => {
     const parent: LensNarrowing = {
       parent: lens,
       maps: { prisma: { models: { FanUser: { omits: ['email'] } } } },
@@ -360,8 +364,8 @@ describe('validateNarrowing — constrains', () => {
       validateNarrowing({
         parent,
         maps: {},
-        constrains: { field: 'email', operator: Operator.equals, value: 'x' },
+        where: { field: 'email', operator: Operator.equals, value: 'x' },
       }),
-    ).toThrow(/constrains: 'email'/);
+    ).toThrow(/where: 'email'/);
   });
 });

@@ -20,7 +20,7 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
   let currentModel = rootModel;
 
   for (let i = 0; i < parts.length; i++) {
-    const modelEntry = map[currentModel];
+    const modelEntry = map.models[currentModel];
     if (!modelEntry) return { kind: 'fallback' };
 
     const fieldEntry = modelEntry.fields[parts[i]];
@@ -34,7 +34,7 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
     }
 
     if (fieldEntry.kind === 'object') {
-      if (!map[fieldEntry.type]) return { kind: 'fallback' };
+      if (!map.models[fieldEntry.type]) return { kind: 'fallback' };
       currentModel = fieldEntry.type;
       continue;
     }

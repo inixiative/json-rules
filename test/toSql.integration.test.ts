@@ -4,10 +4,12 @@ import type { FieldMap } from '../index';
 import { ArrayOperator, Operator, toSql } from '../index';
 
 const usersMap: FieldMap = {
-  User: {
-    fields: {
-      roles: { kind: 'scalar', type: 'Text', isList: true },
-      tags: { kind: 'scalar', type: 'Json' },
+  models: {
+    User: {
+      fields: {
+        roles: { kind: 'scalar', type: 'Text', isList: true },
+        tags: { kind: 'scalar', type: 'Json' },
+      },
     },
   },
 };

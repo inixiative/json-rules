@@ -4,18 +4,22 @@ import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      crmId: { kind: 'scalar', type: 'String' },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 const crmMap: FieldMap = {
-  Event: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      userId: { kind: 'scalar', type: 'String' },
+  models: {
+    Event: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        userId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };

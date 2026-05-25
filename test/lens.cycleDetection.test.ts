@@ -8,8 +8,13 @@ import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const map: FieldMap = {
-  FanUser: {
-    fields: { id: { kind: 'scalar', type: 'String' }, email: { kind: 'scalar', type: 'String' } },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+      },
+    },
   },
 };
 

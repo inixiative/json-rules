@@ -41,19 +41,23 @@ describe('Bug #1 — catalog rejects prototype keys', () => {
 // The user must explicitly pick the full <map>:<Model> key to retain bridge access.
 describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () => {
   const prismaMap: FieldMap = {
-    FanUser: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        email: { kind: 'scalar', type: 'String' },
-        crmId: { kind: 'scalar', type: 'String' },
+    models: {
+      FanUser: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          email: { kind: 'scalar', type: 'String' },
+          crmId: { kind: 'scalar', type: 'String' },
+        },
       },
     },
   };
   const salesforceMap: FieldMap = {
-    Contact: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        industry: { kind: 'scalar', type: 'String' },
+    models: {
+      Contact: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          industry: { kind: 'scalar', type: 'String' },
+        },
       },
     },
   };
@@ -83,7 +87,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length).toBe(1);
-    expect(projected.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
+    expect(projected.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeDefined();
   });
 
   test('bridge removed when anchor picks omit the bridge-key field', () => {
@@ -96,7 +100,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length ?? 0).toBe(0);
-    expect(projected.maps.prisma.FanUser.fields['salesforce:Contact']).toBeUndefined();
+    expect(projected.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeUndefined();
   });
 
   test('bridge removed when anchor omits the bridge-key explicitly', () => {
@@ -109,7 +113,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
     };
     const projected = projectNarrowing(narrowing);
     expect(projected.bridges?.length ?? 0).toBe(0);
-    expect(projected.maps.prisma.FanUser.fields['salesforce:Contact']).toBeUndefined();
+    expect(projected.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeUndefined();
   });
 
   test('bridge removed when the FAR side of the bridge picks its bridge-key away', () => {
@@ -183,16 +187,18 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
 // Bug #8: checkRuleAgainstLens must walk aggregate.field paths against the lens schema.
 describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () => {
   const map: FieldMap = {
-    User: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        orders: { kind: 'object', type: 'Order', isList: true },
+    models: {
+      User: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          orders: { kind: 'object', type: 'Order', isList: true },
+        },
       },
-    },
-    Order: {
-      fields: {
-        id: { kind: 'scalar', type: 'String' },
-        total: { kind: 'scalar', type: 'Int' },
+      Order: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          total: { kind: 'scalar', type: 'Int' },
+        },
       },
     },
   };

@@ -36,7 +36,7 @@ export const buildCountStep = (
   if (!rule.field) {
     throw new Error('toPrisma: count-based ArrayRule requires a field path');
   }
-  const fieldEntry = map[currentModel]?.fields[rule.field];
+  const fieldEntry = map.models[currentModel]?.fields[rule.field];
   if (!fieldEntry || fieldEntry.kind !== 'object') {
     throw new Error(
       `Field '${rule.field}' is not a relation in model '${currentModel}'. ` +
@@ -75,7 +75,7 @@ export const buildCountStep = (
       fieldEntry.relationName,
     );
     if (!reverseRelation) {
-      const targetFields = Object.values(map[targetModel]?.fields ?? {});
+      const targetFields = Object.values(map.models[targetModel]?.fields ?? {});
       const isImplicitM2M = targetFields.some(
         (f) => f.kind === 'object' && f.type === currentModel && f.isList && !f.fromFields?.length,
       );

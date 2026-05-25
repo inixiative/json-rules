@@ -7,29 +7,33 @@ import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      name: { kind: 'scalar', type: 'String' },
-      crmId: { kind: 'scalar', type: 'String' },
-      fanMissions: { kind: 'object', type: 'FanMission', isList: true },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        name: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+        fanMissions: { kind: 'object', type: 'FanMission', isList: true },
+      },
     },
-  },
-  FanMission: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      missionUuid: { kind: 'scalar', type: 'String' },
-      status: { kind: 'scalar', type: 'String' },
+    FanMission: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        missionUuid: { kind: 'scalar', type: 'String' },
+        status: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };

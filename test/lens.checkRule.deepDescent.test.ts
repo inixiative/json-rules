@@ -5,25 +5,27 @@ import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const map: FieldMap = {
-  User: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      posts: { kind: 'object', type: 'Post', isList: true },
+  models: {
+    User: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        posts: { kind: 'object', type: 'Post', isList: true },
+      },
     },
-  },
-  Post: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      title: { kind: 'scalar', type: 'String' },
-      comments: { kind: 'object', type: 'Comment', isList: true },
+    Post: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        title: { kind: 'scalar', type: 'String' },
+        comments: { kind: 'object', type: 'Comment', isList: true },
+      },
     },
-  },
-  Comment: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      body: { kind: 'scalar', type: 'String' },
-      score: { kind: 'scalar', type: 'Int' },
+    Comment: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        body: { kind: 'scalar', type: 'String' },
+        score: { kind: 'scalar', type: 'Int' },
+      },
     },
   },
 };

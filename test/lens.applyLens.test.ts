@@ -6,11 +6,13 @@ import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 const map: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      deletedAt: { kind: 'scalar', type: 'DateTime' },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        deletedAt: { kind: 'scalar', type: 'DateTime' },
+      },
     },
   },
 };
@@ -27,26 +29,26 @@ describe('applyLens', () => {
     expect(applyLens(rule, lens)).toBe(rule);
   });
 
-  test('narrowing without constrains returns rule unchanged', () => {
+  test('narrowing without where returns rule unchanged', () => {
     const n: LensNarrowing = { parent: lens, maps: {} };
     expect(applyLens(rule, n)).toBe(rule);
   });
 
-  test('single constrains ANDs into rule', () => {
-    const n: LensNarrowing = { parent: lens, maps: {}, constrains: cDeletedNull };
+  test('single where ANDs into rule', () => {
+    const n: LensNarrowing = { parent: lens, maps: {}, where: cDeletedNull };
     expect(applyLens(rule, n)).toEqual({ all: [cDeletedNull, rule] });
   });
 
-  test('chain composes constrains root → leaf, then rule', () => {
-    const a: LensNarrowing = { parent: lens, maps: {}, constrains: cDeletedNull };
-    const b: LensNarrowing = { parent: a, maps: {}, constrains: cOrgEq };
+  test('chain composes where root → leaf, then rule', () => {
+    const a: LensNarrowing = { parent: lens, maps: {}, where: cDeletedNull };
+    const b: LensNarrowing = { parent: a, maps: {}, where: cOrgEq };
     expect(applyLens(rule, b)).toEqual({ all: [cDeletedNull, cOrgEq, rule] });
   });
 
-  test('chain skips narrowings without constrains', () => {
-    const a: LensNarrowing = { parent: lens, maps: {}, constrains: cDeletedNull };
+  test('chain skips narrowings without where', () => {
+    const a: LensNarrowing = { parent: lens, maps: {}, where: cDeletedNull };
     const b: LensNarrowing = { parent: a, maps: {} };
-    const c: LensNarrowing = { parent: b, maps: {}, constrains: cOrgEq };
+    const c: LensNarrowing = { parent: b, maps: {}, where: cOrgEq };
     expect(applyLens(rule, c)).toEqual({ all: [cDeletedNull, cOrgEq, rule] });
   });
 });

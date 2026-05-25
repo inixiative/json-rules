@@ -4,20 +4,24 @@ import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      crmId: { kind: 'scalar', type: 'String' },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
@@ -66,12 +70,12 @@ describe('stitchFieldMaps', () => {
       maps: { prisma: prismaMap, salesforce: salesforceMap },
       bridges: [oneToManyBridge],
     });
-    expect(out.maps.salesforce.Contact.fields['prisma:FanUser']).toEqual({
+    expect(out.maps.salesforce.models.Contact.fields['prisma:FanUser']).toEqual({
       kind: 'bridge',
       type: 'prisma:FanUser',
       isList: true,
     });
-    expect(out.maps.prisma.FanUser.fields['salesforce:Contact']).toEqual({
+    expect(out.maps.prisma.models.FanUser.fields['salesforce:Contact']).toEqual({
       kind: 'bridge',
       type: 'salesforce:Contact',
       isList: false,
@@ -83,8 +87,8 @@ describe('stitchFieldMaps', () => {
       maps: { prisma: prismaMap, salesforce: salesforceMap },
       bridges: [oneToOneBridge],
     });
-    expect(out.maps.salesforce.Contact.fields['prisma:FanUser'].isList).toBe(false);
-    expect(out.maps.prisma.FanUser.fields['salesforce:Contact'].isList).toBe(false);
+    expect(out.maps.salesforce.models.Contact.fields['prisma:FanUser'].isList).toBe(false);
+    expect(out.maps.prisma.models.FanUser.fields['salesforce:Contact'].isList).toBe(false);
   });
 
   test('throws when endpoint fieldMap missing', () => {
@@ -146,7 +150,9 @@ describe('stitchFieldMaps', () => {
 
   test('injects multiple bridges', () => {
     const accountMap: FieldMap = {
-      Account: { fields: { id: { kind: 'scalar', type: 'String' } } },
+      models: {
+        Account: { fields: { id: { kind: 'scalar', type: 'String' } } },
+      },
     };
     const bridges: Bridge[] = [
       oneToManyBridge,
@@ -162,9 +168,9 @@ describe('stitchFieldMaps', () => {
       maps: { prisma: prismaMap, salesforce: salesforceMap, salesforce2: accountMap },
       bridges,
     });
-    expect(out.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
-    expect(out.maps.prisma.FanUser.fields['salesforce2:Account']).toBeDefined();
-    expect(out.maps.salesforce.Contact.fields['prisma:FanUser']).toBeDefined();
-    expect(out.maps.salesforce2.Account.fields['prisma:FanUser']).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields['salesforce2:Account']).toBeDefined();
+    expect(out.maps.salesforce.models.Contact.fields['prisma:FanUser']).toBeDefined();
+    expect(out.maps.salesforce2.models.Account.fields['prisma:FanUser']).toBeDefined();
   });
 });

@@ -6,7 +6,9 @@ describe('validateFieldMapSet', () => {
   test('passes for clean set', () => {
     expect(() =>
       validateFieldMapSet({
-        maps: { prisma: { FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } } } },
+        maps: {
+          prisma: { models: { FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } } } },
+        },
       }),
     ).not.toThrow();
   });
@@ -16,7 +18,9 @@ describe('validateFieldMapSet', () => {
       validateFieldMapSet({
         maps: {
           prisma: {
-            FanUser: { fields: { 'foo.bar': { kind: 'scalar', type: 'String' } } },
+            models: {
+              FanUser: { fields: { 'foo.bar': { kind: 'scalar', type: 'String' } } },
+            },
           },
         },
       }),
@@ -28,7 +32,9 @@ describe('validateFieldMapSet', () => {
       validateFieldMapSet({
         maps: {
           prisma: {
-            FanUser: { fields: { 'foo:bar': { kind: 'scalar', type: 'String' } } },
+            models: {
+              FanUser: { fields: { 'foo:bar': { kind: 'scalar', type: 'String' } } },
+            },
           },
         },
       }),
@@ -41,14 +47,16 @@ describe('validateFieldMapSet', () => {
       validateFieldMapSet({
         maps: {
           prisma: {
-            FanUser: {
-              fields: {
-                'one.bad': { kind: 'scalar', type: 'String' },
-                'two:bad': { kind: 'scalar', type: 'String' },
+            models: {
+              FanUser: {
+                fields: {
+                  'one.bad': { kind: 'scalar', type: 'String' },
+                  'two:bad': { kind: 'scalar', type: 'String' },
+                },
               },
-            },
-            Brand: {
-              fields: { 'three.bad': { kind: 'scalar', type: 'String' } },
+              Brand: {
+                fields: { 'three.bad': { kind: 'scalar', type: 'String' } },
+              },
             },
           },
         },
@@ -69,10 +77,16 @@ describe('validateFieldMapSet — stitched bridges', () => {
       validateFieldMapSet({
         maps: {
           prisma: {
-            FanUser: {
-              fields: {
-                id: { kind: 'scalar', type: 'String' },
-                'salesforce:Contact': { kind: 'bridge', type: 'salesforce:Contact', isList: false },
+            models: {
+              FanUser: {
+                fields: {
+                  id: { kind: 'scalar', type: 'String' },
+                  'salesforce:Contact': {
+                    kind: 'bridge',
+                    type: 'salesforce:Contact',
+                    isList: false,
+                  },
+                },
               },
             },
           },
@@ -86,9 +100,11 @@ describe('validateFieldMapSet — stitched bridges', () => {
       validateFieldMapSet({
         maps: {
           prisma: {
-            FanUser: {
-              fields: {
-                'foo:bar': { kind: 'scalar', type: 'String' },
+            models: {
+              FanUser: {
+                fields: {
+                  'foo:bar': { kind: 'scalar', type: 'String' },
+                },
               },
             },
           },
@@ -101,21 +117,27 @@ describe('validateFieldMapSet — stitched bridges', () => {
 describe('validateFieldMap', () => {
   test('passes for clean map', () => {
     const fm: FieldMap = {
-      FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } },
+      models: {
+        FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } },
+      },
     };
     expect(() => validateFieldMap(fm)).not.toThrow();
   });
 
   test('uses default mapName when omitted', () => {
     const fm: FieldMap = {
-      FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
+      models: {
+        FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
+      },
     };
     expect(() => validateFieldMap(fm)).toThrow(/'fieldMap:FanUser/);
   });
 
   test('uses provided mapName', () => {
     const fm: FieldMap = {
-      FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
+      models: {
+        FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
+      },
     };
     expect(() => validateFieldMap(fm, 'prisma')).toThrow(/'prisma:FanUser/);
   });

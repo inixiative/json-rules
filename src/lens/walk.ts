@@ -1,5 +1,5 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import type { FieldMapEntry, ModelEntry } from '../toPrisma/types.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 export const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
@@ -50,7 +50,7 @@ export const walkPath = (
   let mapName = startMap;
   let modelName = startModel;
   for (let i = 0; i < parts.length; i++) {
-    const model: FieldMap[string] | undefined = set.maps[mapName]?.[modelName];
+    const model: ModelEntry | undefined = set.maps[mapName]?.models[modelName];
     if (!model) return null;
     const entry = model.fields[parts[i]];
     if (!entry) return null;

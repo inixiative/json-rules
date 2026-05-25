@@ -3,20 +3,24 @@ import { createLens } from '../src/lens/createLens';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      crmId: { kind: 'scalar', type: 'String' },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
@@ -30,7 +34,7 @@ describe('createLens', () => {
     });
     expect(lens.mapName).toBe('prisma');
     expect(lens.model).toBe('FanUser');
-    expect(lens.maps.prisma.FanUser).toBeDefined();
+    expect(lens.maps.prisma.models.FanUser).toBeDefined();
     expect(lens.bridges).toBeUndefined();
   });
 
@@ -49,12 +53,12 @@ describe('createLens', () => {
       mapName: 'prisma',
       model: 'FanUser',
     });
-    expect(lens.maps.prisma.FanUser.fields['salesforce:Contact']).toEqual({
+    expect(lens.maps.prisma.models.FanUser.fields['salesforce:Contact']).toEqual({
       kind: 'bridge',
       type: 'salesforce:Contact',
       isList: false,
     });
-    expect(lens.maps.salesforce.Contact.fields['prisma:FanUser']).toEqual({
+    expect(lens.maps.salesforce.models.Contact.fields['prisma:FanUser']).toEqual({
       kind: 'bridge',
       type: 'prisma:FanUser',
       isList: false,

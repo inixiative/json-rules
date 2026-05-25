@@ -27,7 +27,7 @@ const resolveRelationTargetModel = (
   const parts = field.split('.');
   let cur = rootModel;
   for (const part of parts) {
-    const entry = map[cur]?.fields[part];
+    const entry = map.models[cur]?.fields[part];
     if (!entry || entry.kind !== 'object') return null;
     cur = entry.type;
   }

@@ -7,32 +7,38 @@ import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      crmId: { kind: 'scalar', type: 'String' },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
-      companyName: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+        companyName: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const crmMap: FieldMap = {
-  MarketingEvent: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      userId: { kind: 'scalar', type: 'String' },
-      campaign: { kind: 'scalar', type: 'String' },
-      cost: { kind: 'scalar', type: 'Int' },
+  models: {
+    MarketingEvent: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        userId: { kind: 'scalar', type: 'String' },
+        campaign: { kind: 'scalar', type: 'String' },
+        cost: { kind: 'scalar', type: 'Int' },
+      },
     },
   },
 };
@@ -216,7 +222,7 @@ describe('bridge schema — on fields are reachable for callers', () => {
 
   test('lens carries the stitched set, including bridges metadata', () => {
     expect(lens.bridges).toBeDefined();
-    expect(lens.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
-    expect(lens.maps.prisma.FanUser.fields['crm:MarketingEvent']).toBeDefined();
+    expect(lens.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeDefined();
+    expect(lens.maps.prisma.models.FanUser.fields['crm:MarketingEvent']).toBeDefined();
   });
 });

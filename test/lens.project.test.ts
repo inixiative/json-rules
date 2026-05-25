@@ -6,30 +6,34 @@ import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      name: { kind: 'scalar', type: 'String' },
-      deletedAt: { kind: 'scalar', type: 'DateTime' },
-      crmId: { kind: 'scalar', type: 'String' },
-      fanMissions: { kind: 'object', type: 'FanMission', isList: true },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        name: { kind: 'scalar', type: 'String' },
+        deletedAt: { kind: 'scalar', type: 'DateTime' },
+        crmId: { kind: 'scalar', type: 'String' },
+        fanMissions: { kind: 'object', type: 'FanMission', isList: true },
+      },
     },
-  },
-  FanMission: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      missionUuid: { kind: 'scalar', type: 'String' },
-      status: { kind: 'scalar', type: 'String' },
+    FanMission: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        missionUuid: { kind: 'scalar', type: 'String' },
+        status: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
@@ -61,8 +65,8 @@ const withParent = (parent: Lens | LensNarrowing, maps: LensNarrowing['maps']): 
 describe('projectNarrowing', () => {
   test('empty chain returns clone of root set', () => {
     const out = projectNarrowing(lens);
-    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.FanUser.fields.name).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields.name).toBeDefined();
     expect(out).not.toBe(stitched);
   });
 
@@ -71,9 +75,9 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { picks: ['email'] } } },
     });
     const out = projectNarrowing(n);
-    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.FanUser.fields.name).toBeUndefined();
-    expect(out.maps.prisma.FanUser.fields.deletedAt).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.deletedAt).toBeUndefined();
   });
 
   test('omits drop listed fields', () => {
@@ -81,9 +85,9 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { omits: ['deletedAt', 'name'] } } },
     });
     const out = projectNarrowing(n);
-    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.FanUser.fields.name).toBeUndefined();
-    expect(out.maps.prisma.FanUser.fields.deletedAt).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.deletedAt).toBeUndefined();
   });
 
   test('picks keep relation fields that have nested narrowings', () => {
@@ -98,11 +102,11 @@ describe('projectNarrowing', () => {
       },
     });
     const out = projectNarrowing(n);
-    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.FanUser.fields.fanMissions).toBeDefined();
-    expect(out.maps.prisma.FanMission.fields.missionUuid).toBeDefined();
-    expect(out.maps.prisma.FanMission.fields.status).toBeUndefined();
-    expect(out.maps.prisma.FanMission.fields.id).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields.fanMissions).toBeDefined();
+    expect(out.maps.prisma.models.FanMission.fields.missionUuid).toBeDefined();
+    expect(out.maps.prisma.models.FanMission.fields.status).toBeUndefined();
+    expect(out.maps.prisma.models.FanMission.fields.id).toBeUndefined();
   });
 
   test('cascades through cross-map bridge', () => {
@@ -118,8 +122,8 @@ describe('projectNarrowing', () => {
       },
     });
     const out = projectNarrowing(n);
-    expect(out.maps.salesforce.Contact.fields.industry).toBeDefined();
-    expect(out.maps.salesforce.Contact.fields.id).toBeUndefined();
+    expect(out.maps.salesforce.models.Contact.fields.industry).toBeDefined();
+    expect(out.maps.salesforce.models.Contact.fields.id).toBeUndefined();
   });
 
   test('multi-level chain applies all narrowings cumulatively', () => {
@@ -133,10 +137,10 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { omits: ['name'] } } },
     });
     const out = projectNarrowing(n3);
-    expect(out.maps.prisma.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.FanUser.fields.name).toBeUndefined();
-    expect(out.maps.prisma.FanUser.fields.id).toBeUndefined();
-    expect(out.maps.prisma.FanUser.fields.deletedAt).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
+    expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.id).toBeUndefined();
+    expect(out.maps.prisma.models.FanUser.fields.deletedAt).toBeUndefined();
   });
 
   test('does not mutate input', () => {
@@ -144,8 +148,8 @@ describe('projectNarrowing', () => {
       prisma: { models: { FanUser: { picks: ['email'] } } },
     });
     projectNarrowing(n);
-    expect(stitched.maps.prisma.FanUser.fields.email).toBeDefined();
-    expect(stitched.maps.prisma.FanUser.fields.name).toBeDefined();
+    expect(stitched.maps.prisma.models.FanUser.fields.email).toBeDefined();
+    expect(stitched.maps.prisma.models.FanUser.fields.name).toBeDefined();
   });
 
   test('mutating projected bridges does not leak into source', () => {

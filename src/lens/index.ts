@@ -5,4 +5,12 @@ export type { CreateLensInput } from './createLens';
 export { createLens } from './createLens';
 export { validateNarrowing } from './narrowing';
 export { projectNarrowing } from './project';
-export type { Lens, LensNarrowing, MapNarrowing, ModelNarrowing } from './types';
+export type {
+  EnumNarrowing,
+  Lens,
+  LensNarrowing,
+  MapNarrowing,
+  ModelDefaultNarrowing,
+  ModelNarrowing,
+  NarrowingDefaults,
+} from './types';

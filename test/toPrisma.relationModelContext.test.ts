@@ -10,24 +10,31 @@ import { getWhere } from './fixtures/helpers';
 // and bridge to a CRM Event. Inner conditions in some/every/none must resolve
 // against Post (not User) so JSON-path detection and bridge detection fire.
 const userMap: FieldMap = {
-  User: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      posts: { kind: 'object', type: 'Post', isList: true },
+  models: {
+    User: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        posts: { kind: 'object', type: 'Post', isList: true },
+      },
     },
-  },
-  Post: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      authorId: { kind: 'scalar', type: 'String' },
-      published: { kind: 'scalar', type: 'Boolean' },
-      metadata: { kind: 'scalar', type: 'Json' },
+    Post: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        authorId: { kind: 'scalar', type: 'String' },
+        published: { kind: 'scalar', type: 'Boolean' },
+        metadata: { kind: 'scalar', type: 'Json' },
+      },
     },
   },
 };
 const crmMap: FieldMap = {
-  Event: {
-    fields: { id: { kind: 'scalar', type: 'String' }, postId: { kind: 'scalar', type: 'String' } },
+  models: {
+    Event: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        postId: { kind: 'scalar', type: 'String' },
+      },
+    },
   },
 };
 const bridge: Bridge = {

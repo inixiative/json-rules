@@ -22,7 +22,7 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
   let currentAlias = state.currentAlias;
 
   for (let i = 0; i < parts.length; i++) {
-    const modelEntry = state.map[currentModel];
+    const modelEntry = state.map.models[currentModel];
     if (!modelEntry) return quoteField(field); // fallback
 
     const fieldEntry = modelEntry.fields[parts[i]];
@@ -80,7 +80,7 @@ const buildJoinClause = (
   targetAlias: string,
 ): string | null => {
   const targetModel = fieldEntry.type;
-  const targetDbName = map[targetModel]?.dbName ?? targetModel;
+  const targetDbName = map.models[targetModel]?.dbName ?? targetModel;
 
   let onCondition: string;
 
@@ -121,7 +121,7 @@ const findReverseRelation = (
   currentModel: string,
   relationName?: string,
 ): FieldMapEntry | null => {
-  const targetEntry = map[targetModel];
+  const targetEntry = map.models[targetModel];
   if (!targetEntry) return null;
 
   for (const fieldDef of Object.values(targetEntry.fields)) {

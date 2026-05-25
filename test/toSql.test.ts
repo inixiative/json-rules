@@ -3,10 +3,12 @@ import type { FieldMap } from '../index';
 import { ArrayOperator, DateOperator, Operator, toSql } from '../index';
 
 const nativeArrayMap: FieldMap = {
-  Test: {
-    fields: {
-      tags: { kind: 'scalar', type: 'Text', isList: true },
-      items: { kind: 'scalar', type: 'Text', isList: true },
+  models: {
+    Test: {
+      fields: {
+        tags: { kind: 'scalar', type: 'Text', isList: true },
+        items: { kind: 'scalar', type: 'Text', isList: true },
+      },
     },
   },
 };

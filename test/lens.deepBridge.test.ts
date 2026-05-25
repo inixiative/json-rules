@@ -11,31 +11,37 @@ import type { FieldMap } from '../src/toPrisma/types';
 //
 // Rule needs to walk: FanUser → Contact → Account → field
 const prismaMap: FieldMap = {
-  FanUser: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      email: { kind: 'scalar', type: 'String' },
-      crmId: { kind: 'scalar', type: 'String' },
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        email: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const salesforceMap: FieldMap = {
-  Contact: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      industry: { kind: 'scalar', type: 'String' },
-      accountId: { kind: 'scalar', type: 'String' },
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        industry: { kind: 'scalar', type: 'String' },
+        accountId: { kind: 'scalar', type: 'String' },
+      },
     },
   },
 };
 
 const billingMap: FieldMap = {
-  Account: {
-    fields: {
-      id: { kind: 'scalar', type: 'String' },
-      plan: { kind: 'scalar', type: 'String' },
-      monthlySpend: { kind: 'scalar', type: 'Int' },
+  models: {
+    Account: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        plan: { kind: 'scalar', type: 'String' },
+        monthlySpend: { kind: 'scalar', type: 'Int' },
+      },
     },
   },
 };
@@ -64,10 +70,10 @@ const set: FieldMapSet = {
 describe('3-source / 2-bridge-deep traversal', () => {
   test('stitching produces bridge fields on each endpoint model', () => {
     const stitched = stitchFieldMaps(set);
-    expect(stitched.maps.prisma.FanUser.fields['salesforce:Contact']).toBeDefined();
-    expect(stitched.maps.salesforce.Contact.fields['prisma:FanUser']).toBeDefined();
-    expect(stitched.maps.salesforce.Contact.fields['billing:Account']).toBeDefined();
-    expect(stitched.maps.billing.Account.fields['salesforce:Contact']).toBeDefined();
+    expect(stitched.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeDefined();
+    expect(stitched.maps.salesforce.models.Contact.fields['prisma:FanUser']).toBeDefined();
+    expect(stitched.maps.salesforce.models.Contact.fields['billing:Account']).toBeDefined();
+    expect(stitched.maps.billing.models.Account.fields['salesforce:Contact']).toBeDefined();
   });
 
   test('check walks rule across two bridges', () => {

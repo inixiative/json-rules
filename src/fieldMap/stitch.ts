@@ -8,8 +8,8 @@ export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
 
   for (const bridge of set.bridges ?? []) {
     const [a, b] = bridge.endpoints;
-    const aOwner = out.maps[a.fieldMap]?.[a.model];
-    const bOwner = out.maps[b.fieldMap]?.[b.model];
+    const aOwner = out.maps[a.fieldMap]?.models[a.model];
+    const bOwner = out.maps[b.fieldMap]?.models[b.model];
     if (!aOwner) {
       throw new Error(`stitchFieldMaps: endpoint '${a.fieldMap}:${a.model}' not found`);
     }

@@ -1,38 +1,107 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap } from '../toPrisma/types.ts';
-import type { Lens, LensNarrowing, ModelNarrowing } from './types.ts';
+import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
-const applyToModel = (
-  fieldMap: FieldMap,
-  modelName: string,
-  mapName: string,
-  set: FieldMapSet,
-  narrowing: ModelNarrowing,
-): void => {
-  const model = fieldMap[modelName];
-  if (!model) return;
+// Accumulator for one (mapName, modelName) across all narrowing chain layers + paths.
+// We collect all picks/omits/enumPicks/enumOmits first and apply once at the end —
+// avoids the v2.0 last-write-wins bug where late picks erased earlier-picked fields.
+type ModelAcc = {
+  // null = no picks declared anywhere → keep all (subject to omits).
+  // Non-null = intersection of all declared pick sets.
+  picks: Set<string> | null;
+  omits: Set<string>; // union
+  // Per-field enum narrowing: field name → allowed values intersection.
+  enumPicks: Map<string, Set<string>>;
+  enumOmits: Map<string, Set<string>>; // per-field union
+};
 
-  if (narrowing.picks) {
-    const keep = new Set(narrowing.picks);
-    for (const r of Object.keys(narrowing.relations ?? {})) keep.add(r);
-    for (const f of Object.keys(model.fields)) {
-      if (!keep.has(f)) delete model.fields[f];
+const newAcc = (): ModelAcc => ({
+  picks: null,
+  omits: new Set(),
+  enumPicks: new Map(),
+  enumOmits: new Map(),
+});
+
+const intersectSet = (current: Set<string> | null, next: readonly string[]): Set<string> => {
+  if (current === null) return new Set(next);
+  return new Set(next.filter((x) => current.has(x)));
+};
+
+const accumulateModelNarrowing = (
+  acc: ModelAcc,
+  n: ModelDefaultNarrowing | ModelNarrowing,
+): void => {
+  if (n.picks) {
+    // Auto-include relation keys so descent stays reachable (v2.0 behavior).
+    const augmented = [...n.picks];
+    if ('relations' in n && n.relations) {
+      for (const rel of Object.keys(n.relations)) {
+        if (!augmented.includes(rel)) augmented.push(rel);
+      }
+    }
+    acc.picks = intersectSet(acc.picks, augmented);
+  }
+  if (n.omits) for (const f of n.omits) acc.omits.add(f);
+  if (n.enumPicks) {
+    for (const [field, values] of Object.entries(n.enumPicks)) {
+      const current = acc.enumPicks.get(field) ?? null;
+      acc.enumPicks.set(field, intersectSet(current, values));
     }
   }
-  if (narrowing.omits) {
-    for (const f of narrowing.omits) delete model.fields[f];
+  if (n.enumOmits) {
+    for (const [field, values] of Object.entries(n.enumOmits)) {
+      const set = acc.enumOmits.get(field) ?? new Set<string>();
+      for (const v of values) set.add(v);
+      acc.enumOmits.set(field, set);
+    }
   }
+};
 
-  for (const [relField, sub] of Object.entries(narrowing.relations ?? {})) {
+// Recursively walks a path-specific ModelNarrowing tree, accumulating each
+// visited model's narrowing into the per-(map,model) accumulator.
+const walkPathNarrowing = (
+  set: FieldMapSet,
+  mapName: string,
+  modelName: string,
+  modelNarrowing: ModelNarrowing,
+  accs: Map<string, ModelAcc>,
+): void => {
+  const key = `${mapName}::${modelName}`;
+  let acc = accs.get(key);
+  if (!acc) {
+    acc = newAcc();
+    accs.set(key, acc);
+  }
+  accumulateModelNarrowing(acc, modelNarrowing);
+
+  // Descend through relations to accumulate nested model narrowings.
+  const model = set.maps[mapName]?.models[modelName];
+  if (!model) return;
+  for (const [relField, sub] of Object.entries(modelNarrowing.relations ?? {})) {
     const entry = model.fields[relField];
     if (!entry) continue;
     const target = resolveRelationTarget(entry, mapName);
     if (!target) continue;
-    const targetMap = set.maps[target.mapName];
-    if (!targetMap) continue;
-    applyToModel(targetMap, target.modelName, target.mapName, set, sub);
+    walkPathNarrowing(set, target.mapName, target.modelName, sub, accs);
   }
+};
+
+const narrowEnumValues = (
+  current: readonly string[],
+  picks: readonly string[] | undefined,
+  omits: readonly string[] | undefined,
+): readonly string[] => {
+  let result = current;
+  if (picks) {
+    const pickSet = new Set(picks);
+    result = result.filter((v) => pickSet.has(v));
+  }
+  if (omits) {
+    const omitSet = new Set(omits);
+    result = result.filter((v) => !omitSet.has(v));
+  }
+  return result;
 };
 
 export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMapSet => {
@@ -43,26 +112,99 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
   };
   const chain = collectChain(lensOrNarrowing);
 
+  // Phase 1: accumulate per-(map,model) narrowings across all chain layers.
+  const accs = new Map<string, ModelAcc>();
+
   for (const narrowing of chain) {
     for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
       const fieldMap = set.maps[mapName];
       if (!fieldMap) continue;
+
+      // defaults.models[M] applies wherever M is visited — add to every M's accumulator.
+      const defaultsModels = mapNarrowing.defaults?.models ?? {};
+      for (const [modelName, defaultsForModel] of Object.entries(defaultsModels)) {
+        const key = `${mapName}::${modelName}`;
+        let acc = accs.get(key);
+        if (!acc) {
+          acc = newAcc();
+          accs.set(key, acc);
+        }
+        accumulateModelNarrowing(acc, defaultsForModel);
+      }
+
+      // Path-specific narrowings via models[M] (root) and its relations tree.
       for (const [modelName, modelNarrowing] of Object.entries(mapNarrowing.models)) {
-        applyToModel(fieldMap, modelName, mapName, set, modelNarrowing);
+        walkPathNarrowing(set, mapName, modelName, modelNarrowing, accs);
       }
     }
   }
 
+  // Phase 1.5: narrow the enum registries via chained defaults.enums BEFORE
+  // per-field narrowing reads from them (so field narrowing intersects against
+  // the already-narrowed registry).
+  for (const narrowing of chain) {
+    for (const [mapName, mapNarrowing] of Object.entries(narrowing.maps)) {
+      const fieldMap = set.maps[mapName];
+      if (!fieldMap?.enums) continue;
+      for (const [enumName, enumNarrowing] of Object.entries(mapNarrowing.defaults?.enums ?? {})) {
+        const current: readonly string[] | undefined = fieldMap.enums[enumName];
+        if (!current) continue;
+        fieldMap.enums = {
+          ...fieldMap.enums,
+          [enumName]: narrowEnumValues(current, enumNarrowing.picks, enumNarrowing.omits),
+        };
+      }
+    }
+  }
+
+  // Phase 2: apply accumulated narrowings to each (map, model).
+  for (const [key, acc] of accs) {
+    const [mapName, modelName] = key.split('::');
+    const model = set.maps[mapName]?.models[modelName];
+    if (!model) continue;
+
+    const fields = model.fields;
+    const keep = acc.picks; // null → keep all (subject to omits)
+    for (const fieldName of Object.keys(fields)) {
+      const keptByPicks = keep === null || keep.has(fieldName);
+      const droppedByOmits = acc.omits.has(fieldName);
+      if (!keptByPicks || droppedByOmits) {
+        delete fields[fieldName];
+      }
+    }
+
+    // Apply per-field enum narrowing (sets FieldMapEntry.values).
+    for (const [fieldName, entry] of Object.entries(fields)) {
+      if (entry.kind !== 'enum') continue;
+      const enumRegistry = set.maps[mapName]?.enums?.[entry.type];
+      const baseValues: readonly string[] | undefined = entry.values ?? enumRegistry;
+      const picks = acc.enumPicks.get(fieldName);
+      const omits = acc.enumOmits.get(fieldName);
+      if (!baseValues && !picks && !omits) continue;
+      const start = baseValues ?? [];
+      const narrowed = narrowEnumValues(
+        start,
+        picks ? Array.from(picks) : undefined,
+        omits ? Array.from(omits) : undefined,
+      );
+      (entry as FieldMapEntry).values = narrowed;
+    }
+  }
+
+  // Phase 3: prune bridges whose endpoint bridge-key fields were narrowed away.
   if (set.bridges) {
     set.bridges = set.bridges.filter((bridge) => {
       const [a, b] = bridge.endpoints;
       const aBridgeKey = `${b.fieldMap}:${b.model}`;
       const bBridgeKey = `${a.fieldMap}:${a.model}`;
-      const aHasKey = set.maps[a.fieldMap]?.[a.model]?.fields[aBridgeKey] !== undefined;
-      const bHasKey = set.maps[b.fieldMap]?.[b.model]?.fields[bBridgeKey] !== undefined;
+      const aHasKey = set.maps[a.fieldMap]?.models[a.model]?.fields[aBridgeKey] !== undefined;
+      const bHasKey = set.maps[b.fieldMap]?.models[b.model]?.fields[bBridgeKey] !== undefined;
       return aHasKey && bHasKey;
     });
   }
 
   return set;
 };
+
+// Suppress unused FieldMap import — kept for future use if signature widens.
+export type _ProjectNarrowingFieldMap = FieldMap;

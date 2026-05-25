@@ -10,7 +10,7 @@ const pathHitsBridge = (field: string, map: FieldMap, model: string): boolean =>
   const parts = field.split('.');
   let cur = model;
   for (let i = 0; i < parts.length; i++) {
-    const me = map[cur];
+    const me = map.models[cur];
     if (!me) return false;
     const fe = me.fields[parts[i]];
     if (!fe) return false;

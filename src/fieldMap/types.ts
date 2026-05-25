@@ -32,3 +32,5 @@ export type FieldMapSet = {
   maps: Record<string, FieldMap>;
   bridges?: Bridge[];
 };
+
+// Enums live on each FieldMap (per-source). Access via `set.maps[mapName].enums[enumName]`.

@@ -12,16 +12,29 @@ export type FieldMapEntry = {
   fromFields?: string[];
   toFields?: string[];
   relationName?: string; // disambiguates multiple relations between same two models
+  /**
+   * Per-field allowed values, primarily for enum fields. Takes precedence over
+   * `FieldMap.enums[type]` if both are set. Pass-through from codegen
+   * (e.g. prisma-map's `EnumField.values`). Consumed by `checkRuleAgainstLens`.
+   */
+  values?: readonly string[];
 };
 
-export interface FieldMap {
-  [modelName: string]: {
-    dbName?: string | null;
-    fields: {
-      [fieldName: string]: FieldMapEntry;
-    };
-  };
-}
+export type ModelEntry = {
+  dbName?: string | null;
+  fields: Record<string, FieldMapEntry>;
+};
+
+/**
+ * A schema map: models keyed by name, plus an optional enum registry scoped to
+ * this source. In multi-source setups (Prisma + Salesforce + CRM) each FieldMap
+ * carries its own enums so namespaces don't collide across sources.
+ */
+export type FieldMap = {
+  models: Record<string, ModelEntry>;
+  /** Enum name → allowed values, e.g. `{ UserRole: ['ADMIN', 'USER'] }`. */
+  enums?: Record<string, readonly string[]>;
+};
 
 export type StepRef = { __step: number };
 

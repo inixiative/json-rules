@@ -24,7 +24,7 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
   const { mode, field: itemField } = rule.aggregate;
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
 
-  const fieldEntry = state.map?.[state.currentModel ?? '']?.fields[rule.field];
+  const fieldEntry = state.map?.models[state.currentModel ?? '']?.fields[rule.field];
 
   if (fieldEntry?.kind === 'object') {
     throw new Error(

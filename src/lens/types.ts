@@ -6,19 +6,57 @@ export type Lens = FieldMapSet & {
   model: string;
 };
 
-export type ModelNarrowing = {
+/**
+ * Narrowing applied wherever a model appears (intrinsic to the model).
+ * Has no `relations` because relations are path-specific by definition.
+ *
+ * Two kinds of narrowing live here:
+ * - SCHEMA narrowing (picks/omits/enumPicks/enumOmits): controls what's visible
+ *   in the type surface. AI/SDK consumers can't see narrowed-away fields.
+ * - DATA narrowing (where): controls which ROWS are in scope. Filter-first
+ *   semantic, anchored to the model. Under arrayOperator: 'all', applied via
+ *   implication (negate) to preserve filter-first meaning — see applyLens.
+ */
+export type ModelDefaultNarrowing = {
   picks?: string[];
   omits?: string[];
+  enumPicks?: Record<string, readonly string[]>; // fieldName → allowed enum values
+  enumOmits?: Record<string, readonly string[]>; // fieldName → denied enum values
+  /**
+   * Row-level filter anchored to this model — "from what you can see, this is true."
+   * Composes via filter-first semantic at every visit of this model.
+   */
+  where?: Condition;
+};
+
+/** Narrowing for a model at a specific traversal path. Adds relations to the default shape. */
+export type ModelNarrowing = ModelDefaultNarrowing & {
   relations?: Record<string, ModelNarrowing>;
 };
 
+/** Narrowing for an enum type (applies anywhere the enum is referenced). */
+export type EnumNarrowing = {
+  picks?: readonly string[];
+  omits?: readonly string[];
+};
+
+/** Applies-everywhere narrowings — per-model (no relations) + per-enum-type. */
+export type NarrowingDefaults = {
+  models?: Record<string, ModelDefaultNarrowing>;
+  enums?: Record<string, EnumNarrowing>;
+};
+
 export type MapNarrowing = {
+  /** Path-specific narrowings, root + relations tree. */
   models: Record<string, ModelNarrowing>;
+  /** Applies-everywhere narrowings, intersect with path-specific. */
+  defaults?: NarrowingDefaults;
 };
 
 export type LensNarrowing = {
   // TODO: may need to be an identifier (lens name/uuid) rather than a direct reference for persistence
   parent: Lens | LensNarrowing;
   maps: Record<string, MapNarrowing>;
-  constrains?: Condition;
+  /** Lens-level row filter, anchored to the root model. ANDs into the root rule. */
+  where?: Condition;
 };

@@ -78,7 +78,7 @@ const walkAggregateFieldPath = (
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    const fieldEntry = map[currentModel]?.fields[seg];
+    const fieldEntry = map.models[currentModel]?.fields[seg];
     if (!fieldEntry || fieldEntry.kind !== 'object') {
       throw new Error(
         `Field '${seg}' is not a relation in model '${currentModel}'. ` +
@@ -130,7 +130,7 @@ const buildAggregateStep = (
   const targetModel = terminalEntry.type;
   const itemField = rule.aggregate.field ?? '';
 
-  const targetFieldEntry = map[targetModel]?.fields[itemField];
+  const targetFieldEntry = map.models[targetModel]?.fields[itemField];
   if (!targetFieldEntry) {
     throw new Error(`aggregate.field '${itemField}' does not exist on model '${targetModel}'.`);
   }

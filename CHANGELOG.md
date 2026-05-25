@@ -1,5 +1,100 @@
 # Changelog
 
+## 2.1.0
+
+Major lens v2.1: schema-narrowing + data-narrowing as first-class primitives, with composition that respects anchoring instead of blindly AND-ing at root.
+
+### Breaking (type-level)
+
+- **`FieldMap` shape changed** from `Record<string, ModelEntry>` to `{ models: Record<string, ModelEntry>; enums?: Record<string, readonly string[]> }`. Every consumer of `FieldMap` needs to access models via `map.models[X]` instead of `map[X]`. Required to give each FieldMap its own enum registry (avoids cross-source enum namespace collision) and to keep room for future schema-level additions.
+- **`LensNarrowing.constrains` renamed to `LensNarrowing.where`.** Same shape, name change. The renaming reflects the filter-first semantic explicitly — the field is a SQL-like `where` clause that scopes which rows are in scope, not a generic constraint. Migration: `find/replace constrains → where` in narrowing declarations.
+
+### Lens narrowing v2.1
+
+Two distinct kinds of narrowing now live in `MapNarrowing`:
+
+- **Schema narrowing** (controls what's visible in the type surface): `picks`, `omits`, `enumPicks`, `enumOmits`. SDK/AI cannot reference narrowed-away fields or enum values.
+- **Data narrowing** (controls which rows are in scope): `where`. Filter-first semantic — anchored to the model it describes, NOT blindly AND'd at root.
+
+New shape:
+
+```ts
+type FieldMap = {
+  models: Record<string, ModelEntry>;
+  enums?: Record<string, readonly string[]>;
+};
+
+type ModelDefaultNarrowing = {
+  picks?, omits?, enumPicks?, enumOmits?,
+  where?: Condition;   // no `relations` — relations are path-specific
+};
+
+type ModelNarrowing = ModelDefaultNarrowing & {
+  relations?: Record<string, ModelNarrowing>;
+};
+
+type EnumNarrowing = { picks?, omits? };
+
+type MapNarrowing = {
+  models: Record<string, ModelNarrowing>;     // path-specific
+  defaults?: {                                 // applies-everywhere
+    models?: Record<string, ModelDefaultNarrowing>;
+    enums?: Record<string, EnumNarrowing>;
+  };
+};
+```
+
+Composition: pure intersection across all layers. Each chained narrowing further restricts the surface.
+
+### Center-of-gravity: `src/lens/policy.ts`
+
+New internal `resolvePolicy(lensOrNarrowing)` + `resolveVisit(policy, mapName, modelName, relPath)` resolver. Single source of truth for "what's visible / what's allowed / what wheres apply" at any model visit. `checkRuleAgainstLens`, `applyLens`, and `validateNarrowing` all use it instead of reimplementing composition.
+
+### Anchored constraint composition (`applyLens` rewrite)
+
+`applyLens` is now AST-aware. Walks the user rule and injects `where` clauses at the correct anchor point in the rule tree:
+
+- Root-level wheres (`LensNarrowing.where`, `models[rootModel].where`, `defaults.models[rootModel].where`) — AND at root.
+- `defaults.models[M].where` — injected wherever the rule visits model M.
+- `relations[R].where` — injected when the rule descends into relation R.
+
+Operator-specific injection inside an `arrayRule.condition`:
+
+- `any` / `none` / `atLeast` / `atMost` / `exactly` / `aggregate.condition`: AND injection (`{ all: [where, original] }`).
+- **`all`**: filter-first via implication (`{ any: [negate(where), original] }`) so the user's "every row matches" semantic operates on the filtered set rather than rejecting out-of-scope rows. New internal `negate()` helper handles inversion using existing negative operators (`notEquals`, `notIn`, `none`, etc. + De Morgan for compound conditions). Throws clearly on `startsWith` / `endsWith` / `exactly` (no inverse in DSL).
+
+### Path-aware `checkRuleAgainstLens`
+
+Walks the narrowing tree per-path alongside the user rule, instead of validating against a flat projected set. Same model reached via different paths (e.g. `User.manager` vs `User.posts.author`) honors per-path narrowings independently.
+
+### Enum value validation
+
+`checkRuleAgainstLens` rejects rule values not in the resolved enum set, considering `FieldMap.enums` (registry) ∩ `FieldMapEntry.values` ∩ `defaults.enums[T]` ∩ `enumPicks/enumOmits[field]`. Covers leaf rules and nested rules inside `all`/`any`/`if`/`arrayRule.condition`.
+
+### Strict `validateNarrowing`
+
+Each narrowing layer can only mention fields/enum values still visible from layers above and the same layer's defaults. Picks/omits/enumPicks/enumOmits referencing already-excluded items throw clearly at construction. `relations` declared on a `ModelDefaultNarrowing` throws (runtime safety net for type-bypass). `where` clauses validate against the model they anchor to.
+
+### `projectNarrowing` composition fix
+
+The pre-2.1 last-write-wins bug (multiple narrowings of the same model with overlapping picks would erase prior fields) is fixed. Composition is intersection across all layers — each layer further restricts.
+
+### Source hygiene test
+
+New `test/sourceHygiene.test.ts` rejects invisible control characters (NUL, etc.) in source files — caught one such byte that was hiding in the v2.1 work before commit.
+
+### Tests added (130+)
+
+- `v2_1.composition.test.ts`, `v2_1.defaults.test.ts`, `v2_1.enumNarrowing.test.ts` — schema narrowing + defaults composition
+- `v2_1.validateNarrowing.test.ts` — strict inheritance rules
+- `v2_1.pathAware.test.ts` — same-model-different-path narrowing
+- `v2_1.anchoredConstrains.test.ts` — per-operator anchored where injection
+- `v2_1.enumValueValidation.test.ts` — rule value enum membership
+- `v2_1.deepPathLockdown.test.ts` — narrowed-away paths rejected
+- `v2_1.arrayOpNarrowingSemantics.test.ts` — end-to-end array operator semantics with real data
+
+667 total tests pass, typecheck + lint clean.
+
 ## 2.0.3
 
 Hardening note from external review: the `conditionTouchesBridge` guard added in 2.0.1/2.0.2 stopped at outer field paths and did not recurse into `arrayRule.condition` or `aggregate.condition`. A bridge field hidden inside `some`/`every`/`none`/`aggregate` sub-conditions, under an `if`/`then`/`else`, still corrupted the implication semantics — silently dropping branches.

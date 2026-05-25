@@ -100,18 +100,32 @@ const plan = toPrisma(
   },
   {
     map: {
-      User: {
-        fields: {
-          id: { kind: 'scalar', type: 'String' },
-          orders: { kind: 'object', type: 'Order', isList: true, fromFields: [], toFields: [] },
+      models: {
+        User: {
+          fields: {
+            id: { kind: 'scalar', type: 'String' },
+            orders: {
+              kind: 'object',
+              type: 'Order',
+              isList: true,
+              fromFields: [],
+              toFields: [],
+            },
+          },
         },
-      },
-      Order: {
-        fields: {
-          id: { kind: 'scalar', type: 'String' },
-          total: { kind: 'scalar', type: 'Float' },
-          userId: { kind: 'scalar', type: 'String' },
-          user: { kind: 'object', type: 'User', isList: false, fromFields: ['userId'], toFields: ['id'] },
+        Order: {
+          fields: {
+            id: { kind: 'scalar', type: 'String' },
+            total: { kind: 'scalar', type: 'Float' },
+            userId: { kind: 'scalar', type: 'String' },
+            user: {
+              kind: 'object',
+              type: 'User',
+              isList: false,
+              fromFields: ['userId'],
+              toFields: ['id'],
+            },
+          },
         },
       },
     },

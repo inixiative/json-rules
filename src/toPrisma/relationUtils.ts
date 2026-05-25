@@ -6,7 +6,7 @@ export const findReverseRelation = (
   currentModel: string,
   relationName?: string,
 ): FieldMapEntry | null => {
-  const targetEntry = map[targetModel];
+  const targetEntry = map.models[targetModel];
   if (!targetEntry) return null;
 
   for (const fieldDef of Object.values(targetEntry.fields)) {

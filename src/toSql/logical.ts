@@ -18,7 +18,7 @@ const pathHitsBridge = (field: string, map: FieldMap, model: string): boolean =>
   const parts = field.split('.');
   let cur = model;
   for (let i = 0; i < parts.length; i++) {
-    const me = map[cur];
+    const me = map.models[cur];
     if (!me) return false;
     const fe = me.fields[parts[i]];
     if (!fe) return false;
@@ -45,7 +45,7 @@ const resolveRelationTargetModel = (
   const parts = field.split('.');
   let cur = rootModel;
   for (const part of parts) {
-    const entry = map[cur]?.fields[part];
+    const entry = map.models[cur]?.fields[part];
     if (!entry || entry.kind !== 'object') return null;
     cur = entry.type;
   }

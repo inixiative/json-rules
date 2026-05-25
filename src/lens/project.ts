@@ -1,5 +1,6 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import { augmentPicksWithRelations, intersectStringSet } from './policy.ts';
 import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
@@ -23,30 +24,16 @@ const newAcc = (): ModelAcc => ({
   enumOmits: new Map(),
 });
 
-const intersectSet = (current: Set<string> | null, next: readonly string[]): Set<string> => {
-  if (current === null) return new Set(next);
-  return new Set(next.filter((x) => current.has(x)));
-};
-
 const accumulateModelNarrowing = (
   acc: ModelAcc,
   n: ModelDefaultNarrowing | ModelNarrowing,
 ): void => {
-  if (n.picks) {
-    // Auto-include relation keys so descent stays reachable (v2.0 behavior).
-    const augmented = [...n.picks];
-    if ('relations' in n && n.relations) {
-      for (const rel of Object.keys(n.relations)) {
-        if (!augmented.includes(rel)) augmented.push(rel);
-      }
-    }
-    acc.picks = intersectSet(acc.picks, augmented);
-  }
+  const augmented = augmentPicksWithRelations(n);
+  if (augmented) acc.picks = intersectStringSet(acc.picks, augmented);
   if (n.omits) for (const f of n.omits) acc.omits.add(f);
   if (n.enumPicks) {
     for (const [field, values] of Object.entries(n.enumPicks)) {
-      const current = acc.enumPicks.get(field) ?? null;
-      acc.enumPicks.set(field, intersectSet(current, values));
+      acc.enumPicks.set(field, intersectStringSet(acc.enumPicks.get(field) ?? null, values));
     }
   }
   if (n.enumOmits) {

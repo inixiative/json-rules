@@ -34,23 +34,35 @@ export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => 
   return { lens, chain };
 };
 
-const intersectStringSet = (cur: Set<string> | null, next: readonly string[]): Set<string> => {
+/**
+ * Intersection-or-init: if `cur` is null (no prior set), returns Set(next).
+ * Otherwise returns Set(next ∩ cur). Used by all the picks/enumPicks accumulators
+ * since "first declaration creates the set, later declarations intersect."
+ */
+export const intersectStringSet = (
+  cur: Set<string> | null,
+  next: readonly string[],
+): Set<string> => {
   if (cur === null) return new Set(next);
   return new Set(next.filter((x) => cur.has(x)));
 };
 
-const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
-  if (n.picks) {
-    // Picks auto-include any relations declared on this same narrowing (so the
-    // relation field is reachable for descent). This mirrors v2.0 projection.
-    const augmented = [...n.picks];
-    if ('relations' in n && n.relations) {
-      for (const rel of Object.keys(n.relations)) {
-        if (!augmented.includes(rel)) augmented.push(rel);
-      }
-    }
-    out.visibleFields = intersectStringSet(out.visibleFields, augmented);
+/** Returns picks list augmented with any relation keys (so descent fields stay reachable). */
+export const augmentPicksWithRelations = (
+  n: ModelDefaultNarrowing | ModelNarrowing,
+): readonly string[] | undefined => {
+  if (!n.picks) return undefined;
+  if (!('relations' in n) || !n.relations) return n.picks;
+  const out = [...n.picks];
+  for (const rel of Object.keys(n.relations)) {
+    if (!out.includes(rel)) out.push(rel);
   }
+  return out;
+};
+
+const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
+  const augmented = augmentPicksWithRelations(n);
+  if (augmented) out.visibleFields = intersectStringSet(out.visibleFields, augmented);
   if (n.omits) for (const f of n.omits) out.hiddenFields.add(f);
   if (n.where !== undefined) out.whereClauses.push(n.where);
 };

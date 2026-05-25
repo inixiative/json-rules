@@ -4,6 +4,8 @@
 
 Major lens v2.1: schema-narrowing + data-narrowing as first-class primitives, with composition that respects anchoring instead of blindly AND-ing at root.
 
+**Why this matters:** v2.1 turns the lens into a real containment layer for less-trusted callers — LLM agents, customer-facing UIs, third-party integrations. Schema narrowing (`picks` / `omits` / `enumPicks` / `enumOmits`) makes restricted fields *invisible*; the rule author literally can't reference them. Data narrowing (`where`) anchors row-scope constraints to the model they describe, so a `Comment.deletedAt IS NULL` scope travels into the comment subtree of a user's rule instead of being blindly AND'd at the root. Composition across the chain is pure intersection — no narrowing can re-add what a parent removed. Hand a caller a narrowed lens, let them author whatever rule they like, and the lens enforces the boundary at compile time.
+
 ### Breaking (type-level)
 
 - **`FieldMap` shape changed** from `Record<string, ModelEntry>` to `{ models: Record<string, ModelEntry>; enums?: Record<string, readonly string[]> }`. Every consumer of `FieldMap` needs to access models via `map.models[X]` instead of `map[X]`. Required to give each FieldMap its own enum registry (avoids cross-source enum namespace collision) and to keep room for future schema-level additions.
@@ -50,7 +52,7 @@ Composition: pure intersection across all layers. Each chained narrowing further
 
 New internal `resolvePolicy(lensOrNarrowing)` + `resolveVisit(policy, mapName, modelName, relPath)` resolver. Single source of truth for "what's visible / what's allowed / what wheres apply" at any model visit. `checkRuleAgainstLens`, `applyLens`, and `validateNarrowing` all use it instead of reimplementing composition.
 
-### Anchored constraint composition (`applyLens` rewrite)
+### Anchored `where` composition (`applyLens` rewrite)
 
 `applyLens` is now AST-aware. Walks the user rule and injects `where` clauses at the correct anchor point in the rule tree:
 

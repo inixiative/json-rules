@@ -603,7 +603,7 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 | --- | --- |
 | `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call this before `projectNarrowing` and at narrowing construction. |
 | `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain. Composition is intersection across all layers. Use for SDK-contract / OpenAPI emission. |
-| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths and enum values against the projected surface, path-aware. Returns `{ ok, violations }`. The security gate. |
+| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, violations }`. The security gate. |
 | `applyLens(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
 
 ### Evaluating Across Bridges

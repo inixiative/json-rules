@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLens } from '../src/lens/applyLens';
+import { validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -349,42 +350,29 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
   });
 });
 
-describe('models[M].where (root + non-root)', () => {
-  test('models[rootModel].where anchored to root (same as LensNarrowing.where for root)', () => {
-    const userRule: Condition = { field: 'tier', operator: Operator.equals, value: 'gold' };
+describe('models[X].where rejected at top level (2.1.1: redundant with LensNarrowing.where / defaults)', () => {
+  // The top-level `models[X].where` was either redundant with LensNarrowing.where
+  // (when X = root model) or dead (when X != root). 2.1.1 rejects it at validation
+  // time and points the author to the right primitive. `where` inside relations[R]
+  // still works (path-specific descent).
+  test('validateNarrowing rejects models[rootModel].where with a helpful message', () => {
     const rootConstraint: Condition = { field: 'id', operator: Operator.equals, value: 'u1' };
     const n = withParent(lens, {
       prisma: {
         models: { User: { where: rootConstraint } },
       },
     });
-    expect(applyLens(userRule, n)).toEqual({ all: [rootConstraint, userRule] });
+    expect(() => validateNarrowing(n)).toThrow(/models\.User\.where: not allowed/);
   });
 
-  test('models[nonRoot].where is dead code (use defaults.models[X].where for everywhere-visit)', () => {
-    // Discovered semantic clarification: models[X] is the root-visit narrowing for X.
-    // If X isn't the lens's anchor model, models[X] never fires (the lens never
-    // visits X as root). For "apply wherever X appears," use defaults.models[X].
-    // This test documents the no-op behavior.
-    const userRule = {
-      field: 'posts',
-      arrayOperator: ArrayOperator.any,
-      condition: {
-        field: 'comments',
-        arrayOperator: ArrayOperator.any,
-        condition: { field: 'body', operator: Operator.contains, value: 'foo' },
-      },
-    } as Condition;
+  test('validateNarrowing rejects models[nonRoot].where with a helpful message', () => {
     const commentScope: Condition = { field: 'deletedAt', operator: Operator.isEmpty };
     const n = withParent(lens, {
       prisma: {
-        models: {
-          Comment: { where: commentScope }, // dead — Comment isn't the lens root
-        },
+        models: { Comment: { where: commentScope } },
       },
     });
-    // No injection happens because Comment is never root-visited.
-    expect(applyLens(userRule, n)).toEqual(userRule);
+    expect(() => validateNarrowing(n)).toThrow(/models\.Comment\.where: not allowed/);
   });
 });
 

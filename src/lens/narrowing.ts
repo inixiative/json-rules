@@ -416,6 +416,17 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         errors.push(`maps.${mapName}.models.${modelName}: not in fieldMap`);
         continue;
       }
+      // Reject `where` at the top-level models[X] position — it's redundant.
+      // For root-anchored scoping use `LensNarrowing.where`; for model-intrinsic
+      // ("wherever X appears") use `defaults.models[X].where`. The `where` field
+      // remains valid inside relations[R] for path-specific descent scoping.
+      if (modelNarrowing.where !== undefined) {
+        errors.push(
+          `maps.${mapName}.models.${modelName}.where: not allowed at top-level. ` +
+            `Use LensNarrowing.where for root scoping, or defaults.models.${modelName}.where ` +
+            `for model-intrinsic scoping. (where on relations[R] still works for descent scoping.)`,
+        );
+      }
       const ancestorChainForModel = ancestors
         .map((anc) => anc.maps[mapName]?.models[modelName])
         .filter((x): x is ModelNarrowing => x !== undefined);

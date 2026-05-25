@@ -74,7 +74,7 @@ will be rejected by `checkRuleAgainstLens` (the field isn't in the projected
 surface). The scope narrowing leaves the field visible but guarantees that every
 rule executed against the lens runs over non-deleted rows.
 
-## 3. The four anchor layers for `where`
+## 3. The three anchor layers for `where`
 
 The whole point of v2.1's anchored composition is that a `where` does not
 always belong at the *root* of the rule. It belongs anchored to the model it
@@ -82,10 +82,17 @@ describes — and `applyLens` finds that anchor point and injects it there.
 
 | Layer | Where it lives | Semantic |
 | --- | --- | --- |
-| Lens-level | `LensNarrowing.where` | AND at the root of the rule. Same as the v2.0 `constrains`. |
+| Lens-level | `LensNarrowing.where` | AND at the root of the rule. The ergonomic shortcut for "scope this whole lens." |
 | Model-intrinsic | `defaults.models[M].where` | "Wherever model M appears in the rule." Injected at every visit of M. |
-| Path-specific root | `models[M].where` | Only when M is the lens's root model. (For non-root M, see model-intrinsic.) |
 | Path-specific descent | `relations[R].where` | Only when the rule descends into relation R via the path-specific narrowings tree. |
+
+> **2.1.1 restriction:** the top-level `models[M].where` position is rejected
+> by `validateNarrowing`. It used to be a fourth layer but was redundant — for
+> M=root it produced the same result as `LensNarrowing.where`, and for M≠root
+> it was dead code (the lens never root-visits non-root models). Use
+> `LensNarrowing.where` for root scoping or `defaults.models[M].where` for
+> model-intrinsic scoping. The `where` field on `relations[R]` is still valid
+> (path-specific descent has no equivalent).
 
 A worked example. Lens root is `User`, with a `posts` relation to `Post`,
 each of which has `comments` to `Comment`.
@@ -114,18 +121,8 @@ const n2: LensNarrowing = {
   },
 };
 
-// Layer 3 — root visit of User
+// Layer 3 — only the comments reached *via User.posts.comments* are scoped
 const n3: LensNarrowing = {
-  parent: lens,
-  maps: {
-    prisma: {
-      models: { User: { where: { field: 'tier', operator: Operator.equals, value: 'paid' } } },
-    },
-  },
-};
-
-// Layer 4 — only the comments reached *via User.posts.comments* are scoped
-const n4: LensNarrowing = {
   parent: lens,
   maps: {
     prisma: {
@@ -145,11 +142,9 @@ const n4: LensNarrowing = {
 };
 ```
 
-`n2` is usually what you want for "soft-delete everywhere." `n4` is what you
+`n2` is usually what you want for "soft-delete everywhere." `n3` is what you
 want when a different path to the same model has different visibility rules.
-`n3` (`models[rootModel].where`) is identical to `LensNarrowing.where` in
-effect; the form is there for symmetry. `models[nonRootModel].where` is *dead
-code* — non-root models never get visited at root.
+For "scope the lens itself" use `n1` (LensNarrowing.where).
 
 ## 4. The `all` operator filter-first trick
 

@@ -9,9 +9,10 @@ import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from 
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
 export type VisitEffect = {
-  /** Set of visible field names after composition. null = no picks declared → all visible. */
-  visibleFields: Set<string> | null;
-  hiddenFields: Set<string>;
+  /** Set of visible field names after picks composition. null = no picks declared → all visible. */
+  picks: Set<string> | null;
+  /** Union of all omitted field names across the chain. */
+  omits: Set<string>;
   /** Per-field allowed enum values (after composition with registry + defaults + per-field picks/omits). */
   enumValuesByField: Map<string, readonly string[]>;
   /** Where clauses anchored at THIS visit (mapDefaults model + path-specific root/relations). */
@@ -60,10 +61,60 @@ export const augmentPicksWithRelations = (
   return out;
 };
 
-const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
+/**
+ * Folds a narrowing's picks/omits into a `{picks, omits}` accumulator. Picks
+ * intersect (monotonic restriction); omits union. Shared by policy.ts (visit
+ * resolution) and project.ts (per-path projection accumulator).
+ */
+export const accumulatePicksOmitsInto = (
+  state: { picks: Set<string> | null; omits: Set<string> },
+  n: ModelDefaultNarrowing | ModelNarrowing,
+): void => {
   const augmented = augmentPicksWithRelations(n);
-  if (augmented) out.visibleFields = intersectStringSet(out.visibleFields, augmented);
-  if (n.omits) for (const f of n.omits) out.hiddenFields.add(f);
+  if (augmented) state.picks = intersectStringSet(state.picks, augmented);
+  if (n.omits) for (const f of n.omits) state.omits.add(f);
+};
+
+/** Intersect-or-init a Map<key, Set<string>> with new values for `key`. */
+export const intersectIntoMap = (
+  map: Map<string, Set<string>>,
+  key: string,
+  vals: readonly string[],
+): void => {
+  map.set(key, intersectStringSet(map.get(key) ?? null, vals));
+};
+
+/** Union new values into a Map<key, Set<string>> entry. */
+export const unionIntoMap = (
+  map: Map<string, Set<string>>,
+  key: string,
+  vals: readonly string[],
+): void => {
+  const s = map.get(key) ?? new Set<string>();
+  for (const v of vals) s.add(v);
+  map.set(key, s);
+};
+
+/**
+ * Folds a narrowing's enumPicks/enumOmits into per-field accumulator maps.
+ * Picks intersect per field; omits union per field. Shared by visit resolution
+ * and projection.
+ */
+export const accumulateEnumFields = (
+  picksMap: Map<string, Set<string>>,
+  omitsMap: Map<string, Set<string>>,
+  n: ModelDefaultNarrowing | ModelNarrowing,
+): void => {
+  if (n.enumPicks) {
+    for (const [f, vals] of Object.entries(n.enumPicks)) intersectIntoMap(picksMap, f, vals);
+  }
+  if (n.enumOmits) {
+    for (const [f, vals] of Object.entries(n.enumOmits)) unionIntoMap(omitsMap, f, vals);
+  }
+};
+
+const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
+  accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined) out.whereClauses.push(n.where);
 };
 
@@ -83,8 +134,8 @@ export const resolveVisit = (
   relPath: readonly string[],
 ): VisitEffect => {
   const out: VisitEffect = {
-    visibleFields: null,
-    hiddenFields: new Set(),
+    picks: null,
+    omits: new Set(),
     enumValuesByField: new Map(),
     whereClauses: [],
     relations: new Map(),
@@ -101,24 +152,8 @@ export const resolveVisit = (
   const typeEnumPicks = new Map<string, Set<string>>();
   const typeEnumOmits = new Map<string, Set<string>>();
 
-  const accEnumFields = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    if (n.enumPicks) {
-      for (const [f, vals] of Object.entries(n.enumPicks)) {
-        const cur = fieldEnumPicks.get(f) ?? null;
-        fieldEnumPicks.set(
-          f,
-          cur === null ? new Set(vals) : new Set(vals.filter((v) => cur.has(v))),
-        );
-      }
-    }
-    if (n.enumOmits) {
-      for (const [f, vals] of Object.entries(n.enumOmits)) {
-        const s = fieldEnumOmits.get(f) ?? new Set<string>();
-        for (const v of vals) s.add(v);
-        fieldEnumOmits.set(f, s);
-      }
-    }
-  };
+  const accEnumFields = (n: ModelDefaultNarrowing | ModelNarrowing): void =>
+    accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
 
   for (const narrowing of policy.chain) {
     // 1. mapDefaults[mapName].models[modelName] — applies wherever this model
@@ -133,18 +168,8 @@ export const resolveVisit = (
 
       // 2. mapDefaults[mapName].enums — accumulate per type from this map's enums
       for (const [enumName, enumN] of Object.entries(visitMapDefaults.enums ?? {})) {
-        if (enumN.picks) {
-          const cur = typeEnumPicks.get(enumName) ?? null;
-          typeEnumPicks.set(
-            enumName,
-            cur === null ? new Set(enumN.picks) : new Set(enumN.picks.filter((v) => cur.has(v))),
-          );
-        }
-        if (enumN.omits) {
-          const s = typeEnumOmits.get(enumName) ?? new Set<string>();
-          for (const v of enumN.omits) s.add(v);
-          typeEnumOmits.set(enumName, s);
-        }
+        if (enumN.picks) intersectIntoMap(typeEnumPicks, enumName, enumN.picks);
+        if (enumN.omits) unionIntoMap(typeEnumOmits, enumName, enumN.omits);
       }
     }
 
@@ -203,8 +228,8 @@ export const resolveVisit = (
 
 /** Returns true if fieldName is visible at this visit (after all picks/omits). */
 export const isFieldVisible = (effect: VisitEffect, fieldName: string): boolean => {
-  if (effect.hiddenFields.has(fieldName)) return false;
-  if (effect.visibleFields !== null && !effect.visibleFields.has(fieldName)) return false;
+  if (effect.omits.has(fieldName)) return false;
+  if (effect.picks !== null && !effect.picks.has(fieldName)) return false;
   return true;
 };
 

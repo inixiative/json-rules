@@ -1,5 +1,6 @@
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
+import { intersectStringSet } from './policy.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
@@ -186,12 +187,7 @@ const validateDefaultsEnums = (
     for (const anc of ancestorEnumNarrowings) {
       const a = anc[enumName];
       if (!a) continue;
-      if (a.picks) {
-        inheritedPicks =
-          inheritedPicks === null
-            ? new Set(a.picks)
-            : new Set(a.picks.filter((v) => inheritedPicks?.has(v)));
-      }
+      if (a.picks) inheritedPicks = intersectStringSet(inheritedPicks, a.picks);
       if (a.omits) for (const v of a.omits) inheritedOmits.add(v);
     }
     const isInheritedVisible = (v: string): boolean => {
@@ -250,15 +246,12 @@ const validateEnumFieldAgainstChain = (
     if (!entry || entry.kind !== 'enum') return; // already errored elsewhere
     const enumType = entry.type;
 
-    // Wrapper object: TypeScript can't narrow property reads across closure mutation,
-    // so this keeps the type stable as Set<string> | null instead of collapsing to never.
     const state: { picks: Set<string> | null; omits: Set<string> } = {
       picks: null,
       omits: new Set(),
     };
     const addPicks = (vals: readonly string[]): void => {
-      state.picks =
-        state.picks === null ? new Set(vals) : new Set(vals.filter((v) => state.picks?.has(v)));
+      state.picks = intersectStringSet(state.picks, vals);
     };
     const addOmits = (vals: readonly string[]): void => {
       for (const v of vals) state.omits.add(v);

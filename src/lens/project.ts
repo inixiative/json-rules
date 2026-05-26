@@ -1,6 +1,6 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
-import { augmentPicksWithRelations, intersectStringSet } from './policy.ts';
+import { accumulateEnumFields, accumulatePicksOmitsInto } from './policy.ts';
 import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
@@ -22,21 +22,8 @@ const newAcc = (): ModelAcc => ({
 });
 
 const accumulateIntersect = (acc: ModelAcc, n: ModelDefaultNarrowing | ModelNarrowing): void => {
-  const augmented = augmentPicksWithRelations(n);
-  if (augmented) acc.picks = intersectStringSet(acc.picks, augmented);
-  if (n.omits) for (const f of n.omits) acc.omits.add(f);
-  if (n.enumPicks) {
-    for (const [field, values] of Object.entries(n.enumPicks)) {
-      acc.enumPicks.set(field, intersectStringSet(acc.enumPicks.get(field) ?? null, values));
-    }
-  }
-  if (n.enumOmits) {
-    for (const [field, values] of Object.entries(n.enumOmits)) {
-      const set = acc.enumOmits.get(field) ?? new Set<string>();
-      for (const v of values) set.add(v);
-      acc.enumOmits.set(field, set);
-    }
-  }
+  accumulatePicksOmitsInto(acc, n);
+  accumulateEnumFields(acc.enumPicks, acc.enumOmits, n);
 };
 
 // Walks a path-specific narrowing tree, accumulating each visit into a

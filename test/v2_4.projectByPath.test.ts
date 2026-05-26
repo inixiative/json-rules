@@ -1,9 +1,15 @@
 import { describe, expect, test } from 'bun:test';
-import { projectByPath } from '../src/lens/projectByPath';
+import { type PathProjection, type ProjectedVisit, projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 import { multiRelMap } from './fixtures/multiRelMap';
+
+const at = (proj: PathProjection, path: string): ProjectedVisit => {
+  const v = proj.get(path);
+  if (!v) throw new Error(`expected projection visit at path '${path}'`);
+  return v;
+};
 
 const withParent = (
   parent: Lens | LensNarrowing,
@@ -30,7 +36,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
     const n = withParent(postLens, { root: { picks: ['id'] } });
     const projection = projectByPath(n);
     expect([...projection.keys()]).toEqual(['Post']);
-    expect(Object.keys(projection.get('Post')!.fields).sort()).toEqual(['id']);
+    expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual(['id']);
   });
 
   test('sibling relations to SAME model are independent (no leak)', () => {
@@ -47,11 +53,11 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
     const projection = projectByPath(n);
     expect([...projection.keys()].sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
 
-    const author = projection.get('Post.author')!;
+    const author = at(projection, 'Post.author');
     expect(author.modelName).toBe('User');
     expect(Object.keys(author.fields).sort()).toEqual(['name']);
 
-    const editor = projection.get('Post.editor')!;
+    const editor = at(projection, 'Post.editor');
     expect(editor.modelName).toBe('User');
     expect(Object.keys(editor.fields).sort()).toEqual(['id']);
   });
@@ -70,8 +76,8 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
       mapDefaults: { prisma: { models: { User: { omits: ['name'] } } } },
     });
     const projection = projectByPath(n);
-    expect(Object.keys(projection.get('Post.author')!.fields).sort()).toEqual(['id']);
-    expect(Object.keys(projection.get('Post.editor')!.fields).sort()).toEqual(['id']);
+    expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['id']);
+    expect(Object.keys(at(projection, 'Post.editor').fields).sort()).toEqual(['id']);
   });
 
   test('chain composition WITHIN a path intersects', () => {
@@ -90,7 +96,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
       },
     });
     const projection = projectByPath(n2);
-    expect(Object.keys(projection.get('Post.author')!.fields).sort()).toEqual(['id']);
+    expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['id']);
   });
 
   test('multi-layer chain: each layer contributes; descent picks up relations from any layer', () => {
@@ -114,9 +120,9 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
     const projection = projectByPath(n3);
     expect([...projection.keys()].sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
     // author: layer1 ∩ layer2 picks = {name, email}; mapDefaults omits email → {name}
-    expect(Object.keys(projection.get('Post.author')!.fields).sort()).toEqual(['name']);
+    expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['name']);
     // editor: only layer2 picks; mapDefaults still applies → {id} (email not picked anyway)
-    expect(Object.keys(projection.get('Post.editor')!.fields).sort()).toEqual(['id']);
+    expect(Object.keys(at(projection, 'Post.editor').fields).sort()).toEqual(['id']);
   });
 });
 
@@ -170,11 +176,11 @@ describe('projectByPath — recursive same model on one path', () => {
       'User.spaceUsers.user.spaceUsers',
     ]);
 
-    expect(Object.keys(projection.get('User.spaceUsers')!.fields).sort()).toEqual([
+    expect(Object.keys(at(projection, 'User.spaceUsers').fields).sort()).toEqual([
       'spaceId',
       'user',
     ]);
-    expect(Object.keys(projection.get('User.spaceUsers.user.spaceUsers')!.fields).sort()).toEqual([
+    expect(Object.keys(at(projection, 'User.spaceUsers.user.spaceUsers').fields).sort()).toEqual([
       'orgId',
       'role',
     ]);
@@ -198,8 +204,8 @@ describe('projectByPath — recursive same model on one path', () => {
       mapDefaults: { prisma: { models: { SpaceUser: { omits: ['role'] } } } },
     });
     const projection = projectByPath(n);
-    const v1 = projection.get('User.spaceUsers')!.fields;
-    const v2 = projection.get('User.spaceUsers.user.spaceUsers')!.fields;
+    const v1 = at(projection, 'User.spaceUsers').fields;
+    const v2 = at(projection, 'User.spaceUsers.user.spaceUsers').fields;
     expect(v1.role).toBeUndefined();
     expect(v2.role).toBeUndefined();
     expect(v1.spaceId).toBeDefined();
@@ -234,7 +240,7 @@ describe('projectByPath — enum narrowing', () => {
       },
     });
     const projection = projectByPath(n);
-    const statusField = projection.get('Inquiry')!.fields.status;
+    const statusField = at(projection, 'Inquiry').fields.status;
     expect([...(statusField.values ?? [])].sort()).toEqual(['closed', 'open']);
   });
 });
@@ -252,10 +258,10 @@ describe('projectByPath — where clauses preserved per visit', () => {
       },
     });
     const projection = projectByPath(n);
-    expect(projection.get('Post')!.whereClauses).toEqual([
+    expect(at(projection, 'Post').whereClauses).toEqual([
       { field: 'id', operator: Operator.exists },
     ]);
-    expect(projection.get('Post.author')!.whereClauses).toEqual([
+    expect(at(projection, 'Post.author').whereClauses).toEqual([
       { field: 'name', operator: Operator.exists },
     ]);
   });

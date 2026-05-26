@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
-import { projectByPath } from '../src/lens/projectByPath';
+import { type PathProjection, type ProjectedVisit, projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -10,6 +10,12 @@ const withParent = (
   parent: Lens | LensNarrowing,
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
+
+const at = (proj: PathProjection, path: string): ProjectedVisit => {
+  const v = proj.get(path);
+  if (!v) throw new Error(`expected projection visit at path '${path}'`);
+  return v;
+};
 
 // ============================================================
 // #1 — Bridges across maps: mapDefaults at bridged visit,
@@ -68,7 +74,7 @@ describe('projectByPath — bridges', () => {
       },
     });
     const proj = projectByPath(n);
-    const contact = proj.get('FanUser.salesforce:Contact')!;
+    const contact = at(proj, 'FanUser.salesforce:Contact');
     expect(contact.mapName).toBe('salesforce');
     expect(contact.modelName).toBe('Contact');
     expect(contact.fields.industry).toBeUndefined();
@@ -91,7 +97,7 @@ describe('projectByPath — bridges', () => {
       'FanUser.salesforce:Contact',
       'FanUser.salesforce:Contact.account',
     ]);
-    const account = proj.get('FanUser.salesforce:Contact.account')!;
+    const account = at(proj, 'FanUser.salesforce:Contact.account');
     expect(account.mapName).toBe('salesforce');
     expect(account.modelName).toBe('Account');
     expect(Object.keys(account.fields).sort()).toEqual(['name']);
@@ -108,7 +114,7 @@ describe('projectByPath — bridges', () => {
         relations: { 'salesforce:Contact': { picks: ['industry'] } },
       },
     });
-    const contact = projectByPath(n2).get('FanUser.salesforce:Contact')!;
+    const contact = at(projectByPath(n2), 'FanUser.salesforce:Contact');
     expect(Object.keys(contact.fields).sort()).toEqual(['industry']);
   });
 });
@@ -161,10 +167,10 @@ describe('projectByPath — mapDefaults.models[X].where anchors at every visit',
     });
     const proj = projectByPath(n);
     // Post root visit: no User defaults apply here (we're on Post).
-    expect(proj.get('Post')!.whereClauses).toEqual([]);
+    expect(at(proj, 'Post').whereClauses).toEqual([]);
     // Both User visits have the tenant scope anchored.
-    expect(proj.get('Post.author')!.whereClauses).toContainEqual(tenantScope);
-    expect(proj.get('Post.editor')!.whereClauses).toContainEqual(tenantScope);
+    expect(at(proj, 'Post.author').whereClauses).toContainEqual(tenantScope);
+    expect(at(proj, 'Post.editor').whereClauses).toContainEqual(tenantScope);
   });
 
   test('regression guard: mapDefaults.models.User.where on a path that descends through User twice', () => {
@@ -191,9 +197,9 @@ describe('projectByPath — mapDefaults.models[X].where anchors at every visit',
       mapDefaults: { prisma: { models: { User: { where: tenantScope } } } },
     });
     const proj = projectByPath(n);
-    expect(proj.get('User')!.whereClauses).toContainEqual(tenantScope);
-    expect(proj.get('User.manager')!.whereClauses).toContainEqual(tenantScope);
-    expect(proj.get('User.manager.manager')!.whereClauses).toContainEqual(tenantScope);
+    expect(at(proj, 'User').whereClauses).toContainEqual(tenantScope);
+    expect(at(proj, 'User.manager').whereClauses).toContainEqual(tenantScope);
+    expect(at(proj, 'User.manager.manager').whereClauses).toContainEqual(tenantScope);
   });
 });
 
@@ -244,9 +250,9 @@ describe('projectByPath — narrowing only at depth', () => {
       },
     });
     const proj = projectByPath(n);
-    expect(Object.keys(proj.get('User')!.fields).sort()).toEqual(['email', 'id', 'posts']);
-    expect(Object.keys(proj.get('User.posts')!.fields).sort()).toEqual(['comments', 'id', 'title']);
-    expect(Object.keys(proj.get('User.posts.comments')!.fields).sort()).toEqual(['body']);
+    expect(Object.keys(at(proj, 'User').fields).sort()).toEqual(['email', 'id', 'posts']);
+    expect(Object.keys(at(proj, 'User.posts').fields).sort()).toEqual(['comments', 'id', 'title']);
+    expect(Object.keys(at(proj, 'User.posts.comments').fields).sort()).toEqual(['body']);
   });
 });
 
@@ -277,7 +283,7 @@ describe('projectByPath — direct self-referential relation', () => {
     });
     const proj = projectByPath(n);
     expect([...proj.keys()].sort()).toEqual(['User', 'User.manager']);
-    expect(Object.keys(proj.get('User.manager')!.fields).sort()).toEqual(['email']);
+    expect(Object.keys(at(proj, 'User.manager').fields).sort()).toEqual(['email']);
     expect(proj.get('User.manager.manager')).toBeUndefined();
   });
 
@@ -296,8 +302,8 @@ describe('projectByPath — direct self-referential relation', () => {
     });
     const proj = projectByPath(n);
     expect([...proj.keys()].sort()).toEqual(['User', 'User.manager', 'User.manager.manager']);
-    expect(Object.keys(proj.get('User.manager')!.fields).sort()).toEqual(['manager', 'name']);
-    expect(Object.keys(proj.get('User.manager.manager')!.fields).sort()).toEqual(['email']);
+    expect(Object.keys(at(proj, 'User.manager').fields).sort()).toEqual(['manager', 'name']);
+    expect(Object.keys(at(proj, 'User.manager.manager').fields).sort()).toEqual(['email']);
   });
 });
 
@@ -318,7 +324,7 @@ describe('projectByPath — only mapDefaults, no root narrowing', () => {
     });
     const proj = projectByPath(n);
     expect([...proj.keys()]).toEqual(['User']);
-    expect(Object.keys(proj.get('User')!.fields).sort()).toEqual(['id', 'name']);
+    expect(Object.keys(at(proj, 'User').fields).sort()).toEqual(['id', 'name']);
   });
 });
 
@@ -335,7 +341,7 @@ describe('projectByPath — chained where clauses accumulate', () => {
     const n1 = withParent(postLens, { root: { where: w1 } });
     const n2 = withParent(n1, { root: { where: w2 } });
     const proj = projectByPath(n2);
-    expect(proj.get('Post')!.whereClauses).toEqual([w1, w2]);
+    expect(at(proj, 'Post').whereClauses).toEqual([w1, w2]);
   });
 
   test('mapDefaults.where + path.where both anchor at the same visit', () => {
@@ -353,8 +359,8 @@ describe('projectByPath — chained where clauses accumulate', () => {
     });
     const proj = projectByPath(n);
     // Both wheres land at the author visit (one from defaults, one from path).
-    expect(proj.get('Post.author')!.whereClauses).toContainEqual(tenantScope);
-    expect(proj.get('Post.author')!.whereClauses).toContainEqual(localScope);
-    expect(proj.get('Post.author')!.whereClauses).toHaveLength(2);
+    expect(at(proj, 'Post.author').whereClauses).toContainEqual(tenantScope);
+    expect(at(proj, 'Post.author').whereClauses).toContainEqual(localScope);
+    expect(at(proj, 'Post.author').whereClauses).toHaveLength(2);
   });
 });

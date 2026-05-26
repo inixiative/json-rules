@@ -5,6 +5,8 @@ export type { CreateLensInput } from './createLens';
 export { createLens } from './createLens';
 export { validateNarrowing } from './narrowing';
 export { projectNarrowing } from './project';
+export type { PathProjection, ProjectedVisit } from './projectByPath';
+export { projectByPath } from './projectByPath';
 export type {
   EnumNarrowing,
   Lens,

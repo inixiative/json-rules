@@ -1,5 +1,68 @@
 # Changelog
 
+## 2.4.0
+
+`projectByPath` — path-keyed lens projection. Also reverts 2.3.0's `projectNarrowing` sibling semantics back to 2.2's intersection.
+
+### Why
+
+`projectNarrowing` returns a flat `FieldMapSet` keyed by `(map, model)`. That shape cannot represent "User looks different at `sourceUser` vs `targetUser`" — when two sibling relation paths target the same model, the model-keyed output forces a single answer. 2.2 made that answer intersection (silently empty); 2.3 made it union (silently leaks sibling-only fields across paths). Both are wrong-shape for per-path consumers (validation whitelists, SDK schema generation, search-field enumeration). Neither was a real fix.
+
+### `projectByPath(lensOrNarrowing) → Map<dottedPath, ProjectedVisit>`
+
+Path-keyed and lossless. Each `dottedPath` (e.g. `"Inquiry"`, `"Inquiry.sourceUser"`, `"Inquiry.targetUser"`) gets its own `ProjectedVisit`:
+
+```ts
+type ProjectedVisit = {
+  mapName: string;
+  modelName: string;
+  fields: Record<string, FieldMapEntry>;  // narrowed at THIS visit (enum values inlined)
+  whereClauses: Condition[];              // collected at THIS visit
+};
+```
+
+Composition at each visit: path-specific picks/omits/enumPicks/enumOmits (chain-intersected) ∩ `mapDefaults[X].models[Y]` for the target model (chain-intersected) ∩ `mapDefaults[X].enums` registry narrowing. Implemented on top of `resolveVisit` (which has been path-correct since 2.1).
+
+```ts
+import { projectByPath } from '@inixiative/json-rules';
+
+const projection = projectByPath({
+  parent: postLens,
+  root: {
+    relations: {
+      author: { picks: ['name'] },
+      editor: { picks: ['id'] },
+    },
+  },
+});
+
+projection.get('Post.author')!.fields;   // { name: ... }              — no editor.id leak
+projection.get('Post.editor')!.fields;   // { id: ... }                — no author.name leak
+```
+
+For consumers needing to enumerate searchable / validatable paths through a lens, walk the projection:
+
+```ts
+const paths: string[] = [];
+for (const [dottedPath, visit] of projection) {
+  for (const [field, entry] of Object.entries(visit.fields)) {
+    if (entry.kind === 'scalar' || entry.kind === 'enum') {
+      paths.push(`${dottedPath}.${field}`);
+    }
+  }
+}
+```
+
+### `projectNarrowing` reverted to 2.2 intersection
+
+2.3's sibling-union behavior is removed. When two sibling paths target the same model, the model-keyed projection again intersects their picks (conservative — fails closed, never surfaces a path that wasn't declared at every reaching path). This is still lossy for per-path questions; consumers wanting per-path accuracy should use `projectByPath`. `projectNarrowing` remains useful as a "type surface (lowest common denominator)" view.
+
+### Migration
+
+- If you used `projectNarrowing` and depended on 2.3's union of sibling paths (rare — the union behavior was permissive in a way that would surprise most callers), switch to `projectByPath` and walk per-path.
+- If you used `projectNarrowing` in 2.2 style (single-relation lenses, mapDefaults), no change needed — same behavior restored.
+- New code that enumerates paths through a lens (validation, SDK schema, search): use `projectByPath`.
+
 ## 2.3.0
 
 Bug fix in `projectNarrowing`: sibling relation paths pointing at the same model no longer collapse via intersection.

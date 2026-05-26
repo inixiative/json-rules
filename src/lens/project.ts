@@ -1,13 +1,10 @@
 import type { FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import type { FieldMapEntry } from '../toPrisma/types.ts';
 import { accumulateEnumFields, accumulatePicksOmitsInto } from './policy.ts';
 import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
-// Per-path or per-model accumulator. Chain composition WITHIN a key intersects
-// picks / unions omits — that's the monotonic-restriction semantic.
 type ModelAcc = {
-  // null = no picks declared at this key → all fields visible (subject to omits).
   picks: Set<string> | null;
   omits: Set<string>;
   enumPicks: Map<string, Set<string>>;
@@ -26,11 +23,6 @@ const accumulateIntersect = (acc: ModelAcc, n: ModelDefaultNarrowing | ModelNarr
   accumulateEnumFields(acc.enumPicks, acc.enumOmits, n);
 };
 
-// Walks a path-specific narrowing tree, accumulating each visit into a
-// path-keyed accumulator: `${mapName}::${dottedPath}`. Two sibling relations to
-// the same model produce distinct keys, so their picks never collapse.
-// `pathToModel` records which (map, model) each path key resolves to so we can
-// group sibling paths by model later for the union step.
 const walkPathNarrowing = (
   set: FieldMapSet,
   mapName: string,
@@ -85,14 +77,12 @@ const narrowEnumValues = (
   return result;
 };
 
-// At a single path, is field f visible? (picks=null means all visible.)
 const fieldVisibleAtPath = (acc: ModelAcc, f: string): boolean => {
   if (acc.omits.has(f)) return false;
   if (acc.picks !== null && !acc.picks.has(f)) return false;
   return true;
 };
 
-// At a single path, is enum value v visible for field f?
 const enumValueVisibleAtPath = (acc: ModelAcc, f: string, v: string): boolean => {
   const p = acc.enumPicks.get(f);
   const o = acc.enumOmits.get(f);
@@ -109,8 +99,6 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
   };
   const chain = collectChain(lensOrNarrowing);
 
-  // Phase 1: path-specific narrowings → per-path acc, keyed by dotted path.
-  // Chain composition WITHIN a path intersects (monotonic restriction).
   const pathAccs = new Map<string, ModelAcc>();
   const pathToModel = new Map<string, { mapName: string; modelName: string }>();
   for (const narrowing of chain) {
@@ -119,7 +107,7 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
         set,
         root.mapName,
         root.model,
-        root.model, // dottedPath for the root visit is just the lens anchor model name
+        root.model,
         narrowing.root,
         pathAccs,
         pathToModel,
@@ -127,7 +115,6 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
     }
   }
 
-  // Phase 2: mapDefaults → per-model acc (truly applies-everywhere).
   const defaultAccs = new Map<string, ModelAcc>();
   for (const narrowing of chain) {
     for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
@@ -142,28 +129,19 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
         }
         accumulateIntersect(acc, defaultsForModel);
       }
-    }
-  }
-
-  // Phase 2.5: narrow enum registries via chained mapDefaults.enums BEFORE
-  // per-field narrowing reads from them.
-  for (const narrowing of chain) {
-    for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
-      const fieldMap = set.maps[mapName];
-      if (!fieldMap?.enums) continue;
-      for (const [enumName, enumNarrowing] of Object.entries(defaults.enums ?? {})) {
-        const current: readonly string[] | undefined = fieldMap.enums[enumName];
-        if (!current) continue;
-        fieldMap.enums = {
-          ...fieldMap.enums,
-          [enumName]: narrowEnumValues(current, enumNarrowing.picks, enumNarrowing.omits),
-        };
+      if (fieldMap.enums) {
+        for (const [enumName, enumNarrowing] of Object.entries(defaults.enums ?? {})) {
+          const current: readonly string[] | undefined = fieldMap.enums[enumName];
+          if (!current) continue;
+          fieldMap.enums = {
+            ...fieldMap.enums,
+            [enumName]: narrowEnumValues(current, enumNarrowing.picks, enumNarrowing.omits),
+          };
+        }
       }
     }
   }
 
-  // Phase 3: group path accs by (map, model) so sibling paths to the same
-  // model can be unioned in the projection.
   const pathAccsByModel = new Map<string, ModelAcc[]>();
   for (const [pathKey, acc] of pathAccs) {
     const target = pathToModel.get(pathKey);
@@ -174,7 +152,6 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
     pathAccsByModel.set(modelKey, list);
   }
 
-  // Phase 4: apply visibility = (∃ path where visible) ∩ mapDefaults.
   for (const [mapName, fieldMap] of Object.entries(set.maps)) {
     for (const [modelName, model] of Object.entries(fieldMap.models)) {
       const modelKey = `${mapName}::${modelName}`;
@@ -182,19 +159,12 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
       const defAcc = defaultAccs.get(modelKey);
       if (!sibAccs && !defAcc) continue;
 
-      const allFields = Object.keys(model.fields);
-
-      for (const f of allFields) {
-        // visible-at-any-path: if no paths reach this model, treat as fully visible.
+      for (const f of Object.keys(model.fields)) {
         const visibleViaPaths = sibAccs ? sibAccs.some((a) => fieldVisibleAtPath(a, f)) : true;
         const visibleViaDefaults = defAcc ? fieldVisibleAtPath(defAcc, f) : true;
-        if (!visibleViaPaths || !visibleViaDefaults) {
-          delete model.fields[f];
-        }
+        if (!visibleViaPaths || !visibleViaDefaults) delete model.fields[f];
       }
 
-      // Per-field enum narrowing: union allowed values across sibling paths,
-      // then intersect with mapDefaults for the field.
       const enumFieldsInPlay = new Set<string>();
       for (const acc of sibAccs ?? []) {
         for (const f of acc.enumPicks.keys()) enumFieldsInPlay.add(f);
@@ -208,36 +178,30 @@ export const projectNarrowing = (lensOrNarrowing: Lens | LensNarrowing): FieldMa
       for (const fieldName of enumFieldsInPlay) {
         const entry = model.fields[fieldName];
         if (!entry || entry.kind !== 'enum') continue;
-        const enumRegistry = fieldMap.enums?.[entry.type];
-        const baseValues: readonly string[] | undefined = entry.values ?? enumRegistry;
+        const baseValues: readonly string[] | undefined =
+          entry.values ?? fieldMap.enums?.[entry.type];
         if (!baseValues) continue;
-
-        const narrowed = baseValues.filter((v) => {
+        (entry as FieldMapEntry).values = baseValues.filter((v) => {
           const visibleViaPaths = sibAccs
             ? sibAccs.some((a) => enumValueVisibleAtPath(a, fieldName, v))
             : true;
           const visibleViaDefaults = defAcc ? enumValueVisibleAtPath(defAcc, fieldName, v) : true;
           return visibleViaPaths && visibleViaDefaults;
         });
-        (entry as FieldMapEntry).values = narrowed;
       }
     }
   }
 
-  // Phase 5: prune bridges whose endpoint bridge-key fields were narrowed away.
   if (set.bridges) {
     set.bridges = set.bridges.filter((bridge) => {
       const [a, b] = bridge.endpoints;
-      const aBridgeKey = `${b.fieldMap}:${b.model}`;
-      const bBridgeKey = `${a.fieldMap}:${a.model}`;
-      const aHasKey = set.maps[a.fieldMap]?.models[a.model]?.fields[aBridgeKey] !== undefined;
-      const bHasKey = set.maps[b.fieldMap]?.models[b.model]?.fields[bBridgeKey] !== undefined;
+      const aHasKey =
+        set.maps[a.fieldMap]?.models[a.model]?.fields[`${b.fieldMap}:${b.model}`] !== undefined;
+      const bHasKey =
+        set.maps[b.fieldMap]?.models[b.model]?.fields[`${a.fieldMap}:${a.model}`] !== undefined;
       return aHasKey && bHasKey;
     });
   }
 
   return set;
 };
-
-// Suppress unused FieldMap import — kept for future use if signature widens.
-export type _ProjectNarrowingFieldMap = FieldMap;

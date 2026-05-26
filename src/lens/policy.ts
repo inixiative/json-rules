@@ -1,23 +1,13 @@
-// One-stop resolver: given a lens/narrowing chain + a model visit (mapName,
-// modelName, path of relation names from root), returns the effective
-// narrowing facts at that visit. Used by checkRuleAgainstLens, applyLens,
-// and validateNarrowing so each visitor doesn't reimplement composition.
-
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
 export type VisitEffect = {
-  /** Set of visible field names after picks composition. null = no picks declared → all visible. */
   picks: Set<string> | null;
-  /** Union of all omitted field names across the chain. */
   omits: Set<string>;
-  /** Per-field allowed enum values (after composition with registry + defaults + per-field picks/omits). */
   enumValuesByField: Map<string, readonly string[]>;
-  /** Where clauses anchored at THIS visit (mapDefaults model + path-specific root/relations). */
   whereClauses: Condition[];
-  /** Per-relation narrowings declared at this visit's level (for descent). Path-specific only. */
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -35,11 +25,6 @@ export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => 
   return { lens, chain };
 };
 
-/**
- * Intersection-or-init: if `cur` is null (no prior set), returns Set(next).
- * Otherwise returns Set(next ∩ cur). Used by all the picks/enumPicks accumulators
- * since "first declaration creates the set, later declarations intersect."
- */
 export const intersectStringSet = (
   cur: Set<string> | null,
   next: readonly string[],
@@ -48,7 +33,6 @@ export const intersectStringSet = (
   return new Set(next.filter((x) => cur.has(x)));
 };
 
-/** Returns picks list augmented with any relation keys (so descent fields stay reachable). */
 export const augmentPicksWithRelations = (
   n: ModelDefaultNarrowing | ModelNarrowing,
 ): readonly string[] | undefined => {
@@ -61,11 +45,6 @@ export const augmentPicksWithRelations = (
   return out;
 };
 
-/**
- * Folds a narrowing's picks/omits into a `{picks, omits}` accumulator. Picks
- * intersect (monotonic restriction); omits union. Shared by policy.ts (visit
- * resolution) and project.ts (per-path projection accumulator).
- */
 export const accumulatePicksOmitsInto = (
   state: { picks: Set<string> | null; omits: Set<string> },
   n: ModelDefaultNarrowing | ModelNarrowing,
@@ -75,7 +54,6 @@ export const accumulatePicksOmitsInto = (
   if (n.omits) for (const f of n.omits) state.omits.add(f);
 };
 
-/** Intersect-or-init a Map<key, Set<string>> with new values for `key`. */
 export const intersectIntoMap = (
   map: Map<string, Set<string>>,
   key: string,
@@ -84,7 +62,6 @@ export const intersectIntoMap = (
   map.set(key, intersectStringSet(map.get(key) ?? null, vals));
 };
 
-/** Union new values into a Map<key, Set<string>> entry. */
 export const unionIntoMap = (
   map: Map<string, Set<string>>,
   key: string,
@@ -95,11 +72,6 @@ export const unionIntoMap = (
   map.set(key, s);
 };
 
-/**
- * Folds a narrowing's enumPicks/enumOmits into per-field accumulator maps.
- * Picks intersect per field; omits union per field. Shared by visit resolution
- * and projection.
- */
 export const accumulateEnumFields = (
   picksMap: Map<string, Set<string>>,
   omitsMap: Map<string, Set<string>>,
@@ -118,15 +90,6 @@ const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrow
   if (n.where !== undefined) out.whereClauses.push(n.where);
 };
 
-/**
- * Resolve the effective narrowing facts for a single model visit.
- *
- * @param policy resolved policy from a lens/narrowing chain
- * @param mapName current map being visited
- * @param modelName current model
- * @param relPath sequence of relation names from the lens's root model to this visit
- *               (empty array = root visit)
- */
 export const resolveVisit = (
   policy: Policy,
   mapName: string,
@@ -145,77 +108,55 @@ export const resolveVisit = (
   const model = fieldMap?.models[modelName];
   if (!model) return out;
 
-  // Track per-field enum picks/omits accumulators (intersection / union)
   const fieldEnumPicks = new Map<string, Set<string>>();
   const fieldEnumOmits = new Map<string, Set<string>>();
-  // Track enum-type-level narrowing from mapDefaults.enums across chain
   const typeEnumPicks = new Map<string, Set<string>>();
   const typeEnumOmits = new Map<string, Set<string>>();
 
-  const accEnumFields = (n: ModelDefaultNarrowing | ModelNarrowing): void =>
+  const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
+    accumulateInto(out, n);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
+  };
 
   for (const narrowing of policy.chain) {
-    // 1. mapDefaults[mapName].models[modelName] — applies wherever this model
-    //    appears in this map (NOT the lens's root map).
     const visitMapDefaults = narrowing.mapDefaults?.[mapName];
     if (visitMapDefaults) {
       const dflt = visitMapDefaults.models?.[modelName];
-      if (dflt) {
-        accumulateInto(out, dflt);
-        accEnumFields(dflt);
-      }
-
-      // 2. mapDefaults[mapName].enums — accumulate per type from this map's enums
+      if (dflt) applyNode(dflt);
       for (const [enumName, enumN] of Object.entries(visitMapDefaults.enums ?? {})) {
         if (enumN.picks) intersectIntoMap(typeEnumPicks, enumName, enumN.picks);
         if (enumN.omits) unionIntoMap(typeEnumOmits, enumName, enumN.omits);
       }
     }
 
-    // 3. Path-specific (root): anchored at (lens.mapName, lens.model), descended
-    //    via relPath. Cross-map bridges descend into a different map but the
-    //    narrowing still lives in narrowing.root's relations tree.
     let node: ModelNarrowing | undefined = narrowing.root;
     if (relPath.length === 0) {
-      // Root visit: node IS narrowing.root. Only apply if we're actually visiting the root.
       if (mapName === policy.lens.mapName && modelName === policy.lens.model && node) {
-        accumulateInto(out, node);
-        accEnumFields(node);
-        for (const [rel, sub] of Object.entries(node.relations ?? {})) {
-          out.relations.set(rel, sub);
-        }
+        applyNode(node);
+        for (const [rel, sub] of Object.entries(node.relations ?? {})) out.relations.set(rel, sub);
       }
     } else {
-      // Descend along relPath from narrowing.root
       for (const seg of relPath) {
         node = node?.relations?.[seg];
         if (!node) break;
       }
       if (node) {
-        accumulateInto(out, node);
-        accEnumFields(node);
-        for (const [rel, sub] of Object.entries(node.relations ?? {})) {
-          out.relations.set(rel, sub);
-        }
+        applyNode(node);
+        for (const [rel, sub] of Object.entries(node.relations ?? {})) out.relations.set(rel, sub);
       }
     }
   }
 
-  // 4. Resolve per-field enum values: per-field picks/omits ∩ type-level ∩ (entry.values ?? registry)
   for (const [fieldName, entry] of Object.entries(model.fields)) {
     if (entry.kind !== 'enum') continue;
     const enumType = entry.type;
-    const registryVals = fieldMap?.enums?.[enumType];
-    const baseValues = entry.values ?? registryVals;
+    const baseValues = entry.values ?? fieldMap?.enums?.[enumType];
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;
-    // Apply type-level narrowing
     const typePicks = typeEnumPicks.get(enumType);
     const typeOmits = typeEnumOmits.get(enumType);
     if (typePicks) vals = vals.filter((v) => typePicks.has(v));
     if (typeOmits) vals = vals.filter((v) => !typeOmits.has(v));
-    // Apply field-level narrowing
     const fp = fieldEnumPicks.get(fieldName);
     const fo = fieldEnumOmits.get(fieldName);
     if (fp) vals = vals.filter((v) => fp.has(v));
@@ -226,24 +167,17 @@ export const resolveVisit = (
   return out;
 };
 
-/** Returns true if fieldName is visible at this visit (after all picks/omits). */
 export const isFieldVisible = (effect: VisitEffect, fieldName: string): boolean => {
   if (effect.omits.has(fieldName)) return false;
   if (effect.picks !== null && !effect.picks.has(fieldName)) return false;
   return true;
 };
 
-/** Returns the allowed enum values for a field, or null if the field isn't an enum / no registry. */
 export const allowedEnumValues = (
   effect: VisitEffect,
   fieldName: string,
 ): readonly string[] | null => effect.enumValuesByField.get(fieldName) ?? null;
 
-/**
- * Walks a dot-path from a model visit, resolving each segment against the lens schema,
- * and returns the final model context (mapName, modelName, segments path) and the
- * terminal field entry. Returns null if any segment doesn't resolve.
- */
 export const walkLensPath = (
   policy: Policy,
   startMap: string,
@@ -255,11 +189,8 @@ export const walkLensPath = (
   modelName: string;
   relPath: string[];
   entry: import('../toPrisma/types.ts').FieldMapEntry;
-  /** For each intermediate hop, the effect at that visit (excluding the terminal). */
   hopEffects: VisitEffect[];
-  /** Effect at the terminal model. */
   terminalEffect: VisitEffect;
-  /** The terminal field's name within the terminal model. */
   terminalFieldName: string;
 } | null => {
   const parts = fieldPath.split('.');

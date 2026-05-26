@@ -1,21 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
-import { type PathProjection, type ProjectedVisit, projectByPath } from '../src/lens/projectByPath';
+import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
+import { at } from './fixtures/helpers';
 
 const withParent = (
   parent: Lens | LensNarrowing,
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
-
-const at = (proj: PathProjection, path: string): ProjectedVisit => {
-  const v = proj.get(path);
-  if (!v) throw new Error(`expected projection visit at path '${path}'`);
-  return v;
-};
 
 // ============================================================
 // #1 — Bridges across maps: mapDefaults at bridged visit,

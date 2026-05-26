@@ -14,6 +14,7 @@ import {
 } from '../src/operatorCatalog';
 import type { FieldMap } from '../src/toPrisma/types';
 import { validateRule } from '../src/validate';
+import { at } from './fixtures/helpers';
 
 // Bug #1: prototype keys must not be treated as operators
 describe('Bug #1 — catalog rejects prototype keys', () => {
@@ -84,7 +85,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       root: { picks: ['email', 'salesforce:Contact'] },
     };
     const projected = projectByPath(narrowing);
-    expect(projected.get('FanUser')!.fields['salesforce:Contact']).toBeDefined();
+    expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeDefined();
   });
 
   test('bridge-key field gone when anchor picks omit it', () => {
@@ -94,7 +95,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       root: { picks: ['email'] },
     };
     const projected = projectByPath(narrowing);
-    expect(projected.get('FanUser')!.fields['salesforce:Contact']).toBeUndefined();
+    expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeUndefined();
   });
 
   test('bridge-key field gone when anchor omits it explicitly', () => {
@@ -104,7 +105,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       root: { omits: ['salesforce:Contact'] },
     };
     const projected = projectByPath(narrowing);
-    expect(projected.get('FanUser')!.fields['salesforce:Contact']).toBeUndefined();
+    expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeUndefined();
   });
 });
 

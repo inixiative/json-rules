@@ -4,6 +4,7 @@ import type { Bridge } from '../src/fieldMap/types';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
+import { at } from './fixtures/helpers';
 
 const prismaMap: FieldMap = {
   models: {
@@ -66,7 +67,7 @@ describe('projectByPath', () => {
   test('empty chain returns single root entry with all fields', () => {
     const out = projectByPath(lens);
     expect([...out.keys()]).toEqual(['FanUser']);
-    const root = out.get('FanUser')!;
+    const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeDefined();
   });
@@ -74,7 +75,7 @@ describe('projectByPath', () => {
   test('picks restrict to listed fields at root', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
     const out = projectByPath(n);
-    const root = out.get('FanUser')!;
+    const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeUndefined();
     expect(root.fields.deletedAt).toBeUndefined();
@@ -83,7 +84,7 @@ describe('projectByPath', () => {
   test('omits drop listed fields at root', () => {
     const n = withParent(lens, { root: { omits: ['deletedAt', 'name'] } });
     const out = projectByPath(n);
-    const root = out.get('FanUser')!;
+    const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeUndefined();
     expect(root.fields.deletedAt).toBeUndefined();
@@ -97,10 +98,10 @@ describe('projectByPath', () => {
       },
     });
     const out = projectByPath(n);
-    const root = out.get('FanUser')!;
+    const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.fanMissions).toBeDefined();
-    const nested = out.get('FanUser.fanMissions')!;
+    const nested = at(out, 'FanUser.fanMissions');
     expect(nested.modelName).toBe('FanMission');
     expect(nested.fields.missionUuid).toBeDefined();
     expect(nested.fields.status).toBeUndefined();
@@ -116,7 +117,7 @@ describe('projectByPath', () => {
       },
     });
     const out = projectByPath(n);
-    const bridged = out.get('FanUser.salesforce:Contact')!;
+    const bridged = at(out, 'FanUser.salesforce:Contact');
     expect(bridged.mapName).toBe('salesforce');
     expect(bridged.modelName).toBe('Contact');
     expect(bridged.fields.industry).toBeDefined();
@@ -128,7 +129,7 @@ describe('projectByPath', () => {
     const n2 = withParent(n1, { root: { picks: ['email', 'name'] } });
     const n3 = withParent(n2, { root: { omits: ['name'] } });
     const out = projectByPath(n3);
-    const root = out.get('FanUser')!;
+    const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeUndefined();
     expect(root.fields.id).toBeUndefined();

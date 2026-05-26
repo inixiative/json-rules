@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
+import { at } from './fixtures/helpers';
 
 const map: FieldMap = {
   models: {
@@ -36,7 +37,7 @@ describe('mapDefaults — applies-everywhere model narrowings', () => {
       mapDefaults: { prisma: { models: { User: { omits: ['password'] } } } },
     });
     const out = projectByPath(n);
-    const root = out.get('User')!;
+    const root = at(out, 'User');
     expect(root.fields.password).toBeUndefined();
     expect(root.fields.email).toBeDefined();
   });
@@ -53,8 +54,8 @@ describe('mapDefaults — applies-everywhere model narrowings', () => {
       mapDefaults: { prisma: { models: { User: { omits: ['password'] } } } },
     });
     const out = projectByPath(n);
-    expect(out.get('User')!.fields.password).toBeUndefined();
-    expect(out.get('User.posts.author')!.fields.password).toBeUndefined();
+    expect(at(out, 'User').fields.password).toBeUndefined();
+    expect(at(out, 'User.posts.author').fields.password).toBeUndefined();
   });
 
   test('mapDefaults chains across narrowings (b drops more than a, both apply)', () => {
@@ -64,7 +65,7 @@ describe('mapDefaults — applies-everywhere model narrowings', () => {
     const b = withParent(a, {
       mapDefaults: { prisma: { models: { User: { omits: ['email'] } } } },
     });
-    const root = projectByPath(b).get('User')!;
+    const root = at(projectByPath(b), 'User');
     expect(root.fields.password).toBeUndefined();
     expect(root.fields.email).toBeUndefined();
     expect(root.fields.id).toBeDefined();
@@ -75,7 +76,7 @@ describe('mapDefaults — applies-everywhere model narrowings', () => {
       root: { picks: ['email', 'password'] },
       mapDefaults: { prisma: { models: { User: { picks: ['id', 'email'] } } } },
     });
-    expect(Object.keys(projectByPath(n).get('User')!.fields).sort()).toEqual(['email']);
+    expect(Object.keys(at(projectByPath(n), 'User').fields).sort()).toEqual(['email']);
   });
 });
 
@@ -90,7 +91,7 @@ describe('mapDefaults.enums — applies-everywhere enum narrowing', () => {
     const n = withParent(lensE, {
       mapDefaults: { prisma: { enums: { UserRole: { omits: ['owner'] } } } },
     });
-    const role = projectByPath(n).get('User')!.fields.role;
+    const role = at(projectByPath(n), 'User').fields.role;
     expect([...(role.values ?? [])].sort()).toEqual(['admin', 'guest', 'member']);
   });
 
@@ -101,7 +102,7 @@ describe('mapDefaults.enums — applies-everywhere enum narrowing', () => {
     const b = withParent(a, {
       mapDefaults: { prisma: { enums: { UserRole: { picks: ['admin', 'member'] } } } },
     });
-    const role = projectByPath(b).get('User')!.fields.role;
+    const role = at(projectByPath(b), 'User').fields.role;
     expect([...(role.values ?? [])].sort()).toEqual(['admin', 'member']);
   });
 });

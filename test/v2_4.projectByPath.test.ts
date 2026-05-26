@@ -1,15 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { type PathProjection, type ProjectedVisit, projectByPath } from '../src/lens/projectByPath';
+import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
+import { at } from './fixtures/helpers';
 import { multiRelMap } from './fixtures/multiRelMap';
-
-const at = (proj: PathProjection, path: string): ProjectedVisit => {
-  const v = proj.get(path);
-  if (!v) throw new Error(`expected projection visit at path '${path}'`);
-  return v;
-};
 
 const withParent = (
   parent: Lens | LensNarrowing,
@@ -22,8 +17,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
   test('lens-only (no narrowing): single root entry with all fields', () => {
     const projection = projectByPath(postLens);
     expect([...projection.keys()]).toEqual(['Post']);
-    const root = projection.get('Post');
-    expect(Object.keys(root!.fields).sort()).toEqual([
+    expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual([
       'author',
       'authorId',
       'editor',

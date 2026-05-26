@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
-import { projectNarrowing } from '../src/lens/project';
+import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
@@ -62,43 +62,49 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('projectNarrowing', () => {
-  test('empty chain returns clone of root set', () => {
-    const out = projectNarrowing(lens);
-    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.models.FanUser.fields.name).toBeDefined();
-    expect(out).not.toBe(stitched);
+describe('projectByPath', () => {
+  test('empty chain returns single root entry with all fields', () => {
+    const out = projectByPath(lens);
+    expect([...out.keys()]).toEqual(['FanUser']);
+    const root = out.get('FanUser')!;
+    expect(root.fields.email).toBeDefined();
+    expect(root.fields.name).toBeDefined();
   });
 
-  test('picks restrict to listed fields', () => {
+  test('picks restrict to listed fields at root', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
-    const out = projectNarrowing(n);
-    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
-    expect(out.maps.prisma.models.FanUser.fields.deletedAt).toBeUndefined();
+    const out = projectByPath(n);
+    const root = out.get('FanUser')!;
+    expect(root.fields.email).toBeDefined();
+    expect(root.fields.name).toBeUndefined();
+    expect(root.fields.deletedAt).toBeUndefined();
   });
 
-  test('omits drop listed fields', () => {
+  test('omits drop listed fields at root', () => {
     const n = withParent(lens, { root: { omits: ['deletedAt', 'name'] } });
-    const out = projectNarrowing(n);
-    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
-    expect(out.maps.prisma.models.FanUser.fields.deletedAt).toBeUndefined();
+    const out = projectByPath(n);
+    const root = out.get('FanUser')!;
+    expect(root.fields.email).toBeDefined();
+    expect(root.fields.name).toBeUndefined();
+    expect(root.fields.deletedAt).toBeUndefined();
   });
 
-  test('picks keep relation fields that have nested narrowings', () => {
+  test('picks keep relation fields that have nested narrowings; nested visit narrows the target', () => {
     const n = withParent(lens, {
       root: {
         picks: ['email'],
         relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
-    const out = projectNarrowing(n);
-    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.models.FanUser.fields.fanMissions).toBeDefined();
-    expect(out.maps.prisma.models.FanMission.fields.missionUuid).toBeDefined();
-    expect(out.maps.prisma.models.FanMission.fields.status).toBeUndefined();
-    expect(out.maps.prisma.models.FanMission.fields.id).toBeUndefined();
+    const out = projectByPath(n);
+    const root = out.get('FanUser')!;
+    expect(root.fields.email).toBeDefined();
+    expect(root.fields.fanMissions).toBeDefined();
+    const nested = out.get('FanUser.fanMissions')!;
+    expect(nested.modelName).toBe('FanMission');
+    expect(nested.fields.missionUuid).toBeDefined();
+    expect(nested.fields.status).toBeUndefined();
+    expect(nested.fields.id).toBeUndefined();
   });
 
   test('cascades through cross-map bridge', () => {
@@ -109,38 +115,30 @@ describe('projectNarrowing', () => {
         },
       },
     });
-    const out = projectNarrowing(n);
-    expect(out.maps.salesforce.models.Contact.fields.industry).toBeDefined();
-    expect(out.maps.salesforce.models.Contact.fields.id).toBeUndefined();
+    const out = projectByPath(n);
+    const bridged = out.get('FanUser.salesforce:Contact')!;
+    expect(bridged.mapName).toBe('salesforce');
+    expect(bridged.modelName).toBe('Contact');
+    expect(bridged.fields.industry).toBeDefined();
+    expect(bridged.fields.id).toBeUndefined();
   });
 
   test('multi-level chain applies all narrowings cumulatively', () => {
     const n1 = withParent(lens, { root: { picks: ['email', 'name', 'id'] } });
     const n2 = withParent(n1, { root: { picks: ['email', 'name'] } });
     const n3 = withParent(n2, { root: { omits: ['name'] } });
-    const out = projectNarrowing(n3);
-    expect(out.maps.prisma.models.FanUser.fields.email).toBeDefined();
-    expect(out.maps.prisma.models.FanUser.fields.name).toBeUndefined();
-    expect(out.maps.prisma.models.FanUser.fields.id).toBeUndefined();
-    expect(out.maps.prisma.models.FanUser.fields.deletedAt).toBeUndefined();
+    const out = projectByPath(n3);
+    const root = out.get('FanUser')!;
+    expect(root.fields.email).toBeDefined();
+    expect(root.fields.name).toBeUndefined();
+    expect(root.fields.id).toBeUndefined();
+    expect(root.fields.deletedAt).toBeUndefined();
   });
 
   test('does not mutate input', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
-    projectNarrowing(n);
+    projectByPath(n);
     expect(stitched.maps.prisma.models.FanUser.fields.email).toBeDefined();
     expect(stitched.maps.prisma.models.FanUser.fields.name).toBeDefined();
-  });
-
-  test('mutating projected bridges does not leak into source', () => {
-    const out = projectNarrowing(lens);
-    out.bridges?.push({
-      endpoints: [
-        { fieldMap: 'x', model: 'Y', on: 'a' },
-        { fieldMap: 'x', model: 'Z', on: 'b' },
-      ],
-      cardinality: 'oneToOne',
-    });
-    expect(stitched.bridges).toHaveLength(1);
   });
 });

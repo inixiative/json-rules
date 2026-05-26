@@ -456,7 +456,8 @@ Lens & bridges:
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
 - `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
-- `validateNarrowing`, `projectNarrowing`, `checkRuleAgainstLens`, `applyLens`
+- `validateNarrowing`, `projectByPath`, `checkRuleAgainstLens`, `applyLens`
+- `PathProjection`, `ProjectedVisit`
 - `buildBridgeDictionary`
 
 Operator catalog (builder-facing):
@@ -601,8 +602,8 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 
 | Function | Purpose |
 | --- | --- |
-| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call this before `projectNarrowing` and at narrowing construction. |
-| `projectNarrowing(lens)` | Returns the effective `FieldMapSet` after applying every narrowing in the chain. Composition is intersection across all layers. Use for SDK-contract / OpenAPI emission. |
+| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call at narrowing construction. |
+| `projectByPath(lens)` | Returns `Map<dottedPath, ProjectedVisit>` — each declared path keys its own resolved narrowing (path picks/omits/enums chain-intersected ∩ `mapDefaults` for the target model). Sibling paths to the same model stay independent. Use for SDK-contract / OpenAPI emission, search-field enumeration, validation whitelists. See [docs/LENS.md §10](./docs/LENS.md). |
 | `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, violations }`. The security gate. |
 | `applyLens(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
 

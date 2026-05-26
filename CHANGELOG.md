@@ -1,5 +1,44 @@
 # Changelog
 
+## 3.0.0
+
+**Breaking:** `projectNarrowing` removed. `projectByPath` is the projection primitive.
+
+The flat `FieldMapSet` shape `projectNarrowing` returned was structurally lossy — it couldn't represent "User looks different at `Post.author` vs `Post.editor`" when two sibling relation paths targeted the same model. Every attempt to pick a sibling-collapse semantic was wrong-by-shape: 2.2 chose intersection (silent ∅), 2.3 chose union (silently leaked sibling-only fields — a security regression for consumers using projection as an access whitelist), 2.4 reverted to intersection and added `projectByPath` alongside. 3.0 commits to path-keyed as the only projection primitive.
+
+### Migration
+
+```ts
+// Before (≤ 2.4)
+import { projectNarrowing } from '@inixiative/json-rules';
+const projected = projectNarrowing(narrowing);
+projected.maps.prisma.models.User.fields.email;        // model-keyed
+projected.maps.prisma.enums?.UserRole;                  // separate registry
+projected.bridges;                                      // pruned bridges array
+
+// After (3.0)
+import { projectByPath } from '@inixiative/json-rules';
+const projection = projectByPath(narrowing);
+projection.get('User')?.fields.email;                   // path-keyed (lens anchor here)
+projection.get('User')?.fields.role?.values;            // enum values inlined per field per visit
+// no separate `bridges` field — the bridge-key field's presence at each visit is the truth
+```
+
+Each key in `PathProjection` is the dotted path from the lens anchor (e.g. `"User"`, `"User.posts"`, `"User.posts.author"`). Composition at each visit: path-specific picks/omits/enumPicks/enumOmits (chain-intersected) ∩ `mapDefaults[X].models[Y]` for the target model (chain-intersected) ∩ `mapDefaults[X].enums` registry narrowing. Sibling paths to the same model stay independent — no leakage.
+
+### What this fixes
+
+- Sibling collapse on shared targets — `Post.author: { picks: ['name'] }` and `Post.editor: { picks: ['id'] }` now correctly project two independent visits, not a collapsed single User entry.
+- Per-path enum divergence — `User.role` picks `['admin']` at root and `['member']` via `posts.author` projects two visits with distinct allowed values.
+- Per-path `where` clauses — each visit carries the `where` clauses anchored at that path.
+
+### Notes
+
+- `resolveVisit`, `checkRuleAgainstLens`, `applyLens` were already path-correct via `relPath` descent. Unchanged.
+- `validateNarrowing` unchanged.
+- The pre-3.0 bridge-pruning logic (drop the `bridges[]` array entry when its key field was narrowed away) doesn't have a direct equivalent — `projectByPath` doesn't return a bridges array. The bridge-key field's presence at each visit is the truth; consumers walking the projection see what's reachable.
+- See [docs/LENS.md §10](./docs/LENS.md) for the full API.
+
 ## 2.4.0
 
 `projectByPath` — path-keyed lens projection. Also reverts 2.3.0's `projectNarrowing` sibling semantics back to 2.2's intersection.

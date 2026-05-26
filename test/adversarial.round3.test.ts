@@ -4,7 +4,7 @@ import type { Bridge } from '../src/fieldMap/types';
 import { applyLens } from '../src/lens/applyLens';
 import { checkRuleAgainstLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
-import { projectNarrowing } from '../src/lens/project';
+import { projectByPath } from '../src/lens/projectByPath';
 import type { LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import {
@@ -77,47 +77,34 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       model: 'FanUser',
     });
 
-  test('bridge survives when its bridge-key is explicitly picked on the anchor side', () => {
+  test('bridge-key field present at anchor when explicitly picked', () => {
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
       root: { picks: ['email', 'salesforce:Contact'] },
     };
-    const projected = projectNarrowing(narrowing);
-    expect(projected.bridges?.length).toBe(1);
-    expect(projected.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeDefined();
+    const projected = projectByPath(narrowing);
+    expect(projected.get('FanUser')!.fields['salesforce:Contact']).toBeDefined();
   });
 
-  test('bridge removed when anchor picks omit the bridge-key field', () => {
+  test('bridge-key field gone when anchor picks omit it', () => {
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
       root: { picks: ['email'] },
     };
-    const projected = projectNarrowing(narrowing);
-    expect(projected.bridges?.length ?? 0).toBe(0);
-    expect(projected.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeUndefined();
+    const projected = projectByPath(narrowing);
+    expect(projected.get('FanUser')!.fields['salesforce:Contact']).toBeUndefined();
   });
 
-  test('bridge removed when anchor omits the bridge-key explicitly', () => {
+  test('bridge-key field gone when anchor omits it explicitly', () => {
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
       root: { omits: ['salesforce:Contact'] },
     };
-    const projected = projectNarrowing(narrowing);
-    expect(projected.bridges?.length ?? 0).toBe(0);
-    expect(projected.maps.prisma.models.FanUser.fields['salesforce:Contact']).toBeUndefined();
-  });
-
-  test('bridge removed when the FAR side of the bridge picks its bridge-key away', () => {
-    const lens = buildLens();
-    const narrowing: LensNarrowing = {
-      parent: lens,
-      mapDefaults: { salesforce: { models: { Contact: { picks: ['industry'] } } } },
-    };
-    const projected = projectNarrowing(narrowing);
-    expect(projected.bridges?.length ?? 0).toBe(0);
+    const projected = projectByPath(narrowing);
+    expect(projected.get('FanUser')!.fields['salesforce:Contact']).toBeUndefined();
   });
 });
 

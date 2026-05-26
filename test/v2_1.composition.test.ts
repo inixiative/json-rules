@@ -1,13 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { projectNarrowing } from '../src/lens/project';
+import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
-
-// The pre-2.1 bug: projectNarrowing mutates a shared cloned FieldMap. When two
-// narrowings apply picks to the same model in sequence, the LATER picks computes
-// `keep = new Set(picks)` against the ALREADY-narrowed model, so prior picks vanish.
-// Correct behavior: each narrowing intersects with what survived previous narrowings.
-// Composition must be intersection, never last-write.
 
 const map: FieldMap = {
   models: {
@@ -29,44 +23,24 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('projectNarrowing composition is intersection (not last-write)', () => {
+describe('projectByPath composition is intersection (not last-write)', () => {
   test('chained picks: A=[email,name,id], B=[name,id,role] → projected={name,id}', () => {
-    // Intersection of the two pick sets, not just B's
-    const a = withParent(lens, {
-      root: { picks: ['email', 'name', 'id'] },
-    });
-    const b = withParent(a, {
-      root: { picks: ['name', 'id', 'role'] },
-    });
-    const out = projectNarrowing(b);
-    const fields = Object.keys(out.maps.prisma.models.User.fields).sort();
+    const a = withParent(lens, { root: { picks: ['email', 'name', 'id'] } });
+    const b = withParent(a, { root: { picks: ['name', 'id', 'role'] } });
+    const fields = Object.keys(projectByPath(b).get('User')!.fields).sort();
     expect(fields).toEqual(['id', 'name']);
   });
 
-  // NOTE: chained narrowing where B picks fields A excluded is now a STRICT
-  // validation error — see v2_1.validateNarrowing.test.ts. projectNarrowing
-  // composition is still intersection-only, but inputs must pass validation first.
-
   test('pick then omit: pick keeps {email,name}, omit drops name → {email}', () => {
-    const a = withParent(lens, {
-      root: { picks: ['email', 'name'] },
-    });
-    const b = withParent(a, {
-      root: { omits: ['name'] },
-    });
-    const out = projectNarrowing(b);
-    expect(Object.keys(out.maps.prisma.models.User.fields).sort()).toEqual(['email']);
+    const a = withParent(lens, { root: { picks: ['email', 'name'] } });
+    const b = withParent(a, { root: { omits: ['name'] } });
+    expect(Object.keys(projectByPath(b).get('User')!.fields).sort()).toEqual(['email']);
   });
 
   test('omit accumulates: A omits=[name], B omits=[email] → both gone', () => {
-    const a = withParent(lens, {
-      root: { omits: ['name'] },
-    });
-    const b = withParent(a, {
-      root: { omits: ['email'] },
-    });
-    const out = projectNarrowing(b);
-    const fields = Object.keys(out.maps.prisma.models.User.fields).sort();
+    const a = withParent(lens, { root: { omits: ['name'] } });
+    const b = withParent(a, { root: { omits: ['email'] } });
+    const fields = Object.keys(projectByPath(b).get('User')!.fields).sort();
     expect(fields).not.toContain('name');
     expect(fields).not.toContain('email');
   });

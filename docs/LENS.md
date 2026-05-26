@@ -26,8 +26,9 @@ to write a lens that "works" but leaks scope.
 
 `picks` / `omits` / `enumPicks` / `enumOmits` control the **type surface**. The
 SDK, the AI, the OpenAPI emission — none of them can *mention* a narrowed-away
-field or enum value. `projectNarrowing(lens)` produces the flat
-`FieldMapSet` that reflects this surface.
+field or enum value. `projectByPath(lens)` produces the path-keyed projection
+that reflects this surface, with each declared path getting its own resolved
+narrowing.
 
 ### Data narrowing — which *rows* are in scope
 
@@ -238,20 +239,13 @@ root.picks: 'password' was omitted by ancestor
 The strict check means you find bad lens code at construction, not at query
 time with a silently empty result.
 
-`projectNarrowing()` was rewritten in v2.1 to match — it accumulates *all*
-layer narrowings per `(map, model)` and applies the intersection once at the
-end, fixing the v2.0 last-write-wins bug where chained narrowings of the same
-model would erase earlier-picked fields.
-
-**v2.3** further fixed `projectNarrowing` for *sibling* paths that target the
-same model (e.g. `Post.author` and `Post.editor` both `→ User`). Pre-2.3 these
-collapsed to a single `prisma::User` accumulator with intersected picks (often
-producing an empty model in the flat projection). 2.3 keys path-specific
-accumulators by `${map}::${dottedPath}` so each sibling stays isolated; the
-flat-projection collapse step then takes the **union** across siblings
-(intersection within a single path is unchanged) and intersects with
-`mapDefaults`. Per-visit semantics (`resolveVisit`, `checkRuleAgainstLens`,
-`applyLens`) were already path-correct and are unchanged.
+`projectByPath()` is the projection primitive (added in 3.0, replacing the
+pre-3.0 `projectNarrowing` which returned a flat model-keyed `FieldMapSet`).
+The pre-3.0 shape couldn't represent "User looks different at `sourceUser`
+vs `targetUser`" — two sibling relation paths targeting the same model
+collapsed into a single accumulator. `projectByPath` returns
+`Map<dottedPath, ProjectedVisit>` so each declared path keeps its own resolved
+narrowing. See section 10 for the API.
 
 ## 6. Defaults vs path-specific
 
@@ -380,22 +374,18 @@ boundary.
 
 ### Surfacing the narrowed enum to a builder/SDK
 
-`projectNarrowing` materializes the per-field allowed set onto `FieldMapEntry.values`
-for any visited field. For an enum field whose model isn't reached via the
-path-specific tree or `mapDefaults.models[Y]`, `values` is left unset and the
-consumer falls back to `fieldMap.enums?.[type]` (which itself reflects the
-layer-3 type-level narrowing). The conservative builder lookup is:
+`projectByPath` materializes the per-field allowed set onto `FieldMapEntry.values`
+on each visited field at each path, with all three enum narrowing layers
+composed. The consumer reads it directly:
 
 ```ts
-const allowed = entry.values ?? projectedSet.maps[mapName].enums?.[entry.type] ?? [];
+const projection = projectByPath(lens);
+const allowed = projection.get('User')?.fields.role?.values ?? [];
 ```
 
-For per-path enum divergence (e.g. `User.role` picks `['admin']` at root but
-`['member']` via `posts.author`), `projectNarrowing` takes the **union** across
-sibling paths — a value is visible in the projection if visible at *some* path —
-and then intersects with `mapDefaults` (applies-everywhere still bites). This
-keeps the flat projection useful as a "what can the AI/builder see at all"
-contract. For path-aware truth at runtime, use `resolveVisit(policy, ...)`.
+Each path key gets its own resolved field set, so path-specific enum divergence
+is preserved (e.g. `User.role` picks `['admin']` at root and `['member']` via
+`posts.author` — each path's allowed values stand on their own, no leakage).
 
 `checkRuleAgainstLens` rejects rule values not in the resolved set — leaf
 rules, plus inside `all`/`any`/`if`/`arrayRule.condition` (it recurses with
@@ -601,25 +591,46 @@ const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' })
 // plan.steps[plan.steps.length - 1].where is your Prisma where clause.
 ```
 
-### `projectNarrowing(lens)` — flat surface for SDK contracts
+### `projectByPath(lens)` — path-keyed projection
 
 ```ts
-import { projectNarrowing } from '@inixiative/json-rules';
+import { projectByPath } from '@inixiative/json-rules';
 
-const projected = projectNarrowing(narrowing);
-// FieldMapSet with picks/omits applied to fields and enum values narrowed.
-// Use this to emit OpenAPI specs, generate SDK types, drive a UI rule builder.
+const projection = projectByPath(narrowing);
+// Map<dottedPath, ProjectedVisit>
+//   key:   dotted path from the lens anchor, e.g. "Post", "Post.author", "Post.editor"
+//   value: { mapName, modelName, fields, whereClauses }
 ```
 
-`projectNarrowing` flattens per-path narrowings to a model-keyed
-`FieldMapSet` — sibling paths to the same model are **unioned** (a field is
-visible if visible at *some* path; chain composition within a single path is
-still intersected), then intersected with `mapDefaults`. For rules that depend
-on the path (e.g. `User.manager.password` allowed but `User.posts.author.password`
-not), `checkRuleAgainstLens` is the path-aware authority. `projectNarrowing`
-is intended for the consumer-facing schema contract — "what fields can the
-AI/builder reference anywhere in this lens." The runtime check uses path-aware
-composition through `resolvePolicy` / `resolveVisit`.
+`ProjectedVisit.fields` contains only the fields visible at *this specific
+visit*. Composition at each visit: path-specific picks/omits/enumPicks/enumOmits
+(chain-intersected across narrowing layers) ∩ `mapDefaults[X].models[Y]` for
+the target model (chain-intersected) ∩ `mapDefaults[X].enums` registry
+narrowing. Enum allowed values are inlined into each field entry's `.values`.
+
+Sibling paths to the same model are independent — `Post.author` and
+`Post.editor` each carry their own narrowing, no leakage. This is the
+foundation for any path-aware consumer: validation whitelists, SDK schema
+generation, search-field enumeration.
+
+Example — enumerate all reachable scalar/enum paths through the lens:
+
+```ts
+const projection = projectByPath(lens);
+const lensAnchor = lens.model;
+const paths: string[] = [];
+for (const [dottedPath, visit] of projection) {
+  const prefix = dottedPath === lensAnchor ? '' : `${dottedPath.slice(lensAnchor.length + 1)}.`;
+  for (const [field, entry] of Object.entries(visit.fields)) {
+    if (entry.kind === 'scalar' || entry.kind === 'enum') paths.push(`${prefix}${field}`);
+  }
+}
+```
+
+For the runtime per-path narrowing facts (without materializing the whole
+projection), `resolveVisit(policy, mapName, modelName, relPath)` returns the
+same composition for a single visit. `checkRuleAgainstLens` uses it
+internally — it's the path-aware authority for "is this rule field allowed."
 
 ## 11. Describe-and-validate vs deny-at-execution
 

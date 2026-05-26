@@ -1,10 +1,10 @@
 # Changelog
 
-## 3.0.0
+## 2.5.0
 
 **Breaking:** `projectNarrowing` removed. `projectByPath` is the projection primitive.
 
-The flat `FieldMapSet` shape `projectNarrowing` returned was structurally lossy — it couldn't represent "User looks different at `Post.author` vs `Post.editor`" when two sibling relation paths targeted the same model. Every attempt to pick a sibling-collapse semantic was wrong-by-shape: 2.2 chose intersection (silent ∅), 2.3 chose union (silently leaked sibling-only fields — a security regression for consumers using projection as an access whitelist), 2.4 reverted to intersection and added `projectByPath` alongside. 3.0 commits to path-keyed as the only projection primitive.
+The flat `FieldMapSet` shape `projectNarrowing` returned was structurally lossy — it couldn't represent "User looks different at `Post.author` vs `Post.editor`" when two sibling relation paths targeted the same model. Every attempt to pick a sibling-collapse semantic was wrong-by-shape: 2.2 chose intersection (silent ∅), 2.3 chose union (silently leaked sibling-only fields — a security regression for consumers using projection as an access whitelist), 2.4 reverted to intersection and added `projectByPath` alongside. 2.5 commits to path-keyed as the only projection primitive.
 
 ### Migration
 
@@ -36,7 +36,7 @@ Each key in `PathProjection` is the dotted path from the lens anchor (e.g. `"Use
 
 - `resolveVisit`, `checkRuleAgainstLens`, `applyLens` were already path-correct via `relPath` descent. Unchanged.
 - `validateNarrowing` unchanged.
-- The pre-3.0 bridge-pruning logic (drop the `bridges[]` array entry when its key field was narrowed away) doesn't have a direct equivalent — `projectByPath` doesn't return a bridges array. The bridge-key field's presence at each visit is the truth; consumers walking the projection see what's reachable.
+- The pre-2.5 bridge-pruning logic (drop the `bridges[]` array entry when its key field was narrowed away) doesn't have a direct equivalent — `projectByPath` doesn't return a bridges array. The bridge-key field's presence at each visit is the truth; consumers walking the projection see what's reachable.
 - See [docs/LENS.md §10](./docs/LENS.md) for the full API.
 
 ## 2.4.0

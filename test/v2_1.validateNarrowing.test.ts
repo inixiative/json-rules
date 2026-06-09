@@ -206,6 +206,29 @@ describe('validateNarrowing — where anchoring', () => {
       }),
     ).toThrow(/title|not.*on.*User/i);
   });
+
+  test("root.where on a field excluded by this layer's OWN picks → OK (validated against parent)", () => {
+    // picks narrow what's exposed downstream; the where scopes incoming rows, which still carry password.
+    expect(() =>
+      validateNarrowing({
+        parent: lens,
+        root: {
+          picks: ['id', 'email'],
+          where: { field: 'password', operator: Operator.equals, value: 'x' },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  test('root.where on a field a PARENT layer picked away → error', () => {
+    const parent = withParent(lens, { root: { picks: ['id', 'email'] } });
+    expect(() =>
+      validateNarrowing({
+        parent,
+        root: { where: { field: 'password', operator: Operator.equals, value: 'x' } },
+      }),
+    ).toThrow(/password|not.*resolve|narrowed/i);
+  });
 });
 
 describe('validateNarrowing — enum cross-layer strictness (2.2.0)', () => {

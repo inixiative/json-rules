@@ -254,7 +254,7 @@ describe('validateNarrowing — root.where', () => {
     ).not.toThrow();
   });
 
-  test('root.where referencing field omitted at this narrowing throws', () => {
+  test('root.where referencing a field this narrowing omits is OK (own omit narrows output, not where scope)', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
@@ -263,10 +263,10 @@ describe('validateNarrowing — root.where', () => {
           where: { field: 'email', operator: Operator.equals, value: 'x' },
         },
       }),
-    ).toThrow(/where.*'email'/);
+    ).not.toThrow();
   });
 
-  test('root.where referencing field not picked throws', () => {
+  test("root.where referencing a field this narrowing doesn't pick is OK (validated against parent)", () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
@@ -275,7 +275,7 @@ describe('validateNarrowing — root.where', () => {
           where: { field: 'email', operator: Operator.equals, value: 'x' },
         },
       }),
-    ).toThrow(/where.*'email'/);
+    ).not.toThrow();
   });
 
   test('root.where referencing field omitted by ancestor throws', () => {

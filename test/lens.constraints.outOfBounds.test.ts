@@ -26,7 +26,7 @@ const map: FieldMap = {
 const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'FanUser' });
 
 describe('constraints — out-of-bounds investigation', () => {
-  test('validateNarrowing rejects root.where referencing a field the same narrowing omits', () => {
+  test('validateNarrowing allows root.where on a field the same narrowing omits (where scopes incoming rows; omit only narrows output)', () => {
     expect(() =>
       validateNarrowing({
         parent: lens,
@@ -35,7 +35,7 @@ describe('constraints — out-of-bounds investigation', () => {
           where: { field: 'secretField', operator: Operator.equals, value: 'x' },
         },
       }),
-    ).toThrow(/where.*'secretField'/);
+    ).not.toThrow();
   });
 
   test('validateNarrowing rejects root.where referencing a field ancestor picked away', () => {

@@ -450,7 +450,8 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   }
 
   if (narrowing.root?.where !== undefined) {
-    const check = checkRuleAgainstLens(narrowing.root.where, narrowing);
+    // where filters incoming rows → validate against the parent surface, not this layer's own picks
+    const check = checkRuleAgainstLens(narrowing.root.where, narrowing.parent);
     for (const v of check.violations) {
       errors.push(`root.where: '${v.path}' ${v.reason}`);
     }

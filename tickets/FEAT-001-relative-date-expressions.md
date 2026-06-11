@@ -1,6 +1,6 @@
 # FEAT-001: Relative & Calendar Date Expressions
 
-**Status**: 🆕 Not Started — **design finalized**
+**Status**: ✅ Done (v2.6.0) — `check`, `toPrisma`, `toSql`
 **Assignee**: TBD
 **Priority**: Medium
 **Created**: 2026-05-27

@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.6.0
+
+Two additive primitives: relative/calendar **date expressions** and an ordered
+**windowing** selector.
+
+### Date expressions + `within` operator
+
+`DateRule.value` now accepts structured, serializable date expressions. Positive
+magnitudes only — direction lives in the keyword. Units are dayjs words
+(`day`/`week`/`isoWeek`/`month`/`quarter`/`year`/`hour`/`minute`/`second`).
+
+- **Point** (with `before`/`after`/`onOrBefore`/`onOrAfter`, or `between` endpoints):
+  `{ ago: { days: 30 } }`, `{ ahead: { months: 2 } }`, `{ start: <period> }`, `{ end: <period> }`
+- **Range** (with the new **`within`** operator): `{ this: 'month' }`, `{ last: 'week' }`,
+  `{ next: 'quarter' }`, and rolling windows `{ ago: {…} }` / `{ ahead: {…} }`
+- Bare period + `before`/`after` ⇒ implied edge (`before`→start, `after`→end).
+
+```ts
+// "more than 30 days ago"
+{ field: 'completedAt', dateOperator: 'before', value: { ago: { days: 30 } } }
+// "this month"
+{ field: 'completedAt', dateOperator: 'within', value: { this: 'month' } }
+```
+
+`now` is an explicit evaluator input (no implicit `Date.now()`); `check`/`toPrisma`/`toSql`
+throw when a relative/period expression is used without it. `timeZone` (default
+`'UTC'`) and `weekStart` (default `'monday'` → isoWeek) are per-call options on the
+existing options bags. Compilers resolve expressions to concrete `Date` bounds at
+compile time, so all three targets compare the same instant.
+
+### Windowing selector (`orderBy` / `take` / `skip`)
+
+Array and aggregate rules accept an ordered-window selector that runs before the
+predicate (pipeline: order → skip → take):
+
+```ts
+// "user whose last fanMission was more than 30 days ago"
+{
+  field: 'fanMissions',
+  orderBy: [{ field: 'completedAt', dir: 'desc' }],
+  take: 1,
+  arrayOperator: 'all',
+  condition: { field: 'completedAt', dateOperator: 'before', value: { ago: { days: 30 } } },
+}
+```
+
+Empty-window semantics are author-driven (`all` is vacuously true; `atLeast: 1`
+requires existence). Windowing is **`check()`-only** for now — `toPrisma`/`toSql`
+throw a clear "unsupported; evaluate with check()" error rather than miscompile.
+
 ## 2.5.0
 
 **Breaking:** `projectNarrowing` removed. `projectByPath` is the projection primitive.

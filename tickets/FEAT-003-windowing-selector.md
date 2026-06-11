@@ -1,6 +1,6 @@
 # FEAT-003: Windowing Selector (orderBy / take / skip)
 
-**Status**: 🆕 Not Started
+**Status**: ✅ Done in `check()` (v2.6.0) — compiler extremal rewrite deferred (see Open Questions)
 **Assignee**: TBD
 **Priority**: Medium
 **Created**: 2026-06-11
@@ -49,11 +49,12 @@ No engine default. Author expresses intent via the array operator:
 
 ## Scope
 
-- `check()` — full support, all window shapes.
-- `toPrisma` / `toSql` — **extremal only** (`take: 1`, no `skip`): rewrite to
-  existence predicates (`all` → `none {…}`, existence → `some {…}`). Guard emitted
-  only when author wrote it.
-- General `take: N` (N>1) or any `skip` → throw "unsupported on this backend".
+- `check()` — full support, all window shapes. ✅ Shipped in v2.6.0.
+- `toPrisma` / `toSql` — currently **reject all windowed rules** with a clear
+  "unsupported; evaluate with check()" error (validator + builder), so nothing
+  miscompiles. The extremal (`take: 1`) `none`/`some` rewrite is **deferred** — it
+  is only provably correct in a narrow case (take 1, single orderBy on the field the
+  condition compares) and warrants its own design pass on validity conditions.
 
 ## Tasks
 

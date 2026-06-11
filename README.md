@@ -41,7 +41,9 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - `if` / `then` / `else`
 - array validation against nested object elements
 - array aggregates — `sum` and `avg` across numeric arrays or relation lists
+- ordered windowing — first/last `N` with `orderBy` / `take` / `skip` (check-only)
 - date comparisons with timezone-aware runtime evaluation
+- relative & calendar date expressions — "last 30 days", "this month" — via `within` and `ago`/`ahead`/`this`/`last`/`next`
 - relative value references via `path`
 - custom error messages on every rule
 - compilation to Prisma and PostgreSQL for supported subsets
@@ -97,6 +99,7 @@ Supported comparison operators for aggregate rules: `equals`, `notEquals`, `less
 - `after`
 - `onOrBefore`
 - `onOrAfter`
+- `within`
 - `between`
 - `notBetween`
 - `dayIn`
@@ -207,6 +210,91 @@ Empty-array semantics: `sum([]) = 0`, `avg([]) = null` (comparison fails).
   value: '2026-01-01'
 }
 ```
+
+### Relative & Calendar Date Expressions
+
+A date rule's `value` can be a structured, serializable expression instead of an
+absolute date. Magnitudes are always **positive** — direction lives in the keyword.
+Units are dayjs words: `day`, `week`, `isoWeek`, `month`, `quarter`, `year`,
+`hour`, `minute`, `second`.
+
+**Point expressions** — pair with `before` / `after` / `onOrBefore` / `onOrAfter`,
+or as `between` endpoints:
+
+```ts
+// "more than 30 days ago"
+{ field: 'completedAt', dateOperator: DateOperator.before, value: { ago: { days: 30 } } }
+
+// "within the next 2 months"
+{ field: 'dueAt', dateOperator: DateOperator.after, value: { ahead: { months: 2 } } }
+
+// a named edge of a calendar period
+{ field: 'completedAt', dateOperator: DateOperator.before, value: { end: { last: 'month' } } }
+```
+
+**Range expressions** — pair with the `within` operator:
+
+```ts
+// "this month"
+{ field: 'completedAt', dateOperator: DateOperator.within, value: { this: 'month' } }
+
+// "last week", "next quarter"
+{ field: 'completedAt', dateOperator: DateOperator.within, value: { last: 'week' } }
+
+// rolling window: "within the last 30 days"  →  [now - 30d, now]
+{ field: 'completedAt', dateOperator: DateOperator.within, value: { ago: { days: 30 } } }
+```
+
+A **bare period** with `before` / `after` resolves to the only sensible edge —
+`before { last: 'month' }` is *before the start* of last month, `after { next: 'month' }`
+is *after the end* of next month. Use `{ start: … }` / `{ end: … }` for the other edge.
+
+#### The `now` contract and config
+
+Relative/calendar expressions need a reference instant. `now` is an **explicit
+evaluator input** — there is no implicit `Date.now()` inside the library. Pass it
+on the same options bag as everything else; `check`/`toPrisma`/`toSql` **throw** if
+a relative expression is used without it.
+
+```ts
+check(rule, data, { now, timeZone: 'America/New_York', weekStart: 'sunday' });
+toPrisma(rule, { map, model, now });
+toSql(rule, { now });
+```
+
+| Option | Default | Governs |
+| --- | --- | --- |
+| `now` | — (required when a relative/period expression is present) | the anchor instant |
+| `timeZone` | `'UTC'` | how `now` and period boundaries localize |
+| `weekStart` | `'monday'` (ISO / isoWeek) | start of `week` for `this`/`last`/`next` |
+
+Compilers resolve expressions to concrete `Date` bounds at compile time, so
+`check()`, `toPrisma()`, and `toSql()` all compare the same instant.
+
+### Windowing — first/last with `orderBy` / `take` / `skip`
+
+Array and aggregate rules accept an ordered-window selector that runs **before** the
+predicate. Pipeline: order → skip → take. Direction comes from `orderBy.dir`, so
+"the last fanMission" is `order by date desc, take 1`.
+
+```ts
+// "user whose last fanMission was more than 30 days ago"
+{
+  field: 'fanMissions',
+  orderBy: [{ field: 'completedAt', dir: 'desc' }],
+  take: 1,
+  arrayOperator: ArrayOperator.all,
+  condition: { field: 'completedAt', dateOperator: DateOperator.before, value: { ago: { days: 30 } } },
+}
+```
+
+`orderBy` is a non-empty array of `{ field, dir: 'asc' | 'desc' }` (multi-key);
+`take`/`skip` are non-negative integers. **Empty-window semantics are author-driven**:
+`all` is vacuously true on an empty window, `atLeast: 1` (or `any`) is false. To require
+"the windowed element matches **and** one exists," combine `all` with `notEmpty` / `atLeast: 1`.
+
+> Windowing is **`check()`-only**. `toPrisma()` / `toSql()` throw a clear "unsupported"
+> error for windowed rules rather than miscompile — evaluate them in memory with `check()`.
 
 ## Path Semantics
 
@@ -393,7 +481,9 @@ Not every backend supports every rule shape.
 | Aggregate `sum` / `avg` — primitive or object array | Yes | No | Yes |
 | Aggregate `sum` / `avg` — relation list | Yes | Yes, with `map` + `model` | No |
 | Date comparisons | Yes | Most | Yes |
+| Date expressions (`ago`/`ahead`/`this`/`last`/`next`/`start`/`end`) + `within` | Yes | Yes | Yes |
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
+| Windowing (`orderBy` / `take` / `skip`) | Yes | No | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
 
 ### Prisma Limitations

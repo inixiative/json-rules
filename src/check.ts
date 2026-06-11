@@ -3,6 +3,7 @@ import { checkDate } from './date';
 import { checkField } from './field';
 import { ArrayOperator, Operator } from './operator';
 import type { AggregateRule, ArrayRule, Condition, DateConfig } from './types';
+import { applyWindow } from './window';
 
 type Row = Record<string, unknown>;
 type CheckData = Row | unknown[];
@@ -110,8 +111,9 @@ const checkAggregate = <TData extends CheckData>(
   data: TData,
   opts: CheckOptions,
 ): boolean | string => {
-  const arrayValue = get(data, condition.field);
-  if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
+  const rawArray = get(data, condition.field);
+  if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
+  const arrayValue = applyWindow(rawArray, condition);
 
   const { mode, field: itemField } = condition.aggregate;
   if (mode !== 'sum' && mode !== 'avg') {
@@ -191,10 +193,10 @@ const checkArray = <TData extends CheckData>(
   data: TData,
   opts: CheckOptions,
 ): boolean | string => {
-  const arrayValue = condition.field ? get(data, condition.field) : data;
+  const rawArray = condition.field ? get(data, condition.field) : data;
 
-  if (!Array.isArray(arrayValue))
-    throw new Error(`${condition.field || '(root)'} must be an array`);
+  if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
+  const arrayValue = applyWindow(rawArray, condition);
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 
@@ -233,7 +235,7 @@ const checkArray = <TData extends CheckData>(
       );
     }
 
-    if (!some(arrayValue, isObject))
+    if (arrayValue.length > 0 && !some(arrayValue, isObject))
       return getError(
         `contains only primitive values; use 'in' or 'contains' instead of array operators on primitive arrays`,
       );

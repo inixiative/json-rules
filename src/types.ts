@@ -209,7 +209,17 @@ export type StrictAggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleVal
       operator: AggregateRangeOperator;
     } & ValueSource<[number, number]>);
 
-export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
+// --- Windowing selector (v2.6.0) ---
+// Ordered selection on array/aggregate rules. Pipeline: order → skip → take.
+export type SortDir = 'asc' | 'desc';
+export type OrderBy = { field: string; dir: SortDir }[];
+export type WindowFields = {
+  orderBy?: OrderBy;
+  take?: number;
+  skip?: number;
+};
+
+export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields & {
   field: string;
   aggregate: { mode: AggregateMode; field?: string };
   condition?: Condition<TRuleValue, TDateValue>;
@@ -227,7 +237,7 @@ export type Rule<TValue = RuleValue> = {
   error?: string;
 };
 
-export type ArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
+export type ArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields & {
   field?: string;
   arrayOperator: ArrayOperator;
   condition?: Condition<TRuleValue, TDateValue>;

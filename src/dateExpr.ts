@@ -115,6 +115,23 @@ export const resolveDateExpr = (expr: DateExpr, config: DateConfig): dayjs.Dayjs
 };
 
 /**
+ * Resolve the single comparison point for before/after/onOrBefore/onOrAfter.
+ * Bare period → implied edge (before/onOrBefore → start; after/onOrAfter → end).
+ * Rolling/edge → their point. Shared by check, toPrisma, and toSql.
+ */
+export const resolvePointForOperator = (
+  expr: DateExpr,
+  operator: string,
+  config: DateConfig,
+): dayjs.Dayjs => {
+  if (isPeriodExpr(expr)) {
+    const [start, end] = resolvePeriodRange(expr, config);
+    return operator === 'before' || operator === 'onOrBefore' ? start : end;
+  }
+  return resolveDateExpr(expr, config);
+};
+
+/**
  * Resolve a range expression (for `within`).
  * Period → its [start, end]; rolling → [now-Δ, now] / [now, now+Δ].
  */

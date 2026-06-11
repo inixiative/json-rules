@@ -1,4 +1,4 @@
-import type { Condition } from '../types';
+import type { Condition, DateConfig } from '../types';
 import { buildCondition } from './condition';
 import type { BuilderState, FieldMap, SqlResult } from './types';
 
@@ -9,7 +9,7 @@ type SqlBuildOptions = {
   model?: string;
   alias?: string; // root table alias, defaults to 't0' when map is provided
   context?: Record<string, unknown>;
-};
+} & DateConfig;
 
 export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResult => {
   const hasMap = !!(options?.map && options?.model);
@@ -19,6 +19,7 @@ export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResul
     params: [],
     paramIndex: 0,
     context: options?.context,
+    dateConfig: { now: options?.now, timeZone: options?.timeZone, weekStart: options?.weekStart },
     map: options?.map,
     currentModel: options?.model,
     currentAlias: rootAlias,

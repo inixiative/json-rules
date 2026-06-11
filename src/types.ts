@@ -12,7 +12,52 @@ export type RuleValue = RuleScalar | Date | RegExp | RuleValue[] | { [key: strin
 export type OrderedRuleValue = string | number | Date;
 
 export type DateInputValue = string | number | Date;
-export type DateRuleValue = DateInputValue | [DateInputValue, DateInputValue] | string[];
+
+// --- Relative & calendar date expressions (v2.6.0) ---
+// Positive magnitudes only; direction lives in the keyword. Units are dayjs words.
+export type RelativeUnits = {
+  years?: number;
+  quarters?: number;
+  months?: number;
+  weeks?: number;
+  days?: number;
+  hours?: number;
+  minutes?: number;
+  seconds?: number;
+};
+export type PeriodUnit =
+  | 'year'
+  | 'quarter'
+  | 'month'
+  | 'week'
+  | 'isoWeek'
+  | 'day'
+  | 'hour'
+  | 'minute'
+  | 'second';
+
+// Point expressions — resolve to a single instant.
+export type RollingExpr = { ago: RelativeUnits } | { ahead: RelativeUnits };
+export type PeriodExpr = { this: PeriodUnit } | { last: PeriodUnit } | { next: PeriodUnit };
+export type EdgeExpr = { start: PeriodExpr } | { end: PeriodExpr };
+
+// A date expression is either a point (rolling/edge) or a range (period/rolling).
+export type DateExpr = RollingExpr | PeriodExpr | EdgeExpr;
+
+export type DateInputOrExpr = DateInputValue | DateExpr;
+
+export type DateRuleValue =
+  | DateInputValue
+  | DateExpr
+  | [DateInputOrExpr, DateInputOrExpr]
+  | string[];
+
+export type WeekStart = 'monday' | 'sunday';
+export type DateConfig = {
+  now?: DateInputValue;
+  timeZone?: string;
+  weekStart?: WeekStart;
+};
 
 type ValueSource<TValue> = { value: TValue; path?: never } | { path: string; value?: never };
 type NoValueSource = { value?: never; path?: never };

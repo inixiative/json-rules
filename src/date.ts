@@ -4,8 +4,15 @@ import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { get } from 'lodash-es';
+import {
+  isDateExpr,
+  isPeriodExpr,
+  resolveDateExpr,
+  resolveDateExprRange,
+  resolvePeriodRange,
+} from './dateExpr';
 import { DateOperator } from './operator';
-import type { DateInputValue, DateRule } from './types';
+import type { DateConfig, DateInputValue, DateRule } from './types';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -16,6 +23,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
   context: TData,
+  config: DateConfig = {},
 ): boolean | string => {
   const fieldValue = get(data, condition.field) as unknown;
 
@@ -31,7 +39,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
   // Parse comparison dates with timezone context - pass the original string to preserve offset info
-  const dates = parseCompareDates(condition, data, context, fieldDate, fieldValue);
+  const dates = parseCompareDates(condition, data, context, fieldDate, fieldValue, config);
   const compareDate = dates[0];
   const endDate = dates[1];
 
@@ -53,6 +61,14 @@ export const checkDate = <TData extends Record<string, unknown>>(
         fieldDate.isSameOrAfter(compareDate) ||
         getError(`must be on or after ${compareDate.format()}`)
       );
+
+    case DateOperator.within: {
+      if (!endDate) throw new Error('within operator requires a range');
+      return (
+        (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate)) ||
+        getError(`must be within ${compareDate.format()} and ${endDate.format()}`)
+      );
+    }
 
     case DateOperator.between: {
       if (!endDate) throw new Error('between operator requires an end date');
@@ -98,15 +114,26 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   context: TData,
   _fieldDate: dayjs.Dayjs,
   fieldValue: DateInputValue,
+  config: DateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
+  if (condition.dateOperator === DateOperator.within) {
+    if (!isDateExpr(condition.value))
+      throw new Error('within operator requires a range date expression');
+    return resolveDateExprRange(condition.value, config);
+  }
+
   const requiresTwoDates: DateOperator[] = [DateOperator.between, DateOperator.notBetween];
 
   if (requiresTwoDates.includes(condition.dateOperator)) {
     if (!Array.isArray(condition.value) || condition.value.length !== 2)
       throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const [rawDate1, rawDate2] = condition.value as [DateInputValue, DateInputValue];
-    const date1 = parseDateWithTimezone(rawDate1, fieldValue);
-    const date2 = parseDateWithTimezone(rawDate2, fieldValue);
+    const [rawDate1, rawDate2] = condition.value as [unknown, unknown];
+    const date1 = isDateExpr(rawDate1)
+      ? resolveDateExpr(rawDate1, config)
+      : parseDateWithTimezone(rawDate1 as DateInputValue, fieldValue);
+    const date2 = isDateExpr(rawDate2)
+      ? resolveDateExpr(rawDate2, config)
+      : parseDateWithTimezone(rawDate2 as DateInputValue, fieldValue);
     if (!date1.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
     if (!date2.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
     // Auto-sort: ensure startDate <= endDate
@@ -125,6 +152,17 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   if (requiresOneDate.includes(condition.dateOperator)) {
     let value: DateInputValue | undefined;
     if (condition.value !== undefined) {
+      if (isDateExpr(condition.value)) {
+        // Bare period + before/after ⇒ implied edge (before→start, after→end).
+        if (isPeriodExpr(condition.value)) {
+          const [start, end] = resolvePeriodRange(condition.value, config);
+          const useStart =
+            condition.dateOperator === DateOperator.before ||
+            condition.dateOperator === DateOperator.onOrBefore;
+          return [useStart ? start : end, undefined];
+        }
+        return [resolveDateExpr(condition.value, config), undefined];
+      }
       if (Array.isArray(condition.value)) {
         throw new Error(`${condition.dateOperator} operator requires a single date value`);
       }

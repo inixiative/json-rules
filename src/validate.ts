@@ -1,3 +1,4 @@
+import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
 import { ArrayOperator, type DateOperator, Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
@@ -10,7 +11,29 @@ import {
   type RuleTarget,
   type ValueShape,
 } from './operatorCatalog';
-import type { Condition, DateInputValue, OrderedRuleValue } from './types';
+import type { Condition, DateExpr, DateInputValue, OrderedRuleValue } from './types';
+
+const PERIOD_UNITS = new Set([
+  'year',
+  'quarter',
+  'month',
+  'week',
+  'isoWeek',
+  'day',
+  'hour',
+  'minute',
+  'second',
+]);
+const RELATIVE_UNIT_KEYS = new Set([
+  'years',
+  'quarters',
+  'months',
+  'weeks',
+  'days',
+  'hours',
+  'minutes',
+  'seconds',
+]);
 
 export type ValidationIssue = {
   path: string;
@@ -265,6 +288,8 @@ const validateAggregateRule = (
   path: string,
   context: ValidationContext,
 ): void => {
+  validateWindow(rule, path, context);
+
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Aggregate rule requires a string field');
   }
@@ -378,6 +403,8 @@ const validateArrayRule = (
       );
     }
   }
+
+  validateWindow(rule, path, context);
 
   if (typeof rule.arrayOperator !== 'string' || !ARRAY_OPERATORS.has(rule.arrayOperator)) {
     pushIssue(context, `${path}.arrayOperator`, 'invalid_array_operator', 'Unknown array operator');
@@ -527,15 +554,36 @@ const validateDateRule = (
   if (!requireValueOrPath(rule, path, context)) return;
   if ('path' in rule && typeof rule.path === 'string') return;
 
+  // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
+  if (isDateExpr(rule.value)) {
+    validateDateExpr(rule.value, operator, `${path}.value`, context);
+    return;
+  }
+
+  if (operator === 'within') {
+    // `within` only accepts an expression range (period or rolling), not a literal pair.
+    pushIssue(
+      context,
+      `${path}.value`,
+      'invalid_date_range',
+      `Date operator 'within' requires a range date expression (a period or rolling window)`,
+    );
+    return;
+  }
+
   if (shape === 'dateRange') {
-    if (!isDateRange(rule.value)) {
+    if (!isDateRangeOrExprPair(rule.value)) {
       pushIssue(
         context,
         `${path}.value`,
         'invalid_date_range',
         `Date operator '${operator}' requires a two-item date range`,
       );
+      return;
     }
+    (rule.value as unknown[]).forEach((item, i) => {
+      if (isDateExpr(item)) validateDateExpr(item, operator, `${path}.value[${i}]`, context);
+    });
     return;
   }
 
@@ -547,6 +595,86 @@ const validateDateRule = (
       `Date operator '${operator}' requires a date-like value`,
     );
   }
+};
+
+// --- v2.6 date-expression validation ---
+const validateRelativeUnits = (units: unknown, path: string, context: ValidationContext): void => {
+  if (!isPlainObject(units) || Object.keys(units).length === 0) {
+    pushIssue(
+      context,
+      path,
+      'invalid_relative_units',
+      'Relative offset requires at least one unit',
+    );
+    return;
+  }
+  for (const [key, magnitude] of Object.entries(units)) {
+    if (!RELATIVE_UNIT_KEYS.has(key)) {
+      pushIssue(
+        context,
+        `${path}.${key}`,
+        'invalid_relative_unit',
+        `Unknown relative unit '${key}'`,
+      );
+      continue;
+    }
+    if (typeof magnitude !== 'number' || !Number.isFinite(magnitude) || magnitude < 0) {
+      pushIssue(
+        context,
+        `${path}.${key}`,
+        'invalid_relative_magnitude',
+        `Relative magnitudes must be positive numbers (got ${String(magnitude)})`,
+      );
+    }
+  }
+};
+
+const validatePeriodUnit = (unit: unknown, path: string, context: ValidationContext): void => {
+  if (typeof unit !== 'string' || !PERIOD_UNITS.has(unit)) {
+    pushIssue(context, path, 'invalid_period_unit', `Unknown period unit '${String(unit)}'`);
+  }
+};
+
+const validateDateExpr = (
+  expr: DateExpr,
+  operator: DateOperator,
+  path: string,
+  context: ValidationContext,
+): void => {
+  const isRange = operator === 'within';
+
+  if (isRollingExpr(expr)) {
+    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context);
+    return;
+  }
+
+  if (isPeriodExpr(expr)) {
+    const unit = 'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
+    validatePeriodUnit(unit, path, context);
+    return;
+  }
+
+  if (isEdgeExpr(expr)) {
+    if (isRange) {
+      pushIssue(
+        context,
+        path,
+        'invalid_date_range',
+        `'within' requires a range (period or rolling); a start/end edge is a single point`,
+      );
+      return;
+    }
+    const period = 'start' in expr ? expr.start : expr.end;
+    if (!isPlainObject(period) || !isPeriodExpr(period)) {
+      pushIssue(context, path, 'invalid_period_unit', `start/end requires a this/last/next period`);
+      return;
+    }
+    const unit = 'this' in period ? period.this : 'last' in period ? period.last : period.next;
+    validatePeriodUnit(unit, path, context);
+    return;
+  }
+
+  pushIssue(context, path, 'invalid_date_expression', 'Unrecognized date expression');
 };
 
 const requireValueOrPath = (
@@ -607,11 +735,58 @@ const isNumericRange = (value: unknown): value is [number, number] =>
 const isDateInputValue = (value: unknown): value is DateInputValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;
 
-const isDateRange = (value: unknown): value is [DateInputValue, DateInputValue] =>
+const isDateRangeOrExprPair = (value: unknown): boolean =>
   Array.isArray(value) &&
   value.length === 2 &&
-  isDateInputValue(value[0]) &&
-  isDateInputValue(value[1]);
+  (isDateInputValue(value[0]) || isDateExpr(value[0])) &&
+  (isDateInputValue(value[1]) || isDateExpr(value[1]));
+
+const validateWindow = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+): void => {
+  if ('orderBy' in rule && rule.orderBy !== undefined) {
+    const ob = rule.orderBy;
+    if (!Array.isArray(ob) || ob.length === 0) {
+      pushIssue(
+        context,
+        `${path}.orderBy`,
+        'invalid_order_by',
+        'orderBy must be a non-empty array of { field, dir }',
+      );
+    } else {
+      ob.forEach((o, i) => {
+        if (
+          !isPlainObject(o) ||
+          typeof o.field !== 'string' ||
+          (o.dir !== 'asc' && o.dir !== 'desc')
+        ) {
+          pushIssue(
+            context,
+            `${path}.orderBy[${i}]`,
+            'invalid_order_by',
+            'orderBy entries must be { field: string, dir: "asc" | "desc" }',
+          );
+        }
+      });
+    }
+  }
+
+  for (const key of ['take', 'skip'] as const) {
+    if (key in rule && rule[key] !== undefined) {
+      const v = rule[key];
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
+        pushIssue(
+          context,
+          `${path}.${key}`,
+          `invalid_window_${key}`,
+          `${key} must be a non-negative integer`,
+        );
+      }
+    }
+  }
+};
 
 const pushIssue = (
   context: ValidationContext,

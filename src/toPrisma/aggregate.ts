@@ -1,5 +1,6 @@
 import { Operator } from '../operator';
 import type { AggregateRule, Condition } from '../types';
+import { hasWindow } from '../window';
 import { findReverseRelation } from './relationUtils';
 import type {
   BuildOptions,
@@ -29,6 +30,11 @@ export const buildAggregateRule = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  if (hasWindow(rule))
+    throw new Error(
+      'Windowing (orderBy/take/skip) is not supported by toPrisma(); evaluate with check().',
+    );
+
   if (!options?.map || !options?.model || !state) {
     throw new Error(
       `Aggregate rules require a FieldMap and model to generate a Prisma plan. ` +

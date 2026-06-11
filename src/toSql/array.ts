@@ -1,9 +1,14 @@
 import { ArrayOperator } from '../operator';
 import type { ArrayRule } from '../types';
+import { hasWindow } from '../window';
 import { quoteField } from './quoting';
 import type { BuilderState } from './types';
 
+const WINDOW_UNSUPPORTED =
+  'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().';
+
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
+  if (hasWindow(rule)) throw new Error(WINDOW_UNSUPPORTED);
   if (!rule.field) {
     throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }

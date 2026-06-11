@@ -746,6 +746,20 @@ const validateWindow = (
   path: string,
   context: ValidationContext,
 ): void => {
+  const windowed =
+    ('orderBy' in rule && rule.orderBy !== undefined) ||
+    ('take' in rule && rule.take !== undefined) ||
+    ('skip' in rule && rule.skip !== undefined);
+
+  if (windowed && context.target !== 'check') {
+    pushIssue(
+      context,
+      path,
+      `unsupported_${targetSlug(context.target)}_window`,
+      `Windowing (orderBy/take/skip) is not supported by ${context.target}(); evaluate with check()`,
+    );
+  }
+
   if ('orderBy' in rule && rule.orderBy !== undefined) {
     const ob = rule.orderBy;
     if (!Array.isArray(ob) || ob.length === 0) {

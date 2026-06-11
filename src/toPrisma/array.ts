@@ -1,8 +1,12 @@
 import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
+import { hasWindow } from '../window';
 import { buildCountStep } from './countStep';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
+
+const WINDOW_UNSUPPORTED =
+  'Windowing (orderBy/take/skip) is not supported by toPrisma(); evaluate with check().';
 
 // Forward declaration - provided by condition.ts to avoid circular import
 type BuildConditionFn = (
@@ -21,6 +25,8 @@ export const buildArrayRule = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  if (hasWindow(rule)) throw new Error(WINDOW_UNSUPPORTED);
+
   // Count operators generate a full WHERE clause (step ref) — skip the nested-filter wrapper
   if (
     rule.arrayOperator === ArrayOperator.atLeast ||

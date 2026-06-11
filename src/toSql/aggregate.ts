@@ -1,12 +1,17 @@
 import { get } from 'lodash-es';
 import { Operator } from '../operator';
 import type { AggregateRule } from '../types';
+import { hasWindow } from '../window';
 import { escapeIdentifier } from './escape';
 import { nextParam } from './params';
 import { quoteField, quoteFieldAsJsonb } from './quoting';
 import type { BuilderState } from './types';
 
 export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): string => {
+  if (hasWindow(rule))
+    throw new Error(
+      'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().',
+    );
   if (rule.condition) {
     throw new Error(
       `Aggregate condition filtering is not yet supported by toSql(). ` +

@@ -1,4 +1,5 @@
 import type { FieldMap } from '../toPrisma/types';
+import type { DateConfig } from '../types';
 
 export type { FieldMap } from '../toPrisma/types';
 
@@ -12,6 +13,7 @@ export type BuilderState = {
   params: unknown[];
   paramIndex: number;
   context?: Record<string, unknown>;
+  dateConfig?: DateConfig;
   // Map-aware state (only populated when map+model are provided)
   map?: FieldMap;
   currentModel?: string;

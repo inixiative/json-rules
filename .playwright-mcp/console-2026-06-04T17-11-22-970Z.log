@@ -1,0 +1,8 @@
+[     924ms] [LOG] JQMIGRATE: Migrate is installed, version 3.4.1 @ https://userevidence.com/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1:1
+[    1328ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at https://www.userevidence.com/:3795:16
+[    1441ms] [LOG] false @ https://www.userevidence.com/:144
+[    1441ms] [LOG] null @ https://www.userevidence.com/:145
+[    3938ms] [TIMEEND] load stylesheets: 2.433837890625 ms @ https://capture.navattic.com/_next/static/chunks/9638-93317535c2362203.js:0
+[    3938ms] [LOG] rebuild: 54.380126953125 ms DOM rebuilt @ https://capture.navattic.com/_next/static/chunks/9638-93317535c2362203.js:0
+[    4438ms] [WARNING] [Meta Pixel] - Duplicate Pixel ID: 759643695858061. @ https://connect.facebook.net/en_US/fbevents.js:183

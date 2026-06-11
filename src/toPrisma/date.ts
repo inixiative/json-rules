@@ -1,8 +1,20 @@
 import { get } from 'lodash-es';
+import {
+  isDateExpr,
+  resolveDateExpr,
+  resolveDateExprRange,
+  resolvePointForOperator,
+} from '../dateExpr';
 import { DateOperator } from '../operator';
-import type { DateRule } from '../types';
+import type { DateConfig, DateRule } from '../types';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
+
+const dateConfigOf = (options?: BuildOptions): DateConfig => ({
+  now: options?.now,
+  timeZone: options?.timeZone,
+  weekStart: options?.weekStart,
+});
 
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
   const filter = buildDateLeafFilter(rule, options);
@@ -36,36 +48,51 @@ const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
 };
 
 const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown => {
-  const val = () => resolveDateValue(rule, options);
+  const config = dateConfigOf(options);
+  // Point operators: resolve a date expression (operator-aware implied edges) to a
+  // concrete Date at compile time, else fall back to literal/path resolution.
+  const point = (): unknown =>
+    isDateExpr(rule.value)
+      ? resolvePointForOperator(rule.value, rule.dateOperator, config).toDate()
+      : resolveDateValue(rule, options);
+  const resolveElem = (el: unknown): unknown =>
+    isDateExpr(el) ? resolveDateExpr(el, config).toDate() : el;
 
   switch (rule.dateOperator) {
     case DateOperator.before:
-      return { lt: val() };
+      return { lt: point() };
 
     case DateOperator.after:
-      return { gt: val() };
+      return { gt: point() };
 
     case DateOperator.onOrBefore:
-      return { lte: val() };
+      return { lte: point() };
 
     case DateOperator.onOrAfter:
-      return { gte: val() };
+      return { gte: point() };
+
+    case DateOperator.within: {
+      if (!isDateExpr(rule.value))
+        throw new Error('within date operator requires a range date expression');
+      const [start, end] = resolveDateExprRange(rule.value, config);
+      return { gte: start.toDate(), lte: end.toDate() };
+    }
 
     case DateOperator.between: {
-      const v = val();
+      const v = resolveDateValue(rule, options);
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('between date operator requires an array of two values');
       }
-      const [start, end] = normalizeDateRange(v);
+      const [start, end] = normalizeDateRange(v.map(resolveElem));
       return { gte: start, lte: end };
     }
 
     case DateOperator.notBetween: {
-      const v = val();
+      const v = resolveDateValue(rule, options);
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('notBetween date operator requires an array of two values');
       }
-      const [start, end] = normalizeDateRange(v);
+      const [start, end] = normalizeDateRange(v.map(resolveElem));
       return { NOT: { gte: start, lte: end } };
     }
 

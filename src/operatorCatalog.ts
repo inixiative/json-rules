@@ -105,6 +105,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
   [DateOperator.after]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
   [DateOperator.onOrBefore]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
   [DateOperator.onOrAfter]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
+  [DateOperator.within]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateRange' },
   [DateOperator.between]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateRange' },
   [DateOperator.notBetween]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateRange' },
   [DateOperator.dayIn]: {

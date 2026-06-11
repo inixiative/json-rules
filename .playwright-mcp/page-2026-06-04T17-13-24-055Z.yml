@@ -1,0 +1,457 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e7]:
+          - generic [ref=e9]: The Customer Marketing & Advocacy Salary + Career Benchmark Report is live.
+          - link "Dive In" [ref=e13] [cursor=pointer]:
+            - /url: https://userevidence.com/customer-marketing-advocacy-salary-career-benchmark-report/
+            - generic [ref=e15]: Dive In
+        - generic [ref=e20] [cursor=pointer]: 
+      - generic [ref=e22]:
+        - link "logo of UE in dark text" [ref=e25] [cursor=pointer]:
+          - /url: https://userevidence.com
+          - img "logo of UE in dark text" [ref=e26]
+        - navigation "Menu" [ref=e29]:
+          - text:  
+          - generic "Menu Toggle" [ref=e30]:
+            - list [ref=e31]:
+              - listitem [ref=e32]:
+                - generic [ref=e33]:
+                  - generic [ref=e35]: Platform
+                  - button "Open Platform" [ref=e36] [cursor=pointer]:
+                    - text: 
+                    - generic [ref=e37]:
+                      - generic [ref=e38]: 
+                      - generic [ref=e39]: Open Platform
+              - listitem [ref=e40]:
+                - generic [ref=e41]:
+                  - generic [ref=e43]: Solutions
+                  - button "Open Solutions" [ref=e44] [cursor=pointer]:
+                    - text: 
+                    - generic [ref=e45]:
+                      - generic [ref=e46]: 
+                      - generic [ref=e47]: Open Solutions
+              - listitem [ref=e48]:
+                - generic [ref=e49]:
+                  - generic [ref=e51]: Customers
+                  - button "Open Customers" [ref=e52] [cursor=pointer]:
+                    - text: 
+                    - generic [ref=e53]:
+                      - generic [ref=e54]: 
+                      - generic [ref=e55]: Open Customers
+              - listitem [ref=e56]:
+                - generic [ref=e57]:
+                  - generic [ref=e59]: Resources
+                  - button "Open Resources" [ref=e60] [cursor=pointer]:
+                    - text: 
+                    - generic [ref=e61]:
+                      - generic [ref=e62]: 
+                      - generic [ref=e63]: Open Resources
+              - listitem [ref=e64]:
+                - generic [ref=e65]:
+                  - generic [ref=e67]: Company
+                  - button "Open Company" [ref=e68] [cursor=pointer]:
+                    - text: 
+                    - generic [ref=e69]:
+                      - generic [ref=e70]: 
+                      - generic [ref=e71]: Open Company
+        - generic [ref=e72]:
+          - link "LOG IN" [ref=e76] [cursor=pointer]:
+            - /url: https://app.userevidence.com/users/sign_in
+            - generic [ref=e78]: LOG IN
+          - link "BOOK DEMO" [ref=e82] [cursor=pointer]:
+            - /url: https://userevidence.com/book-demo/
+            - generic [ref=e84]: BOOK DEMO
+          - text: 
+  - generic [ref=e85]:
+    - generic [ref=e87]:
+      - generic [ref=e88]:
+        - heading "Deliver customer proof that buyers trust" [level=1] [ref=e91]
+        - paragraph [ref=e94]: UserEvidence helps B2B marketing teams manage evidence, advocates, and references in one place.
+      - generic [ref=e95]:
+        - link "Book a demo" [ref=e99] [cursor=pointer]:
+          - /url: https://userevidence.com/book-demo/
+          - generic [ref=e101]: Book a demo
+        - link "TAKE A TOUR" [ref=e105] [cursor=pointer]:
+          - /url: "#"
+          - generic [ref=e107]: TAKE A TOUR
+    - generic "Tabs. Open items with Enter or Space, close with Escape and navigate using the Arrow keys." [ref=e112]:
+      - tablist [ref=e113]:
+        - tab "Evidence" [selected] [ref=e114] [cursor=pointer]:
+          - generic [ref=e115]: Evidence
+        - tab "Advocacy" [ref=e116] [cursor=pointer]:
+          - generic [ref=e117]: Advocacy
+        - tab "References" [ref=e118] [cursor=pointer]:
+          - generic [ref=e119]: References
+        - tab "Community" [ref=e120] [cursor=pointer]:
+          - generic [ref=e121]: Community
+        - tab "AI" [ref=e122] [cursor=pointer]:
+          - generic [ref=e123]: AI
+      - tabpanel "Evidence" [ref=e125]
+    - generic [ref=e133]:
+      - group "1 / 24" [ref=e134]:
+        - link "Read Case Study Logo of company" [ref=e135] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-gong-constantly-finds-happy-customers-and-shares-their-stories/
+          - generic [ref=e136]: Read Case Study
+          - img "Logo of company" [ref=e137]
+      - group "2 / 24" [ref=e138]:
+        - img "Logo of company" [ref=e140]
+      - group "3 / 24" [ref=e141]:
+        - img "Logo of company" [ref=e143]
+      - group "4 / 24" [ref=e144]:
+        - img "Logo of company" [ref=e146]
+      - group "5 / 24" [ref=e147]:
+        - img "Logo of company" [ref=e149]
+      - group "6 / 24" [ref=e150]:
+        - link "Read Case Study Logo of company" [ref=e151] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-security-vendor-hackerone-uses-customer-evidence-in-every-gtm-function/
+          - generic [ref=e152]: Read Case Study
+          - img "Logo of company" [ref=e153]
+      - group "7 / 24" [ref=e154]:
+        - img "Logo of company" [ref=e156]
+      - group "8 / 24" [ref=e157]:
+        - img "Logo of company" [ref=e159]
+      - group "9 / 24" [ref=e160]:
+        - img "Logo of company" [ref=e162]
+      - group "10 / 24" [ref=e163]:
+        - img "Logo of company" [ref=e165]
+      - group "11 / 24" [ref=e166]:
+        - img "Logo of company" [ref=e168]
+      - group "12 / 24" [ref=e169]:
+        - link "Read Case Study Logo of company" [ref=e170] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-grammarly-scaled-their-customer-storytelling-engine-while-keeping-the-team-lean/
+          - generic [ref=e171]: Read Case Study
+          - img "Logo of company" [ref=e172]
+      - group "13 / 24" [ref=e173]:
+        - link "Read Case Study Logo of company" [ref=e174] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-gong-constantly-finds-happy-customers-and-shares-their-stories/
+          - generic [ref=e175]: Read Case Study
+          - img "Logo of company" [ref=e176]
+      - group "14 / 24" [ref=e177]:
+        - img "Logo of company" [ref=e179]
+      - group "15 / 24" [ref=e180]:
+        - img "Logo of company" [ref=e182]
+      - group "16 / 24" [ref=e183]:
+        - img "Logo of company" [ref=e185]
+      - group "17 / 24" [ref=e186]:
+        - img "Logo of company" [ref=e188]
+      - group "18 / 24" [ref=e189]:
+        - link "Read Case Study Logo of company" [ref=e190] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-security-vendor-hackerone-uses-customer-evidence-in-every-gtm-function/
+          - generic [ref=e191]: Read Case Study
+          - img "Logo of company" [ref=e192]
+      - group "19 / 24" [ref=e193]:
+        - img "Logo of company" [ref=e195]
+      - group "20 / 24" [ref=e196]:
+        - img "Logo of company" [ref=e198]
+      - group "21 / 24" [ref=e199]:
+        - img "Logo of company" [ref=e201]
+      - group "22 / 24" [ref=e202]:
+        - img "Logo of company" [ref=e204]
+      - group "23 / 24" [ref=e205]:
+        - img "Logo of company" [ref=e207]
+      - group "24 / 24" [ref=e208]:
+        - link "Read Case Study Logo of company" [ref=e209] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-grammarly-scaled-their-customer-storytelling-engine-while-keeping-the-team-lean/
+          - generic [ref=e210]: Read Case Study
+          - img "Logo of company" [ref=e211]
+    - generic [ref=e213]:
+      - generic [ref=e214]:
+        - heading "When finding proof turns into fire drills, trust breaks" [level=2] [ref=e217]
+        - paragraph [ref=e220]: Last-minute asks and random references don’t just slow deals down. They create doubt at the exact moment buyers need confidence.
+      - generic [ref=e221]:
+        - generic [ref=e222]:
+          - generic [ref=e223]:
+            - heading "Last minute references" [level=4] [ref=e226]
+            - paragraph [ref=e238]: Deals stall when the right reference isn’t ready.
+          - generic [ref=e239]:
+            - heading "Hyper-specific proof" [level=4] [ref=e242]
+            - paragraph [ref=e254]: Buyers lose confidence when the proof doesn’t match their reality.
+          - generic [ref=e255]:
+            - heading "Overusing advocates" [level=4] [ref=e258]
+            - paragraph [ref=e270]: Advocates burn out when the same few customers are asked over and over.
+          - generic [ref=e271]:
+            - heading "Half-baked communities" [level=4] [ref=e274]
+            - paragraph [ref=e286]: Communities lose momentum when most customers don’t show up.
+        - generic [ref=e287]:
+          - generic [ref=e290]: 67%
+          - generic [ref=e291]:
+            - heading "of buyers have ruled out a vendor due to untrustworthy evidence." [level=4] [ref=e294]
+            - paragraph [ref=e297]: The Evidence Gap Report, UserEvidence 2025
+            - link "See Full Report" [ref=e301] [cursor=pointer]:
+              - /url: https://userevidence.com/the-evidence-gap-report/
+              - generic [ref=e302]:
+                - img [ref=e304]
+                - generic [ref=e307]: See Full Report
+    - generic [ref=e312]:
+      - heading "How UserEvidence helps buyers trust what you're selling them" [level=2] [ref=e316]
+      - generic [ref=e317]:
+        - generic [ref=e318]:
+          - heading "Evidence" [level=3] [ref=e321]
+          - paragraph [ref=e324]: Collect customer proof buyers actually believe. Capture reviews, stories, and outcomes so proof stays credible and usable over time.
+          - link "Learn More" [ref=e328] [cursor=pointer]:
+            - /url: https://userevidence.com/platform/evidence/
+            - generic [ref=e330]: Learn More
+        - generic [ref=e333]:
+          - heading "Advocacy" [level=3] [ref=e336]
+          - paragraph [ref=e339]: Activate the right customers without burning them out. Coordinate who gets asked, when, and why so advocacy scales responsibly.
+          - link "Learn More" [ref=e343] [cursor=pointer]:
+            - /url: https://userevidence.com/platform/advocacy/
+            - generic [ref=e345]: Learn More
+        - generic [ref=e348]:
+          - heading "References" [level=3] [ref=e351]
+          - paragraph [ref=e354]: Get the right customer into the right deal. Use AI to match buyers with customers based on industry, use case, and context.
+          - link "Learn More" [ref=e358] [cursor=pointer]:
+            - /url: https://userevidence.com/platform/references/
+            - generic [ref=e360]: Learn More
+        - generic [ref=e363]:
+          - heading "Community" [level=3] [ref=e366]
+          - paragraph [ref=e369]:
+            - text: A private, invite-only space for your most trusted advocates.
+            - text: Designed for deeper access, feedback, and ongoing collaboration.
+          - link "Learn More" [ref=e373] [cursor=pointer]:
+            - /url: https://userevidence.com/platform/community/
+            - generic [ref=e375]: Learn More
+      - generic [ref=e383]:
+        - paragraph [ref=e384]: Backed by third-party verified proof
+        - generic [ref=e385]: Customer proof created in UserEvidence is independently verified and tied to real customers, so it holds up when buyers need to defend a decision.
+    - generic [ref=e387]:
+      - generic [ref=e388]:
+        - heading "You'll get value out of UserEvidence if you check these boxes:" [level=2] [ref=e391]
+        - link "See UserEvidence In Action" [ref=e395] [cursor=pointer]:
+          - /url: https://app.userevidence.com/user-research-library
+          - generic [ref=e397]: See UserEvidence In Action
+      - generic [ref=e398]:
+        - generic [ref=e399]:
+          - img "UE check icon" [ref=e402]
+          - heading "You're a customer marketer, product marketer, or marketing leader at a b2b software company" [level=3] [ref=e405]
+        - generic [ref=e406]:
+          - img "UE check icon" [ref=e409]
+          - heading "You have more than 500 end users" [level=3] [ref=e412]
+        - generic [ref=e413]:
+          - img "UE check icon" [ref=e416]
+          - heading "You sell an expensive product in a competitive market" [level=3] [ref=e419]
+        - generic [ref=e420]:
+          - img "UE check icon" [ref=e423]
+          - heading "You struggle to catch up on requests for customer proof" [level=3] [ref=e426]
+    - heading "The kind of proof that holds up in real buying decisions" [level=2] [ref=e431]
+    - generic [ref=e434]:
+      - generic [ref=e435]:
+        - heading "1.3 months" [level=2] [ref=e438]
+        - heading "Average time to ROI reported by UserEvidence users" [level=5] [ref=e441]
+        - paragraph [ref=e444]:
+          - text: "UE verified:"
+          - link "uevi.co/4924GKDE" [ref=e445] [cursor=pointer]:
+            - /url: http://uevi.co/4924GKDE
+      - generic [ref=e449]:
+        - generic [ref=e450]: "\"UserEvidence helps Gong showcase the value our platform provides by generating high-quality customer proof. With the ability to scale content creation, we can dedicate more time to enabling our sellers and building relationships with advocates.\""
+        - generic [ref=e454]:
+          - generic [ref=e455]: Udi Ledergor
+          - generic [ref=e456]: Chief Evangelist, Gong
+      - generic [ref=e457]:
+        - generic [ref=e460]:
+          - generic [ref=e461]: “UserEvidence has become our organization's destination for customer voice. We use it as our department store of stories. It's easy for end users to find and use assets, and it's simple for the customer marketing team to secure new content. It's a marketer's DREAM!”
+          - generic [ref=e465]:
+            - generic [ref=e466]: Irena Kin
+            - generic [ref=e467]: Superhuman
+        - link "Read Case Study" [ref=e471] [cursor=pointer]:
+          - /url: https://userevidence.com/blog/how-grammarly-scaled-their-customer-storytelling-engine-while-keeping-the-team-lean/
+          - generic [ref=e473]: Read Case Study
+        - generic [ref=e475]:
+          - text: "UE verified:"
+          - link "uevi.co/7482IECN" [ref=e476] [cursor=pointer]:
+            - /url: http://uevi.co/7482IECN
+      - generic [ref=e477]:
+        - generic [ref=e480]:
+          - generic [ref=e481]: “UserEvidence has helped us scale our customer storytelling efforts in a way that simply wasn’t possible before. We estimate that voice-of-the-customer content is now used in more than half of our sales deals.”
+          - generic [ref=e485]:
+            - generic [ref=e486]: Ayleen Beltran
+            - generic [ref=e487]: Vanta
+        - generic [ref=e489]:
+          - text: "UE verified:"
+          - link "uevi.co/8449FBZJ" [ref=e490] [cursor=pointer]:
+            - /url: http://uevi.co/8449FBZJ
+      - generic [ref=e491]:
+        - generic [ref=e494]:
+          - generic [ref=e495]: “The cohesiveness of the UserEvidence platform, creates a value-add that other systems do not. Combined with the vision, consistent technical enhancements and the great relationship we have had with the UE teams, makes it a very easy decision year after year.”
+          - generic [ref=e499]:
+            - generic [ref=e500]: Cache Walker
+            - generic [ref=e501]: Trellix
+        - generic [ref=e503]:
+          - text: "UE verified:"
+          - link "uevi.co/8839GXJN" [ref=e504] [cursor=pointer]:
+            - /url: http://uevi.co/8839GXJN
+      - generic [ref=e505]:
+        - generic [ref=e508]:
+          - generic [ref=e509]: “UserEvidence has become a high-impact asset across our revenue organization. By automating the sourcing of product and use-case specific customer feedback, it has saved our Customer Advocacy Marketing Manager over 9 hours per week, freeing up time for higher value strategic work.”
+          - generic [ref=e513]:
+            - generic [ref=e514]: Rachel Ward
+            - generic [ref=e515]: Director, Customer Lifecycle Marketing and Events, Absorb
+        - generic [ref=e517]:
+          - text: "UE verified:"
+          - link "uevi.co/2447YUQB" [ref=e518] [cursor=pointer]:
+            - /url: uevi.co/2447YUQB
+    - generic [ref=e521]:
+      - heading "Buyer trust isn't a feeling, it's built with UserEvidence" [level=2] [ref=e524]
+      - list [ref=e527]:
+        - generic [ref=e529]:
+          - link [ref=e530] [cursor=pointer]:
+            - /url: https://userevidence.com/report/the-evidence-gap-2025/
+          - generic [ref=e535]:
+            - heading "The Evidence Gap 2025" [level=3] [ref=e538]
+            - link "READ NOW" [ref=e542] [cursor=pointer]:
+              - /url: https://userevidence.com/report/the-evidence-gap-2025/
+              - generic [ref=e544]: READ NOW
+        - generic [ref=e546]:
+          - link [ref=e547] [cursor=pointer]:
+            - /url: https://userevidence.com/2025-customer-marketing-tech-landscape-report/
+          - generic [ref=e552]:
+            - 'heading "Report: 2025 Customer Marketing Technology Landscape" [level=3] [ref=e555]'
+            - link "READ NOW" [ref=e559] [cursor=pointer]:
+              - /url: https://userevidence.com/2025-customer-marketing-tech-landscape-report/
+              - generic [ref=e561]: READ NOW
+        - generic [ref=e563]:
+          - link [ref=e564] [cursor=pointer]:
+            - /url: https://userevidence.com/advocacy-platform-buyers-guide/
+          - generic [ref=e569]:
+            - 'heading "Buyer’s Guide: How to Choose a Customer Advocacy Platform That Won’t Collapse" [level=3] [ref=e572]'
+            - link "READ NOW" [ref=e576] [cursor=pointer]:
+              - /url: https://userevidence.com/advocacy-platform-buyers-guide/
+              - generic [ref=e578]: READ NOW
+  - contentinfo [ref=e579]:
+    - generic [ref=e581]:
+      - generic [ref=e583]:
+        - generic [ref=e584]:
+          - link "logo of UE" [ref=e587] [cursor=pointer]:
+            - /url: https://userevidence.com
+            - img "logo of UE" [ref=e588]
+          - link "Product Tour" [ref=e592] [cursor=pointer]:
+            - /url: https://userevidence.com/product-tour/
+            - generic [ref=e594]: Product Tour
+          - generic [ref=e596]:
+            - generic [ref=e598]: Jackson Office
+            - generic [ref=e600]: "320 East Broadway, Suite #2A Jackson, WY 83001"
+        - generic [ref=e601]:
+          - generic [ref=e602]:
+            - generic [ref=e604]: Platform
+            - link "Evidence" [ref=e608] [cursor=pointer]:
+              - /url: https://userevidence.com/platform/evidence/
+              - generic [ref=e610]: Evidence
+            - link "Advocacy" [ref=e614] [cursor=pointer]:
+              - /url: https://userevidence.com/platform/advocacy/
+              - generic [ref=e616]: Advocacy
+            - link "AI at UserEvidence" [ref=e620] [cursor=pointer]:
+              - /url: /platform/ai
+              - generic [ref=e622]: AI at UserEvidence
+            - link "References" [ref=e626] [cursor=pointer]:
+              - /url: https://userevidence.com/platform/references/
+              - generic [ref=e628]: References
+            - link "Community" [ref=e632] [cursor=pointer]:
+              - /url: https://userevidence.com/platform/community/
+              - generic [ref=e634]: Community
+            - link "Integrations" [ref=e638] [cursor=pointer]:
+              - /url: https://userevidence.com/platform/integrations/
+              - generic [ref=e640]: Integrations
+            - link "ROI Studies" [ref=e644] [cursor=pointer]:
+              - /url: https://userevidence.com/roi-studies/
+              - generic [ref=e646]: ROI Studies
+            - link "Research Content" [ref=e650] [cursor=pointer]:
+              - /url: https://userevidence.com/research-content/
+              - generic [ref=e652]: Research Content
+            - link "Research Library" [ref=e656] [cursor=pointer]:
+              - /url: https://app.userevidence.com/user-research-library
+              - generic [ref=e658]: Research Library
+          - generic [ref=e659]:
+            - generic [ref=e661]: Solutions
+            - link "Product Marketing" [ref=e665] [cursor=pointer]:
+              - /url: https://userevidence.com/roles/product-marketing/
+              - generic [ref=e667]: Product Marketing
+            - link "Customer Marketing" [ref=e671] [cursor=pointer]:
+              - /url: https://userevidence.com/roles/customer-marketing/
+              - generic [ref=e673]: Customer Marketing
+            - link "Sales Enablement" [ref=e677] [cursor=pointer]:
+              - /url: https://userevidence.com/roles/sales-enablement/
+              - generic [ref=e679]: Sales Enablement
+            - link "Demand Generation" [ref=e683] [cursor=pointer]:
+              - /url: https://userevidence.com/roles/demand-generation/
+              - generic [ref=e685]: Demand Generation
+            - link "Sales Leaders" [ref=e689] [cursor=pointer]:
+              - /url: https://userevidence.com/roles/sales-leaders/
+              - generic [ref=e691]: Sales Leaders
+            - link "Customer Success" [ref=e695] [cursor=pointer]:
+              - /url: https://userevidence.com/roles/customer-success/
+              - generic [ref=e697]: Customer Success
+          - generic [ref=e698]:
+            - generic [ref=e700]: Resources
+            - link "UserEvidence vs. TechValidate" [ref=e704] [cursor=pointer]:
+              - /url: https://userevidence.com/userevidence-vs-techvalidate/
+              - generic [ref=e706]: UserEvidence vs. TechValidate
+            - link "UserEvidence + Review Sites" [ref=e710] [cursor=pointer]:
+              - /url: https://userevidence.com/use-cases/customer-reviews-testimonials/
+              - generic [ref=e712]: UserEvidence + Review Sites
+            - link "UserEvidence + Sales Enablement Tools" [ref=e716] [cursor=pointer]:
+              - /url: https://userevidence.com/use-cases/sales-enablement-tools/
+              - generic [ref=e718]: UserEvidence + Sales Enablement Tools
+            - link "Content Hub" [ref=e722] [cursor=pointer]:
+              - /url: https://userevidence.com/blog/
+              - generic [ref=e724]: Content Hub
+            - link "Customer Evidence Examples" [ref=e728] [cursor=pointer]:
+              - /url: https://userevidence.com/customer-examples/
+              - generic [ref=e730]: Customer Evidence Examples
+            - link "The Proof Point" [ref=e734] [cursor=pointer]:
+              - /url: https://userevidence.com/the-proof-point/
+              - generic [ref=e736]: The Proof Point
+            - link "Customer Evidence Survey Templates" [ref=e740] [cursor=pointer]:
+              - /url: https://userevidence.com/7-customer-evidence-survey-templates/
+              - generic [ref=e742]: Customer Evidence Survey Templates
+          - generic [ref=e743]:
+            - generic [ref=e745]: Get emails with our best content
+            - generic [ref=e747]: The kind of emails you look forward to seeing in your inbox. Tactical, entertaining, and written by an actual human.
+            - generic [ref=e751]:
+              - textbox [ref=e754]:
+                - /placeholder: Email address*
+              - generic [ref=e756]:
+                - button "Sign up" [ref=e757] [cursor=pointer]
+                - text: 
+          - generic [ref=e759]:
+            - generic [ref=e761]: Company
+            - link "About" [ref=e765] [cursor=pointer]:
+              - /url: https://userevidence.com/company/
+              - generic [ref=e767]: About
+            - link "Careers" [ref=e771] [cursor=pointer]:
+              - /url: https://userevidence.com/company/#join-our-crew
+              - generic [ref=e773]: Careers
+            - link "Customers" [ref=e777] [cursor=pointer]:
+              - /url: https://userevidence.com/customers/
+              - generic [ref=e779]: Customers
+          - generic [ref=e780]:
+            - generic [ref=e782]: Legal
+            - link "Trust Center" [ref=e786] [cursor=pointer]:
+              - /url: https://app.vanta.com/userevidence.com/trust/mms8fh2250kiv1r5e6pxva
+              - generic [ref=e788]: Trust Center
+            - link "Platform Status" [ref=e792] [cursor=pointer]:
+              - /url: https://status.userevidence.com/
+              - generic [ref=e794]: Platform Status
+            - link "Terms & Conditions" [ref=e798] [cursor=pointer]:
+              - /url: https://userevidence.com/terms/
+              - generic [ref=e800]: Terms & Conditions
+            - link "Privacy Policy" [ref=e804] [cursor=pointer]:
+              - /url: https://userevidence.com/privacy-policy-march-2024/
+              - generic [ref=e806]: Privacy Policy
+            - link "Cookie Policy" [ref=e810] [cursor=pointer]:
+              - /url: https://userevidence.com/cookie-policy/
+              - generic [ref=e812]: Cookie Policy
+      - generic [ref=e818]:
+        - generic [ref=e820]:
+          - link [ref=e824] [cursor=pointer]:
+            - /url: https://www.linkedin.com/company/userevidence/
+            - generic [ref=e827]: 
+          - link [ref=e831] [cursor=pointer]:
+            - /url: https://twitter.com/GetUserEvidence
+            - generic [ref=e834]: 
+        - generic [ref=e836]: © 2026 UserEvidence. All rights reserved.
+        - img "aicpa co badge" [ref=e839]
+  - generic [ref=e840]: desktop
+  - iframe [ref=e841]:
+    

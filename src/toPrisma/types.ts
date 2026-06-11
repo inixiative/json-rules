@@ -1,4 +1,5 @@
 import type { FieldMapSet } from '../fieldMap/types';
+import type { DateConfig } from '../types';
 
 export type PrismaFilter = Record<string, unknown>;
 export type PrismaWhere = Record<string, unknown>;
@@ -67,7 +68,7 @@ export type BuildOptions = {
   mapName?: string;
   model?: string;
   context?: Record<string, unknown>;
-};
+} & DateConfig;
 
 // Mutable state threaded through build calls to accumulate intermediate groupBy steps
 export type PrismaBuildState = {

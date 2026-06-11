@@ -1,4 +1,10 @@
 import { get } from 'lodash-es';
+import {
+  isDateExpr,
+  resolveDateExpr,
+  resolveDateExprRange,
+  resolvePointForOperator,
+} from '../dateExpr';
 import { DateOperator } from '../operator';
 import type { DateRule } from '../types';
 import { mapDayNames } from './dayNames';
@@ -32,21 +38,28 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       if (rhsCol !== undefined) return `${field} >= ${rhsCol}`;
       return `${field} >= ${nextParam(state, rhsVal)}`;
 
+    case DateOperator.within: {
+      if (!isDateExpr(rule.value))
+        throw new Error('within date operator requires a range date expression');
+      const [start, end] = resolveDateExprRange(rule.value, state.dateConfig ?? {});
+      return `${field} BETWEEN ${nextParam(state, start.toDate())} AND ${nextParam(state, end.toDate())}`;
+    }
+
     case DateOperator.between: {
-      const v = rhsVal as unknown[];
-      if (!Array.isArray(v) || v.length !== 2) {
+      const raw = rhsVal;
+      if (!Array.isArray(raw) || raw.length !== 2) {
         throw new Error('between date operator requires an array of two values');
       }
-      const [start, end] = normalizeDateRange(v);
+      const [start, end] = normalizeDateRange(raw.map(resolveDateElem(state)));
       return `${field} BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)}`;
     }
 
     case DateOperator.notBetween: {
-      const v = rhsVal as unknown[];
-      if (!Array.isArray(v) || v.length !== 2) {
+      const raw = rhsVal;
+      if (!Array.isArray(raw) || raw.length !== 2) {
         throw new Error('notBetween date operator requires an array of two values');
       }
-      const [start, end] = normalizeDateRange(v);
+      const [start, end] = normalizeDateRange(raw.map(resolveDateElem(state)));
       return `${field} NOT BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)}`;
     }
 
@@ -88,10 +101,27 @@ const normalizeComparableDateValue = (value: unknown): string | number => {
   return String(value);
 };
 
+const resolveDateElem =
+  (state: BuilderState) =>
+  (el: unknown): unknown =>
+    isDateExpr(el) ? resolveDateExpr(el, state.dateConfig ?? {}).toDate() : el;
+
 type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
 
 const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) {
+    // Point expressions resolve to a concrete Date at compile time (operator-aware
+    // implied edges). `within` is handled separately in the switch.
+    if (isDateExpr(rule.value) && rule.dateOperator !== DateOperator.within) {
+      return {
+        type: 'value',
+        value: resolvePointForOperator(
+          rule.value,
+          rule.dateOperator,
+          state.dateConfig ?? {},
+        ).toDate(),
+      };
+    }
     return { type: 'value', value: rule.value };
   }
 

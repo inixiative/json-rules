@@ -33,7 +33,7 @@ const RULE_OPERATOR_INVERSES: Partial<Record<Operator, Operator>> = {
   // startsWith / endsWith: no inverse in the current DSL — throw.
 };
 
-const DATE_OPERATOR_INVERSES: Record<DateOperator, DateOperator> = {
+const DATE_OPERATOR_INVERSES: Partial<Record<DateOperator, DateOperator>> = {
   [DateOperator.before]: DateOperator.onOrAfter,
   [DateOperator.after]: DateOperator.onOrBefore,
   [DateOperator.onOrBefore]: DateOperator.after,
@@ -58,6 +58,12 @@ const negateRule = (rule: Rule): Rule => {
 
 const negateDateRule = (rule: DateRule): DateRule => {
   const inverse = DATE_OPERATOR_INVERSES[rule.dateOperator];
+  if (!inverse) {
+    throw new Error(
+      `negate: date operator '${rule.dateOperator}' has no inverse in the DSL. ` +
+        `Affects 'where' clauses used under arrayOperator: 'all'.`,
+    );
+  }
   return { ...rule, dateOperator: inverse };
 };
 

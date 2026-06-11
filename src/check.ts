@@ -2,14 +2,15 @@ import { get, isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
 import { ArrayOperator, Operator } from './operator';
-import type { AggregateRule, ArrayRule, Condition } from './types';
+import type { AggregateRule, ArrayRule, Condition, DateConfig } from './types';
+import { applyWindow } from './window';
 
 type Row = Record<string, unknown>;
 type CheckData = Row | unknown[];
 
 export type CheckOptions = {
   context?: CheckData;
-};
+} & DateConfig;
 
 const validateRootArrayShape = (rule: Condition): void => {
   if (typeof rule === 'boolean') return;
@@ -40,7 +41,8 @@ export const check = <TData extends CheckData>(
   if ('all' in conditions) return all(conditions.all, data, opts, conditions.error);
   if ('any' in conditions) return any(conditions.any, data, opts, conditions.error);
   if ('arrayOperator' in conditions) return checkArray(conditions, data, opts);
-  if ('dateOperator' in conditions) return checkDate(conditions, data as Row, opts.context as Row);
+  if ('dateOperator' in conditions)
+    return checkDate(conditions, data as Row, opts.context as Row, opts);
   if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, data, opts);
   if ('field' in conditions) return checkField(conditions, data as Row, opts.context as Row);
   if ('if' in conditions) return checkIfThenElse(conditions, data, opts);
@@ -109,8 +111,9 @@ const checkAggregate = <TData extends CheckData>(
   data: TData,
   opts: CheckOptions,
 ): boolean | string => {
-  const arrayValue = get(data, condition.field);
-  if (!Array.isArray(arrayValue)) throw new Error(`${condition.field} must be an array`);
+  const rawArray = get(data, condition.field);
+  if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
+  const arrayValue = applyWindow(rawArray, condition);
 
   const { mode, field: itemField } = condition.aggregate;
   if (mode !== 'sum' && mode !== 'avg') {
@@ -190,10 +193,10 @@ const checkArray = <TData extends CheckData>(
   data: TData,
   opts: CheckOptions,
 ): boolean | string => {
-  const arrayValue = condition.field ? get(data, condition.field) : data;
+  const rawArray = condition.field ? get(data, condition.field) : data;
 
-  if (!Array.isArray(arrayValue))
-    throw new Error(`${condition.field || '(root)'} must be an array`);
+  if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
+  const arrayValue = applyWindow(rawArray, condition);
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 
@@ -232,7 +235,7 @@ const checkArray = <TData extends CheckData>(
       );
     }
 
-    if (!some(arrayValue, isObject))
+    if (arrayValue.length > 0 && !some(arrayValue, isObject))
       return getError(
         `contains only primitive values; use 'in' or 'contains' instead of array operators on primitive arrays`,
       );

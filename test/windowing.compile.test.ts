@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ArrayOperator, Operator, toPrisma, toSql, validateRule } from '../index';
+import { ArrayOperator, DateOperator, Operator, toPrisma, toSql, validateRule } from '../index';
 
 const windowedArray = {
   field: 'fanMissions',
@@ -47,5 +47,107 @@ describe('Windowing — validator gates per target', () => {
   test('validateRule allows windowing for check', () => {
     const r = validateRule(windowedArray, { target: 'check' });
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('Windowing — extremal rewrite to Prisma (take:1, aligned)', () => {
+  const now = new Date('2026-06-11T00:00:00Z');
+  const lastWhere = (plan: { steps: ReadonlyArray<Record<string, unknown>> }) =>
+    plan.steps[plan.steps.length - 1].where;
+
+  test('all + desc + before {ago} → every (most recent before bound)', () => {
+    const rule = {
+      field: 'fanMissions',
+      orderBy: [{ field: 'completedAt', dir: 'desc' as const }],
+      take: 1,
+      arrayOperator: ArrayOperator.all,
+      condition: {
+        field: 'completedAt',
+        dateOperator: DateOperator.before,
+        value: { ago: { days: 30 } },
+      },
+    };
+    expect(lastWhere(toPrisma(rule, { now, timeZone: 'UTC' }))).toEqual({
+      fanMissions: { every: { completedAt: { lt: new Date('2026-05-12T00:00:00.000Z') } } },
+    });
+  });
+
+  test('any + desc + after V → some (most recent after bound)', () => {
+    const rule = {
+      field: 'orders',
+      orderBy: [{ field: 'amount', dir: 'desc' as const }],
+      take: 1,
+      arrayOperator: ArrayOperator.any,
+      condition: { field: 'amount', operator: Operator.greaterThan, value: 100 },
+    };
+    expect(lastWhere(toPrisma(rule))).toEqual({
+      orders: { some: { amount: { gt: 100 } } },
+    });
+  });
+
+  test('atLeast:1 maps to some', () => {
+    const rule = {
+      field: 'orders',
+      orderBy: [{ field: 'amount', dir: 'desc' as const }],
+      take: 1,
+      arrayOperator: ArrayOperator.atLeast,
+      count: 1,
+      condition: { field: 'amount', operator: Operator.greaterThan, value: 100 },
+    };
+    expect(lastWhere(toPrisma(rule))).toEqual({
+      orders: { some: { amount: { gt: 100 } } },
+    });
+  });
+
+  test('validateRule accepts an aligned extremal rule for toPrisma', () => {
+    const rule = {
+      field: 'fanMissions',
+      orderBy: [{ field: 'completedAt', dir: 'desc' as const }],
+      take: 1,
+      arrayOperator: ArrayOperator.all,
+      condition: {
+        field: 'completedAt',
+        dateOperator: DateOperator.before,
+        value: { ago: { days: 30 } },
+      },
+    };
+    expect(validateRule(rule, { target: 'toPrisma' }).ok).toBe(true);
+  });
+
+  test('misaligned (all + desc + after) still throws — max>V ≠ every>V', () => {
+    const rule = {
+      field: 'orders',
+      orderBy: [{ field: 'amount', dir: 'desc' as const }],
+      take: 1,
+      arrayOperator: ArrayOperator.all,
+      condition: { field: 'amount', operator: Operator.greaterThan, value: 100 },
+    };
+    expect(() => toPrisma(rule)).toThrow(/window|check/i);
+  });
+
+  test('take:2 is not extremal — still throws', () => {
+    const rule = {
+      field: 'orders',
+      orderBy: [{ field: 'amount', dir: 'desc' as const }],
+      take: 2,
+      arrayOperator: ArrayOperator.all,
+      condition: { field: 'amount', operator: Operator.lessThan, value: 100 },
+    };
+    expect(() => toPrisma(rule)).toThrow(/window|check/i);
+  });
+
+  test('toSql still throws for an aligned extremal rule (no relation subqueries)', () => {
+    const rule = {
+      field: 'fanMissions',
+      orderBy: [{ field: 'completedAt', dir: 'desc' as const }],
+      take: 1,
+      arrayOperator: ArrayOperator.all,
+      condition: {
+        field: 'completedAt',
+        dateOperator: DateOperator.before,
+        value: { ago: { days: 30 } },
+      },
+    };
+    expect(() => toSql(rule, { now })).toThrow(/window|check/i);
   });
 });

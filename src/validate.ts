@@ -11,7 +11,8 @@ import {
   type RuleTarget,
   type ValueShape,
 } from './operatorCatalog';
-import type { Condition, DateExpr, DateInputValue, OrderedRuleValue } from './types';
+import type { ArrayRule, Condition, DateExpr, DateInputValue, OrderedRuleValue } from './types';
+import { extremalRewrite } from './window';
 
 const PERIOD_UNITS = new Set([
   'year',
@@ -752,12 +753,17 @@ const validateWindow = (
     ('skip' in rule && rule.skip !== undefined);
 
   if (windowed && context.target !== 'check') {
-    pushIssue(
-      context,
-      path,
-      `unsupported_${targetSlug(context.target)}_window`,
-      `Windowing (orderBy/take/skip) is not supported by ${context.target}(); evaluate with check()`,
-    );
+    // toPrisma supports the extremal (take:1, aligned) rewrite to every/some.
+    const eligible =
+      context.target === 'toPrisma' && extremalRewrite(rule as unknown as ArrayRule) !== null;
+    if (!eligible) {
+      pushIssue(
+        context,
+        path,
+        `unsupported_${targetSlug(context.target)}_window`,
+        `Windowing (orderBy/take/skip) is not supported by ${context.target}() for this rule; evaluate with check()`,
+      );
+    }
   }
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {

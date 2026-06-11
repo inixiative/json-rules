@@ -47,8 +47,12 @@ predicate (pipeline: order → skip → take):
 ```
 
 Empty-window semantics are author-driven (`all` is vacuously true; `atLeast: 1`
-requires existence). Windowing is **`check()`-only** for now — `toPrisma`/`toSql`
-throw a clear "unsupported; evaluate with check()" error rather than miscompile.
+requires existence). `toPrisma` compiles the **extremal** case (`take: 1`, single
+`orderBy`, monotonic condition on that field, aligned direction) by rewriting to
+`every`/`some` — e.g. the rule above → `{ fanMissions: { every: { completedAt: { lt:
+<now-30d> } } } }`. Other windowed rules (`take > 1`, `skip`, multi-key order,
+non-monotonic/misaligned conditions) and all `toSql` windowing throw a clear
+"unsupported; evaluate with check()" error rather than miscompile.
 
 ## 2.5.0
 

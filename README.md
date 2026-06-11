@@ -293,8 +293,14 @@ predicate. Pipeline: order → skip → take. Direction comes from `orderBy.dir`
 `all` is vacuously true on an empty window, `atLeast: 1` (or `any`) is false. To require
 "the windowed element matches **and** one exists," combine `all` with `notEmpty` / `atLeast: 1`.
 
-> Windowing is **`check()`-only**. `toPrisma()` / `toSql()` throw a clear "unsupported"
-> error for windowed rules rather than miscompile — evaluate them in memory with `check()`.
+> **Compilation.** `toPrisma()` compiles the **extremal** case — `take: 1`, a single
+> `orderBy`, and a monotonic condition on that same field, with the direction aligned so
+> the extremal element is binding (`all` + desc + `before`, `any` + desc + `after`, etc.).
+> It rewrites to `every` / `some` (e.g. the rule above → `{ fanMissions: { every: { completedAt:
+> { lt: <now-30d> } } } }`). Any other windowed rule — `take > 1`, `skip`, multi-key
+> `orderBy`, a different/non-monotonic condition, or a misaligned direction — throws a clear
+> "unsupported" error. `toSql()` does not compile windowing at all (no relation subqueries in
+> a `WHERE` fragment). Evaluate the unsupported cases in memory with `check()`.
 
 ## Path Semantics
 
@@ -483,7 +489,7 @@ Not every backend supports every rule shape.
 | Date comparisons | Yes | Most | Yes |
 | Date expressions (`ago`/`ahead`/`this`/`last`/`next`/`start`/`end`) + `within` | Yes | Yes | Yes |
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
-| Windowing (`orderBy` / `take` / `skip`) | Yes | No | No |
+| Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
 
 ### Prisma Limitations

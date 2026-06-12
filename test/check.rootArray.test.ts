@@ -113,11 +113,11 @@ describe('check — root array throws on invalid rule shape', () => {
     expect(() => check(rule, users)).toThrow(/fieldless arrayOperator/);
   });
 
-  test('fieldless arrayOp throws when data is not array', () => {
+  test('fieldless arrayOp returns error when data is not array', () => {
     const rule = {
       arrayOperator: ArrayOperator.any,
       condition: { field: 'industry', operator: Operator.equals, value: 'tech' },
     };
-    expect(() => check(rule, { industry: 'tech' })).toThrow(/must be an array/);
+    expect(check(rule, { industry: 'tech' })).toBe('(root) must be an array');
   });
 });

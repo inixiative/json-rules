@@ -112,7 +112,7 @@ const checkAggregate = <TData extends CheckData>(
   opts: CheckOptions,
 ): boolean | string => {
   const rawArray = get(data, condition.field);
-  if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
+  if (!Array.isArray(rawArray)) return condition.error || `${condition.field} must be an array`;
   const arrayValue = applyWindow(rawArray, condition);
 
   const { mode, field: itemField } = condition.aggregate;
@@ -125,14 +125,15 @@ const checkAggregate = <TData extends CheckData>(
     ? arrayValue.filter((item) => check(nestedCondition, item as Row, opts) === true)
     : arrayValue;
 
-  const numbers: number[] = filtered.map((item, index) => {
+  const numbers: number[] = [];
+  for (const [index, item] of filtered.entries()) {
     const raw = itemField ? get(item as Row, itemField) : item;
     if (typeof raw !== 'number' || !Number.isFinite(raw)) {
       const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
-      throw new Error(`${loc} must be a finite number`);
+      return condition.error || `${loc} must be a finite number`;
     }
-    return raw;
-  });
+    numbers.push(raw);
+  }
 
   const sum = numbers.reduce((s, n) => s + n, 0);
   const result = mode === 'sum' ? sum : numbers.length === 0 ? 0 : sum / numbers.length;
@@ -195,7 +196,8 @@ const checkArray = <TData extends CheckData>(
 ): boolean | string => {
   const rawArray = condition.field ? get(data, condition.field) : data;
 
-  if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
+  if (!Array.isArray(rawArray))
+    return condition.error || `${condition.field || '(root)'} must be an array`;
   const arrayValue = applyWindow(rawArray, condition);
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;

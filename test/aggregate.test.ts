@@ -213,26 +213,35 @@ describe('check() aggregate rules', () => {
   });
 
   describe('errors', () => {
-    it('throws if field is not an array', () => {
-      expect(() =>
+    it('returns error if field is not an array', () => {
+      expect(
         check(
           { field: 'score', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 0 },
           { score: 42 },
         ),
-      ).toThrow('score must be an array');
+      ).toBe('score must be an array');
     });
 
-    it('throws if primitive element is not a number', () => {
-      expect(() =>
+    it('returns error if field is missing', () => {
+      expect(
+        check(
+          { field: 'scores', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 0 },
+          { other: 1 },
+        ),
+      ).toBe('scores must be an array');
+    });
+
+    it('returns error if primitive element is not a number', () => {
+      expect(
         check(
           { field: 'scores', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 0 },
           { scores: [1, 'oops', 3] },
         ),
-      ).toThrow('scores[1] must be a finite number');
+      ).toBe('scores[1] must be a finite number');
     });
 
-    it('throws if object element field is not a number', () => {
-      expect(() =>
+    it('returns error if object element field is not a number', () => {
+      expect(
         check(
           {
             field: 'orders',
@@ -242,7 +251,7 @@ describe('check() aggregate rules', () => {
           },
           { orders: [{ total: 'bad' }] },
         ),
-      ).toThrow('orders[0].total must be a finite number');
+      ).toBe('orders[0].total must be a finite number');
     });
   });
 

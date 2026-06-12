@@ -567,10 +567,17 @@ Operator catalog (builder-facing):
 
 The library throws when a rule is structurally invalid, for example:
 
-- array operators used against non-arrays
 - missing `count` for count-based array rules
 - invalid date values
 - unsupported backend translations
+
+Bad data shape is a normal rule failure, not a throw: if an array/aggregate rule's
+`field` resolves to something that isn't an array (missing relation, `null`, wrong
+type), `check()` returns the rule's error string (`condition.error` or
+`"<field> must be an array"`), the same as any other unmet condition. A missing
+to-many relation therefore fails the rule rather than crashing evaluation — hydrate
+it as `[]` to assert "no related records". Non-numeric aggregate elements behave the
+same way (`"<field>[i] must be a finite number"`).
 
 It returns string errors only from runtime `check()`.
 
@@ -610,7 +617,7 @@ check(
 );
 ```
 
-`check()` throws if `data` is an array but the rule contains any field-based leaf, or if the rule is a fieldless `ArrayRule` and `data` is not an array. Root-array compilation to Prisma/SQL is not yet implemented — these are `check()`-only.
+`check()` throws if `data` is an array but the rule contains any field-based leaf (invalid rule shape). If the rule is a fieldless `ArrayRule` and `data` is not an array, the rule fails normally with `'(root) must be an array'`. Root-array compilation to Prisma/SQL is not yet implemented — these are `check()`-only.
 
 ## Lens & Multi-Source Data
 

@@ -458,8 +458,8 @@ describe('Path-based Value Resolution', () => {
 });
 
 describe('Error Handling', () => {
-  test('throws on invalid array field', () => {
-    expect(() =>
+  test('returns error on invalid array field', () => {
+    expect(
       check(
         {
           field: 'notAnArray',
@@ -468,7 +468,34 @@ describe('Error Handling', () => {
         },
         { notAnArray: 'string' },
       ),
-    ).toThrow('notAnArray must be an array');
+    ).toBe('notAnArray must be an array');
+  });
+
+  test('returns error on missing array field', () => {
+    expect(
+      check(
+        {
+          field: 'missing',
+          arrayOperator: ArrayOperator.all,
+          condition: { field: 'x', operator: Operator.equals, value: 1 },
+        },
+        { other: [] },
+      ),
+    ).toBe('missing must be an array');
+  });
+
+  test('custom error overrides missing array message', () => {
+    expect(
+      check(
+        {
+          field: 'missing',
+          arrayOperator: ArrayOperator.all,
+          condition: { field: 'x', operator: Operator.equals, value: 1 },
+          error: 'orders must be hydrated',
+        },
+        { other: [] },
+      ),
+    ).toBe('orders must be hydrated');
   });
 
   test('throws on missing count for count-based operators', () => {

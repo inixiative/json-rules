@@ -632,6 +632,40 @@ projection), `resolveVisit(policy, mapName, modelName, relPath)` returns the
 same composition for a single visit. `checkRuleAgainstLens` uses it
 internally — it's the path-aware authority for "is this rule field allowed."
 
+### `exposedSurface(lens)` — the leak-safe surface, as a Lens
+
+`projectByPath` returns a path-keyed *view* — the graph is flattened away. When
+you need the narrowed schema *as a navigable graph* (maps intact) — e.g. to hand
+a builder the total set of models/fields/enum values it may draw from —
+`exposedSurface` returns a **Lens**, not a projection:
+
+```ts
+import { exposedSurface } from '@inixiative/json-rules';
+
+const surface = exposedSurface(narrowing); // a Lens — maps intact, navigable
+```
+
+It is the **leak-safe server→client surface**. A field appears on a model iff
+it is visible on *at least one* reachable, narrowed path — root applied at the
+anchor, path-specific narrowing along declared relation paths, `mapDefaults`
+everywhere else, unioned per model. Fields hidden on every path (including those
+hidden only by `root`) are absent, so it never exposes the raw, un-narrowed lens.
+`where` (data scope) is dropped, and the emitted enum registry carries only
+exposed values. The traversal is cycle-safe, so recursive schemas
+(`User → Org → members(User) → …`) terminate.
+
+> **Lens vs Projection.** Both derive from a lens, but they are different shapes:
+> a **Lens** keeps its maps (the model→field→model graph) and is navigable; a
+> **Projection** (`projectByPath`) is a path-keyed read that has flattened the
+> graph away. `exposedSurface: Lens → Lens`; `projectByPath: Lens → Projection`.
+> Pair them when both navigation *and* per-path divergence matter.
+
+> **Trust boundaries.** `exposedSurface` strips `where` because the client never
+> executes the rule. A server→subtenant handoff is different: the subtenant *does*
+> execute and must inherit the tenant's `where` scope floor and per-path narrowing,
+> narrowing only further (never widening). That where-preserving collapse is a
+> separate planned primitive (`seal`); do not use `exposedSurface` for it.
+
 ## 11. Describe-and-validate vs deny-at-execution
 
 The lens is your **SDK contract**. The narrowing is the description of what the
@@ -643,6 +677,13 @@ caller may say. The flow is:
 2. **Apply** the lens with `applyLens` to inject the where clauses at their
    proper anchors.
 3. **Execute** the composed rule with `toPrisma` / `toSql` / `check`.
+
+To *classify* a rule before executing — which sources it touches, whether it
+crosses a bridge, and which targets can run it — use `describeRule(rule, lens)`.
+It returns `{ sources, bridgesCrossed, supportedTargets, violations }`. A
+bridge-crossing rule is `check()`-only (no cross-source joins), and windowing
+restricts targets further. `describeRule` is for routing/UX (pick an executor,
+badge a rule); `checkRuleAgainstLens` remains the security gate.
 
 ```ts
 import { checkRuleAgainstLens, applyLens, toPrisma } from '@inixiative/json-rules';

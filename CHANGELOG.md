@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.8.0
+
+Builder-surface primitives on the lens: a leak-safe exposed surface and a rule
+source/target classifier.
+
+### `exposedSurface(lensOrNarrowing) → Lens`
+
+The total exposed surface of a (possibly narrowed) lens, **as a Lens** (maps
+intact — the navigable graph), not a projection. Every model reachable from the
+anchor through visible relation/bridge edges, with the full narrowing applied —
+root at the anchor, path-specific along declared relation paths, `mapDefaults`
+everywhere else — unioned per model. A field appears iff it is visible on at
+least one reachable, narrowed path; fields hidden on every path (including those
+hidden only by `root`) are absent, so it never exposes the raw, un-narrowed lens.
+`where` is dropped, the enum registry carries only exposed values, and bridges
+that touch an unexposed surface (no surviving bridge-field) are eliminated.
+Cycle-safe, so recursive schemas (`User → Org → members(User) → …`) terminate.
+
+This is the **server→client** builder surface. (A `where`-preserving collapse for
+a server→subtenant handoff — `seal` — is planned separately.) Contrast with
+`projectByPath`, which returns a path-keyed *view* (graph flattened).
+
+### `describeRule(rule, lensOrNarrowing) → RuleDescription`
+
+Static classification of a rule against a lens:
+
+```ts
+{
+  sources: string[],          // map (source) names the rule's fields touch
+  bridgesCrossed: boolean,    // any path crosses a bridge into another source
+  supportedTargets: RuleTarget[], // check / toPrisma / toSql that can run it
+  violations: string[],       // field paths that don't resolve through the lens
+}
+```
+
+A bridge-crossing rule is `check()`-only (`toPrisma`/`toSql` can't join across
+sources — hydrate foreign rows with `buildBridgeDictionary` and evaluate in
+memory). `supportedTargets` intersects per-operator catalog support with bridge
+and windowing restrictions (`toSql` never compiles a window; `toPrisma` only the
+extremal array rewrite). For the full security gate use `checkRuleAgainstLens`.
+
 ## 2.7.0
 
 Two additions: a **pre-window filter** stage on windowed rules, and **catalog

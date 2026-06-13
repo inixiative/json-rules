@@ -552,9 +552,20 @@ Lens & bridges:
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
 - `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
-- `validateNarrowing`, `projectByPath`, `checkRuleAgainstLens`, `applyLens`
-- `PathProjection`, `ProjectedVisit`
+- `validateNarrowing`, `projectByPath`, `exposedSurface`, `describeRule`, `checkRuleAgainstLens`, `applyLens`
+- `PathProjection`, `ProjectedVisit`, `RuleDescription`
 - `buildBridgeDictionary`
+
+Two shapes come out of a lens, and they are different things:
+
+- **Lens** (maps intact — the navigable graph): `exposedSurface(lensOrNarrowing)`
+  returns the leak-safe total exposed surface *as a Lens* — every reachable model
+  with the full narrowing applied (root + path-specific + `mapDefaults`), unioned
+  per model, `where` stripped. Use it as the server→client builder surface; it
+  never exposes the raw, un-narrowed lens.
+- **Projection** (path-keyed view — graph flattened away): `projectByPath(lens)`
+  returns `Map<dottedPath, ProjectedVisit>` for per-path checks where sibling
+  paths to the same model diverge.
 
 Operator catalog (builder-facing):
 

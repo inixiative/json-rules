@@ -6,13 +6,9 @@ import { resolvePolicy, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 export type RuleDescription = {
-  /** Map (source) names the rule's fields touch, sorted. */
   sources: string[];
-  /** True if any field/path crosses a bridge into another source. */
   bridgesCrossed: boolean;
-  /** Execution targets that can run this rule, in canonical order. */
   supportedTargets: RuleTarget[];
-  /** Field paths that don't resolve through the lens. */
   violations: string[];
 };
 
@@ -34,7 +30,6 @@ const restrictByOperator = (acc: Acc, operator: string): void => {
 
 const restrictByWindow = (acc: Acc, cond: Record<string, unknown>): void => {
   if (!hasWindow(cond as unknown as WindowFields)) return;
-  // toSql never compiles a window; toPrisma only the extremal array rewrite.
   acc.targets.delete('toSql');
   const isAggregate = 'aggregate' in cond;
   if (isAggregate || extremalRewrite(cond as unknown as ArrayRule) === null) {
@@ -72,7 +67,6 @@ const visit = (
   if (typeof record.dateOperator === 'string') restrictByOperator(acc, record.dateOperator);
   if (typeof record.arrayOperator === 'string') restrictByOperator(acc, record.arrayOperator);
   restrictByWindow(acc, record);
-  // The window `filter` is a sub-condition evaluated per element of this field.
   if (record.filter !== undefined) {
     visit(record.filter as Condition, acc, mapName, modelName, relPath);
   }
@@ -110,15 +104,6 @@ const visit = (
   }
 };
 
-/**
- * Classifies a rule against a lens: which sources it touches, whether it crosses
- * a bridge, and which execution targets can run it. A bridge-crossing rule is
- * `check()`-only — `toPrisma`/`toSql` can't join across sources, so the host must
- * hydrate foreign rows (see `buildBridgeDictionary`) and evaluate in memory.
- * Windowing further restricts targets (`toSql` never; `toPrisma` only the
- * extremal array rewrite). `violations` lists field paths that don't resolve
- * through the lens — use `checkRuleAgainstLens` for the full security gate.
- */
 export const describeRule = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,

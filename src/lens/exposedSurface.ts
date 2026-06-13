@@ -6,8 +6,7 @@ import { resolveRelationTarget } from './walk.ts';
 
 const modelKey = (mapName: string, modelName: string): string => `${mapName}::${modelName}`;
 
-// A relPath that matches no declared root.relations path, so resolveVisit applies
-// mapDefaults only (never root). Used for visits reached off the declared tree.
+// A relPath matching no declared root.relations path → resolveVisit applies mapDefaults only.
 const OFF_PATH: readonly string[] = ['__offpath__'];
 
 type SurfaceModel = { mapName: string; modelName: string; fields: Map<string, FieldMapEntry> };
@@ -22,8 +21,6 @@ const unionFieldInto = (
     fields.set(name, entry.values ? { ...entry, values: [...entry.values] } : entry);
     return;
   }
-  // Same field reached via another path — union the allowed enum values (a value
-  // exposed on any reachable path belongs in the total exposed surface).
   if (entry.values && existing.values) {
     const merged = new Set([...existing.values, ...entry.values]);
     fields.set(name, { ...existing, values: [...merged] });
@@ -32,27 +29,7 @@ const unionFieldInto = (
   }
 };
 
-/**
- * Produces the total exposed surface of a (possibly narrowed) lens as a **Lens**
- * (maps intact — the navigable graph), NOT a projection (path-keyed view). This
- * is the leak-safe server→client surface: every model reachable from the anchor
- * through visible relation/bridge edges, with the FULL narrowing applied — root
- * at the anchor, path-specific narrowing along declared relation paths,
- * model-default (`mapDefaults`) everywhere else — then unioned per model. A field
- * appears iff it is visible on at least one reachable, narrowed path; fields
- * hidden on every path (including those hidden only by `root`) are absent, so it
- * never exposes the raw, un-narrowed lens.
- *
- * `where` (data-scope) narrowing is dropped — this is the client schema surface.
- * For a server→subtenant handoff that must preserve `where` and per-path
- * narrowing, use `seal` (planned) instead. Per-path divergence (a model that
- * looks different at two sibling paths) is not represented here; pair with
- * `projectByPath` when that distinction matters.
- *
- * Cycle-safe: declared-path visits are keyed by path (the declared tree is
- * finite) and off-path visits by model (visited once), so recursive schemas
- * (User → Org → members(User) → …) terminate.
- */
+// Leak-safe total exposed surface of a narrowed lens, as a Lens. See docs/LENS.md.
 export const exposedSurface = (lensOrNarrowing: Lens | LensNarrowing): Lens => {
   const policy: Policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;
@@ -106,8 +83,6 @@ export const exposedSurface = (lensOrNarrowing: Lens | LensNarrowing): Lens => {
       if (entry.kind === 'object' || entry.kind === 'bridge') {
         const target = resolveRelationTarget(entry, mapName);
         if (!target) continue;
-        // Stay on the declared tree only while this relation has declared sub-narrowing;
-        // otherwise descend as an off-path (mapDefaults-only) visit.
         if (declared && effect.relations.has(fieldName)) {
           queue.push({
             mapName: target.mapName,
@@ -149,20 +124,14 @@ export const exposedSurface = (lensOrNarrowing: Lens | LensNarrowing): Lens => {
       fields: fieldRecord,
     };
 
-    // Registry reflects the narrowed, exposed values only (union of field values),
-    // never the raw source enum — so it can't leak narrowed-away values.
     for (const [enumType, values] of enumValuesByType) {
       surfaceMap.enums ??= {};
       surfaceMap.enums[enumType] = [...values];
     }
   }
 
-  // Eliminate any bridge that touches an unexposed surface: keep a bridge only if
-  // at least one of its injected bridge-fields survived in the exposed surface.
-  // (stitchFieldMaps injects field `"<b.fieldMap>:<b.model>"` on a's model and
-  // `"<a.fieldMap>:<a.model>"` on b's model.) This prevents a bridge — and its
-  // `on` join keys — from leaking when the relationship isn't navigable in the
-  // surface, while leaving the surface's fields themselves untouched.
+  // Keep a bridge only if one of its injected bridge-fields survived (else it
+  // touches unexposed surface and its `on` keys would leak).
   const bridges: Bridge[] | undefined = lens.bridges?.filter((b) => {
     const [a, bb] = b.endpoints;
     const aExposesB = maps[a.fieldMap]?.models[a.model]?.fields[`${bb.fieldMap}:${bb.model}`];

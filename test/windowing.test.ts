@@ -96,6 +96,59 @@ describe('Windowing — empty-window semantics (author-driven)', () => {
   });
 });
 
+describe('Windowing — pre-window filter (filter → order → skip → take → check)', () => {
+  // "Of the user's COMPLETED missions, the most recent one was > 30 days ago."
+  // The filter must scope the window: without it, take:1 grabs the latest mission
+  // of any status (a recent pending one) and the check flips.
+  const rule = {
+    field: 'fanMissions',
+    filter: { field: 'status', operator: Operator.equals, value: 'completed' },
+    orderBy: [{ field: 'completedAt', dir: 'desc' as const }],
+    take: 1,
+    arrayOperator: ArrayOperator.all,
+    condition: {
+      field: 'completedAt',
+      dateOperator: DateOperator.before,
+      value: { ago: { days: 30 } },
+    },
+  };
+
+  const user = {
+    fanMissions: [
+      { status: 'completed', completedAt: '2026-01-01T00:00:00Z' }, // latest completed, > 30d ago
+      { status: 'pending', completedAt: '2026-06-10T00:00:00Z' }, // newer, but filtered out
+    ],
+  };
+
+  test('filter scopes the window — latest COMPLETED mission is > 30 days ago → passes', () => {
+    expect(check(rule, user, { now })).toBe(true);
+  });
+
+  test('without the filter, the latest mission (pending, recent) flips the result → fails', () => {
+    const { filter, ...unfiltered } = rule;
+    expect(check(unfiltered, user, { now })).not.toBe(true);
+  });
+
+  test('filter with no order/take narrows which elements the arrayOperator sees', () => {
+    // atLeast 2 completed missions present?
+    const r = {
+      field: 'fanMissions',
+      filter: { field: 'status', operator: Operator.equals, value: 'completed' },
+      arrayOperator: ArrayOperator.atLeast,
+      count: 2,
+      condition: { field: 'status', operator: Operator.equals, value: 'completed' },
+    };
+    const data = {
+      fanMissions: [
+        { status: 'completed', completedAt: '2026-01-01T00:00:00Z' },
+        { status: 'completed', completedAt: '2026-02-01T00:00:00Z' },
+        { status: 'pending', completedAt: '2026-06-10T00:00:00Z' },
+      ],
+    };
+    expect(check(r, data)).toBe(true);
+  });
+});
+
 describe('Windowing — aggregate over a window', () => {
   test('sum of the last 2 amounts (window excludes the big oldest order)', () => {
     // Discriminating: windowed last-2 sum = 120 (<200 → true);

@@ -1,9 +1,12 @@
 import { orderBy as lodashOrderBy } from 'lodash-es';
 import type { ArrayRule, WindowFields } from './types';
 
-/** True when a rule carries any windowing selector (orderBy/take/skip). */
+/** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
 export const hasWindow = (rule: WindowFields): boolean =>
-  !!rule.orderBy?.length || rule.take !== undefined || rule.skip !== undefined;
+  rule.filter !== undefined ||
+  !!rule.orderBy?.length ||
+  rule.take !== undefined ||
+  rule.skip !== undefined;
 
 const UPPER_BOUND_OPS = new Set(['before', 'onOrBefore', 'lessThan', 'lessThanEquals']);
 const LOWER_BOUND_OPS = new Set(['after', 'onOrAfter', 'greaterThan', 'greaterThanEquals']);
@@ -30,6 +33,7 @@ const conditionOpAndField = (condition: unknown): { op: string; field: string } 
  * rule is windowed but not extremal-eligible (caller throws "unsupported").
  */
 export const extremalRewrite = (rule: ArrayRule): ArrayRule | null => {
+  if (rule.filter !== undefined) return null;
   if (rule.skip !== undefined && rule.skip !== 0) return null;
   if (rule.take !== 1) return null;
   if (!rule.orderBy || rule.orderBy.length !== 1) return null;
@@ -58,11 +62,18 @@ export const extremalRewrite = (rule: ArrayRule): ArrayRule | null => {
 };
 
 /**
- * Apply the ordered-window pipeline to an array: order → skip → take.
+ * Apply the window pipeline to an array: filter → order → skip → take.
+ * `filterFn` evaluates `rule.filter` per item and must be supplied by the caller
+ * when `rule.filter` is set (window.ts stays free of the evaluator).
  * Direction comes from orderBy `dir`; take/skip are positive offsets.
  */
-export const applyWindow = <T>(items: T[], rule: WindowFields): T[] => {
+export const applyWindow = <T>(
+  items: T[],
+  rule: WindowFields,
+  filterFn?: (item: T) => boolean,
+): T[] => {
   let out = items;
+  if (rule.filter !== undefined && filterFn) out = out.filter(filterFn);
   if (rule.orderBy?.length) {
     out = lodashOrderBy(
       out,

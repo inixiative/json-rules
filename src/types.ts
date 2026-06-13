@@ -214,6 +214,7 @@ export type StrictAggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleVal
 export type SortDir = 'asc' | 'desc';
 export type OrderBy = { field: string; dir: SortDir }[];
 export type WindowFields = {
+  filter?: Condition;
   orderBy?: OrderBy;
   take?: number;
   skip?: number;

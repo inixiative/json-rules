@@ -31,6 +31,38 @@ describe('Windowing — compilers reject windowed rules (no silent miscompile)',
   });
 });
 
+describe('Windowing — pre-window filter is check-only', () => {
+  const filtered = {
+    field: 'fanMissions',
+    filter: { field: 'status', operator: Operator.equals, value: 'completed' },
+    orderBy: [{ field: 'completedAt', dir: 'desc' as const }],
+    take: 1,
+    arrayOperator: ArrayOperator.all,
+    condition: {
+      field: 'completedAt',
+      dateOperator: DateOperator.before,
+      value: { ago: { days: 30 } },
+    },
+  };
+
+  test('toPrisma throws for a filtered window (extremal rewrite bails on filter)', () => {
+    expect(() => toPrisma(filtered, { now: new Date('2026-06-11T00:00:00Z') })).toThrow(
+      /window|filter|check/i,
+    );
+  });
+
+  test('toSql throws for a filtered window', () => {
+    expect(() => toSql(filtered, { now: new Date('2026-06-11T00:00:00Z') })).toThrow(
+      /window|filter|check/i,
+    );
+  });
+
+  test('validateRule flags a filtered window for toPrisma but allows it for check', () => {
+    expect(validateRule(filtered, { target: 'toPrisma' }).ok).toBe(false);
+    expect(validateRule(filtered, { target: 'check' }).ok).toBe(true);
+  });
+});
+
 describe('Windowing — validator gates per target', () => {
   test('validateRule flags windowing for toPrisma', () => {
     const r = validateRule(windowedArray, { target: 'toPrisma' });

@@ -562,6 +562,7 @@ Operator catalog (builder-facing):
 - `FieldKind`, `RuleTarget`, `ValueShape`
 - `NUMERIC_KINDS`, `ORDERABLE_KINDS`, `STRINGY_KINDS`, `EQUATABLE_KINDS`, `ALL_KINDS`
 - `getOperatorsForKind`, `getArrayOperators`, `getValueShape`, `isOperatorSupportedForTarget`
+- `WINDOW_SELECTOR`, `WindowSupport`, `getWindowSupport` (windowing fields + per-ruleType×target support)
 
 ## Error Handling
 

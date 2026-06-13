@@ -113,7 +113,12 @@ const checkAggregate = <TData extends CheckData>(
 ): boolean | string => {
   const rawArray = get(data, condition.field);
   if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
-  const arrayValue = applyWindow(rawArray, condition);
+  const windowFilter = condition.filter;
+  const arrayValue = applyWindow(
+    rawArray,
+    condition,
+    windowFilter ? (item) => check(windowFilter, item as Row, opts) === true : undefined,
+  );
 
   const { mode, field: itemField } = condition.aggregate;
   if (mode !== 'sum' && mode !== 'avg') {
@@ -196,7 +201,12 @@ const checkArray = <TData extends CheckData>(
   const rawArray = condition.field ? get(data, condition.field) : data;
 
   if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
-  const arrayValue = applyWindow(rawArray, condition);
+  const windowFilter = condition.filter;
+  const arrayValue = applyWindow(
+    rawArray,
+    condition,
+    windowFilter ? (item) => check(windowFilter, item as Row, opts) === true : undefined,
+  );
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 

@@ -52,6 +52,7 @@ export const ValueShape = {
   range: 'range',
   dateValue: 'dateValue',
   dateRange: 'dateRange',
+  dateWindow: 'dateWindow',
   dayList: 'dayList',
   count: 'count',
   predicate: 'predicate',
@@ -63,6 +64,7 @@ export type CatalogEntry = {
   kinds: readonly FieldKind[];
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
+  acceptsExpr?: boolean;
 };
 
 export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
@@ -101,22 +103,59 @@ export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
 };
 
 export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
-  [DateOperator.before]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
-  [DateOperator.after]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
-  [DateOperator.onOrBefore]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
-  [DateOperator.onOrAfter]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateValue' },
-  [DateOperator.within]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateRange' },
-  [DateOperator.between]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateRange' },
-  [DateOperator.notBetween]: { kinds: ['DateTime'], targets: ALL_TARGETS, valueShape: 'dateRange' },
+  [DateOperator.before]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateValue',
+    acceptsExpr: true,
+  },
+  [DateOperator.after]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateValue',
+    acceptsExpr: true,
+  },
+  [DateOperator.onOrBefore]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateValue',
+    acceptsExpr: true,
+  },
+  [DateOperator.onOrAfter]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateValue',
+    acceptsExpr: true,
+  },
+  [DateOperator.within]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateWindow',
+    acceptsExpr: true,
+  },
+  [DateOperator.between]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateRange',
+    acceptsExpr: true,
+  },
+  [DateOperator.notBetween]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateRange',
+    acceptsExpr: true,
+  },
   [DateOperator.dayIn]: {
     kinds: ['DateTime'],
     targets: NON_PRISMA_TARGETS,
     valueShape: 'dayList',
+    acceptsExpr: false,
   },
   [DateOperator.dayNotIn]: {
     kinds: ['DateTime'],
     targets: NON_PRISMA_TARGETS,
     valueShape: 'dayList',
+    acceptsExpr: false,
   },
 };
 
@@ -135,6 +174,36 @@ export const ARRAY_OPERATOR_CATALOG: Record<ArrayOperator, ArrayCatalogEntry> = 
   [ArrayOperator.empty]: { targets: ALL_TARGETS, valueShape: 'none' },
   [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none' },
 };
+
+export const WindowSupport = {
+  full: 'full',
+  extremal: 'extremal',
+  none: 'none',
+} as const;
+
+export type WindowSupport = (typeof WindowSupport)[keyof typeof WindowSupport];
+
+export const WINDOW_SELECTOR = {
+  fields: ['filter', 'orderBy', 'take', 'skip'],
+  sortDirs: ['asc', 'desc'],
+  support: {
+    array: {
+      check: WindowSupport.full,
+      toPrisma: WindowSupport.extremal,
+      toSql: WindowSupport.none,
+    },
+    aggregate: {
+      check: WindowSupport.full,
+      toPrisma: WindowSupport.none,
+      toSql: WindowSupport.none,
+    },
+  },
+} as const;
+
+export type WindowRuleType = keyof typeof WINDOW_SELECTOR.support;
+
+export const getWindowSupport = (ruleType: WindowRuleType, target: RuleTarget): WindowSupport =>
+  WINDOW_SELECTOR.support[ruleType][target];
 
 const AGGREGATE_SINGLE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['scalar', 'ordered']);
 const AGGREGATE_RANGE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['range']);

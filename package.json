@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/json-rules",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -19,7 +19,7 @@
     "format": "biome format --write .",
     "check": "bun run typecheck && bun run lint",
     "prepare": "lefthook install",
-    "prepublishOnly": "bun run check && bun run build"
+    "prepublishOnly": "bun run check && bun run test && bun run build"
   },
   "keywords": [
     "json",

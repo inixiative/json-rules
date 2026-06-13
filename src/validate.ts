@@ -748,12 +748,13 @@ const validateWindow = (
   context: ValidationContext,
 ): void => {
   const windowed =
+    ('filter' in rule && rule.filter !== undefined) ||
     ('orderBy' in rule && rule.orderBy !== undefined) ||
     ('take' in rule && rule.take !== undefined) ||
     ('skip' in rule && rule.skip !== undefined);
 
   if (windowed && context.target !== 'check') {
-    // toPrisma supports the extremal (take:1, aligned) rewrite to every/some.
+    // toPrisma supports the extremal (take:1, aligned, unfiltered) rewrite to every/some.
     const eligible =
       context.target === 'toPrisma' && extremalRewrite(rule as unknown as ArrayRule) !== null;
     if (!eligible) {
@@ -761,9 +762,13 @@ const validateWindow = (
         context,
         path,
         `unsupported_${targetSlug(context.target)}_window`,
-        `Windowing (orderBy/take/skip) is not supported by ${context.target}() for this rule; evaluate with check()`,
+        `Windowing (filter/orderBy/take/skip) is not supported by ${context.target}() for this rule; evaluate with check()`,
       );
     }
+  }
+
+  if ('filter' in rule && rule.filter !== undefined) {
+    validateCondition(rule.filter, `${path}.filter`, context);
   }
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {

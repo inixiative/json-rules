@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.7.0
+
+Two additions: a **pre-window filter** stage on windowed rules, and **catalog
+reflection** coverage for the 2.6 date/window primitives.
+
+### Pre-window `filter`
+
+Windowing now runs **filter → order → skip → take** before the predicate, so a
+rule can scope *which rows enter the window* independently of the predicate it
+tests. `filter` is a `Condition` on `WindowFields` (array and aggregate rules).
+
+```ts
+// "Of the user's COMPLETED missions, the most recent one was > 30 days ago."
+{
+  field: 'fanMissions',
+  filter: { field: 'status', operator: 'equals', value: 'completed' },
+  orderBy: [{ field: 'completedAt', dir: 'desc' }],
+  take: 1,
+  arrayOperator: 'all',
+  condition: { field: 'completedAt', dateOperator: 'before', value: { ago: { days: 30 } } },
+}
+```
+
+Without the filter, `take: 1` would select the latest mission of *any* status.
+The filter is evaluated by `check` per element (full support). Compilation is
+**check-only for now**: `extremalRewrite` bails when a `filter` is present, so
+`toPrisma`/`toSql` throw the "evaluate with check()" error rather than miscompile
+a filtered window. Compiling a filtered window to a filtered `every`/`some` is a
+candidate for a later release.
+
+### Catalog reflection for 2.6 operators
+
+The builder-facing operator catalog now reflects the 2.6 date/window features it
+was missing:
+
+- New `ValueShape` **`dateWindow`** for `within` — distinct from `dateRange`.
+  Previously `within` reported `dateRange` (a two-endpoint literal pair), which
+  contradicted the validator (it requires a single period/rolling expression).
+- **`acceptsExpr`** flag on date catalog entries — marks operators that accept
+  structured date expressions (`{ ago: { days: 30 } }`, `{ this: 'month' }`, …)
+  in addition to / instead of literal dates. True for all date operators except
+  `dayIn`/`dayNotIn`.
+- **`WINDOW_SELECTOR`** + `getWindowSupport(ruleType, target)` + `WindowSupport`
+  — reflect the windowing fields and per-(ruleType × target) support: `check`
+  full; `toPrisma` extremal for array, none for aggregate; `toSql` none.
+
+A new `test/operatorCatalog.integrity.test.ts` enforces that every operator in
+the `Operator`/`DateOperator`/`ArrayOperator` enums has a catalog entry (and no
+extras), every date operator declares an explicit `acceptsExpr`, and the window
+support matrix covers every rule-type × target — so future operator additions
+can't silently skip the reflection.
+
 ## 2.6.0
 
 Two additive primitives: relative/calendar **date expressions** and an ordered

@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "check": "bun run typecheck && bun run lint",
+    "check:catalog": "bun test test/operatorCatalog.integrity.test.ts",
+    "check": "bun run typecheck && bun run lint && bun run check:catalog",
     "prepare": "lefthook install",
     "prepublishOnly": "bun run check && bun run test && bun run build"
   },

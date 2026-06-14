@@ -632,6 +632,32 @@ check(
 > see [docs/LENS.md](./docs/LENS.md).**
 > This section covers the high-level shape and the multi-source bridges.
 
+### What a lens is *for*
+
+A lens is not a query filter. It's a composable, **enforceable model of authority
+over data** — *what a party can see and what it can do* — delegated down a chain of
+trust boundaries (platform → org → space → subtenant → client). Each layer can only
+**narrow**, never widen (`validateNarrowing` keeps the chain monotonic), and the
+boundary is **enforced, not documented**:
+
+- a rule authored against a lens provably can't reference outside it —
+  `checkRuleAgainstLens`, at author time;
+- the row-scope **`where` is the grant, applied server-side at execution** via
+  `applyLens` — the authored rule never sees it and can't escape it;
+- what reaches an untrusted party reveals nothing hidden — `exposedSurface`.
+
+A lens defines a **surface area**, reused for distinct, separately-enforced
+constraints that may **diverge**: the *data-flow* surface (what you receive / pass
+into an interpolated template / expose to a client) vs the *reasoning* surface
+(what you may author predicates against — which can be narrower than what you
+actually get back). One predicate DSL (`Condition`) expresses both the **grant**
+(`where`) and the **use** (rules), compiling to `check` / `toPrisma` / `toSql`.
+That's why the same primitive backs permissions, email targeting/conditions,
+feature flags, and state-transition guards — it's the authority/visibility spine
+they compose on, not a filter helper.
+
+### How it's built
+
 The `Lens` primitive is a schema-aware view layer over one or more `FieldMap`s. It enables rule authoring against multi-source data (e.g. Prisma + an external CRM), with declarative cross-source `Bridge`s and recursive `Narrowing`s for both schema (picks/omits/enumPicks/enumOmits) and data (`where`).
 
 ### FieldMap & FieldMapSet

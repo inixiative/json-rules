@@ -8,6 +8,8 @@ A TypeScript-first JSON rules library for:
 
 The same rule AST can be evaluated against in-memory data with `check()`, converted into a Prisma query plan with `toPrisma()`, or compiled into SQL with `toSql()`.
 
+> Part of the [inixiative ecosystem](https://github.com/inixiative). See the **[full vocabulary](https://www.inixiative.com/vocabulary.html)** for every primitive — `Condition`, `FieldMap`, lens, sources, builders, and the layers built on them — with what each solves and how it works.
+
 ## Installation
 
 ```bash

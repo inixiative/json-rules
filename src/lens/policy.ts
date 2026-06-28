@@ -220,6 +220,20 @@ export const walkLensPath = (
     if (!isFieldVisible(effect, fieldName)) return null;
     const entry = model.fields[fieldName];
     if (!entry) return null;
+    // A Json column has no declared sub-fields; a dotted sub-path into it is resolved
+    // by the evaluators/compilers (check/toPrisma/toSql), so the field resolves to the
+    // visible Json column — stop here and treat it as the terminal.
+    if (entry.kind === 'scalar' && entry.type === 'Json' && i < parts.length - 1) {
+      return {
+        mapName,
+        modelName,
+        relPath,
+        entry,
+        hopEffects,
+        terminalEffect: effect,
+        terminalFieldName: fieldName,
+      };
+    }
     if (i === parts.length - 1) {
       return {
         mapName,

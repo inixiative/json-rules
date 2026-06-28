@@ -89,18 +89,21 @@ const visit = (
     }
   }
 
-  // Enum value validation for leaf rules
-  if (terminalIsEnum && 'operator' in cond && terminalFieldName) {
+  // Value-set validation for leaf rules. Fires whenever the field carries an
+  // allowed set — an enum (registry/narrowed) or any other kind with explicit
+  // `values` (e.g. a hydrated source's option list).
+  if (terminalAllowedValues && 'operator' in cond && terminalFieldName) {
     const literals = extractEnumLiterals(
       cond as { value?: unknown; path?: unknown; operator?: unknown },
     );
-    if (literals && terminalAllowedValues) {
+    if (literals) {
       const allowed = new Set(terminalAllowedValues);
+      const scope = terminalIsEnum ? `enum '${terminalEnumType}'` : `field '${terminalFieldName}'`;
       for (const v of literals) {
         if (typeof v === 'string' && !allowed.has(v)) {
           violations.push({
             path: terminalFieldName,
-            reason: `value '${v}' is not in the allowed set for enum '${terminalEnumType}' (allowed: ${[...allowed].join(', ')})`,
+            reason: `value '${v}' is not in the allowed set for ${scope} (allowed: ${[...allowed].join(', ')})`,
           });
         }
       }

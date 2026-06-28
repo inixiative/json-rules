@@ -1,6 +1,7 @@
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import { isFieldVisible, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
+import type { ProjectOptions } from './projectByPath.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
@@ -30,9 +31,21 @@ const unionFieldInto = (
 };
 
 // Leak-safe total exposed surface of a narrowed lens, as a Lens. See docs/LENS.md.
-export const exposedSurface = (lensOrNarrowing: Lens | LensNarrowing): Lens => {
+export const exposedSurface = (
+  lensOrNarrowing: Lens | LensNarrowing,
+  opts: ProjectOptions = {},
+): Lens => {
   const policy: Policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;
+
+  // Per-model union of fetched values (the flattened surface collapses paths).
+  const fetchedByModelField = new Map<string, Set<string>>();
+  for (const sv of opts.sourceValues ?? []) {
+    const k = `${sv.mapName}::${sv.model}::${sv.field}`;
+    const set = fetchedByModelField.get(k) ?? new Set<string>();
+    for (const v of sv.values) set.add(v);
+    fetchedByModelField.set(k, set);
+  }
 
   const surface = new Map<string, SurfaceModel>();
   const visitedDeclared = new Set<string>();
@@ -73,12 +86,9 @@ export const exposedSurface = (lensOrNarrowing: Lens | LensNarrowing): Lens => {
 
     for (const [fieldName, entry] of Object.entries(model.fields)) {
       if (!isFieldVisible(effect, fieldName)) continue;
-      const narrowedEnum = effect.enumValuesByField.get(fieldName);
-      unionFieldInto(
-        acc.fields,
-        fieldName,
-        narrowedEnum !== undefined ? { ...entry, values: narrowedEnum } : entry,
-      );
+      const fetched = fetchedByModelField.get(`${mapName}::${modelName}::${fieldName}`);
+      const values = fetched ? [...fetched] : effect.enumValuesByField.get(fieldName);
+      unionFieldInto(acc.fields, fieldName, values !== undefined ? { ...entry, values } : entry);
 
       if (entry.kind === 'object' || entry.kind === 'bridge') {
         const target = resolveRelationTarget(entry, mapName);

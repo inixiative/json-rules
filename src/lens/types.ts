@@ -27,6 +27,13 @@ export type ModelDefaultNarrowing = {
    * Composes via filter-first semantic at every visit of this model.
    */
   where?: Condition;
+  /**
+   * Per-field eligibility `where` over THIS model — decorates a field's option
+   * picker. The field's selectable values = DISTINCT(field) over this model
+   * filtered by `where` (plus the model's own narrowing). Composes like `where`:
+   * general via `mapDefaults`, path-specific via `root`/`relations`, AND-only.
+   */
+  sources?: Record<string, Condition>; // fieldName → eligibility where
 };
 
 /** Narrowing for a model at a specific traversal path. Adds relations to the default shape. */

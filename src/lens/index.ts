@@ -7,8 +7,10 @@ export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
 export { exposedSurface } from './exposedSurface';
 export { validateNarrowing } from './narrowing';
-export type { PathProjection, ProjectedVisit } from './projectByPath';
+export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectByPath';
 export { projectByPath } from './projectByPath';
+export type { SourcePrismaQuery, SourceQuery, SourceSqlQuery } from './sourceQuery';
+export { sourceQueries } from './sourceQuery';
 export type {
   EnumNarrowing,
   Lens,

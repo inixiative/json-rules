@@ -9,13 +9,39 @@ export type ProjectedVisit = {
   modelName: string;
   fields: Record<string, FieldMapEntry>;
   whereClauses: Condition[];
+  /** Per-field source eligibility wheres, composed across layers (general + path). */
+  sources: Record<string, Condition[]>;
 };
 
 export type PathProjection = Map<string, ProjectedVisit>;
 
-export const projectByPath = (lensOrNarrowing: Lens | LensNarrowing): PathProjection => {
+/**
+ * The materialized option set for one sourced field — the fetched companion to a
+ * serializable lens. Shaped to be exactly what `sourceQueries()` emits plus the
+ * fetched `values`, so it feeds both projections: `projectByPath` keys by
+ * `path`+`field` (exact), `exposedSurface` by `mapName`+`model`+`field` (union).
+ */
+export type SourceValues = {
+  path: string;
+  mapName: string;
+  model: string;
+  field: string;
+  values: readonly string[];
+};
+
+export type ProjectOptions = { sourceValues?: readonly SourceValues[] };
+
+export const projectByPath = (
+  lensOrNarrowing: Lens | LensNarrowing,
+  opts: ProjectOptions = {},
+): PathProjection => {
   const policy = resolvePolicy(lensOrNarrowing);
   const out: PathProjection = new Map();
+
+  const fetchedByPathField = new Map<string, readonly string[]>();
+  for (const sv of opts.sourceValues ?? []) {
+    fetchedByPathField.set(`${sv.path}|${sv.field}`, sv.values);
+  }
 
   const visit = (
     mapName: string,
@@ -32,12 +58,23 @@ export const projectByPath = (lensOrNarrowing: Lens | LensNarrowing): PathProjec
     const fields: Record<string, FieldMapEntry> = {};
     for (const [fieldName, entry] of Object.entries(model.fields)) {
       if (!isFieldVisible(effect, fieldName)) continue;
-      const narrowedEnumValues = effect.enumValuesByField.get(fieldName);
-      fields[fieldName] =
-        narrowedEnumValues !== undefined ? { ...entry, values: narrowedEnumValues } : entry;
+      const fetched = fetchedByPathField.get(`${dottedPath}|${fieldName}`);
+      const values = fetched ?? effect.enumValuesByField.get(fieldName);
+      fields[fieldName] = values !== undefined ? { ...entry, values } : entry;
     }
 
-    out.set(dottedPath, { mapName, modelName, fields, whereClauses: effect.whereClauses });
+    const sources: Record<string, Condition[]> = {};
+    for (const [fieldName, clauses] of effect.sources) {
+      if (isFieldVisible(effect, fieldName)) sources[fieldName] = clauses;
+    }
+
+    out.set(dottedPath, {
+      mapName,
+      modelName,
+      fields,
+      whereClauses: effect.whereClauses,
+      sources,
+    });
 
     for (const relField of effect.relations.keys()) {
       const entry = model.fields[relField];

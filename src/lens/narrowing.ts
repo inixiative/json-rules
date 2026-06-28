@@ -115,6 +115,17 @@ const validateModelNode = (
     const result = checkWhereAgainstModel(narrowing.where, modelFields, modelName);
     for (const err of result) errors.push(`${position}.where: ${err}`);
   }
+
+  for (const [field, where] of Object.entries(narrowing.sources ?? {})) {
+    if (!modelFields[field]) {
+      errors.push(`${position}.sources: field '${field}' not on model`);
+      continue;
+    }
+    if (where !== undefined && where !== true && where !== false) {
+      const result = checkWhereAgainstModel(where, modelFields, modelName);
+      for (const err of result) errors.push(`${position}.sources.${field}: ${err}`);
+    }
+  }
 };
 
 const checkWhereAgainstModel = (

@@ -8,6 +8,7 @@ export type VisitEffect = {
   omits: Set<string>;
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
+  sources: Map<string, Condition[]>;
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -88,6 +89,13 @@ export const accumulateEnumFields = (
 const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
   accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined) out.whereClauses.push(n.where);
+  if (n.sources) {
+    for (const [field, where] of Object.entries(n.sources)) {
+      const clauses = out.sources.get(field) ?? [];
+      clauses.push(where);
+      out.sources.set(field, clauses);
+    }
+  }
 };
 
 export const resolveVisit = (
@@ -101,6 +109,7 @@ export const resolveVisit = (
     omits: new Set(),
     enumValuesByField: new Map(),
     whereClauses: [],
+    sources: new Map(),
     relations: new Map(),
   };
 
@@ -148,15 +157,18 @@ export const resolveVisit = (
   }
 
   for (const [fieldName, entry] of Object.entries(model.fields)) {
-    if (entry.kind !== 'enum') continue;
-    const enumType = entry.type;
-    const baseValues = entry.values ?? fieldMap?.enums?.[enumType];
+    const isEnum = entry.kind === 'enum';
+    // Enums draw from the registry; any other kind (scalar, Json) is gated only
+    // by an explicit `values` set — e.g. a hydrated source's option list.
+    const baseValues = isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values;
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;
-    const typePicks = typeEnumPicks.get(enumType);
-    const typeOmits = typeEnumOmits.get(enumType);
-    if (typePicks) vals = vals.filter((v) => typePicks.has(v));
-    if (typeOmits) vals = vals.filter((v) => !typeOmits.has(v));
+    if (isEnum) {
+      const typePicks = typeEnumPicks.get(entry.type);
+      const typeOmits = typeEnumOmits.get(entry.type);
+      if (typePicks) vals = vals.filter((v) => typePicks.has(v));
+      if (typeOmits) vals = vals.filter((v) => !typeOmits.has(v));
+    }
     const fp = fieldEnumPicks.get(fieldName);
     const fo = fieldEnumOmits.get(fieldName);
     if (fp) vals = vals.filter((v) => fp.has(v));

@@ -2,7 +2,7 @@ import { get, isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
 import { ArrayOperator, Operator } from './operator';
-import type { AggregateRule, ArrayRule, Condition, DateConfig } from './types';
+import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
 import { applyWindow } from './window';
 
 type Row = Record<string, unknown>;
@@ -10,6 +10,7 @@ type CheckData = Row | unknown[];
 
 export type CheckOptions = {
   context?: CheckData;
+  bindings?: Record<string, RuleValue>;
 } & DateConfig;
 
 const validateRootArrayShape = (rule: Condition): void => {
@@ -44,7 +45,8 @@ export const check = <TData extends CheckData>(
   if ('dateOperator' in conditions)
     return checkDate(conditions, data as Row, opts.context as Row, opts);
   if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, data, opts);
-  if ('field' in conditions) return checkField(conditions, data as Row, opts.context as Row);
+  if ('field' in conditions)
+    return checkField(conditions, data as Row, opts.context as Row, opts.bindings);
   if ('if' in conditions) return checkIfThenElse(conditions, data, opts);
 
   return false;

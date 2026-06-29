@@ -1,11 +1,12 @@
 import { get, isEmpty } from 'lodash-es';
 import { Operator } from './operator';
-import type { Rule } from './types';
+import type { Rule, RuleValue } from './types';
 
 export const checkField = <TData extends Record<string, unknown>>(
   condition: Rule,
   data: TData,
   context: TData,
+  bindings?: Record<string, RuleValue>,
 ): boolean | string => {
   // Use data for field access (current element) but context remains available for path references
   const fieldValue = get(data, condition.field) as unknown;
@@ -18,7 +19,7 @@ export const checkField = <TData extends Record<string, unknown>>(
     Operator.notExists,
   ];
   const needsValue = !noValueOps.includes(condition.operator);
-  const value = needsValue ? getValue(condition, data, context) : undefined;
+  const value = needsValue ? getValue(condition, data, context, bindings) : undefined;
 
   const getError = (op: string) =>
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
@@ -114,8 +115,14 @@ const getValue = <TData extends Record<string, unknown>>(
   condition: Rule,
   data: TData,
   context: TData,
+  bindings?: Record<string, RuleValue>,
 ): unknown => {
   if (condition.value !== undefined) return condition.value;
+  if (condition.bind !== undefined) {
+    const bound = bindings?.[condition.bind];
+    if (bound === undefined) throw new Error(`Missing binding for "${condition.bind}"`);
+    return bound;
+  }
   if (condition.path) {
     // Special case: if path starts with "$." use data (current element)
     if (condition.path.startsWith('$.')) {

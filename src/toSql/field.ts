@@ -136,6 +136,12 @@ const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
     return { type: 'value', value: get(state.context, rule.path) };
   }
 
+  if (rule.bind !== undefined) {
+    throw new Error(
+      `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to SQL.`,
+    );
+  }
+
   // No value, no path — valid for no-value operators (isEmpty, notEmpty, exists, notExists)
   return { type: 'value', value: undefined };
 };

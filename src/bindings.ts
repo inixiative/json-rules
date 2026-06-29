@@ -42,7 +42,11 @@ export const resolveBindings = (
 
   if (typeof node.bind === 'string' && node.bind in bindings) {
     const { bind, ...rest } = node;
-    node = { ...rest, value: bindings[bind as string] };
+    // A supplied binding (key present) resolves to its value; undefined → null so
+    // the substituted condition stays clean serializable JSON. Absent keys are
+    // left as tokens (partial resolution), never coerced.
+    const bound = bindings[bind as string];
+    node = { ...rest, value: bound === undefined ? null : bound };
   }
 
   if (Array.isArray(node.all))

@@ -119,9 +119,13 @@ const getValue = <TData extends Record<string, unknown>>(
 ): unknown => {
   if (condition.value !== undefined) return condition.value;
   if (condition.bind !== undefined) {
-    const bound = bindings?.[condition.bind];
-    if (bound === undefined) throw new Error(`Missing binding for "${condition.bind}"`);
-    return bound;
+    // Key presence is the contract: an unsupplied binding is a caller bug (a
+    // forgotten scope must never silently run). A supplied-but-nullish binding is
+    // a value — normalize undefined → null (a legit fail-closed filter).
+    if (!bindings || !(condition.bind in bindings))
+      throw new Error(`Missing binding for "${condition.bind}"`);
+    const bound = bindings[condition.bind];
+    return bound === undefined ? null : bound;
   }
   if (condition.path) {
     // Special case: if path starts with "$." use data (current element)

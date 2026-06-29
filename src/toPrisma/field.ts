@@ -37,6 +37,11 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
  */
 const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
+  if (rule.bind !== undefined) {
+    throw new Error(
+      `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
+    );
+  }
   if (rule.path) {
     if (rule.path.startsWith('$.')) {
       throw new Error(

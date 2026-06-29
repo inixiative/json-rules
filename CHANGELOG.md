@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.1 — bind resolution: key-presence contract
+
+Resolving a `{ bind }` now distinguishes an **unsupplied** binding from one supplied as nothing — key presence is the contract:
+
+- **Name absent from the `bindings` map → throw** (`check`, and the compilers). A forgotten scope must never silently run; the throw is now precise (key presence, not `value !== undefined`, so a present-but-`undefined` value no longer trips it).
+- **Name present (even `null`/`undefined`) → use the value, normalizing `undefined → null`.** An explicitly-supplied nothing is a value (`where x = null` — a fail-closed filter), and `null` keeps the resolved condition clean serializable JSON. `resolveBindings`/`resolveLensBindings` still leave **absent** keys as tokens (partial resolution unchanged).
+- **`toPrisma` / `toSql` reject a surviving `{ bind }` token** with an explicit "resolve bindings before compiling" error, instead of silently emitting `value: undefined`.
+
 ## 2.11.0 — context bindings
 
 Context bindings: runtime-bound values in rules and narrowings (`{ bind }`), so a `where`/value can reference tenant context (e.g. the current brand) instead of a baked literal or a non-serializable closure. A bind **preprocesses into the lens** — resolve into the chain's `where`/`sources` first, then `applyLens`/`toPrisma`/`toSql`/`sourceQueries`/`projectByPath` consume a concrete lens **unchanged**, so the whole feature is additive. Full scope + design: `tickets/FEAT-004`.

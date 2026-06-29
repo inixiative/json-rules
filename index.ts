@@ -1,3 +1,4 @@
+export * from './src/bindings';
 export * from './src/check';
 export * from './src/fieldMap';
 export * from './src/lens';

@@ -1,4 +1,5 @@
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import { validateBindNames } from './bindings.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
 import { intersectStringSet } from './policy.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
@@ -467,6 +468,8 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
       errors.push(`root.where: '${v.path}' ${v.reason}`);
     }
   }
+
+  for (const e of validateBindNames(narrowing)) errors.push(e);
 
   if (errors.length) {
     throw new Error(`validateNarrowing:\n${errors.join('\n')}`);

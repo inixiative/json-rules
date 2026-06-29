@@ -1,67 +1,59 @@
-# FEAT-004: Context bindings + lens identity/serialization (v3.0.0)
+# FEAT-004: Context bindings — serializable dynamic `where`
 
-**Status**: 🆕 Proposed (RFC) — model converged in discussion 2026-06-29; sequencing + open items below, for review
-**Assignee**: TBD
+**Status**: 🟢 Core built — `feat/context-bind-values` / PR #4. Model decided 2026-06-29 (Aron).
+**Assignee**: Aron
 **Priority**: High
 **Created**: 2026-06-29
 **Updated**: 2026-06-29
-**Target**: v3.0.0
+**Target**: see "Semver" below — additive under the decided design, so 2.11 vs 3.0 is the one open call.
 
-Design discussion: template `INFRA-023` (problem framing + alternatives). This ticket is the json-rules-side implementation plan. **It is a proposal to react to, not a settled spec** — slices 4–7 in particular await review before building.
+Design discussion: template `INFRA-023`. Motivating consumer: Zealot per-slug email narrowings (ZLT-3169) — a brandless default template must carry its own tenant-scoped narrowing as config, which a runtime `scopeNarrowing((c) => …)` closure can't do.
 
 ---
 
-## Why a 3.0
+## The decision that shrank this ticket
 
-Rules and narrowings need **runtime-bound values**. A `where` like "scope to the current tenant" can't be a literal (the tenant varies) and can't be a closure (closures aren't serializable — so a brandless config row, e.g. an email-template default, can't carry its own scope). Today the only mechanism is a runtime `scopeNarrowing((c) => …)` closure: code, not data.
+A bind **preprocesses into the lens** — you resolve `{ bind }` tokens into the chain's `where`/`sources` *first*, producing a structurally-new lens with concrete conditions, and then `applyLens` / `toPrisma` / `toSql` / `sourceQueries` / `projectByPath` / `exposedSurface` all consume it **unchanged**. A bind needs **nothing new downstream**.
 
-The fix is a context-bind value (`{ bind }`) resolved from a supplied bindings map. **On its own that's additive (a minor).** But making it legible and serializable pulls in lens/narrowing **identity** and **serialization-by-ref**, which change the lens shape — those break, so the cohesive release is **3.0**, with bindings anchoring it.
+That single call removes everything that would have made this a heavy 3.0:
 
-## What's in 3.0
+- ❌ ~~`bindings` threaded through `toPrisma` / `toSql` / `runSources`~~ — they receive an already-concrete lens.
+- ❌ ~~intrinsic lens/narrowing identity~~ — bind names are unique across the chain, so the **name is the key**; `parent:` is the qualifier. No assigned ids needed.
+- ❌ ~~`projectByPath` folds a `bindings` option~~ — resolve the lens, then project.
+- ⏸️ **serialization-by-ref + `seal`** — deferred (INFRA-016). "idk if we need right now." The dynamic `where` already serializes (binds are plain tokens); ref-form + seal are only needed once we persist/hand off lenses, not for the email path.
 
-1. **`{ bind }` value source** — a third arm of `ValueSource<T>` (`{ value } | { path } | { bind }`), valid anywhere a value goes; resolved from a `bindings` map at execution. *(slice 1 ✅)*
-2. **Bindings plumbing** — `bindings` threaded through `check` / `toPrisma` / `toSql` / `runSources`; a resolved bind is a query **parameter** in SQL/Prisma.
-3. **Introspection** — `requiredBindings(lensOrRule)` and `describeBindings(lensOrRule)` (grouped by owning layer); a missing required bind throws at execution.
-4. **Unique-name discipline + `parent:`** — bind names are unique within a composed narrowing chain; you can see the names a parent already occupies, and a collision **errors** (pick another name). To *intentionally* reuse an inherited binding, reference it explicitly as `parent:name` — read-only, resolved at the parent's stage, never rebindable by the child.
-5. **Progressive (partial) resolution** — resolving a bindings map substitutes the names it covers and leaves the rest as tokens; `requiredBindings` shrinks. Execution requires it empty (else throw). Resolving only narrows, never widens.
-6. **Intrinsic lens/narrowing identity** — every lens/narrowing carries a stable id/name in *both* object and ref-id forms (promotes INFRA-016's "stable identity" from serialize-only to intrinsic). Enables `describeBindings` grouping, `parent:`, and serialization.
-7. **Serialization-by-ref + `seal`** (INFRA-016) — `serialize`/`deserialize` against source+bridge registries; `seal` for tenant→subtenant handoff. The dynamic `where` now serializes (binds as tokens), so a brandless default config row can carry its own scope.
-8. **Projection folds bindings** — `projectByPath(lens, { bindings })` resolves binds server-side; `exposedSurface` stays `where`-stripped (binds never reach the client). Sourced options are resolved + scoped server-side; only the resolved value lists ship.
+## What's built (PR #4)
 
-## Security model (converged)
+Core (Condition-level, additive — slices 1–2):
+- **`{ bind }` value source** — third arm of `ValueSource<T>` (`{ value } | { path } | { bind }`), valid anywhere a literal goes (equality, comparison, in/notIn, between, aggregate; date rules extend identically). A narrowing `where` reads `{ field: 'brandUuid', operator: 'equals', bind: 'brandUuid' }` — serializable, brandless.
+- **`check(rule, data, { bindings })`** — resolves a bind from the supplied map; **throws** on a missing required bind (a forgotten tenant scope is a caller bug, never silently zero rows).
+- **`requiredBindings(condition)` → `Set<string>`** and **`resolveBindings(condition, bindings)`** — collect names; substitute the names the map covers, leave the rest as tokens (partial / progressive). Non-mutating.
 
-The bar is **never reveal another tenant's data** — seeing your *own* bound values is fine ("it's your tenant"). Binds always resolve from the authenticated tenant context server-side, so a requester only ever sees its own scope. Therefore:
+Lens-level (additive — the "preprocess into the lens" entry point):
+- **`resolveLensBindings(lensOrNarrowing, bindings)`** — resolves binds across the whole chain's `where`/`sources` (recursing relations + mapDefaults), returning a new lens. Partial-safe. Non-mutating.
+- **`lensRequiredBindings(lensOrNarrowing)` → `Set<string>`** — what the lens needs; `parent:` refs collapse to base names. Pass `narrowing.parent` to **see the names a child must not collide with**.
+- **`validateBindNames(narrowing)`** (folded into `validateNarrowing`) — enforces the discipline below.
 
-- **Source scoping is the one load-bearing invariant** — resolve bindings *before* hydrating a source query, so an option list is always tenant-scoped. An unscoped source query is the only path by which another tenant's rows reach you.
-- `exposedSurface` strips `where` (and binds / `parent:` tags) — the client gets field names + resolved option values only.
-- The returned client rule is re-validated (`checkRuleAgainstLens`) and the server's `where` re-applied (`applyLens`) — a tampered rule can't widen or reach a hidden field.
-- Client-submitted rules carry no binds (binds are a narrowing/server concept) — reject/strip them.
-- `parent:` references a *containing* scope (yours-or-above), never a sibling tenant; read-only.
+## The discipline (decided)
 
-## What breaks (3.0)
+- **Unique names + collision = error.** A layer may not re-declare a bind name an ancestor already declares; `validateNarrowing` throws and names the collision so the author picks a better one ("you should be able to see parent").
+- **`parent:name` for intentional reuse** — a child references an inherited binding read-only as `parent:brandUuid`; it draws the same value as the ancestor's `brandUuid`, is excluded from the collision check, and a `parent:` ref no ancestor declares is rejected. This *is* the layer-local / downward-only invariant: a child can reference but never re-bind a parent's scope.
 
-- Lens/narrowing objects gain an intrinsic `id`/name — shape change.
-- New ref-id serialization format; `seal` output shape.
-- Likely signature changes to make `bindings` first-class on `applyLens`/projection rather than optional add-ons (TBD — see open).
-- *Non-breaking (additive):* the `{ bind }` arm and the optional `bindings` option on `check`/`toPrisma`/`toSql` — these alone wouldn't force a major.
+## Security model (unchanged)
 
-## Slice order
+The bar is **never reveal another tenant's data** — seeing your *own* bound values is fine ("it's your tenant"). Binds resolve from the authenticated tenant context server-side.
 
-1. ✅ **`{ bind }` + `check` path** — type arm, `CheckOptions.bindings`, `getValue` resolution (throws on missing). *Done on `feat/context-bind-values`; 3 tests; typecheck clean.*
-2. **`requiredBindings` / `resolveBindings`** (flat, over a Condition) — collect names; substitute from a map; partial resolution leaves unresolved as tokens. + tests.
-3. **`toPrisma` + `toSql`** — resolve binds → query parameter; aggregate rejects bind (parallels `path`). + tests.
-4. **Intrinsic identity** — stable id/name on lens + narrowing, both forms. *(Breaking; gates 5–7.)* + tests.
-5. **Layer-local resolution + `parent:`** — per-layer resolution down the chain; unique-name validation (collision errors); `parent:name` inherited read-only ref. + tests for the downward-only invariant.
-6. **Sources-after-bindings** — `sourceQuery` resolves binds pre-hydration; `projectByPath` folds `{ bindings }`; `exposedSurface` stays where-stripped. + ordering/leak tests.
-7. **Serialization-by-ref + `seal`** (INFRA-016) — serialize/deserialize the dynamic where; tenant→subtenant. + round-trip/leak tests.
-8. **Docs + CHANGELOG + 3.0.0 cut.**
+- **Resolve before hydrating a source query** — so an option list is always tenant-scoped. An unscoped source query is the only path by which another tenant's rows reach you. (`resolveLensBindings` → then `sourceQueries`.)
+- `exposedSurface` strips `where` (and any unresolved binds / `parent:` tags) — the client gets field names + resolved option values only.
+- The client's returned rule is re-validated (`checkRuleAgainstLens`) and the server's `where` re-applied (`applyLens`) — a tampered rule can't widen or reach a hidden field. Client rules carry no binds; reject/strip them.
 
-Slices 1–3 are additive / design-stable. **4 is the breaking pivot.** 5–7 encode the model + INFRA-016.
+## Semver — the one open call
 
-## Open — NOT decided, for review
+Under "preprocess into the lens, nothing new downstream," the whole feature is **additive** (a new union arm + new functions + a new validation that can only fire on binds, which didn't exist before). By semver that's a **minor (2.11)**. The 3.0 framing was justified by the lens identity/serialization rework — now deferred.
 
-- **Collision among concurrently-live tokens at one stage** — reject at compose, or auto-rename? (Leaning reject — matches "pick a better name.")
-- **`parent:` reach** — since names are unique, does `parent:` just mean "inherited / filled upstream," or address a specific ancestor? (Leaning: intent marker; the name is already unique.)
-- **Reserved-name set** — do occupied names include parent binds already resolved to literals, or only still-live ones?
-- **`bindings` first-class vs optional** on `applyLens`/projection (drives part of "what breaks").
-- **Identity: opaque id vs human-readable name** (INFRA-016's own open Q — names double as the ref + the qualifier).
+→ **Cut as 3.0.0 anyway** (feature milestone), or **ship 2.11 and reserve 3.0 for the serialization/`seal` rework**? `package.json` left at 2.10.1 pending this call.
+
+## Deferred (own follow-up, not this ticket)
+
+- **Serialization-by-ref + `seal`** (INFRA-016) — needed only to persist/hand off a lens across a tenant boundary. The binding tokens already serialize; this is the structure-by-ref + sealed-handoff layer on top.
+- **Token vocabulary registry** — a per-app declared set of bind names (`brandUuid`, `recipientUuid`, …) validated at deserialize. Useful once lenses persist; not needed while bindings are supplied at known call sites.

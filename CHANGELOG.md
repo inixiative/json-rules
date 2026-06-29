@@ -1,17 +1,23 @@
 # Changelog
 
-## Unreleased — v3.0.0 (in progress)
+## Unreleased — context bindings (additive; version TBD — 2.11 vs 3.0, see FEAT-004)
 
-Context bindings: runtime-bound values in rules and narrowings (`{ bind }`), so a `where`/value can reference tenant context (e.g. the current brand) instead of a baked literal or a non-serializable closure. Full scope + design: `tickets/FEAT-004`.
+Context bindings: runtime-bound values in rules and narrowings (`{ bind }`), so a `where`/value can reference tenant context (e.g. the current brand) instead of a baked literal or a non-serializable closure. A bind **preprocesses into the lens** — resolve into the chain's `where`/`sources` first, then `applyLens`/`toPrisma`/`toSql`/`sourceQueries`/`projectByPath` consume a concrete lens **unchanged**, so the whole feature is additive. Full scope + design: `tickets/FEAT-004`.
 
-**Landed (additive):**
+**Condition-level:**
 
 - **`{ bind }` value source** — a third arm of `ValueSource` (`{ value } | { path } | { bind }`), valid in any value position. Resolved from a `bindings` map at execution; a referenced-but-missing bind throws.
 - **`check(rule, data, { bindings })`** resolves binds during evaluation.
-- **`requiredBindings(condition)`** → the `Set<string>` of bind names a condition needs (validate `keys(bindings) ⊇ requiredBindings`).
-- **`resolveBindings(condition, bindings)`** → partial / progressive resolution: substitutes covered binds with their value, leaves uncovered ones as tokens.
+- **`requiredBindings(condition)`** → the `Set<string>` of bind names a condition needs.
+- **`resolveBindings(condition, bindings)`** → partial / progressive: substitutes covered binds, leaves uncovered ones as tokens.
 
-**Planned (breaking — the rest of 3.0, see FEAT-004):** `bindings` in `toPrisma` / `toSql` / `runSources`; intrinsic lens/narrowing identity; layer-local resolution + `parent:` inherited refs; `projectByPath` folds bindings (`exposedSurface` stays `where`-stripped); serialization-by-ref + `seal` (INFRA-016).
+**Lens-level (preprocess into the lens):**
+
+- **`resolveLensBindings(lensOrNarrowing, bindings)`** — resolve binds across the chain's `where`/`sources` (relations + mapDefaults), returning a new concrete lens. Partial-safe, non-mutating.
+- **`lensRequiredBindings(lensOrNarrowing)`** → `Set<string>` of names the lens needs; `parent:` refs collapse to base names. Pass `narrowing.parent` to see the names a child must not collide with.
+- **`validateBindNames(narrowing)`** (run by `validateNarrowing`) — bind names are unique across a chain; a re-declared name **errors**. Reference an inherited binding read-only as **`parent:name`**.
+
+**Deferred (own follow-up):** serialization-by-ref + `seal` (INFRA-016) — needed only to persist/hand off a lens across a tenant boundary; binding tokens already serialize.
 
 ## 2.8.0
 

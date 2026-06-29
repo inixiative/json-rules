@@ -5,7 +5,7 @@
 **Priority**: High
 **Created**: 2026-06-29
 **Updated**: 2026-06-29
-**Target**: see "Semver" below — additive under the decided design, so 2.11 vs 3.0 is the one open call.
+**Target**: **2.11.0** — additive under the decided design (decided 2026-06-29).
 
 Design discussion: template `INFRA-023`. Motivating consumer: Zealot per-slug email narrowings (ZLT-3169) — a brandless default template must carry its own tenant-scoped narrowing as config, which a runtime `scopeNarrowing((c) => …)` closure can't do.
 
@@ -20,7 +20,8 @@ That single call removes everything that would have made this a heavy 3.0:
 - ❌ ~~`bindings` threaded through `toPrisma` / `toSql` / `runSources`~~ — they receive an already-concrete lens.
 - ❌ ~~intrinsic lens/narrowing identity~~ — bind names are unique across the chain, so the **name is the key**; `parent:` is the qualifier. No assigned ids needed.
 - ❌ ~~`projectByPath` folds a `bindings` option~~ — resolve the lens, then project.
-- ⏸️ **serialization-by-ref + `seal`** — deferred (INFRA-016). "idk if we need right now." The dynamic `where` already serializes (binds are plain tokens); ref-form + seal are only needed once we persist/hand off lenses, not for the email path.
+- ❌ **`seal`** — dropped (INFRA-016). The server is the sole executor and each party authors only its own layer, so the parent floor is structural (chain compose + narrow-only + server-side bind resolution) — there's no off-server handoff to seal.
+- ⏸️ **serialization-by-ref** — its own ticket (INFRA-016), and the email path doesn't need it: store the narrowing delta and reattach a code-built parent at load. Ref-id only matters when the base lens itself is persisted/registry-driven.
 
 ## What's built (PR #4)
 
@@ -47,13 +48,12 @@ The bar is **never reveal another tenant's data** — seeing your *own* bound va
 - `exposedSurface` strips `where` (and any unresolved binds / `parent:` tags) — the client gets field names + resolved option values only.
 - The client's returned rule is re-validated (`checkRuleAgainstLens`) and the server's `where` re-applied (`applyLens`) — a tampered rule can't widen or reach a hidden field. Client rules carry no binds; reject/strip them.
 
-## Semver — the one open call
+## Semver — 2.11.0 (decided)
 
-Under "preprocess into the lens, nothing new downstream," the whole feature is **additive** (a new union arm + new functions + a new validation that can only fire on binds, which didn't exist before). By semver that's a **minor (2.11)**. The 3.0 framing was justified by the lens identity/serialization rework — now deferred.
+Under "preprocess into the lens, nothing new downstream," the whole feature is **additive** (a new union arm + new functions + a new validation that can only fire on binds, which didn't exist before) → a **minor, 2.11.0**. The 3.0 framing was carrying the lens identity/serialization rework, now out of scope (`seal` dropped; serialization-by-ref is its own INFRA-016 ticket).
 
-→ **Cut as 3.0.0 anyway** (feature milestone), or **ship 2.11 and reserve 3.0 for the serialization/`seal` rework**? `package.json` left at 2.10.1 pending this call.
+## Deferred / out of scope
 
-## Deferred (own follow-up, not this ticket)
-
-- **Serialization-by-ref + `seal`** (INFRA-016) — needed only to persist/hand off a lens across a tenant boundary. The binding tokens already serialize; this is the structure-by-ref + sealed-handoff layer on top.
+- **`seal`** — dropped (see above + INFRA-016). No off-server execution → nothing to seal.
+- **Serialization-by-ref** (INFRA-016) — its own ticket; the binding path doesn't need it (store the narrowing delta, reattach a code-built parent).
 - **Token vocabulary registry** — a per-app declared set of bind names (`brandUuid`, `recipientUuid`, …) validated at deserialize. Useful once lenses persist; not needed while bindings are supplied at known call sites.

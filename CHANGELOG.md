@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — context bindings (additive; version TBD — 2.11 vs 3.0, see FEAT-004)
+## 2.11.0 — context bindings
 
 Context bindings: runtime-bound values in rules and narrowings (`{ bind }`), so a `where`/value can reference tenant context (e.g. the current brand) instead of a baked literal or a non-serializable closure. A bind **preprocesses into the lens** — resolve into the chain's `where`/`sources` first, then `applyLens`/`toPrisma`/`toSql`/`sourceQueries`/`projectByPath` consume a concrete lens **unchanged**, so the whole feature is additive. Full scope + design: `tickets/FEAT-004`.
 
@@ -17,7 +17,7 @@ Context bindings: runtime-bound values in rules and narrowings (`{ bind }`), so 
 - **`lensRequiredBindings(lensOrNarrowing)`** → `Set<string>` of names the lens needs; `parent:` refs collapse to base names. Pass `narrowing.parent` to see the names a child must not collide with.
 - **`validateBindNames(narrowing)`** (run by `validateNarrowing`) — bind names are unique across a chain; a re-declared name **errors**. Reference an inherited binding read-only as **`parent:name`**.
 
-**Deferred (own follow-up):** serialization-by-ref + `seal` (INFRA-016) — needed only to persist/hand off a lens across a tenant boundary; binding tokens already serialize.
+**Out of scope:** `seal` dropped (the server is the sole executor — no off-server handoff to seal); serialization-by-ref is its own follow-up (INFRA-016) and the binding path doesn't need it.
 
 ## 2.8.0
 

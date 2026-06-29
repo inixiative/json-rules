@@ -59,7 +59,10 @@ export type DateConfig = {
   weekStart?: WeekStart;
 };
 
-type ValueSource<TValue> = { value: TValue; path?: never } | { path: string; value?: never };
+type ValueSource<TValue> =
+  | { value: TValue; path?: never; bind?: never }
+  | { path: string; value?: never; bind?: never }
+  | { bind: string; value?: never; path?: never };
 type NoValueSource = { value?: never; path?: never };
 type RuleBase<TOperator extends Operator> = {
   field: string;
@@ -227,6 +230,7 @@ export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = 
   operator: Operator;
   value?: number | [number, number];
   path?: string;
+  bind?: string;
   error?: string;
 };
 
@@ -235,6 +239,7 @@ export type Rule<TValue = RuleValue> = {
   operator: Operator;
   value?: TValue;
   path?: string;
+  bind?: string;
   error?: string;
 };
 
@@ -251,6 +256,7 @@ export type DateRule<TValue = DateRuleValue> = {
   dateOperator: DateOperator;
   value?: TValue;
   path?: string;
+  bind?: string;
   error?: string;
 };
 

@@ -1,4 +1,5 @@
 export { applyLens } from './applyLens';
+export { lensRequiredBindings, resolveLensBindings, validateBindNames } from './bindings';
 export type { RuleLensCheck, RuleLensViolation } from './checkRule';
 export { checkRuleAgainstLens } from './checkRule';
 export type { CreateLensInput } from './createLens';

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — v3.0.0 (in progress)
+
+Context bindings: runtime-bound values in rules and narrowings (`{ bind }`), so a `where`/value can reference tenant context (e.g. the current brand) instead of a baked literal or a non-serializable closure. Full scope + design: `tickets/FEAT-004`.
+
+**Landed (additive):**
+
+- **`{ bind }` value source** — a third arm of `ValueSource` (`{ value } | { path } | { bind }`), valid in any value position. Resolved from a `bindings` map at execution; a referenced-but-missing bind throws.
+- **`check(rule, data, { bindings })`** resolves binds during evaluation.
+- **`requiredBindings(condition)`** → the `Set<string>` of bind names a condition needs (validate `keys(bindings) ⊇ requiredBindings`).
+- **`resolveBindings(condition, bindings)`** → partial / progressive resolution: substitutes covered binds with their value, leaves uncovered ones as tokens.
+
+**Planned (breaking — the rest of 3.0, see FEAT-004):** `bindings` in `toPrisma` / `toSql` / `runSources`; intrinsic lens/narrowing identity; layer-local resolution + `parent:` inherited refs; `projectByPath` folds bindings (`exposedSurface` stays `where`-stripped); serialization-by-ref + `seal` (INFRA-016).
+
 ## 2.8.0
 
 Builder-surface primitives on the lens: a leak-safe exposed surface and a rule

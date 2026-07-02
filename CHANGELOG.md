@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.1 — restore hydrated-source option gating
+
+`checkRuleAgainstLens` again gates a rule's value against a hydrated source's fetched **`options`** set, not only against an input `values` set. When a consumer folds `sourceValues` onto `field.options` (via `exposedSurface`/`projectByPath`) and re-feeds the exposed surface back into `checkRuleAgainstLens`, a value outside the fetched set is rejected. This was a regression in 2.12.0 (the `options` branch of the value gate was dropped as unreachable — but it's reached by the fold-then-gate consumer flow). Now covered by `test/lens.sourceOptionsGating.test.ts`.
+
 ## 2.12.0 — labeled source options, deterministic dates, lens-gate hardening
 
 ### Sources: labeled option sets (`options`)

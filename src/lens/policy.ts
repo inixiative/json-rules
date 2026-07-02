@@ -177,9 +177,13 @@ export const resolveVisit = (
 
   for (const [fieldName, entry] of Object.entries(model.fields)) {
     const isEnum = entry.kind === 'enum';
-    // Enums draw from the registry; any other kind (scalar, Json) is gated only
-    // by an explicit `values` set.
-    const baseValues = isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values;
+    // Enums draw from the registry; any other kind (scalar, Json) is gated by an explicit
+    // `values` set. A hydrated source's folded `options` gate too and win when present — a
+    // consumer re-feeds an exposed surface here, so this is load-bearing (see
+    // test/lens.sourceOptionsGating.test.ts).
+    const optionValues = entry.options?.map((o) => o.value);
+    const baseValues =
+      optionValues ?? (isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values);
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;
     if (isEnum) {

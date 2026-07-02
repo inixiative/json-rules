@@ -156,64 +156,57 @@ This reads: "every comment is both non-deleted AND matches foo." A single
 deleted comment fails the `all` — even though deleted comments are explicitly
 out of scope. The scope semantic is broken.
 
-### Filter-first via implication — right
+### Filter-first via the window `filter` — right
 
-`applyLens` rewrites the `all` case using NOT-or-original (logical implication):
+`applyLens` injects the `all` grant into the array rule's window `filter`, not its condition:
 
 ```ts
 {
   field: 'comments',
   arrayOperator: 'all',
-  condition: {
-    any: [
-      { field: 'deletedAt', operator: 'notEmpty' },          // NOT(scope)
-      { field: 'body', operator: 'matches', value: 'foo' },  // user
-    ],
-  },
+  filter: { field: 'deletedAt', operator: 'isEmpty' },            // scope → window filter
+  condition: { field: 'body', operator: 'matches', value: 'foo' }, // untouched user condition
 }
 ```
 
-This reads: "every comment is either deleted *or* matches foo." Equivalently:
-"every non-deleted comment matches foo." Filter-first restored.
+`check` applies the window (`filter`, then any `orderBy`/`take`/`skip`) to the array **before**
+evaluating the `all` condition, so out-of-scope rows are dropped first and never participate — the
+intuitive "every *in-scope* comment matches foo." The scope *is* the filter.
 
 ### Truth table
 
 For a single row, `comments.all(body matches foo)` with
 `Comment.where = deletedAt isEmpty`:
 
-| `deletedAt` | `body matches foo` | Naive `all(scope ∧ user)` | Filter-first `all(¬scope ∨ user)` |
+| `deletedAt` | in the filtered set? | `body matches foo` | result |
 | --- | --- | --- | --- |
-| empty (in scope) | match | row passes | row passes |
-| empty (in scope) | no match | row fails → `all` fails | row fails → `all` fails |
-| non-empty (deleted) | match | row fails → `all` fails | row passes (vacuous) |
-| non-empty (deleted) | no match | row fails → `all` fails | row passes (vacuous) |
+| empty (in scope) | yes | match | participates, passes |
+| empty (in scope) | yes | no match | participates, fails → `all` fails |
+| non-empty (deleted) | no (dropped by `filter`) | — | does not participate |
 
-The filter-first column matches the intuitive reading: deleted rows simply
-don't participate. The naive column rejects the user's data over rows they
-weren't even asking about.
+Deleted rows simply don't participate. A naive `all(scope ∧ user)` instead rejects
+the user's data over rows they weren't even asking about.
 
-### `negate` helper and its limits
+### Why not a per-row implication?
 
-`applyLens` calls an internal `negate()` to produce the `¬scope` half. `negate`
-reuses *existing negative operators* in the DSL — no new `not` primitive:
+A previous approach realized the grant as a per-row implication *inside the condition* —
+`all(¬scope ∨ user)`, via an internal `negate()`. It was unsound two ways:
 
-- `equals ↔ notEquals`, `in ↔ notIn`, `contains ↔ notContains`,
-  `matches ↔ notMatches`, `between ↔ notBetween`,
-  `isEmpty ↔ notEmpty`, `exists ↔ notExists`
-- Date: `before ↔ onOrAfter`, `after ↔ onOrBefore`, `between ↔ notBetween`,
-  `dayIn ↔ dayNotIn`
-- ArrayOps: `any ↔ none`, `all` inverts to `any` with a negated inner,
-  `atLeast n ↔ atMost n-1`, `empty ↔ notEmpty`
-- Compound: De Morgan's laws on `all`/`any`; `if/then/else` inverts the branches
+- **Under a window** (`orderBy`/`take`/`skip`): `check` applies the window to the *raw* array
+  first, so an out-of-scope row could occupy the `take` slot and then be exempted by `¬scope` — a
+  **grant bypass** (the lens narrowing silently leaks).
+- **Under partial comparison semantics**: `negate` of an ordered comparator (`score > 0` →
+  `score <= 0`) is not a true complement when the field is missing — both return false — so an
+  out-of-scope row is wrongly forced through the user condition.
 
-There is **no inverse** for `startsWith`, `endsWith`, or `exactly`. If a
-`where` clause uses any of these and lands under an `arrayOperator: 'all'`,
-`applyLens` throws clearly with a fix hint. Rewrite the where using an
-invertible operator (e.g. `matches /^admin:/` instead of `startsWith 'admin:'`).
+Injecting into the `filter` avoids both: there is no `negate`, so no operator needs an inverse (a
+`startsWith` grant just works), and the window can't reorder around the scope. The trade-off is
+that a filter-bearing `all` grant is evaluated by `check()` (the compilers don't express window
+filters) — i.e. the compiled prefilter overmatches for that rule and `check()` narrows it, which is
+exactly the prefilter-then-check contract.
 
-The other array operators (`any`, `none`, `atLeast`, `atMost`, `exactly`) and
-`aggregate.condition` use plain AND injection — the filter-first semantic is
-already preserved by the operator's own meaning.
+The other array operators (`any`, `none`, `atLeast`, `atMost`, `exactly`) and `aggregate.condition`
+use plain AND injection — filter-first is already preserved by the operator's own meaning.
 
 ## 5. Composition rules
 

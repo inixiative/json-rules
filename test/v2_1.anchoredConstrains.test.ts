@@ -171,11 +171,12 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     expect(composed.condition.condition.all).toContainEqual(commentScope);
   });
 
-  test('arrayOperator: all — must use implication, not naive AND', () => {
-    // User rule: every comment matches foo
-    // Constraint: deletedAt isEmpty
-    // Naive AND would say "every comment is non-deleted AND matches foo" — deleted rows fail.
-    // Correct: "every non-deleted comment matches foo" = all(NOT(c) OR u) = all(any: [deletedAt notEmpty, u])
+  test('arrayOperator: all — filter-first via the window filter, not naive AND or a per-row implication', () => {
+    // User rule: every comment matches foo. Grant: only in-scope comments participate. Filter-first:
+    // the grant becomes the array rule's window `filter` (check drops out-of-scope rows before
+    // order/take/skip AND before the all-check), so only in-scope rows are evaluated. The inner
+    // condition stays the plain user condition — no `negate` implication (unsound under a window and
+    // under partial comparison semantics).
     const userRule = {
       field: 'posts',
       arrayOperator: ArrayOperator.any,
@@ -189,17 +190,15 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
     const composed = applyLens(userRule, n) as {
-      condition: { condition: { any?: Condition[]; all?: Condition[] } };
+      condition: { filter?: Condition; condition?: Condition };
     };
-    // Inner Comment condition should be an `any` (the implication form), NOT an `all`
-    expect(composed.condition.condition.any).toBeDefined();
-    // The first disjunct is NOT(c) which for isEmpty becomes notEmpty
-    const negated = composed.condition.condition.any?.[0] as {
-      field: string;
-      operator: string;
-    };
-    expect(negated.field).toBe('deletedAt');
-    expect(negated.operator).toBe(Operator.notEmpty);
+    // The grant is the window filter; the inner condition is the untouched user condition.
+    expect(composed.condition.filter).toEqual(commentScope);
+    expect(composed.condition.condition).toEqual({
+      field: 'body',
+      operator: Operator.contains,
+      value: 'foo',
+    });
   });
 
   test('arrayOperator: none — naive AND injection works (no row matches both)', () => {
@@ -290,7 +289,9 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     expect(composed.condition.condition.all).toContainEqual(commentScope);
   });
 
-  test('startsWith constraint under arrayOperator: all → clear error (no inverse)', () => {
+  test('startsWith constraint under arrayOperator: all → filter-injected (no inverse needed, no throw)', () => {
+    // Filter-first needs no operator inverse, so a grant with a non-invertible operator (startsWith)
+    // just becomes the window filter instead of throwing.
     const userRule = {
       field: 'posts',
       arrayOperator: ArrayOperator.any,
@@ -300,19 +301,12 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
         condition: { field: 'body', operator: Operator.contains, value: 'foo' },
       },
     } as Condition;
+    const grant = { field: 'body', operator: Operator.startsWith, value: 'admin:' };
     const n = withParent(lens, {
-      mapDefaults: {
-        prisma: {
-          models: {
-            Comment: {
-              // startsWith has no inverse operator in the DSL
-              where: { field: 'body', operator: Operator.startsWith, value: 'admin:' },
-            },
-          },
-        },
-      },
+      mapDefaults: { prisma: { models: { Comment: { where: grant } } } },
     });
-    expect(() => applyLens(userRule, n)).toThrow(/startsWith|no.*inverse|cannot.*negate/i);
+    const composed = applyLens(userRule, n) as { condition: { filter?: Condition } };
+    expect(composed.condition.filter).toEqual(grant);
   });
 });
 

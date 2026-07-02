@@ -1,6 +1,5 @@
 import { ArrayOperator } from '../operator.ts';
 import type { Condition } from '../types.ts';
-import { negate } from './negate.ts';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -14,9 +13,10 @@ import { resolveRelationTarget } from './walk.ts';
 //   - mapDefaults[M].models[X].where → injected wherever rule visits X in map M
 //   - root.relations[R]...relations[R].where → injected when rule descends through R
 //
-// Operator-specific injection inside an arrayRule.condition:
-//   - any/none/atLeast/atMost/exactly/aggregate.condition: AND with original
-//   - all: filter-first via `{ any: [negate(where), original] }`
+// Operator-specific injection inside an arrayRule:
+//   - any/none/atLeast/atMost/exactly/aggregate.condition: AND with original condition
+//   - all: filter-first via the array rule's window `filter` (drops out-of-scope rows before
+//     order/take/skip and before the all-check) — never a per-row negate implication
 
 const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition => {
   if (wheres.length === 0) return rule;
@@ -88,20 +88,15 @@ const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] => {
   return out;
 };
 
-// Inject `where` into an arrayRule's inner condition with the correct semantic.
+// Inject `where` into an arrayRule's inner condition. For any/none/atLeast/atMost/exactly, AND
+// injection preserves the operator's meaning. (`all` is filter-first — handled in rewriteRule by
+// injecting the grant into the window `filter`, not the condition.)
 const injectIntoArrayCondition = (
   innerCondition: Condition,
   whereClause: Condition,
-  arrayOperator: ArrayOperator,
-): Condition => {
-  if (arrayOperator === ArrayOperator.all) {
-    // Filter-first: every row that satisfies `where` must also satisfy user condition.
-    // Equivalent: every row satisfies (NOT where OR user condition).
-    return { any: [negate(whereClause), innerCondition] };
-  }
-  // any / none / atLeast / atMost / exactly: AND injection is correct
-  return { all: [whereClause, innerCondition] };
-};
+): Condition => ({
+  all: [whereClause, innerCondition],
+});
 
 // Walks the user rule recursively, looking for points where a model anchor
 // matches a `where` declared in the policy. At each such anchor, injects the
@@ -182,15 +177,35 @@ const rewriteRule = (
       const effectAtDescent = resolveVisit(policy, curMap, curModel, curRelPath);
       let inner = rewriteRule(rule.condition, policy, curMap, curModel, curRelPath);
       const arrayOp = 'arrayOperator' in rule ? (rule.arrayOperator as ArrayOperator) : undefined;
+      const allGrants: Condition[] = [];
       for (const whereClause of effectAtDescent.whereClauses) {
-        if (arrayOp) {
-          inner = injectIntoArrayCondition(inner, whereClause, arrayOp);
+        if (arrayOp === ArrayOperator.all) {
+          // Filter-first: an `all` grant drops out-of-scope rows via the window `filter`, which
+          // `check` applies before order/take/skip AND before the all-check. A per-row `negate`
+          // implication is unsound under a window and under partial (missing-field) semantics.
+          allGrants.push(whereClause);
+        } else if (arrayOp) {
+          inner = injectIntoArrayCondition(inner, whereClause);
         } else {
           // aggregate condition: AND injection
           inner = { all: [whereClause, inner] };
         }
       }
-      const rewritten = { ...rule, condition: inner } as Condition;
+      const existingFilter = (rule as { filter?: Condition }).filter;
+      const rewritten = (
+        allGrants.length
+          ? {
+              ...rule,
+              condition: inner,
+              filter:
+                existingFilter !== undefined
+                  ? { all: [existingFilter, ...allGrants] }
+                  : allGrants.length === 1
+                    ? allGrants[0]
+                    : { all: allGrants },
+            }
+          : { ...rule, condition: inner }
+      ) as Condition;
       return wrapWithWheres(rewritten, collectHopWheres(policy, relationHops.slice(0, -1)));
     }
 

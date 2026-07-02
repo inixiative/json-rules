@@ -1,8 +1,10 @@
 # Changelog
 
-## 2.12.1 — restore hydrated-source option gating
+## 2.12.1 — lens-boundary fixes: hydrated-source option gating + `all`-grant filter-first
 
-`checkRuleAgainstLens` again gates a rule's value against a hydrated source's fetched **`options`** set, not only against an input `values` set. When a consumer folds `sourceValues` onto `field.options` (via `exposedSurface`/`projectByPath`) and re-feeds the exposed surface back into `checkRuleAgainstLens`, a value outside the fetched set is rejected. This was a regression in 2.12.0 (the `options` branch of the value gate was dropped as unreachable — but it's reached by the fold-then-gate consumer flow). Now covered by `test/lens.sourceOptionsGating.test.ts`.
+**Restore hydrated-source option gating.** `checkRuleAgainstLens` again gates a rule's value against a hydrated source's fetched **`options`** set, not only against an input `values` set. When a consumer folds `sourceValues` onto `field.options` (via `exposedSurface`/`projectByPath`) and re-feeds the exposed surface back into `checkRuleAgainstLens`, a value outside the fetched set is rejected. This was a regression in 2.12.0 (the `options` branch of the value gate was dropped as unreachable — but it's reached by the fold-then-gate consumer flow). Covered by `test/lens.sourceOptionsGating.test.ts`.
+
+**`applyLens` `all`-grant is now filter-first.** A `where` grant under an `arrayOperator: 'all'` is injected into the array rule's window `filter` (dropped before order/take/skip and before the all-check), not realized as a per-row `¬scope ∨ condition` implication. The old implication was unsound two ways: (1) **security** — under a window (`orderBy`/`take`), `check` applied the window to the raw array first, so an out-of-scope row could take the slot and be exempted, bypassing the lens narrowing; (2) it rejected valid data when `negate` of an ordered comparator wasn't a true complement over a missing field. Filter-first fixes both, needs no operator inverse (so a `startsWith` grant no longer throws), and makes such rules `check()`-evaluated (the prefilter overmatches, `check()` narrows — the normal prefilter+check contract). Covered by `test/lens.applyLens.allFilterFirst.test.ts`. See `docs/LENS.md`.
 
 ## 2.12.0 — labeled source options, deterministic dates, lens-gate hardening
 

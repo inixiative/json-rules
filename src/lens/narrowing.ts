@@ -1,7 +1,7 @@
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import { validateBindNames } from './bindings.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
-import { intersectStringSet } from './policy.ts';
+import { intersectStringSet, normalizeSource } from './policy.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
@@ -117,11 +117,16 @@ const validateModelNode = (
     for (const err of result) errors.push(`${position}.where: ${err}`);
   }
 
-  for (const [field, where] of Object.entries(narrowing.sources ?? {})) {
+  for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     if (!modelFields[field]) {
       errors.push(`${position}.sources: field '${field}' not on model`);
       continue;
     }
+    const spec = normalizeSource(entry);
+    if (spec.label !== undefined && !modelFields[spec.label]) {
+      errors.push(`${position}.sources.${field}: label column '${spec.label}' not on model`);
+    }
+    const where = spec.where;
     if (where !== undefined && where !== true && where !== false) {
       const result = checkWhereAgainstModel(where, modelFields, modelName);
       for (const err of result) errors.push(`${position}.sources.${field}: ${err}`);

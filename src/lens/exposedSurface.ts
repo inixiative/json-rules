@@ -1,5 +1,5 @@
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
+import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { isFieldVisible, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectOptions } from './projectByPath.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -38,13 +38,14 @@ export const exposedSurface = (
   const policy: Policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;
 
-  // Per-model union of fetched values (the flattened surface collapses paths).
-  const fetchedByModelField = new Map<string, Set<string>>();
+  // Per-model union of fetched options (the flattened surface collapses paths):
+  // dedup by `value` across paths, a later occurrence's label wins.
+  const fetchedByModelField = new Map<string, Map<string, SourceOption>>();
   for (const sv of opts.sourceValues ?? []) {
     const k = `${sv.mapName}::${sv.model}::${sv.field}`;
-    const set = fetchedByModelField.get(k) ?? new Set<string>();
-    for (const v of sv.values) set.add(v);
-    fetchedByModelField.set(k, set);
+    const byValue = fetchedByModelField.get(k) ?? new Map<string, SourceOption>();
+    for (const o of sv.options) byValue.set(o.value, o);
+    fetchedByModelField.set(k, byValue);
   }
 
   const surface = new Map<string, SurfaceModel>();
@@ -86,9 +87,12 @@ export const exposedSurface = (
 
     for (const [fieldName, entry] of Object.entries(model.fields)) {
       if (!isFieldVisible(effect, fieldName)) continue;
-      const fetched = fetchedByModelField.get(`${mapName}::${modelName}::${fieldName}`);
-      const values = fetched ? [...fetched] : effect.enumValuesByField.get(fieldName);
-      unionFieldInto(acc.fields, fieldName, values !== undefined ? { ...entry, values } : entry);
+      const svKey = `${mapName}::${modelName}::${fieldName}`;
+      const fetchedOptions = fetchedByModelField.get(svKey);
+      const enumValues = effect.enumValuesByField.get(fieldName);
+      let nextEntry = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
+      if (fetchedOptions) nextEntry = { ...nextEntry, options: [...fetchedOptions.values()] };
+      unionFieldInto(acc.fields, fieldName, nextEntry);
 
       if (entry.kind === 'object' || entry.kind === 'bridge') {
         const target = resolveRelationTarget(entry, mapName);
@@ -122,7 +126,13 @@ export const exposedSurface = (
     const fieldRecord: Record<string, FieldMapEntry> = {};
     const enumValuesByType = new Map<string, Set<string>>();
     for (const [name, entry] of fields) {
-      fieldRecord[name] = entry;
+      // A sourced field already carries fetched `options`; otherwise a value-gated
+      // field surfaces its (unioned) allowed-set as options, so every selectable
+      // field exposes `options` uniformly. `values` stays as the validation input.
+      fieldRecord[name] =
+        entry.options === undefined && entry.values
+          ? { ...entry, options: entry.values.map((v) => ({ value: v, label: v })) }
+          : entry;
       if (entry.kind === 'enum' && entry.values) {
         const set = enumValuesByType.get(entry.type) ?? new Set<string>();
         for (const v of entry.values) set.add(v);

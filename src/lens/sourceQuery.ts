@@ -25,6 +25,8 @@ export type SourceQuery = {
   mapName: string;
   model: string;
   field: string;
+  /** Sibling column co-selected as each value's display label (from a SourceSpec's `label`). */
+  label?: string;
   composedWhere: Condition; // node whereClauses ∧ source where(s)
   prisma: SourcePrismaQuery;
   sql: SourceSqlQuery;
@@ -42,16 +44,18 @@ const compileOne = (
   mapName: string,
   model: string,
   field: string,
+  label: string | undefined,
   where: Condition,
 ): { prisma: SourcePrismaQuery; sql: SourceSqlQuery } => {
   const plan = toPrisma(where, { map: lens, mapName, model });
   const last = plan.steps[plan.steps.length - 1];
   const prismaWhere = (last && 'where' in last ? last.where : {}) as PrismaWhere;
   const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
+  const select: Record<string, true> = label ? { [field]: true, [label]: true } : { [field]: true };
   const prisma: SourcePrismaQuery = {
     model,
     distinct: [field],
-    select: { [field]: true },
+    select,
     where: prismaWhere,
     ...(groupBySteps.length ? { steps: plan.steps } : {}),
   };
@@ -61,7 +65,10 @@ const compileOne = (
     const { sql, params, joins } = toSql(where, { map: lens.maps[mapName], model, alias: 't0' });
     const joinSql = joins.length ? ` ${joins.join(' ')}` : '';
     const whereSql = sql?.trim() ? ` WHERE ${sql}` : '';
-    const statement = `SELECT DISTINCT ${q('t0')}.${q(field)} FROM ${q(model)} AS ${q('t0')}${joinSql}${whereSql}`;
+    const cols = label
+      ? `${q('t0')}.${q(field)}, ${q('t0')}.${q(label)}`
+      : `${q('t0')}.${q(field)}`;
+    const statement = `SELECT DISTINCT ${cols} FROM ${q(model)} AS ${q('t0')}${joinSql}${whereSql}`;
     sqlQuery = { sql: statement, params };
   } catch (err) {
     sqlQuery = { sql: null, params: [], error: err instanceof Error ? err.message : String(err) };
@@ -82,11 +89,13 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
   for (const [path, visit] of projection) {
     for (const [field, sourceClauses] of Object.entries(visit.sources)) {
       const composedWhere = compose(visit.whereClauses, sourceClauses);
+      const label = visit.sourceLabels[field];
       const { prisma, sql } = compileOne(
         lens,
         visit.mapName,
         visit.modelName,
         field,
+        label,
         composedWhere,
       );
       out.push({
@@ -94,6 +103,7 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
         mapName: visit.mapName,
         model: visit.modelName,
         field,
+        ...(label !== undefined ? { label } : {}),
         composedWhere,
         prisma,
         sql,

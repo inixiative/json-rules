@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
-import { at } from './fixtures/helpers';
+import { at, enumOptions, sortedOptions } from './fixtures/helpers';
 
 const map: FieldMap = {
   models: {
@@ -92,7 +92,7 @@ describe('mapDefaults.enums — applies-everywhere enum narrowing', () => {
       mapDefaults: { prisma: { enums: { UserRole: { omits: ['owner'] } } } },
     });
     const role = at(projectByPath(n), 'User').fields.role;
-    expect([...(role.values ?? [])].sort()).toEqual(['admin', 'guest', 'member']);
+    expect(sortedOptions(role)).toEqual(enumOptions('admin', 'guest', 'member'));
   });
 
   test('mapDefaults.enums chains across narrowings (intersection)', () => {
@@ -103,6 +103,6 @@ describe('mapDefaults.enums — applies-everywhere enum narrowing', () => {
       mapDefaults: { prisma: { enums: { UserRole: { picks: ['admin', 'member'] } } } },
     });
     const role = at(projectByPath(b), 'User').fields.role;
-    expect([...(role.values ?? [])].sort()).toEqual(['admin', 'member']);
+    expect(sortedOptions(role)).toEqual(enumOptions('admin', 'member'));
   });
 });

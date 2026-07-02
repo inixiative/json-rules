@@ -63,3 +63,41 @@ describe('sources — per-field eligibility wheres in the narrowing', () => {
     expect(() => validateNarrowing(n)).not.toThrow();
   });
 });
+
+describe('sources — SourceSpec { where, label }', () => {
+  test('a SourceSpec surfaces its where in sources and its label in sourceLabels', () => {
+    const n = withParent(base, {
+      root: { sources: { tier: { where: activeAccount, label: 'id' } } },
+    });
+    const root = projectByPath(n).get('User');
+    expect(root?.sources.tier).toEqual([activeAccount]);
+    expect(root?.sourceLabels.tier).toBe('id');
+  });
+
+  test('a SourceSpec with only a label (no where) still surfaces the field with empty clauses', () => {
+    const n = withParent(base, { root: { sources: { tier: { label: 'id' } } } });
+    const root = projectByPath(n).get('User');
+    expect(root?.sources.tier).toEqual([]);
+    expect(root?.sourceLabels.tier).toBe('id');
+  });
+
+  test('a bare condition leaves sourceLabels empty for that field', () => {
+    const n = withParent(base, { root: { sources: { tier: activeAccount } } });
+    const root = projectByPath(n).get('User');
+    expect(root?.sourceLabels.tier).toBeUndefined();
+  });
+
+  test('validateNarrowing accepts a SourceSpec { where, label }', () => {
+    const n = withParent(base, {
+      root: { sources: { tier: { where: activeAccount, label: 'id' } } },
+    });
+    expect(() => validateNarrowing(n)).not.toThrow();
+  });
+
+  test('validateNarrowing rejects a SourceSpec whose label column is not on the model', () => {
+    const n = withParent(base, {
+      root: { sources: { tier: { where: activeAccount, label: 'nope' } } },
+    });
+    expect(() => validateNarrowing(n)).toThrow(/nope/);
+  });
+});

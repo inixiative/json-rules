@@ -12,7 +12,7 @@ import {
   resolvePeriodRange,
 } from './dateExpr';
 import { DateOperator } from './operator';
-import type { DateConfig, DateInputValue, DateRule } from './types';
+import type { DateConfig, DateInputValue, DateRule, RuleValue } from './types';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -24,6 +24,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
   data: TData,
   context: TData,
   config: DateConfig = {},
+  bindings?: Record<string, RuleValue>,
 ): boolean | string => {
   const fieldValue = get(data, condition.field) as unknown;
 
@@ -31,15 +32,24 @@ export const checkDate = <TData extends Record<string, unknown>>(
   if (!isDateInputValue(fieldValue))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
-  const fieldDate = dayjs(fieldValue);
+  // Resolve the anchoring zone ONCE (bind → literal → UTC) and normalize the config the
+  // date-expression layer sees: honor a resolved zone when the caller set one, but leave
+  // it unset otherwise so expression `now` resolution keeps its prior behavior.
+  const tz = resolveTimeZone(config, bindings);
+  const exprConfig: DateConfig =
+    config.timeZone !== undefined ? { ...config, timeZone: tz } : config;
+
+  // A naive field string is anchored in the resolved zone (default UTC); an absolute
+  // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
+  // engine's config.timeZone policy used by dateExpr and both compilers.
+  const fieldDate = parseDateValue(fieldValue, tz);
 
   if (!fieldDate.isValid())
     throw new Error(`${condition.field} is not a valid date: ${fieldValue}`);
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
-  // Parse comparison dates with timezone context - pass the original string to preserve offset info
-  const dates = parseCompareDates(condition, data, context, fieldDate, fieldValue, config);
+  const dates = parseCompareDates(condition, data, context, exprConfig, tz);
   const compareDate = dates[0];
   const endDate = dates[1];
 
@@ -90,7 +100,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
     case DateOperator.dayIn: {
       if (!Array.isArray(condition.value))
         throw new Error('dayIn operator requires an array of day names');
-      const dayName = fieldDate.format('dddd').toLowerCase();
+      const dayName = fieldDate.tz(tz).format('dddd').toLowerCase();
       const allowedDays = condition.value.map((day) => String(day).toLowerCase());
       return allowedDays.includes(dayName) || getError(`must be on ${allowedDays.join(' or ')}`);
     }
@@ -98,7 +108,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
     case DateOperator.dayNotIn: {
       if (!Array.isArray(condition.value))
         throw new Error('dayNotIn operator requires an array of day names');
-      const day = fieldDate.format('dddd').toLowerCase();
+      const day = fieldDate.tz(tz).format('dddd').toLowerCase();
       const excludedDays = condition.value.map((excludedDay) => String(excludedDay).toLowerCase());
       return !excludedDays.includes(day) || getError(`must not be on ${excludedDays.join(' or ')}`);
     }
@@ -112,9 +122,8 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
   context: TData,
-  _fieldDate: dayjs.Dayjs,
-  fieldValue: DateInputValue,
   config: DateConfig,
+  tz: string,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
   if (condition.dateOperator === DateOperator.within) {
     if (!isDateExpr(condition.value))
@@ -130,10 +139,10 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     const [rawDate1, rawDate2] = condition.value as [unknown, unknown];
     const date1 = isDateExpr(rawDate1)
       ? resolveDateExpr(rawDate1, config)
-      : parseDateWithTimezone(rawDate1 as DateInputValue, fieldValue);
+      : parseDateValue(rawDate1 as DateInputValue, tz);
     const date2 = isDateExpr(rawDate2)
       ? resolveDateExpr(rawDate2, config)
-      : parseDateWithTimezone(rawDate2 as DateInputValue, fieldValue);
+      : parseDateValue(rawDate2 as DateInputValue, tz);
     if (!date1.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
     if (!date2.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
     // Auto-sort: ensure startDate <= endDate
@@ -179,7 +188,7 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     } else {
       throw new Error('No value or path specified for date comparison');
     }
-    const date = parseDateWithTimezone(value, fieldValue);
+    const date = parseDateValue(value, tz);
     if (!date.isValid()) throw new Error(`Invalid comparison date: ${value}`);
     return [date, undefined];
   }
@@ -187,47 +196,44 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
 };
 
-const parseDateWithTimezone = (
-  value: DateInputValue | undefined,
-  fieldValue: DateInputValue,
-): dayjs.Dayjs => {
-  const valueStr = String(value);
-
-  // Check if value has explicit timezone information
-  const hasTimezone =
-    valueStr.includes('Z') ||
-    (valueStr.includes('T') && (valueStr.includes('+') || valueStr.match(/T.*-\d{2}:/)));
-
-  if (hasTimezone) return dayjs(value);
-
-  // No timezone info in value - interpret in field's timezone
-  // Extract offset from field value
-  const fieldStr = String(fieldValue);
-  let offset = 0;
-
-  if (fieldStr.includes('+') || (fieldStr.includes('T') && fieldStr.match(/T.*-\d{2}:/))) {
-    // Field has explicit offset like +11:00 or -08:00
-    const match = fieldStr.match(/([+-])(\d{2}):(\d{2})/);
-    if (match) {
-      const sign = match[1] === '+' ? 1 : -1;
-      offset = sign * (parseInt(match[2], 10) * 60 + parseInt(match[3], 10));
-    }
-  } else if (!fieldStr.includes('Z')) {
-    // Field has no timezone, assume local time (offset 0)
-    offset = 0;
+/**
+ * The single seam that decides which timezone anchors a NAIVE (zoneless) value and frames
+ * the dayIn/dayNotIn weekday, for ONE evaluation. Precedence: a zone bound from the
+ * evaluation's `bindings` → a literal `config.timeZone` → 'UTC'. A future extension can
+ * source a per-record zone here (see docs/TIMEZONE.md) without touching call sites.
+ * Absolute instants never reach this seam — they bypass anchoring entirely.
+ */
+const resolveTimeZone = (config: DateConfig, bindings?: Record<string, RuleValue>): string => {
+  const zone = config.timeZone;
+  if (zone && typeof zone === 'object' && 'bind' in zone) {
+    const bound = bindings?.[zone.bind];
+    return typeof bound === 'string' ? bound : 'UTC';
   }
-  // If field has Z, it's UTC (offset 0)
+  return zone ?? 'UTC';
+};
 
-  // Create a date representing the same local time as the field's timezone
-  if (valueStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    // For date-only, we want midnight in the field's timezone
-    const localMidnight = dayjs(`${value}T00:00:00`);
-    return localMidnight.subtract(offset, 'minute');
+// Detects an explicit zone on a date STRING only (never String(Date), whose render is
+// host-locale-dependent): a trailing `Z`, or a `±HH:MM`/`±HHMM` offset after the time.
+const TRAILING_OFFSET = /[+-]\d{2}:?\d{2}$/;
+const hasExplicitZone = (value: string): boolean =>
+  /Z$/.test(value) || (value.includes('T') && TRAILING_OFFSET.test(value));
+
+/**
+ * Parse a comparison/field value into an instant, given the already-resolved anchor zone.
+ * - Date object / epoch number → absolute instant, used as-is (never anchored).
+ * - String with an explicit zone (`Z` or `±HH:MM` after a time) → absolute.
+ * - Naive string (date-only or zoneless datetime) → anchored in `tz` via dayjs.tz; a
+ *   date-only string becomes midnight in that zone.
+ */
+const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
+  if (typeof value === 'string' && !hasExplicitZone(value)) {
+    // dayjs.tz throws on an unparseable string; return the (invalid) base parse instead
+    // so callers' isValid() checks surface the friendly "not a valid date" error.
+    const base = dayjs(value);
+    if (!base.isValid()) return base;
+    return dayjs.tz(value, tz);
   }
-
-  // For datetime without timezone, interpret as local time in field's timezone
-  const localTime = dayjs(value);
-  return localTime.subtract(offset, 'minute');
+  return dayjs(value);
 };
 
 const isDateInputValue = (value: unknown): value is DateInputValue =>

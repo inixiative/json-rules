@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
-import { at } from './fixtures/helpers';
+import { at, enumOptions, sortedOptions } from './fixtures/helpers';
 
 const map: FieldMap = {
   models: {
@@ -30,20 +30,20 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
   test('enumPicks restricts a single field to specified values', () => {
     const n = withParent(lens, { root: { enumPicks: { role: ['admin', 'member'] } } });
     const role = at(projectByPath(n), 'User').fields.role;
-    expect(role.values).toEqual(['admin', 'member']);
+    expect(role.options).toEqual(enumOptions('admin', 'member'));
   });
 
   test('enumPicks on role does NOT affect accessLevel (per-field, not per-type)', () => {
     const n = withParent(lens, { root: { enumPicks: { role: ['admin'] } } });
     const fields = at(projectByPath(n), 'User').fields;
-    expect(fields.role.values).toEqual(['admin']);
-    expect(fields.accessLevel.values).toEqual(['read', 'write', 'admin']);
+    expect(fields.role.options).toEqual(enumOptions('admin'));
+    expect(fields.accessLevel.options).toEqual(enumOptions('read', 'write', 'admin'));
   });
 
   test('enumOmits drops listed values', () => {
     const n = withParent(lens, { root: { enumOmits: { role: ['owner', 'guest'] } } });
     const role = at(projectByPath(n), 'User').fields.role;
-    expect([...(role.values ?? [])].sort()).toEqual(['admin', 'member']);
+    expect(sortedOptions(role)).toEqual(enumOptions('admin', 'member'));
   });
 
   test('enumPicks intersects with mapDefaults.enums (both narrow)', () => {
@@ -52,14 +52,14 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
       mapDefaults: { prisma: { enums: { UserRole: { omits: ['owner'] } } } },
     });
     const role = at(projectByPath(n), 'User').fields.role;
-    expect(role.values).toEqual(['member']);
+    expect(role.options).toEqual(enumOptions('member'));
   });
 
   test('chained enumPicks intersect across narrowing layers', () => {
     const a = withParent(lens, { root: { enumPicks: { role: ['admin', 'member', 'owner'] } } });
     const b = withParent(a, { root: { enumPicks: { role: ['member', 'owner', 'guest'] } } });
     const role = at(projectByPath(b), 'User').fields.role;
-    expect([...(role.values ?? [])].sort()).toEqual(['member', 'owner']);
+    expect(sortedOptions(role)).toEqual(enumOptions('member', 'owner'));
   });
 
   test('all three enum narrowing layers compose at one visit', () => {
@@ -77,6 +77,6 @@ describe('ModelNarrowing.enumPicks per-field enum narrowing', () => {
       },
     });
     const role = at(projectByPath(n), 'User').fields.role;
-    expect(role.values).toEqual(['admin']);
+    expect(role.options).toEqual(enumOptions('admin'));
   });
 });

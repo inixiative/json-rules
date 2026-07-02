@@ -43,7 +43,7 @@ export const check = <TData extends CheckData>(
   if ('any' in conditions) return any(conditions.any, data, opts, conditions.error);
   if ('arrayOperator' in conditions) return checkArray(conditions, data, opts);
   if ('dateOperator' in conditions)
-    return checkDate(conditions, data as Row, opts.context as Row, opts);
+    return checkDate(conditions, data as Row, opts.context as Row, opts, opts.bindings);
   if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, data, opts);
   if ('field' in conditions)
     return checkField(conditions, data as Row, opts.context as Row, opts.bindings);

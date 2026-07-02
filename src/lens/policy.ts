@@ -1,6 +1,13 @@
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
-import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
+import type {
+  Lens,
+  LensNarrowing,
+  ModelDefaultNarrowing,
+  ModelNarrowing,
+  SourceSpec,
+  SourceValue,
+} from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
 export type VisitEffect = {
@@ -9,8 +16,17 @@ export type VisitEffect = {
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
   sources: Map<string, Condition[]>;
+  /** Per-field display-label column (from a SourceSpec's `label`); a later layer wins. */
+  sourceLabels: Map<string, string>;
   relations: Map<string, ModelNarrowing>;
 };
+
+/** A `sources` entry is a `SourceSpec` when it carries `where`/`label`; else it's a bare `Condition`. */
+export const isSourceSpec = (v: SourceValue): v is SourceSpec =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) && ('where' in v || 'label' in v);
+
+/** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
+export const normalizeSource = (v: SourceValue): SourceSpec => (isSourceSpec(v) ? v : { where: v });
 
 export type Policy = {
   lens: Lens;
@@ -90,10 +106,12 @@ const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrow
   accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined) out.whereClauses.push(n.where);
   if (n.sources) {
-    for (const [field, where] of Object.entries(n.sources)) {
+    for (const [field, entry] of Object.entries(n.sources)) {
+      const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
-      clauses.push(where);
-      out.sources.set(field, clauses);
+      if (spec.where !== undefined) clauses.push(spec.where);
+      out.sources.set(field, clauses); // register the field even when only a label is set
+      if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
     }
   }
 };
@@ -110,6 +128,7 @@ export const resolveVisit = (
     enumValuesByField: new Map(),
     whereClauses: [],
     sources: new Map(),
+    sourceLabels: new Map(),
     relations: new Map(),
   };
 
@@ -159,7 +178,7 @@ export const resolveVisit = (
   for (const [fieldName, entry] of Object.entries(model.fields)) {
     const isEnum = entry.kind === 'enum';
     // Enums draw from the registry; any other kind (scalar, Json) is gated only
-    // by an explicit `values` set — e.g. a hydrated source's option list.
+    // by an explicit `values` set.
     const baseValues = isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values;
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;

@@ -3,12 +3,14 @@ import {
   resolveBindings as resolveConditionBindings,
 } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
+import { isSourceSpec, normalizeSource } from './policy.ts';
 import type {
   Lens,
   LensNarrowing,
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
+  SourceValue,
 } from './types.ts';
 import { collectChain, isLens } from './walk.ts';
 
@@ -22,7 +24,10 @@ const baseName = (name: string): string =>
 const modelNodeConditions = (n: ModelDefaultNarrowing | ModelNarrowing): Condition[] => {
   const out: Condition[] = [];
   if (n.where !== undefined) out.push(n.where);
-  for (const w of Object.values(n.sources ?? {})) out.push(w);
+  for (const entry of Object.values(n.sources ?? {})) {
+    const where = normalizeSource(entry).where;
+    if (where !== undefined) out.push(where);
+  }
   if ('relations' in n && n.relations)
     for (const sub of Object.values(n.relations)) out.push(...modelNodeConditions(sub));
   return out;
@@ -68,9 +73,17 @@ const resolveModelNode = <T extends ModelDefaultNarrowing | ModelNarrowing>(
   const out = { ...node } as ModelNarrowing;
   if (node.where !== undefined) out.where = resolveConditionBindings(node.where, effective);
   if (node.sources) {
-    const sources: Record<string, Condition> = {};
-    for (const [field, where] of Object.entries(node.sources))
-      sources[field] = resolveConditionBindings(where, effective);
+    const sources: Record<string, SourceValue> = {};
+    for (const [field, entry] of Object.entries(node.sources)) {
+      if (isSourceSpec(entry)) {
+        sources[field] =
+          entry.where !== undefined
+            ? { ...entry, where: resolveConditionBindings(entry.where, effective) }
+            : entry;
+      } else {
+        sources[field] = resolveConditionBindings(entry, effective);
+      }
+    }
     out.sources = sources;
   }
   if ('relations' in node && node.relations) {

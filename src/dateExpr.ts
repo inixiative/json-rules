@@ -51,7 +51,11 @@ export const isDateExpr = (value: unknown): value is DateExpr => {
 const requireNow = (config: DateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
     throw new Error('date expressions require `now` to be supplied to the evaluator');
-  const base = config.timeZone ? dayjs(config.now).tz(config.timeZone) : dayjs(config.now);
+  // Only a literal zone string anchors `now` here; the bind form is resolved upstream (in
+  // checkDate, which normalizes config.timeZone to a concrete string) — there are no
+  // bindings at this layer (compilers), so a non-string zone means "no static anchor".
+  const zone = typeof config.timeZone === 'string' ? config.timeZone : undefined;
+  const base = zone ? dayjs(config.now).tz(zone) : dayjs(config.now);
   if (!base.isValid()) throw new Error(`invalid \`now\`: ${String(config.now)}`);
   return base;
 };

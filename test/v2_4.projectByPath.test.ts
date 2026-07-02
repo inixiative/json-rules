@@ -3,7 +3,7 @@ import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
-import { at } from './fixtures/helpers';
+import { at, enumOptions, sortedOptions } from './fixtures/helpers';
 import { multiRelMap } from './fixtures/multiRelMap';
 
 const withParent = (
@@ -235,7 +235,7 @@ describe('projectByPath — enum narrowing', () => {
     });
     const projection = projectByPath(n);
     const statusField = at(projection, 'Inquiry').fields.status;
-    expect([...(statusField.values ?? [])].sort()).toEqual(['closed', 'open']);
+    expect(sortedOptions(statusField)).toEqual(enumOptions('closed', 'open'));
   });
 });
 

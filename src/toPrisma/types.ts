@@ -4,6 +4,9 @@ import type { DateConfig } from '../types';
 export type PrismaFilter = Record<string, unknown>;
 export type PrismaWhere = Record<string, unknown>;
 
+/** A selectable option — the standard `<select>` shape: a value with an optional display label. */
+export type SourceOption = { value: string; label?: string };
+
 // FieldMap is structurally compatible with PrismaMap from @inixiative/prisma-map.
 // It only requires the fields that json-rules needs for traversal.
 export type FieldMapEntry = {
@@ -19,6 +22,13 @@ export type FieldMapEntry = {
    * (e.g. prisma-map's `EnumField.values`). Consumed by `checkRuleAgainstLens`.
    */
   values?: readonly string[];
+  /**
+   * A field's selectable option set as `{ value, label? }` pairs — the display
+   * shape a picker consumes. On projection/surface output this is populated for
+   * every value-gated field (enum members normalized to `{ value, label: value }`)
+   * and for sourced fields (the fetched pairs from a materialized `SourceValues`).
+   */
+  options?: readonly SourceOption[];
 };
 
 export type ModelEntry = {

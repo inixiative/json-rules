@@ -53,9 +53,13 @@ export type DateRuleValue =
   | string[];
 
 export type WeekStart = 'monday' | 'sunday';
+// The anchoring timezone for naive datetimes. Either a literal IANA zone string, or a
+// bound reference resolved from the evaluation's `bindings` (same bind mechanism as rule
+// values). Stays ONE zone per evaluation; absolute instants never consult it.
+export type TimeZoneConfig = string | { bind: string };
 export type DateConfig = {
   now?: DateInputValue;
-  timeZone?: string;
+  timeZone?: TimeZoneConfig;
   weekStart?: WeekStart;
 };
 

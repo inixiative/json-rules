@@ -1,4 +1,4 @@
-import type { FieldMapEntry } from '../toPrisma/types.ts';
+import type { FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { isFieldVisible, resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -11,14 +11,16 @@ export type ProjectedVisit = {
   whereClauses: Condition[];
   /** Per-field source eligibility wheres, composed across layers (general + path). */
   sources: Record<string, Condition[]>;
+  /** Per-field display-label column for a sourced field (from a SourceSpec's `label`). */
+  sourceLabels: Record<string, string>;
 };
 
 export type PathProjection = Map<string, ProjectedVisit>;
 
 /**
  * The materialized option set for one sourced field — the fetched companion to a
- * serializable lens. Shaped to be exactly what `sourceQueries()` emits plus the
- * fetched `values`, so it feeds both projections: `projectByPath` keys by
+ * serializable lens. Its `options` are `{ value, label? }` pairs (the standard
+ * `<select>` shape); it feeds both projections: `projectByPath` keys by
  * `path`+`field` (exact), `exposedSurface` by `mapName`+`model`+`field` (union).
  */
 export type SourceValues = {
@@ -26,7 +28,7 @@ export type SourceValues = {
   mapName: string;
   model: string;
   field: string;
-  values: readonly string[];
+  options: readonly SourceOption[];
 };
 
 export type ProjectOptions = { sourceValues?: readonly SourceValues[] };
@@ -38,9 +40,9 @@ export const projectByPath = (
   const policy = resolvePolicy(lensOrNarrowing);
   const out: PathProjection = new Map();
 
-  const fetchedByPathField = new Map<string, readonly string[]>();
+  const fetchedByPathField = new Map<string, readonly SourceOption[]>();
   for (const sv of opts.sourceValues ?? []) {
-    fetchedByPathField.set(`${sv.path}|${sv.field}`, sv.values);
+    fetchedByPathField.set(`${sv.path}|${sv.field}`, sv.options);
   }
 
   const visit = (
@@ -58,14 +60,24 @@ export const projectByPath = (
     const fields: Record<string, FieldMapEntry> = {};
     for (const [fieldName, entry] of Object.entries(model.fields)) {
       if (!isFieldVisible(effect, fieldName)) continue;
-      const fetched = fetchedByPathField.get(`${dottedPath}|${fieldName}`);
-      const values = fetched ?? effect.enumValuesByField.get(fieldName);
-      fields[fieldName] = values !== undefined ? { ...entry, values } : entry;
+      const fetchedOptions = fetchedByPathField.get(`${dottedPath}|${fieldName}`);
+      const enumValues = effect.enumValuesByField.get(fieldName);
+      let projected = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
+      // A sourced field's fetched pairs win; otherwise a value-gated field surfaces
+      // its resolved allowed-set as options, so every selectable field exposes `options`.
+      const options = fetchedOptions ?? enumValues?.map((v) => ({ value: v, label: v }));
+      if (options) projected = { ...projected, options };
+      fields[fieldName] = projected;
     }
 
     const sources: Record<string, Condition[]> = {};
     for (const [fieldName, clauses] of effect.sources) {
       if (isFieldVisible(effect, fieldName)) sources[fieldName] = clauses;
+    }
+
+    const sourceLabels: Record<string, string> = {};
+    for (const [fieldName, label] of effect.sourceLabels) {
+      if (isFieldVisible(effect, fieldName)) sourceLabels[fieldName] = label;
     }
 
     out.set(dottedPath, {
@@ -74,6 +86,7 @@ export const projectByPath = (
       fields,
       whereClauses: effect.whereClauses,
       sources,
+      sourceLabels,
     });
 
     for (const relField of effect.relations.keys()) {

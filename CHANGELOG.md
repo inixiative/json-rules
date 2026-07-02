@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.12.0 — labeled source options, deterministic dates, lens-gate hardening
+
+### Sources: labeled option sets (`options`)
+
+- A `sources` entry now accepts a `SourceSpec` (`{ where?, label? }`) alongside the bare `Condition`; `label` co-selects a sibling column so each option carries a display label. Referenced-model option sets need no special form — declare the source at a relation-traversed narrowing node and it compiles over whatever model that path resolves to.
+- The projected/exposed surface exposes a field's selectable set uniformly as `options: { value, label? }[]` (the `<select>` shape), enum fields included (label defaults to the value). The existing `values: string[]` stays as the validation/codegen input; `options` is **additive**.
+- `SourceValues.options` (was `values: string[]`) and `SourceQuery.label` carry the label through `sourceQueries` → `exposedSurface`/`projectByPath`.
+
+### Dates: deterministic, timezone-explicit evaluation
+
+- `check()` date comparisons no longer depend on the host machine's timezone. Absolute instants (`Date` objects, epoch numbers, zone-stamped ISO strings) are used as-is; naive values (date-only, zoneless datetimes) are anchored in the evaluation's timezone; `dayIn`/`dayNotIn` compute the weekday in that timezone. **Behavior change / bug fix**: results are now stable across hosts (previously a host with a non-UTC offset could return a different answer for the same rule).
+- The anchoring timezone resolves through one seam and is now **bindable**: `DateConfig.timeZone` accepts `string | { bind }` (`TimeZoneConfig`), resolved from `bindings` — precedence bound → literal → `'UTC'`. Per-record (companion-column) zones are documented as a future extension in `docs/TIMEZONE.md`.
+
+### `isEmpty` / `notEmpty`: aligned with the compilers
+
+- `check()` now treats a value as empty iff it is `null`, `undefined`, or `''` — matching `toSql` (`IS NULL OR = ''`) and `toPrisma` (`null | ''`). **Behavior change / bug fix**: a `Date` or a number is no longer "empty" (lodash `isEmpty` reported both as empty, so a soft-delete grant like `deletedAt isEmpty` wrongly passed deleted rows in the in-memory backend).
+- `isEmpty`/`notEmpty` are now valid on any nullable field kind (not only `String`), so the documented soft-delete grant validates.
+
+### Lens gate: closes three reference-escape holes
+
+`checkRuleAgainstLens` now enforces what the docs claim ("a rule can't reference outside its lens"):
+
+- Right-side `path:` references are gated the same way the left-side `field` is (a comparison ref must resolve through the narrowed lens) — previously an author could probe a hidden field through an equality/ordering oracle.
+- Window `filter` (a full condition) and `orderBy` field refs are validated at the descended relation target.
+- `applyLens` injects a related model's `where` grant on **to-one / mid-path** relation hops (e.g. `author.email`), re-rooted under the relation path — previously the grant was silently dropped for the most common relation shape. Where a grant can't be re-rooted unambiguously (a `path` ref, or a to-many hop with no array-operator anchor), `applyLens` **fails closed** (throws) rather than emitting an unenforced grant.
+
 ## 2.11.1 — bind resolution: key-presence contract
 
 Resolving a `{ bind }` now distinguishes an **unsupplied** binding from one supplied as nothing — key presence is the contract:

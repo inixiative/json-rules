@@ -89,9 +89,46 @@ const visit = (
     }
   }
 
+  // Gate the RHS `path` ref the same way the LHS `field` is gated — otherwise a rule
+  // can reference outside the lens through its comparison value. `$.`-prefixed paths are
+  // current-element refs (resolve at the current anchor); bare paths are root/context refs
+  // (resolve at the lens anchor).
+  if ('path' in cond && typeof cond.path === 'string' && cond.path !== '') {
+    const isCurrentElement = cond.path.startsWith('$.');
+    const pathField = isCurrentElement ? cond.path.slice(2) : cond.path;
+    const walkedPath = isCurrentElement
+      ? walkLensPath(policy, mapName, modelName, relPath, pathField)
+      : walkLensPath(policy, policy.lens.mapName, policy.lens.model, [], pathField);
+    if (!walkedPath) {
+      violations.push({
+        path: cond.path,
+        reason: 'path (comparison ref) does not resolve through the narrowed lens',
+      });
+    }
+  }
+
+  // Gate the window's `filter` (a full Condition over the array elements) and `orderBy`
+  // field refs — both are evaluated against the descended relation target.
+  if ('filter' in cond && cond.filter !== undefined) {
+    visit(cond.filter as Condition, policy, nextMap, nextModel, nextRelPath, violations);
+  }
+  if ('orderBy' in cond && Array.isArray(cond.orderBy)) {
+    for (const entry of cond.orderBy as { field?: unknown }[]) {
+      if (entry && typeof entry.field === 'string' && entry.field !== '') {
+        const walkedOrder = walkLensPath(policy, nextMap, nextModel, nextRelPath, entry.field);
+        if (!walkedOrder) {
+          violations.push({
+            path: entry.field,
+            reason: 'orderBy field does not resolve through the narrowed lens',
+          });
+        }
+      }
+    }
+  }
+
   // Value-set validation for leaf rules. Fires whenever the field carries an
   // allowed set — an enum (registry/narrowed) or any other kind with explicit
-  // `values` (e.g. a hydrated source's option list).
+  // `values`.
   if (terminalAllowedValues && 'operator' in cond && terminalFieldName) {
     const literals = extractEnumLiterals(
       cond as { value?: unknown; path?: unknown; operator?: unknown },

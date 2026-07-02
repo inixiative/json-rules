@@ -29,6 +29,10 @@ export const EQUATABLE_KINDS: readonly FieldKind[] = [
   'Enum',
 ];
 export const ALL_KINDS: readonly FieldKind[] = Object.values(FieldKind);
+// Any column can be nullable — nullability is a per-field property, not a per-kind one.
+// isEmpty/notEmpty ("null or empty string") are therefore valid on every kind; the
+// SQL/Prisma compilers emit meaningful `IS NULL OR = ''` for any nullable column.
+export const NULLABLE_KINDS: readonly FieldKind[] = ALL_KINDS;
 
 export const RuleTarget = {
   check: 'check',
@@ -96,8 +100,8 @@ export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
   },
   [Operator.between]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'range' },
   [Operator.notBetween]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'range' },
-  [Operator.isEmpty]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
-  [Operator.notEmpty]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
+  [Operator.isEmpty]: { kinds: NULLABLE_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
+  [Operator.notEmpty]: { kinds: NULLABLE_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
   [Operator.exists]: { kinds: ALL_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
   [Operator.notExists]: { kinds: ALL_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
 };

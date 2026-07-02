@@ -28,13 +28,24 @@ export type ModelDefaultNarrowing = {
    */
   where?: Condition;
   /**
-   * Per-field eligibility `where` over THIS model — decorates a field's option
-   * picker. The field's selectable values = DISTINCT(field) over this model
-   * filtered by `where` (plus the model's own narrowing). Composes like `where`:
-   * general via `mapDefaults`, path-specific via `root`/`relations`, AND-only.
+   * Per-field eligibility over THIS model — decorates a field's option picker.
+   * A bare `Condition` is the eligibility `where`: the field's selectable values =
+   * DISTINCT(field) over this model filtered by `where` (plus the model's own
+   * narrowing). A `SourceSpec` adds an optional `label` — a sibling column on this
+   * same model co-selected as each value's display label. Referenced-model option
+   * sets need no special form: declare the source at a relation-traversed narrowing
+   * node and it compiles over whatever model that path resolves to. The `where`
+   * composes AND-only across layers (general via `mapDefaults`, path-specific via
+   * `root`/`relations`); a later layer's `label` wins.
    */
-  sources?: Record<string, Condition>; // fieldName → eligibility where
+  sources?: Record<string, SourceValue>; // fieldName → eligibility where | SourceSpec
 };
+
+/** A sourced field's eligibility `where` plus an optional sibling display-label column. */
+export type SourceSpec = { where?: Condition; label?: string };
+
+/** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
+export type SourceValue = Condition | SourceSpec;
 
 /** Narrowing for a model at a specific traversal path. Adds relations to the default shape. */
 export type ModelNarrowing = ModelDefaultNarrowing & {

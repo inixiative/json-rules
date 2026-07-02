@@ -19,4 +19,6 @@ export type {
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
+  SourceSpec,
+  SourceValue,
 } from './types';

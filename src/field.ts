@@ -1,6 +1,13 @@
-import { get, isEmpty } from 'lodash-es';
+import { get } from 'lodash-es';
 import { Operator } from './operator';
 import type { Rule, RuleValue } from './types';
+
+// A value is "empty" iff it is null, undefined, or the empty string — matching the
+// SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
+// (lodash isEmpty would also treat Dates/numbers/populated arrays as empty, which
+// diverges from the compilers and breaks soft-delete grants like `deletedAt isEmpty`.)
+const isEmptyValue = (value: unknown): boolean =>
+  value === null || value === undefined || value === '';
 
 export const checkField = <TData extends Record<string, unknown>>(
   condition: Rule,
@@ -85,9 +92,9 @@ export const checkField = <TData extends Record<string, unknown>>(
       );
     }
     case Operator.isEmpty:
-      return isEmpty(fieldValue) || getError(`must be empty`);
+      return isEmptyValue(fieldValue) || getError(`must be empty`);
     case Operator.notEmpty:
-      return !isEmpty(fieldValue) || getError(`must not be empty`);
+      return !isEmptyValue(fieldValue) || getError(`must not be empty`);
     case Operator.exists:
       return fieldValue !== undefined || getError(`must exist`);
     case Operator.notExists:

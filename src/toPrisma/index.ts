@@ -29,6 +29,7 @@ export type {
   GroupByStep,
   PrismaStep,
   PrismaWhere,
+  SourceOption,
   StepRef,
   ToPrismaResult,
   WhereStep,

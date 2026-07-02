@@ -123,8 +123,14 @@ describe('Existence Operators', () => {
 
   test('isEmpty and notEmpty', () => {
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: '' })).toBe(true);
-    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: [] })).toBe(true);
-    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: {} })).toBe(true);
+    // Empty iff null/undefined/'' — matches the SQL/Prisma compilers. A populated or
+    // empty array/object is a scalar-column value that is neither null nor '' → NOT empty.
+    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: [] })).toBe(
+      'val must be empty',
+    );
+    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: {} })).toBe(
+      'val must be empty',
+    );
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: null })).toBe(true);
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: 'text' })).toBe(
       'val must be empty',
@@ -363,23 +369,27 @@ describe('Date Operators', () => {
     ).toContain('must be on saturday or sunday');
   });
 
-  test('timezone-aware date comparisons', () => {
-    // When condition has no timezone, it uses field's timezone
+  test('timezone-aware date comparisons (naive values anchor to config.timeZone = UTC)', () => {
+    // A naive comparison value anchors to config.timeZone (default UTC), NOT the field's
+    // offset. The field is an absolute instant (or itself anchored) and compared as-is.
+    // (Previously this sniffed the field's offset to anchor the value — host/field-dependent.)
     const rule: DateRule = {
       field: 'eventDate',
       dateOperator: DateOperator.onOrAfter,
-      value: '2025-01-20',
+      value: '2025-01-20', // → 2025-01-20T00:00:00Z
     };
 
-    // Field with explicit offset: Jan 20 10:00 AM Sydney time
-    const sydneyTime = { eventDate: '2025-01-20T10:00:00+11:00' };
-    expect(check(rule, sydneyTime)).toBe(true);
+    // Sydney 10:00 on Jan 20 (+11:00) = 2025-01-19T23:00Z → BEFORE the UTC anchor → fails.
+    expect(check(rule, { eventDate: '2025-01-20T10:00:00+11:00' })).toContain(
+      'must be on or after',
+    );
+    // Absolute UTC instants at/after midnight of the 20th pass.
+    expect(check(rule, { eventDate: '2025-01-20T00:00:00Z' })).toBe(true);
+    expect(check(rule, { eventDate: '2025-01-20T05:00:00Z' })).toBe(true);
+    // A naive field also anchors to config.timeZone (UTC): 10:00 UTC ≥ midnight UTC → passes.
+    expect(check(rule, { eventDate: '2025-01-20T10:00:00' })).toBe(true);
 
-    // Field with no timezone: treated as local time
-    const localTime = { eventDate: '2025-01-20T10:00:00' };
-    expect(check(rule, localTime)).toBe(true);
-
-    // Test with explicit timezone in condition
+    // Explicit timezone in the value → absolute.
     const utcRule: DateRule = {
       field: 'eventDate',
       dateOperator: DateOperator.after,
@@ -389,14 +399,14 @@ describe('Date Operators', () => {
     expect(check(utcRule, { eventDate: '2025-01-19T23:30:00Z' })).toContain('must be after');
     expect(check(utcRule, { eventDate: '2025-01-20T00:30:00Z' })).toBe(true);
 
-    // Test timezone offset format
+    // Explicit offset in the value → absolute.
     const offsetRule: DateRule = {
       field: 'eventDate',
       dateOperator: DateOperator.after,
-      value: '2025-01-20T00:00:00+11:00', // Sydney midnight
+      value: '2025-01-20T00:00:00+11:00', // = 2025-01-19T13:00:00Z
     };
 
-    // This is Jan 19 2:00 PM UTC, which is Jan 20 1:00 AM Sydney
+    // Jan 19 14:00 UTC is after Jan 19 13:00 UTC → true.
     expect(check(offsetRule, { eventDate: '2025-01-19T14:00:00Z' })).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap, LensNarrowing } from '../index';
 import { createLens, exposedSurface, Operator } from '../index';
+import { enumOptions, sortedOptions } from './fixtures/helpers';
 
 const socialMap: FieldMap = {
   models: {
@@ -86,14 +87,16 @@ describe('exposedSurface — model-default narrowing applied', () => {
     expect(reduced.maps.app.models.OrgSecret).toBeUndefined();
   });
 
-  test('enum narrowing is baked onto the field values', () => {
+  test('enum narrowing is baked onto the field options (picker selectable set)', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
     const narrowing: LensNarrowing = {
       parent: lens,
       mapDefaults: { app: { models: { User: { enumOmits: { role: ['guest'] } } } } },
     };
     const reduced = exposedSurface(narrowing);
-    expect(reduced.maps.app.models.User.fields.role.values).toEqual(['admin', 'member']);
+    expect(sortedOptions(reduced.maps.app.models.User.fields.role)).toEqual(
+      enumOptions('admin', 'member'),
+    );
   });
 
   test('does not throw on a where clause and ignores it for the schema surface', () => {

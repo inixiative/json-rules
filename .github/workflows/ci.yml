@@ -1,0 +1,8 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  ci:
+    uses: inixiative/config/.github/workflows/lib-ci.yml@main

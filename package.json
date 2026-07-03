@@ -18,9 +18,9 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "check:catalog": "bun test test/operatorCatalog.integrity.test.ts",
-    "check": "bun run typecheck && bun run lint && bun run check:catalog",
+    "check": "bun run typecheck && bun run lint && bun run test",
     "prepare": "lefthook install",
-    "prepublishOnly": "bun run check && bun run test && bun run build"
+    "prepublishOnly": "bun run check && bun run build"
   },
   "keywords": [
     "json",

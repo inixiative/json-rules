@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.13.1 — deterministic DateTime coercion for naive strings
+
+- `coerceType: 'DateTime'` now anchors a naive (zoneless) datetime string in UTC instead of the host's local zone via bare `Date.parse` — same rule + same rows give the same answer on every machine, matching the date rail's `parseDateValue` policy. (The fix missed the 2.13.0 tarball by one commit.)
+
 ## 2.13.0 — explicit value coercion: `Rule.coerceType` + `stampCoercions`
 
 **`Rule.coerceType?: FieldKind`.** A field rule can declare the kind both sides coerce to before comparing — never inferred from the values (a date-looking string stays a string unless the rule says `DateTime`). `check()` applies it to the field value and the rule value (arrays element-wise): `DateTime` lands everything on epoch ms (Date instances, ISO strings in any zone/format, ms-timestamp strings), numeric kinds parse numeric strings, `Boolean` maps `'true'`/`'false'`, `String` stringifies primitives. `null`/`undefined` pass through untouched (the is-null sentinel is valid on every field) and an uncoercible value returns unchanged so the comparison fails with the rule's normal error instead of throwing on one dirty row. This closes the widget-authoring gap: a rule built from a date picker (`Date` object) or a stringified `SourceOption.value` (`'1'`) now matches wire-format rows. Plain operators without `coerceType` are unchanged; the `dateOperator` family still owns rich date semantics (zones, expressions, day-of-week).

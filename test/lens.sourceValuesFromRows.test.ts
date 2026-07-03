@@ -232,3 +232,30 @@ describe('sourceValuesFromRows', () => {
     expect(children?.options).toEqual([{ value: 'design' }, { value: 'sales' }]);
   });
 });
+
+describe('sources entry hygiene: {} is not a Condition', () => {
+  test('an empty-object sources entry throws instead of silently matching nothing', () => {
+    const narrowing: LensNarrowing = {
+      parent: lens,
+      // @ts-expect-error — {} is neither a Condition nor a SourceSpec (both keys absent)
+      root: { sources: { rewardType: {} } },
+    };
+    expect(() => sourceValuesFromRows(narrowing, rows)).toThrow('sources: {} is not a Condition');
+  });
+
+  test('the unconstrained spelling is `true`', () => {
+    const narrowing: LensNarrowing = { parent: lens, root: { sources: { rewardType: true } } };
+    const [values] = sourceValuesFromRows(narrowing, rows);
+    expect(values.options.length).toBeGreaterThan(0);
+  });
+
+  test('a label-only SourceSpec still registers the field unconstrained', () => {
+    const narrowing: LensNarrowing = {
+      parent: lens,
+      root: { sources: { regionId: { label: 'regionName' } } },
+    };
+    const [values] = sourceValuesFromRows(narrowing, rows);
+    expect(values.options.length).toBeGreaterThan(0);
+    expect(values.options[0].label).toBeDefined();
+  });
+});

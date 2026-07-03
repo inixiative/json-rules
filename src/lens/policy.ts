@@ -26,7 +26,12 @@ export const isSourceSpec = (v: SourceValue): v is SourceSpec =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && ('where' in v || 'label' in v);
 
 /** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
-export const normalizeSource = (v: SourceValue): SourceSpec => (isSourceSpec(v) ? v : { where: v });
+export const normalizeSource = (v: SourceValue): SourceSpec => {
+  if (isSourceSpec(v)) return v;
+  if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
+    throw new Error('sources: {} is not a Condition — use `true` for an unconstrained source');
+  return { where: v };
+};
 
 export type Policy = {
   lens: Lens;

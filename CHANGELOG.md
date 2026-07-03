@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.14.1 — `{}` is not a Condition: `SourceSpec` requires a key
+
+- `SourceSpec` is now `{ where: Condition; label?: string } | { where?: Condition; label: string }` — at least one key required. The old all-optional shape let `{}` typecheck as a `sources` entry, fall past the `isSourceSpec` discriminant ('where'/'label' presence), and normalize to `{ where: {} }` — a non-Condition that `check()` fails for every row, so the field's option picker came back silently empty. Now `{}` is a type error, and `normalizeSource` throws at runtime for untyped callers (`sources: {} is not a Condition — use \`true\` for an unconstrained source`). The unconstrained spellings are `true` (bare) or a label-only `{ label }`; a `Condition` is a boolean, `all`/`any`/`if`, or a field predicate — never an empty object.
+
 ## 2.14.0 — `sourceValuesFromRows`: the in-memory sources executor
 
 - **`sourceValuesFromRows(lensOrNarrowing, rows, options?)`** materializes each sourced field's option set from an already-fetched collection — the in-memory executor of `sources` declarations, alongside `sourceQueries` (which compiles the same declarations to DISTINCT queries for a DB). Rows are the collection fetched *under* the lens (relations inline, traversed per projection path, to-many arrays flattened), so they are already lens-scoped: eligibility is the field's source `where` only, evaluated via `check()` with `CheckOptions` passthrough for `{bind}` clauses. Scalar-list fields contribute one option per element, labels take the first non-null sibling, sorting is numeric-aware in a fixed locale (host-independent). Hoisted from `@template/ui`'s `sourceValuesFromRows`; `@inixiative/rules-builder`'s `runSources` remains the table-shaped variant (per-model row tables through compiled `sourceQueries`).

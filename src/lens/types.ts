@@ -41,8 +41,13 @@ export type ModelDefaultNarrowing = {
   sources?: Record<string, SourceValue>; // fieldName → eligibility where | SourceSpec
 };
 
-/** A sourced field's eligibility `where` plus an optional sibling display-label column. */
-export type SourceSpec = { where?: Condition; label?: string };
+/**
+ * A sourced field's eligibility `where` plus an optional sibling display-label column.
+ * At least one key is required — `{}` is not a Condition; the unconstrained spelling is `true`.
+ */
+export type SourceSpec =
+  | { where: Condition; label?: string }
+  | { where?: Condition; label: string };
 
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
 export type SourceValue = Condition | SourceSpec;

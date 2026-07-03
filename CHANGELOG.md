@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.14.0 — `sourceValuesFromRows`: the in-memory sources executor
+
+- **`sourceValuesFromRows(lensOrNarrowing, rows, options?)`** materializes each sourced field's option set from an already-fetched collection — the in-memory executor of `sources` declarations, alongside `sourceQueries` (which compiles the same declarations to DISTINCT queries for a DB). Rows are the collection fetched *under* the lens (relations inline, traversed per projection path, to-many arrays flattened), so they are already lens-scoped: eligibility is the field's source `where` only, evaluated via `check()` with `CheckOptions` passthrough for `{bind}` clauses. Scalar-list fields contribute one option per element, labels take the first non-null sibling, sorting is numeric-aware in a fixed locale (host-independent). Hoisted from `@template/ui`'s `sourceValuesFromRows`; `@inixiative/rules-builder`'s `runSources` remains the table-shaped variant (per-model row tables through compiled `sourceQueries`).
+- Aliased relations are covered by test: two relation fields targeting the same model (`parents`/`children` → `User`) materialize independently per projection path — resolution goes through the entry's `type`, never the field name.
+
 ## 2.13.1 — deterministic DateTime coercion for naive strings
 
 - `coerceType: 'DateTime'` now anchors a naive (zoneless) datetime string in UTC instead of the host's local zone via bare `Date.parse` — same rule + same rows give the same answer on every machine, matching the date rail's `parseDateValue` policy. (The fix missed the 2.13.0 tarball by one commit.)

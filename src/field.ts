@@ -1,5 +1,6 @@
 import { get } from 'lodash-es';
 import { Operator } from './operator';
+import type { FieldKind } from './operatorCatalog';
 import type { Rule, RuleValue } from './types';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
@@ -9,6 +10,51 @@ import type { Rule, RuleValue } from './types';
 const isEmptyValue = (value: unknown): boolean =>
   value === null || value === undefined || value === '';
 
+// Mirrors the server-side coerceValueForField contract: null/undefined pass through
+// (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
+// kinds pass through, and an uncoercible value returns unchanged so the comparison
+// fails with the rule's normal error instead of throwing on one dirty row.
+const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
+
+const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
+  if (value === null || value === undefined) return value;
+
+  if (NUMERIC_COERCE_KINDS.includes(kind)) {
+    if (typeof value !== 'string' || value.trim() === '') return value;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : value;
+  }
+
+  switch (kind) {
+    case 'DateTime': {
+      // Everything lands on epoch ms so equals/ordered compare across Date
+      // instances, ISO strings (any zone/format), and ms-timestamp strings.
+      if (value instanceof Date) return value.getTime();
+      if (typeof value === 'number') return value;
+      if (typeof value !== 'string') return value;
+      if (/^-?\d+$/.test(value)) return Number(value);
+      const ms = Date.parse(value);
+      return Number.isNaN(ms) ? value : ms;
+    }
+    case 'Boolean':
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return value;
+    case 'String':
+      return typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+        ? String(value)
+        : value;
+    default:
+      return value;
+  }
+};
+
+const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => {
+  if (kind === undefined) return value;
+  if (Array.isArray(value)) return value.map((item) => coerceScalar(item, kind));
+  return coerceScalar(value, kind);
+};
+
 export const checkField = <TData extends Record<string, unknown>>(
   condition: Rule,
   data: TData,
@@ -16,7 +62,7 @@ export const checkField = <TData extends Record<string, unknown>>(
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
   // Use data for field access (current element) but context remains available for path references
-  const fieldValue = get(data, condition.field) as unknown;
+  const fieldValue = applyCoercion(get(data, condition.field) as unknown, condition.coerceType);
 
   // Operators that don't need a value
   const noValueOps: Operator[] = [
@@ -26,7 +72,9 @@ export const checkField = <TData extends Record<string, unknown>>(
     Operator.notExists,
   ];
   const needsValue = !noValueOps.includes(condition.operator);
-  const value = needsValue ? getValue(condition, data, context, bindings) : undefined;
+  const value = needsValue
+    ? applyCoercion(getValue(condition, data, context, bindings), condition.coerceType)
+    : undefined;
 
   const getError = (op: string) =>
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;

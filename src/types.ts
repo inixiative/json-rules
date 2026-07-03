@@ -1,4 +1,5 @@
 import type { ArrayOperator, DateOperator, Operator } from './operator.ts';
+import type { FieldKind } from './operatorCatalog.ts';
 
 type OperatorValues = typeof import('./operator.ts').Operator;
 type ArrayOperatorValues = typeof import('./operator.ts').ArrayOperator;
@@ -245,6 +246,9 @@ export type Rule<TValue = RuleValue> = {
   path?: string;
   bind?: string;
   error?: string;
+  // Declared kind both sides coerce to before comparing — never inferred from the
+  // values. Stamp mechanically from a lens via stampCoercions().
+  coerceType?: FieldKind;
 };
 
 export type ArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields & {

@@ -4,6 +4,7 @@ import {
   ARRAY_OPERATOR_CATALOG,
   DATE_OPERATOR_CATALOG,
   FIELD_OPERATOR_CATALOG,
+  FieldKind,
   getValueShape,
   isAggregateRangeOperator,
   isAggregateSingleOperator,
@@ -206,6 +207,18 @@ const validateFieldRule = (
       `${path}.path`,
       'unsupported_prisma_path',
       `Path '${rule.path}' is not supported by toPrisma()`,
+    );
+  }
+
+  if (
+    rule.coerceType !== undefined &&
+    !(typeof rule.coerceType === 'string' && rule.coerceType in FieldKind)
+  ) {
+    pushIssue(
+      context,
+      `${path}.coerceType`,
+      'invalid_coerce_type',
+      `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
     );
   }
 

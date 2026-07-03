@@ -16,6 +16,9 @@ const isEmptyValue = (value: unknown): boolean =>
 // fails with the rule's normal error instead of throwing on one dirty row.
 const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
 
+// A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
+const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
 const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   if (value === null || value === undefined) return value;
 
@@ -29,11 +32,15 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
     case 'DateTime': {
       // Everything lands on epoch ms so equals/ordered compare across Date
       // instances, ISO strings (any zone/format), and ms-timestamp strings.
+      // A naive (zoneless) datetime string anchors in UTC — deterministic across
+      // hosts, matching the date rail's parseDateValue default (Date.parse would
+      // anchor it in the host's local zone).
       if (value instanceof Date) return value.getTime();
       if (typeof value === 'number') return value;
       if (typeof value !== 'string') return value;
       if (/^-?\d+$/.test(value)) return Number(value);
-      const ms = Date.parse(value);
+      const anchored = NAIVE_DATETIME.test(value) ? `${value.replace(' ', 'T')}Z` : value;
+      const ms = Date.parse(anchored);
       return Number.isNaN(ms) ? value : ms;
     }
     case 'Boolean':

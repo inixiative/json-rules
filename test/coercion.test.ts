@@ -68,6 +68,18 @@ describe('coerceType — check()', () => {
       expect(check(rule, row)).toBe(true);
     });
 
+    test('naive datetime strings anchor in UTC — host-timezone independent', () => {
+      const rule: Rule = {
+        field: 'createdAt',
+        operator: Operator.equals,
+        value: '2026-06-01 00:00',
+        coerceType: 'DateTime',
+      };
+      expect(check(rule, row)).toBe(true);
+      const tIso: Rule = { ...rule, value: '2026-06-01T00:00:00' };
+      expect(check(tIso, row)).toBe(true);
+    });
+
     test('ms-timestamp string value', () => {
       const rule: Rule = {
         field: 'createdAt',

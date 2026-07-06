@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.0 — `caseInsensitive` flag on string field rules
+
+- Field rules take an optional **`caseInsensitive?: boolean`** (default falsey — existing rules are unchanged, case-sensitive). When set, `equals`/`notEquals`/`contains`/`notContains`/`startsWith`/`endsWith` match string operands case-insensitively, and the semantics hold across all three evaluators: `check()` compares lowercased operands, `toSql` wraps both sides in `LOWER(...)`, and `toPrisma` emits `mode: 'insensitive'`. It's a no-op on non-string operands and on the other operators. The FE in-memory filter (`useFilteredCollection`) is the first consumer — a member search for `cisco` now matches `Cisco Systems`, the in-memory dual of the backend's collation-driven `contains`.
+- **Prisma-on-MySQL note:** `mode: 'insensitive'` is a Postgres construct; MySQL is already case-insensitive via `_ci` collation and rejects the `mode` argument, so a MySQL Prisma consumer should leave the flag unset (matching stays insensitive by collation). The flag is opt-in, so existing MySQL callers emit no `mode` and are unaffected.
+
 ## 2.14.1 — `{}` is not a Condition: `SourceSpec` requires a key
 
 - `SourceSpec` is now `{ where: Condition; label?: string } | { where?: Condition; label: string }` — at least one key required. The old all-optional shape let `{}` typecheck as a `sources` entry, fall past the `isSourceSpec` discriminant ('where'/'label' presence), and normalize to `{ where: {} }` — a non-Condition that `check()` fails for every row, so the field's option picker came back silently empty. Now `{}` is a type error, and `normalizeSource` throws at runtime for untyped callers (`sources: {} is not a Condition — use \`true\` for an unconstrained source`). The unconstrained spellings are `true` (bare) or a label-only `{ label }`; a `Condition` is a boolean, `all`/`any`/`if`, or a field predicate — never an empty object.

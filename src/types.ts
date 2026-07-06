@@ -73,6 +73,7 @@ type RuleBase<TOperator extends Operator> = {
   field: string;
   operator: TOperator;
   error?: string;
+  caseInsensitive?: boolean;
 };
 type DateRuleBase<TOperator extends DateOperator> = {
   field: string;
@@ -246,6 +247,7 @@ export type Rule<TValue = RuleValue> = {
   path?: string;
   bind?: string;
   error?: string;
+  caseInsensitive?: boolean;
   // Declared kind both sides coerce to before comparing — never inferred from the
   // values. Stamp mechanically from a lens via stampCoercions().
   coerceType?: FieldKind;

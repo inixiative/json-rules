@@ -9,6 +9,7 @@ import type { BuilderState } from './types';
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
+  const lc = (expr: string): string => (rule.caseInsensitive ? `LOWER(${expr})` : expr);
   const rhs = resolveComparison(rule, state);
 
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case
@@ -17,14 +18,14 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
 
   switch (rule.operator) {
     case Operator.equals:
-      if (rhsCol !== undefined) return `${field} = ${rhsCol}`;
+      if (rhsCol !== undefined) return `${lc(field)} = ${lc(rhsCol)}`;
       if (rhsVal === null) return `${field} IS NULL`;
-      return `${field} = ${nextParam(state, rhsVal)}`;
+      return `${lc(field)} = ${lc(nextParam(state, rhsVal))}`;
 
     case Operator.notEquals:
-      if (rhsCol !== undefined) return `${field} <> ${rhsCol}`;
+      if (rhsCol !== undefined) return `${lc(field)} <> ${lc(rhsCol)}`;
       if (rhsVal === null) return `${field} IS NOT NULL`;
-      return `${field} <> ${nextParam(state, rhsVal)}`;
+      return `${lc(field)} <> ${lc(nextParam(state, rhsVal))}`;
 
     case Operator.lessThan:
       if (rhsCol !== undefined) return `${field} < ${rhsCol}`;
@@ -51,16 +52,16 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       return `${field} <> ALL(${nextParam(state, rhsVal)})`;
 
     case Operator.contains:
-      return `${field} LIKE ${nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`)}`;
+      return `${lc(field)} LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`))}`;
 
     case Operator.notContains:
-      return `${field} NOT LIKE ${nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`)}`;
+      return `${lc(field)} NOT LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`))}`;
 
     case Operator.startsWith:
-      return `${field} LIKE ${nextParam(state, `${escapeLikePattern(String(rhsVal))}%`)}`;
+      return `${lc(field)} LIKE ${lc(nextParam(state, `${escapeLikePattern(String(rhsVal))}%`))}`;
 
     case Operator.endsWith:
-      return `${field} LIKE ${nextParam(state, `%${escapeLikePattern(String(rhsVal))}`)}`;
+      return `${lc(field)} LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}`))}`;
 
     case Operator.matches:
       return `${field} ~ ${nextParam(state, rhsVal)}`;

@@ -63,13 +63,14 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
 const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
   // Lazy resolver: only called by operators that need a value
   const val = () => resolveRuleValue(rule, options);
+  const ci = rule.caseInsensitive ? { mode: 'insensitive' as const } : {};
 
   switch (rule.operator) {
     case Operator.equals:
-      return { equals: val() ?? null };
+      return { equals: val() ?? null, ...ci };
 
     case Operator.notEquals:
-      return { not: val() ?? null };
+      return { not: val() ?? null, ...ci };
 
     case Operator.lessThan:
       return { lt: val() };
@@ -90,16 +91,16 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
       return { notIn: val() };
 
     case Operator.contains:
-      return { contains: val() };
+      return { contains: val(), ...ci };
 
     case Operator.notContains:
-      return { not: { contains: val() } };
+      return { not: { contains: val(), ...ci } };
 
     case Operator.startsWith:
-      return { startsWith: val() };
+      return { startsWith: val(), ...ci };
 
     case Operator.endsWith:
-      return { endsWith: val() };
+      return { endsWith: val(), ...ci };
 
     case Operator.matches:
       throw new Error(

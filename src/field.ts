@@ -86,11 +86,15 @@ export const checkField = <TData extends Record<string, unknown>>(
   const getError = (op: string) =>
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
+  const ci = condition.caseInsensitive === true;
+  const lhs = ci && typeof fieldValue === 'string' ? fieldValue.toLowerCase() : fieldValue;
+  const rhs = ci && typeof value === 'string' ? value.toLowerCase() : value;
+
   switch (condition.operator) {
     case Operator.equals:
-      return fieldValue === value || getError(`must equal`);
+      return lhs === rhs || getError(`must equal`);
     case Operator.notEquals:
-      return fieldValue !== value || getError(`must not equal`);
+      return lhs !== rhs || getError(`must not equal`);
     case Operator.lessThan:
       return compareOrderedValues(fieldValue, value, 'lt') || getError(`must be less than`);
     case Operator.lessThanEquals:
@@ -109,9 +113,9 @@ export const checkField = <TData extends Record<string, unknown>>(
     case Operator.notIn:
       return !Array.isArray(value) || !value.includes(fieldValue) || getError(`must not be one of`);
     case Operator.contains:
-      return containsValue(fieldValue, value) || getError(`must contain`);
+      return containsValue(lhs, rhs) || getError(`must contain`);
     case Operator.notContains:
-      return !containsValue(fieldValue, value) || getError(`must not contain`);
+      return !containsValue(lhs, rhs) || getError(`must not contain`);
     case Operator.matches:
       return (
         (hasMatch(fieldValue) &&
@@ -156,16 +160,12 @@ export const checkField = <TData extends Record<string, unknown>>(
       return fieldValue === undefined || getError(`must not exist`);
     case Operator.startsWith:
       return (
-        (typeof fieldValue === 'string' &&
-          typeof value === 'string' &&
-          fieldValue.startsWith(value)) ||
+        (typeof lhs === 'string' && typeof rhs === 'string' && lhs.startsWith(rhs)) ||
         getError(`must start with`)
       );
     case Operator.endsWith:
       return (
-        (typeof fieldValue === 'string' &&
-          typeof value === 'string' &&
-          fieldValue.endsWith(value)) ||
+        (typeof lhs === 'string' && typeof rhs === 'string' && lhs.endsWith(rhs)) ||
         getError(`must end with`)
       );
     default:

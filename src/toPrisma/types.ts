@@ -1,3 +1,4 @@
+import type { PrismaProvider } from '../engineGlobals';
 import type { FieldMapSet } from '../fieldMap/types';
 import type { DateConfig } from '../types';
 
@@ -78,6 +79,7 @@ export type BuildOptions = {
   mapName?: string;
   model?: string;
   context?: Record<string, unknown>;
+  datasource?: { provider?: PrismaProvider };
 } & DateConfig;
 
 // Mutable state threaded through build calls to accumulate intermediate groupBy steps

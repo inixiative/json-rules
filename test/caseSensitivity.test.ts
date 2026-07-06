@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-import { check, Operator, toPrisma, toSql } from '../index';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { check, engineGlobals, Operator, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 describe('caseInsensitive flag — in-memory check()', () => {
@@ -106,12 +106,82 @@ describe('caseInsensitive flag — toPrisma', () => {
     ).toEqual({ name: { not: { contains: 'cisco', mode: 'insensitive' } } });
   });
 
-  test('default omits mode', () => {
+  test('default provider is postgresql — mode emitted', () => {
+    expect(
+      getWhere(
+        toPrisma({
+          field: 'name',
+          operator: Operator.contains,
+          value: 'cisco',
+          caseInsensitive: true,
+        }),
+      ),
+    ).toEqual({ name: { contains: 'cisco', mode: 'insensitive' } });
+  });
+
+  test('no caseInsensitive — no mode', () => {
     expect(
       getWhere(toPrisma({ field: 'name', operator: Operator.contains, value: 'cisco' })),
-    ).toEqual({
-      name: { contains: 'cisco' },
-    });
+    ).toEqual({ name: { contains: 'cisco' } });
+  });
+});
+
+describe('caseInsensitive flag — dialect gating', () => {
+  afterEach(() => engineGlobals.reset());
+
+  test('per-call mysql datasource omits mode (collation-driven)', () => {
+    expect(
+      getWhere(
+        toPrisma(
+          { field: 'name', operator: Operator.contains, value: 'cisco', caseInsensitive: true },
+          { datasource: { provider: 'mysql' } },
+        ),
+      ),
+    ).toEqual({ name: { contains: 'cisco' } });
+  });
+
+  test('engineGlobals mysql default omits mode; reset restores postgres', () => {
+    engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
+    expect(
+      getWhere(
+        toPrisma({
+          field: 'name',
+          operator: Operator.contains,
+          value: 'cisco',
+          caseInsensitive: true,
+        }),
+      ),
+    ).toEqual({ name: { contains: 'cisco' } });
+
+    engineGlobals.reset();
+    expect(
+      getWhere(
+        toPrisma({
+          field: 'name',
+          operator: Operator.contains,
+          value: 'cisco',
+          caseInsensitive: true,
+        }),
+      ),
+    ).toEqual({ name: { contains: 'cisco', mode: 'insensitive' } });
+  });
+
+  test('per-call datasource overrides engineGlobals', () => {
+    engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
+    expect(
+      getWhere(
+        toPrisma(
+          { field: 'name', operator: Operator.contains, value: 'cisco', caseInsensitive: true },
+          { datasource: { provider: 'postgresql' } },
+        ),
+      ),
+    ).toEqual({ name: { contains: 'cisco', mode: 'insensitive' } });
+  });
+
+  test('reset restores default after mutation (no shared ref with DEFAULTS)', () => {
+    engineGlobals.set('prismaOptions.datasource.provider', 'sqlite');
+    engineGlobals.reset();
+    expect(engineGlobals.get('prismaOptions.datasource.provider')).toBe('postgresql');
   });
 });
 

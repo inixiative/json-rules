@@ -1,4 +1,5 @@
 import { get } from 'lodash-es';
+import { engineGlobals, type PrismaProvider, supportsQueryMode } from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
 import { walkFieldPath } from './mapWalk';
@@ -63,7 +64,11 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
 const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
   // Lazy resolver: only called by operators that need a value
   const val = () => resolveRuleValue(rule, options);
-  const ci = rule.caseInsensitive ? { mode: 'insensitive' as const } : {};
+  // QueryMode only where the connector accepts it; MySQL/SQLite reject `mode` (collation-driven).
+  const provider = (options?.datasource?.provider ??
+    engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
+  const ci =
+    rule.caseInsensitive && supportsQueryMode(provider) ? { mode: 'insensitive' as const } : {};
 
   switch (rule.operator) {
     case Operator.equals:

@@ -1,3 +1,4 @@
+import type { FuzzyConfig } from './fuzzy.ts';
 import type { ArrayOperator, DateOperator, Operator } from './operator.ts';
 import type { FieldKind } from './operatorCatalog.ts';
 
@@ -74,6 +75,7 @@ type RuleBase<TOperator extends Operator> = {
   operator: TOperator;
   error?: string;
   caseInsensitive?: boolean;
+  fuzzy?: boolean | FuzzyConfig;
 };
 type DateRuleBase<TOperator extends DateOperator> = {
   field: string;
@@ -248,6 +250,7 @@ export type Rule<TValue = RuleValue> = {
   bind?: string;
   error?: string;
   caseInsensitive?: boolean;
+  fuzzy?: boolean | FuzzyConfig;
   // Declared kind both sides coerce to before comparing — never inferred from the
   // values. Stamp mechanically from a lens via stampCoercions().
   coerceType?: FieldKind;

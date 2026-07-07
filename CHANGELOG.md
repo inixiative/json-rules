@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.16.0 — `fuzzy` matching + scoped `engineGlobals.with()`
+
+- **`fuzzy?: boolean | FuzzyConfig`** on field rules — typo-tolerant matching for `contains`/`notContains`, backed by `fastest-levenshtein` with the length-scaled token policy (short tokens exact, longer tolerate more; numbers are identity). `FuzzyConfig` is JSON-serializable — `{ maxDistance?: number; maxRatio?: number }` — where the two are **both caps** and the tighter wins (`{ maxRatio: 0.2, maxDistance: 2 }` = "≤20% of chars, but never more than 2"); with neither set, the default `0/1/2`-by-length curve applies. `check()`-only: `toPrisma`/`toSql` throw for a fuzzy rule (no server-side equivalent — evaluate in memory). Resolves `rule.fuzzy ?? engineGlobals string.fuzzy ?? false`.
+- **`engineGlobals.with(partial, fn)`** — a scoped override: deep-merges `partial`, runs the synchronous `fn`, restores in `finally` (even on throw). JS run-to-completion makes a sync `fn` atomic, so overlapping evaluations never observe the override; an async `fn` would leak the scope, so it throws. Lets a FE bundle wrap one filter pass (`with({ string: { fuzzy: true, caseInsensitive: true } }, () => rows.filter(check(...)))`) without permanently mutating globals.
+
 ## 2.15.1 — `string.caseInsensitive` engine-global default
 
 - Case-insensitivity is now settable once as an engine global instead of per rule: `engineGlobals.set('string.caseInsensitive', true)` makes every string operator (`equals`/`notEquals`/`contains`/`notContains`/`startsWith`/`endsWith`) match case-insensitively across `check`/`toSql`/`toPrisma`, with no per-rule flag. Resolution is `rule.caseInsensitive ?? engineGlobals string.caseInsensitive ?? false`, so a rule's explicit flag (either direction) still wins. Default stays `false` (unchanged behavior). Intended use: a FE bundle sets it once so its in-memory filter matches the backend's collation-insensitive matching, without stamping every rule.

@@ -1,5 +1,6 @@
 import { get } from 'lodash-es';
-import { resolveCaseInsensitive } from './engineGlobals';
+import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
+import { fuzzyContains } from './fuzzy';
 import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
 import type { Rule, RuleValue } from './types';
@@ -91,6 +92,14 @@ export const checkField = <TData extends Record<string, unknown>>(
   const lhs = ci && typeof fieldValue === 'string' ? fieldValue.toLowerCase() : fieldValue;
   const rhs = ci && typeof value === 'string' ? value.toLowerCase() : value;
 
+  // Fuzzy applies to containment search: typo-tolerant token match over strings, else the
+  // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive.
+  const fuzzy = resolveFuzzy(condition.fuzzy);
+  const containsMatch = (): boolean =>
+    fuzzy && typeof fieldValue === 'string' && typeof value === 'string'
+      ? fuzzyContains(fieldValue, value, fuzzy)
+      : containsValue(lhs, rhs);
+
   switch (condition.operator) {
     case Operator.equals:
       return lhs === rhs || getError(`must equal`);
@@ -114,9 +123,9 @@ export const checkField = <TData extends Record<string, unknown>>(
     case Operator.notIn:
       return !Array.isArray(value) || !value.includes(fieldValue) || getError(`must not be one of`);
     case Operator.contains:
-      return containsValue(lhs, rhs) || getError(`must contain`);
+      return containsMatch() || getError(`must contain`);
     case Operator.notContains:
-      return !containsValue(lhs, rhs) || getError(`must not contain`);
+      return !containsMatch() || getError(`must not contain`);
     case Operator.matches:
       return (
         (hasMatch(fieldValue) &&

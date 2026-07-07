@@ -9,6 +9,8 @@ import { escapeLikePattern, quoteField } from './quoting';
 import type { BuilderState } from './types';
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
+  if (rule.fuzzy)
+    throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
   const field = resolveFieldSql(rule.field, state);
   const lc = (expr: string): string =>
     resolveCaseInsensitive(rule.caseInsensitive) ? `LOWER(${expr})` : expr;

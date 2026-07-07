@@ -67,6 +67,10 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
 };
 
 const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
+  if (rule.fuzzy)
+    throw new Error(
+      'Fuzzy matching has no Prisma equivalent — evaluate it in memory with check().',
+    );
   // Lazy resolver: only called by operators that need a value
   const val = () => resolveRuleValue(rule, options);
   // QueryMode only where the connector accepts it; MySQL/SQLite reject `mode` (collation-driven).

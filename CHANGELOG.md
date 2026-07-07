@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.15.1 — `string.caseInsensitive` engine-global default
+
+- Case-insensitivity is now settable once as an engine global instead of per rule: `engineGlobals.set('string.caseInsensitive', true)` makes every string operator (`equals`/`notEquals`/`contains`/`notContains`/`startsWith`/`endsWith`) match case-insensitively across `check`/`toSql`/`toPrisma`, with no per-rule flag. Resolution is `rule.caseInsensitive ?? engineGlobals string.caseInsensitive ?? false`, so a rule's explicit flag (either direction) still wins. Default stays `false` (unchanged behavior). Intended use: a FE bundle sets it once so its in-memory filter matches the backend's collation-insensitive matching, without stamping every rule.
+
 ## 2.15.0 — `caseInsensitive` flag + dialect-aware `toPrisma`
 
 - Field rules take an optional **`caseInsensitive?: boolean`** (default falsey — existing rules unchanged, case-sensitive). When set, `equals`/`notEquals`/`contains`/`notContains`/`startsWith`/`endsWith` match string operands case-insensitively across all three evaluators: `check()` compares lowercased operands, `toSql` wraps both sides in `LOWER(...)`, and `toPrisma` emits Prisma's `mode: 'insensitive'`. No-op on non-string operands and other operators. First consumer is the FE in-memory filter (`useFilteredCollection`) — a member search for `cisco` now matches `Cisco Systems`, the in-memory dual of the backend's collation-driven `contains`.

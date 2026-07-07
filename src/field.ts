@@ -1,4 +1,5 @@
 import { get } from 'lodash-es';
+import { resolveCaseInsensitive } from './engineGlobals';
 import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
 import type { Rule, RuleValue } from './types';
@@ -86,7 +87,7 @@ export const checkField = <TData extends Record<string, unknown>>(
   const getError = (op: string) =>
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
-  const ci = condition.caseInsensitive === true;
+  const ci = resolveCaseInsensitive(condition.caseInsensitive);
   const lhs = ci && typeof fieldValue === 'string' ? fieldValue.toLowerCase() : fieldValue;
   const rhs = ci && typeof value === 'string' ? value.toLowerCase() : value;
 

@@ -1,5 +1,10 @@
 import { get } from 'lodash-es';
-import { engineGlobals, type PrismaProvider, supportsQueryMode } from '../engineGlobals';
+import {
+  engineGlobals,
+  type PrismaProvider,
+  resolveCaseInsensitive,
+  supportsQueryMode,
+} from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
 import { walkFieldPath } from './mapWalk';
@@ -68,7 +73,9 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
   const provider = (options?.datasource?.provider ??
     engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
   const ci =
-    rule.caseInsensitive && supportsQueryMode(provider) ? { mode: 'insensitive' as const } : {};
+    resolveCaseInsensitive(rule.caseInsensitive) && supportsQueryMode(provider)
+      ? { mode: 'insensitive' as const }
+      : {};
 
   switch (rule.operator) {
     case Operator.equals:

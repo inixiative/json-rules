@@ -185,6 +185,38 @@ describe('caseInsensitive flag — dialect gating', () => {
   });
 });
 
+describe('engine-global string.caseInsensitive default', () => {
+  const row = { name: 'Cisco Systems' };
+  afterEach(() => engineGlobals.reset());
+
+  test('off by default — matching is case-sensitive', () => {
+    expect(check({ field: 'name', operator: Operator.contains, value: 'cisco' }, row)).not.toBe(
+      true,
+    );
+  });
+
+  test('set true — string ops go insensitive with no per-rule flag', () => {
+    engineGlobals.set('string.caseInsensitive', true);
+    expect(check({ field: 'name', operator: Operator.contains, value: 'cisco' }, row)).toBe(true);
+    expect(
+      getWhere(toPrisma({ field: 'name', operator: Operator.contains, value: 'cisco' })),
+    ).toEqual({ name: { contains: 'cisco', mode: 'insensitive' } });
+    expect(toSql({ field: 'name', operator: Operator.contains, value: 'cisco' }).sql).toContain(
+      'LOWER(',
+    );
+  });
+
+  test('per-rule caseInsensitive:false overrides the global true', () => {
+    engineGlobals.set('string.caseInsensitive', true);
+    expect(
+      check(
+        { field: 'name', operator: Operator.contains, value: 'cisco', caseInsensitive: false },
+        row,
+      ),
+    ).not.toBe(true);
+  });
+});
+
 describe('caseInsensitive flag — toSql', () => {
   test('caseInsensitive:true wraps both sides in LOWER()', () => {
     expect(

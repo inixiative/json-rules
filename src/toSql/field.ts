@@ -1,4 +1,5 @@
 import { get } from 'lodash-es';
+import { resolveCaseInsensitive } from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
 import { escapeIdentifier } from './escape';
@@ -9,7 +10,8 @@ import type { BuilderState } from './types';
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
-  const lc = (expr: string): string => (rule.caseInsensitive ? `LOWER(${expr})` : expr);
+  const lc = (expr: string): string =>
+    resolveCaseInsensitive(rule.caseInsensitive) ? `LOWER(${expr})` : expr;
   const rhs = resolveComparison(rule, state);
 
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case

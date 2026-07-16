@@ -29,7 +29,7 @@ const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition => {
 // unambiguously — a `path` ref (root/current-element semantics don't survive re-rooting)
 // or a nested array/aggregate condition (row-scoped to a different anchor) — rather than
 // silently emitting a wrong or unenforced grant.
-const prefixConditionFields = (cond: Condition, prefix: string): Condition => {
+export const prefixConditionFields = (cond: Condition, prefix: string): Condition => {
   if (typeof cond === 'boolean') return cond;
   if ('all' in cond) return { ...cond, all: cond.all.map((c) => prefixConditionFields(c, prefix)) };
   if ('any' in cond) return { ...cond, any: cond.any.map((c) => prefixConditionFields(c, prefix)) };

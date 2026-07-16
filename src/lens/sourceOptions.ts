@@ -1,6 +1,32 @@
 import type { SourceOption } from '../toPrisma/types.ts';
+import type { Condition } from '../types.ts';
+import { prefixConditionFields } from './applyLens.ts';
+import type { PathProjection } from './projectByPath.ts';
 
 type Row = Record<string, unknown>;
+
+/**
+ * The traversal guards a `groupBy` path picks up: each traversed relation node's
+ * narrowing `where` (tenancy/soft-delete), re-rooted onto the sourced model — the
+ * same hop-where fold `applyLens` performs for rule paths. An undeclared hop
+ * carries no narrowing, hence no guard.
+ */
+export const groupGuardClauses = (
+  projection: PathProjection,
+  path: string,
+  groupBy: string,
+): Condition[] => {
+  const out: Condition[] = [];
+  const segments = groupBy.split('.');
+  // The last segment is the column; guards live on the traversed relation nodes.
+  for (let i = 0; i < segments.length - 1; i++) {
+    const prefix = segments.slice(0, i + 1).join('.');
+    const visit = projection.get(`${path}.${prefix}`);
+    if (!visit) continue;
+    for (const where of visit.whereClauses) out.push(prefixConditionFields(where, prefix));
+  }
+  return out;
+};
 
 /** Walk a dotted to-one path through nested row objects; undefined when unreachable. */
 export const groupAtPath = (row: Row, path: string): string | undefined => {

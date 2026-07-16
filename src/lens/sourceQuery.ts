@@ -7,6 +7,7 @@ import type { BuilderState } from '../toSql/types.ts';
 import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
 import { projectByPath } from './projectByPath.ts';
+import { groupGuardClauses } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /** Prisma `select` shape — nested for a grouped source's relation path. */
@@ -134,9 +135,10 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
   const out: SourceQuery[] = [];
   for (const [path, visit] of projection) {
     for (const [field, sourceClauses] of Object.entries(visit.sources)) {
-      const composedWhere = compose(visit.whereClauses, sourceClauses);
       const label = visit.sourceLabels[field];
       const groupBy = visit.sourceGroupBys[field];
+      const groupGuards = groupBy ? groupGuardClauses(projection, path, groupBy) : [];
+      const composedWhere = compose(visit.whereClauses, [...sourceClauses, ...groupGuards]);
       const { prisma, sql } = compileOne(
         lens,
         visit.mapName,

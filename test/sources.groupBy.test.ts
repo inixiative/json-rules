@@ -242,6 +242,53 @@ describe('sourceValuesFromRows — grouped materialization', () => {
   });
 });
 
+describe('grouped sources — traversed narrowing wheres fold into the compile', () => {
+  // The groupBy traversal must honor the same guards as any lens traversal:
+  // a relation node's `where` (tenancy/soft-delete) re-roots onto the anchor,
+  // exactly like applyLens folds hop wheres for rules.
+  const guarded = (): LensNarrowing =>
+    withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: {
+              map: {
+                picks: [],
+                where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+              },
+            },
+          },
+        },
+      },
+    });
+
+  test('sourceQueries ANDs the hop where, re-rooted, into composedWhere', () => {
+    const [q] = sourceQueries(guarded());
+    expect(q.composedWhere).toEqual({
+      field: 'map.brandId',
+      operator: Operator.equals,
+      value: 'b1',
+    });
+  });
+
+  test('sourceValuesFromRows excludes rows whose traversed hop fails the guard', () => {
+    const rows = [
+      {
+        id: 'u1',
+        enrichments: [
+          { value: 'kept', map: { brandId: 'b1', definition: { label: 'business unit' } } },
+          { value: 'foreign', map: { brandId: 'b2', definition: { label: 'business unit' } } },
+        ],
+      },
+    ];
+    const [sv] = sourceValuesFromRows(guarded(), rows);
+    expect(sv.options).toEqual([{ value: 'kept', group: 'business unit' }]);
+  });
+});
+
 describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
   test('extracts the group from prisma-shaped nested rows, deduping per group', () => {
     const [q] = sourceQueries(grouped());

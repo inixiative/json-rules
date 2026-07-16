@@ -159,6 +159,25 @@ const validateModelNode = (
     if (spec.groupBy !== undefined) {
       const err = groupByPathError(spec.groupBy, maps, mapName, modelName);
       if (err) errors.push(`${position}.sources.${field}: ${err}`);
+      // The sql compile aliases the group column '__group' — a grouped source
+      // selecting a real column of that name would clobber it in flat rows.
+      if (field === '__group' || spec.label === '__group') {
+        errors.push(
+          `${position}.sources.${field}: '__group' is reserved on grouped sources (sql group alias)`,
+        );
+      }
+      // where/sources compose AND-only across layers; a divergent groupBy would
+      // silently re-partition an ancestor's option axis — fail loud instead.
+      for (const anc of ancestorChain) {
+        const ancEntry = anc.sources?.[field];
+        if (ancEntry === undefined) continue;
+        const ancSpec = normalizeSource(ancEntry);
+        if (ancSpec.groupBy !== undefined && ancSpec.groupBy !== spec.groupBy) {
+          errors.push(
+            `${position}.sources.${field}: groupBy '${spec.groupBy}' conflicts with an ancestor layer's groupBy '${ancSpec.groupBy}'`,
+          );
+        }
+      }
     }
     const where = spec.where;
     if (where !== undefined && where !== true && where !== false) {

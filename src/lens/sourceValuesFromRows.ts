@@ -1,6 +1,7 @@
 import { type CheckOptions, check } from '../check.ts';
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
+import { resolvePolicy } from './policy.ts';
 import { projectByPath, type SourceValues } from './projectByPath.ts';
 import { accumulateOption, groupAtPath, groupGuardClauses, sortOptions } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -46,16 +47,20 @@ export const sourceValuesFromRows = (
 ): SourceValues[] => {
   const out: SourceValues[] = [];
 
-  const projection = projectByPath(lensOrNarrowing);
-  for (const [path, visit] of projection) {
+  const policy = resolvePolicy(lensOrNarrowing);
+  for (const [path, visit] of projectByPath(lensOrNarrowing)) {
     const sourceFields = Object.entries(visit.sources);
     if (sourceFields.length === 0) continue;
 
     const anchors = rowsAtPath(rows, path);
+    const relPath = path.split('.').slice(1);
     for (const [field, sourceClauses] of sourceFields) {
       const label = visit.sourceLabels[field];
       const groupBy = visit.sourceGroupBys[field];
-      const groupGuards = groupBy === undefined ? [] : groupGuardClauses(projection, path, groupBy);
+      const groupGuards =
+        groupBy === undefined
+          ? []
+          : groupGuardClauses(policy, visit.mapName, visit.modelName, relPath, groupBy);
       const where = composeEligibility([...sourceClauses, ...groupGuards]);
 
       const byKey = new Map<string, SourceOption>();

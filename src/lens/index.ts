@@ -12,6 +12,7 @@ export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } fro
 export { projectByPath } from './projectByPath';
 export type { SourcePrismaQuery, SourceQuery, SourceSqlQuery } from './sourceQuery';
 export { sourceQueries } from './sourceQuery';
+export type { SourceRowShape } from './sourceValuesFromQueryRows';
 export { sourceValuesFromQueryRows } from './sourceValuesFromQueryRows';
 export { sourceValuesFromRows } from './sourceValuesFromRows';
 export { stampCoercions } from './stampCoercions';

@@ -5,17 +5,22 @@ import type { SourceQuery } from './sourceQuery.ts';
 
 type Row = Record<string, unknown>;
 
+/** Which executor produced the rows — the caller always knows; never guessed. */
+export type SourceRowShape = 'prisma' | 'sql';
+
 /**
  * Materialize one compiled `SourceQuery`'s fetched rows into its `SourceValues` —
  * the executor-side counterpart of `sourceQueries`, so apps never hand-map rows.
- * Handles both row shapes: prisma rows nest the `groupBy` path as related objects;
- * sql rows carry it flat under the statement's `__group` alias. Grouped queries
- * fetch without DISTINCT, so dedup per (group, value) happens here.
+ * `rowShape` names the wire format: prisma rows (default) nest the `groupBy` path
+ * as related objects; sql rows carry it flat under the statement's `__group` alias.
+ * Grouped queries fetch without DISTINCT, so dedup per (group, value) happens here.
  */
 export const sourceValuesFromQueryRows = (
   query: SourceQuery,
   rows: readonly Row[],
+  opts: { rowShape?: SourceRowShape } = {},
 ): SourceValues => {
+  const rowShape = opts.rowShape ?? 'prisma';
   const byKey = new Map<string, SourceOption>();
   for (const row of rows) {
     const rawValue = row[query.field];
@@ -25,7 +30,7 @@ export const sourceValuesFromQueryRows = (
     const group =
       query.groupBy === undefined
         ? undefined
-        : (groupAtPath(row, query.groupBy) ?? groupAtPath(row, '__group'));
+        : groupAtPath(row, rowShape === 'sql' ? '__group' : query.groupBy);
     for (const value of values) {
       if (value == null || typeof value === 'object') continue;
       accumulateOption(byKey, String(value), label, group);

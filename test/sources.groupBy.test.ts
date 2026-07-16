@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  exposedSurface,
   type Lens,
   type LensNarrowing,
   projectByPath,
+  type SourceValues,
   sourceQueries,
   sourceValuesFromQueryRows,
   sourceValuesFromRows,
@@ -310,10 +312,19 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
     });
   });
 
-  test('reads the sql "__group" alias when the row is flat', () => {
+  test('sql row shape reads the "__group" alias explicitly', () => {
     const [q] = sourceQueries(grouped());
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'marketing', __group: 'business unit' }]);
+    const sv = sourceValuesFromQueryRows(q, [{ value: 'marketing', __group: 'business unit' }], {
+      rowShape: 'sql',
+    });
     expect(sv.options).toEqual([{ value: 'marketing', group: 'business unit' }]);
+  });
+
+  test('prisma row shape (the default) never reads a stray "__group" column', () => {
+    const [q] = sourceQueries(grouped());
+    // Null hop → ungrouped; a stray scalar column named __group must not mis-group it.
+    const sv = sourceValuesFromQueryRows(q, [{ value: 'v', map: null, __group: 'STRAY' }]);
+    expect(sv.options).toEqual([{ value: 'v' }]);
   });
 
   test('materializes ungrouped queries with a label sibling unchanged', () => {
@@ -336,5 +347,235 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
       { value: 'a', label: 'Ay' },
       { value: 'b', label: 'Bee' },
     ]);
+  });
+});
+
+describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversarial findings)', () => {
+  // The natural production spelling: groupBy-only source, tenancy carried entirely
+  // by mapDefaults applies-everywhere wheres. No declared relation nodes — the
+  // guard must fold anyway, because the join always ships.
+  const tenanted = (): LensNarrowing =>
+    withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+      mapDefaults: {
+        app: {
+          models: {
+            IntegrationMap: {
+              where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+            },
+            FieldDef: {
+              where: { field: 'id', operator: Operator.notEquals, value: 'hidden' },
+            },
+          },
+        },
+      },
+    });
+
+  test('mapDefaults wheres on traversed models fold into composedWhere with no declared hops', () => {
+    const [q] = sourceQueries(tenanted());
+    expect(q.composedWhere).toEqual({
+      all: [
+        { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
+        { field: 'map.definition.id', operator: Operator.notEquals, value: 'hidden' },
+      ],
+    });
+  });
+
+  test('in-memory executor excludes rows failing an undeclared-hop guard', () => {
+    const rows = [
+      {
+        id: 'u1',
+        enrichments: [
+          {
+            value: 'kept',
+            map: { brandId: 'b1', definition: { id: 'd1', label: 'business unit' } },
+          },
+          { value: 'foreign', map: { brandId: 'b2', definition: { id: 'd2', label: 'SECRET' } } },
+          {
+            value: 'shadow',
+            map: { brandId: 'b1', definition: { id: 'hidden', label: 'HIDDEN' } },
+          },
+        ],
+      },
+    ];
+    const [sv] = sourceValuesFromRows(tenanted(), rows);
+    expect(sv.options).toEqual([{ value: 'kept', group: 'business unit' }]);
+  });
+
+  test('a declared first hop does not drop the guard on the undeclared deeper hop', () => {
+    const partial = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: {
+              map: {
+                picks: [],
+                where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+              },
+            },
+          },
+        },
+      },
+      mapDefaults: {
+        app: {
+          models: {
+            FieldDef: {
+              where: { field: 'id', operator: Operator.notEquals, value: 'hidden' },
+            },
+          },
+        },
+      },
+    });
+    const [q] = sourceQueries(partial);
+    expect(q.composedWhere).toEqual({
+      all: [
+        { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
+        { field: 'map.definition.id', operator: Operator.notEquals, value: 'hidden' },
+      ],
+    });
+  });
+});
+
+describe('exposedSurface — grouped options survive the per-model union', () => {
+  test('options sharing a value across groups are all preserved', () => {
+    const sourceValues: SourceValues[] = [
+      {
+        path: 'User.enrichments',
+        mapName: 'app',
+        model: 'Enrichment',
+        field: 'value',
+        options: [
+          { value: 'marketing', group: 'business unit' },
+          { value: 'marketing', group: 'department' },
+        ],
+      },
+    ];
+    const surface = exposedSurface(grouped(), { sourceValues });
+    expect(surface.maps.app.models.Enrichment.fields.value.options).toEqual([
+      { value: 'marketing', group: 'business unit' },
+      { value: 'marketing', group: 'department' },
+    ]);
+  });
+});
+
+describe('validateNarrowing — conflicting groupBy across layers', () => {
+  const parentLayer = (): LensNarrowing =>
+    withParent(base, {
+      root: {
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+    });
+
+  test('a child layer declaring a DIFFERENT groupBy for the same field is an error', () => {
+    const child = withParent(parentLayer(), {
+      root: {
+        relations: {
+          enrichments: { sources: { value: { groupBy: 'mapId' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(child)).toThrow(/groupBy/);
+  });
+
+  test('a child layer re-declaring the SAME groupBy is fine', () => {
+    const child = withParent(parentLayer(), {
+      root: {
+        relations: {
+          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(child)).not.toThrow();
+  });
+});
+
+describe('option sort — ungrouped is its own leading tier', () => {
+  test('ungrouped options precede every group, including the empty-string group', () => {
+    const n = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+    });
+    const rows = [
+      {
+        id: 'u1',
+        enrichments: [
+          { value: 'zzz', map: null }, // ungrouped
+          { value: 'aaa', map: { definition: { label: '' } } }, // real empty-string group
+          { value: 'mmm', map: { definition: { label: 'B' } } },
+        ],
+      },
+    ];
+    const [sv] = sourceValuesFromRows(n, rows);
+    expect(sv.options).toEqual([
+      { value: 'zzz' },
+      { value: 'aaa', group: '' },
+      { value: 'mmm', group: 'B' },
+    ]);
+  });
+});
+
+describe('validateNarrowing — "__group" is reserved on grouped sources', () => {
+  const collisionMap: FieldMap = {
+    models: {
+      Thing: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          __group: { kind: 'scalar', type: 'String' },
+          catId: { kind: 'scalar', type: 'String' },
+          cat: { kind: 'object', type: 'Cat', fromFields: ['catId'], toFields: ['id'] },
+        },
+      },
+      Cat: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          name: { kind: 'scalar', type: 'String' },
+        },
+      },
+    },
+  };
+  const collisionBase: Lens = { maps: { app: collisionMap }, mapName: 'app', model: 'Thing' };
+
+  test('rejects a grouped source on a field named __group', () => {
+    const n = withParent(collisionBase, {
+      root: { picks: ['__group'], sources: { __group: { groupBy: 'cat.name' } } },
+    });
+    expect(() => validateNarrowing(n)).toThrow(/__group/);
+  });
+
+  test('rejects a grouped source whose label column is named __group', () => {
+    const n = withParent(collisionBase, {
+      root: { picks: ['id'], sources: { id: { label: '__group', groupBy: 'cat.name' } } },
+    });
+    expect(() => validateNarrowing(n)).toThrow(/__group/);
+  });
+
+  test('ungrouped sources may still use a __group column (no alias in play)', () => {
+    const n = withParent(collisionBase, {
+      root: { picks: ['id'], sources: { id: { label: '__group' } } },
+    });
+    expect(() => validateNarrowing(n)).not.toThrow();
   });
 });

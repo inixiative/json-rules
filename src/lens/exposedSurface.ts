@@ -2,6 +2,7 @@ import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { isFieldVisible, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectOptions } from './projectByPath.ts';
+import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
@@ -39,13 +40,14 @@ export const exposedSurface = (
   const { lens } = policy;
 
   // Per-model union of fetched options (the flattened surface collapses paths):
-  // dedup by `value` across paths, a later occurrence's label wins.
+  // dedup by (group, value) across paths — the same key the materializers use —
+  // so a grouped field's partition survives the union; a later occurrence wins.
   const fetchedByModelField = new Map<string, Map<string, SourceOption>>();
   for (const sv of opts.sourceValues ?? []) {
     const k = `${sv.mapName}::${sv.model}::${sv.field}`;
-    const byValue = fetchedByModelField.get(k) ?? new Map<string, SourceOption>();
-    for (const o of sv.options) byValue.set(o.value, o);
-    fetchedByModelField.set(k, byValue);
+    const byKey = fetchedByModelField.get(k) ?? new Map<string, SourceOption>();
+    for (const o of sv.options) byKey.set(optionKey(o.group, o.value), o);
+    fetchedByModelField.set(k, byKey);
   }
 
   const surface = new Map<string, SurfaceModel>();

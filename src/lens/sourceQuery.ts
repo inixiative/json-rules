@@ -130,14 +130,18 @@ const compileOne = (
  * to `sourceValuesFromQueryRows`.
  */
 export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
-  const { lens } = resolvePolicy(lensOrNarrowing);
+  const policy = resolvePolicy(lensOrNarrowing);
+  const { lens } = policy;
   const projection = projectByPath(lensOrNarrowing);
   const out: SourceQuery[] = [];
   for (const [path, visit] of projection) {
+    const relPath = path.split('.').slice(1);
     for (const [field, sourceClauses] of Object.entries(visit.sources)) {
       const label = visit.sourceLabels[field];
       const groupBy = visit.sourceGroupBys[field];
-      const groupGuards = groupBy ? groupGuardClauses(projection, path, groupBy) : [];
+      const groupGuards = groupBy
+        ? groupGuardClauses(policy, visit.mapName, visit.modelName, relPath, groupBy)
+        : [];
       const composedWhere = compose(visit.whereClauses, [...sourceClauses, ...groupGuards]);
       const { prisma, sql } = compileOne(
         lens,

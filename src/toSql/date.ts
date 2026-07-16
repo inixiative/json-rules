@@ -1,4 +1,5 @@
 import { get } from 'lodash-es';
+import { isDateInputValue, parseDateValue, resolveTimeZone } from '../date';
 import {
   isDateExpr,
   resolveDateExpr,
@@ -101,10 +102,22 @@ const normalizeComparableDateValue = (value: unknown): string | number => {
   return String(value);
 };
 
+// Same parse-and-anchor seam check() uses (naive strings → midnight in the resolved
+// zone; instants as-is), emitted as concrete Dates so the SQL param carries the same
+// instant a re-run check() would compare against.
+const coerceDateLiteral = (value: unknown, state: BuilderState): unknown => {
+  if (value === undefined || !isDateInputValue(value)) return value;
+  const parsed = parseDateValue(value, resolveTimeZone(state.dateConfig ?? {}));
+  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
+  return parsed.toDate();
+};
+
 const resolveDateElem =
   (state: BuilderState) =>
   (el: unknown): unknown =>
-    isDateExpr(el) ? resolveDateExpr(el, state.dateConfig ?? {}).toDate() : el;
+    isDateExpr(el)
+      ? resolveDateExpr(el, state.dateConfig ?? {}).toDate()
+      : coerceDateLiteral(el, state);
 
 type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
 
@@ -122,7 +135,11 @@ const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
         ).toDate(),
       };
     }
-    return { type: 'value', value: rule.value };
+    // Arrays (between pairs, dayIn day names) are handled per-operator in the switch.
+    return {
+      type: 'value',
+      value: Array.isArray(rule.value) ? rule.value : coerceDateLiteral(rule.value, state),
+    };
   }
 
   if (rule.path) {

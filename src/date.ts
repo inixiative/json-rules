@@ -203,7 +203,10 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
  * source a per-record zone here (see docs/TIMEZONE.md) without touching call sites.
  * Absolute instants never reach this seam — they bypass anchoring entirely.
  */
-const resolveTimeZone = (config: DateConfig, bindings?: Record<string, RuleValue>): string => {
+export const resolveTimeZone = (
+  config: DateConfig,
+  bindings?: Record<string, RuleValue>,
+): string => {
   const zone = config.timeZone;
   if (zone && typeof zone === 'object' && 'bind' in zone) {
     const bound = bindings?.[zone.bind];
@@ -225,7 +228,7 @@ const hasExplicitZone = (value: string): boolean =>
  * - Naive string (date-only or zoneless datetime) → anchored in `tz` via dayjs.tz; a
  *   date-only string becomes midnight in that zone.
  */
-const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
+export const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
   if (typeof value === 'string' && !hasExplicitZone(value)) {
     // dayjs.tz throws on an unparseable string; return the (invalid) base parse instead
     // so callers' isValid() checks surface the friendly "not a valid date" error.
@@ -236,5 +239,5 @@ const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Da
   return dayjs(value);
 };
 
-const isDateInputValue = (value: unknown): value is DateInputValue =>
+export const isDateInputValue = (value: unknown): value is DateInputValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;

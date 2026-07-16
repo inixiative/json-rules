@@ -1,4 +1,5 @@
 import { get } from 'lodash-es';
+import { isDateInputValue, parseDateValue, resolveTimeZone } from '../date';
 import {
   isDateExpr,
   resolveDateExpr,
@@ -15,6 +16,17 @@ const dateConfigOf = (options?: BuildOptions): DateConfig => ({
   timeZone: options?.timeZone,
   weekStart: options?.weekStart,
 });
+
+// Literal/path date values compile through the same parse-and-anchor seam check()
+// uses (naive strings → midnight in the resolved zone; instants as-is), emitted as
+// concrete Dates — a raw 'YYYY-MM-DD' in a Prisma where is rejected by Prisma and
+// would carry different zone semantics than check().
+const coerceDateLiteral = (value: unknown, config: DateConfig): unknown => {
+  if (value === undefined || !isDateInputValue(value)) return value;
+  const parsed = parseDateValue(value, resolveTimeZone(config));
+  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
+  return parsed.toDate();
+};
 
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
   const filter = buildDateLeafFilter(rule, options);
@@ -54,9 +66,9 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
   const point = (): unknown =>
     isDateExpr(rule.value)
       ? resolvePointForOperator(rule.value, rule.dateOperator, config).toDate()
-      : resolveDateValue(rule, options);
+      : coerceDateLiteral(resolveDateValue(rule, options), config);
   const resolveElem = (el: unknown): unknown =>
-    isDateExpr(el) ? resolveDateExpr(el, config).toDate() : el;
+    isDateExpr(el) ? resolveDateExpr(el, config).toDate() : coerceDateLiteral(el, config);
 
   switch (rule.dateOperator) {
     case DateOperator.before:

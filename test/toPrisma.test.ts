@@ -728,7 +728,7 @@ describe('toPrisma aggregate with date condition', () => {
     );
     expect(result.steps).toHaveLength(2);
     const step = result.steps[0] as GroupByStep;
-    expect(step.args.where).toEqual({ createdAt: { gt: '2026-01-01' } });
+    expect(step.args.where).toEqual({ createdAt: { gt: new Date('2026-01-01T00:00:00.000Z') } });
     expect(step.args.having).toEqual({ total: { _sum: { gt: 1000 } } });
     expect(getWhere(result)).toEqual({ id: { in: { __step: 0 } } });
   });
@@ -773,7 +773,10 @@ describe('toPrisma aggregate with compound conditions', () => {
     );
     const step = result.steps[0] as GroupByStep;
     expect(step.args.where).toEqual({
-      AND: [{ status: { equals: 'completed' } }, { createdAt: { gt: '2026-01-01' } }],
+      AND: [
+        { status: { equals: 'completed' } },
+        { createdAt: { gt: new Date('2026-01-01T00:00:00.000Z') } },
+      ],
     });
   });
 

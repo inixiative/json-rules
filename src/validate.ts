@@ -1,3 +1,4 @@
+import { parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
 import { ArrayOperator, type DateOperator, Operator } from './operator';
 import {
@@ -596,7 +597,16 @@ const validateDateRule = (
       return;
     }
     (rule.value as unknown[]).forEach((item, i) => {
-      if (isDateExpr(item)) validateDateExpr(item, operator, `${path}.value[${i}]`, context);
+      if (isDateExpr(item)) {
+        validateDateExpr(item, operator, `${path}.value[${i}]`, context);
+      } else if (isDateInputValue(item) && !parseDateValue(item, 'UTC').isValid()) {
+        pushIssue(
+          context,
+          `${path}.value[${i}]`,
+          'invalid_date_value',
+          `Date operator '${operator}' value '${String(item)}' does not parse as a date`,
+        );
+      }
     });
     return;
   }
@@ -607,6 +617,18 @@ const validateDateRule = (
       `${path}.value`,
       'invalid_date_value',
       `Date operator '${operator}' requires a date-like value`,
+    );
+    return;
+  }
+
+  // A date-like value must actually parse — a string that survives validation but
+  // fails the compilers/check() would persist clean and then fail at evaluation.
+  if (!parseDateValue(rule.value, 'UTC').isValid()) {
+    pushIssue(
+      context,
+      `${path}.value`,
+      'invalid_date_value',
+      `Date operator '${operator}' value '${String(rule.value)}' does not parse as a date`,
     );
   }
 };

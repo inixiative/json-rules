@@ -1,15 +1,23 @@
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere } from '../toPrisma/types.ts';
+import { buildCondition } from '../toSql/condition.ts';
 import { toSql } from '../toSql/index.ts';
+import { resolveFieldSql } from '../toSql/join.ts';
+import type { BuilderState } from '../toSql/types.ts';
 import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
 import { projectByPath } from './projectByPath.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
+/** Prisma `select` shape — nested for a grouped source's relation path. */
+export type SourceSelect = { [field: string]: true | { select: SourceSelect } };
+
 export type SourcePrismaQuery = {
   model: string;
-  distinct: string[];
-  select: Record<string, true>;
+  /** Absent for grouped sources — DISTINCT on the value column alone would collapse
+   * same-value rows across groups; dedup happens in `sourceValuesFromQueryRows`. */
+  distinct?: string[];
+  select: SourceSelect;
   where: PrismaWhere;
   /** Present only if the composed where used count operators (run via executePrismaQueryPlan). */
   steps?: PrismaStep[];
@@ -27,6 +35,9 @@ export type SourceQuery = {
   field: string;
   /** Sibling column co-selected as each value's display label (from a SourceSpec's `label`). */
   label?: string;
+  /** Option-partition path (from a SourceSpec's `groupBy`); its column is selected
+   * nested in prisma and aliased `__group` in sql. */
+  groupBy?: string;
   composedWhere: Condition; // node whereClauses ∧ source where(s)
   prisma: SourcePrismaQuery;
   sql: SourceSqlQuery;
@@ -39,22 +50,31 @@ const compose = (whereClauses: Condition[], sourceClauses: Condition[]): Conditi
   return all.length === 1 ? all[0] : { all };
 };
 
+// 'map.definition.label' → { map: { select: { definition: { select: { label: true } } } } }
+const nestedSelect = (path: string[]): SourceSelect =>
+  path.length === 1 ? { [path[0]]: true } : { [path[0]]: { select: nestedSelect(path.slice(1)) } };
+
 const compileOne = (
   lens: Lens,
   mapName: string,
   model: string,
   field: string,
   label: string | undefined,
+  groupBy: string | undefined,
   where: Condition,
 ): { prisma: SourcePrismaQuery; sql: SourceSqlQuery } => {
   const plan = toPrisma(where, { map: lens, mapName, model });
   const last = plan.steps[plan.steps.length - 1];
   const prismaWhere = (last && 'where' in last ? last.where : {}) as PrismaWhere;
   const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
-  const select: Record<string, true> = label ? { [field]: true, [label]: true } : { [field]: true };
+  const select: SourceSelect = {
+    [field]: true,
+    ...(label ? { [label]: true } : {}),
+    ...(groupBy ? nestedSelect(groupBy.split('.')) : {}),
+  };
   const prisma: SourcePrismaQuery = {
     model,
-    distinct: [field],
+    ...(groupBy ? {} : { distinct: [field] }),
     select,
     where: prismaWhere,
     ...(groupBySteps.length ? { steps: plan.steps } : {}),
@@ -62,12 +82,37 @@ const compileOne = (
 
   let sqlQuery: SourceSqlQuery;
   try {
-    const { sql, params, joins } = toSql(where, { map: lens.maps[mapName], model, alias: 't0' });
+    let sql: string;
+    let params: unknown[];
+    let joins: string[];
+    let groupCol: string | undefined;
+    if (groupBy) {
+      // Build the where and the group column against one state so the group
+      // path reuses (and extends) the where's join registry.
+      const state: BuilderState = {
+        params: [],
+        paramIndex: 0,
+        map: lens.maps[mapName],
+        currentModel: model,
+        currentAlias: 't0',
+        joinCounter: { n: 0 },
+        joins: [],
+        joinRegistry: new Map(),
+      };
+      sql = buildCondition(where, state);
+      groupCol = resolveFieldSql(groupBy, state);
+      params = state.params;
+      joins = state.joins ?? [];
+    } else {
+      ({ sql, params, joins } = toSql(where, { map: lens.maps[mapName], model, alias: 't0' }));
+    }
     const joinSql = joins.length ? ` ${joins.join(' ')}` : '';
     const whereSql = sql?.trim() ? ` WHERE ${sql}` : '';
-    const cols = label
-      ? `${q('t0')}.${q(field)}, ${q('t0')}.${q(label)}`
-      : `${q('t0')}.${q(field)}`;
+    const cols = [
+      `${q('t0')}.${q(field)}`,
+      ...(label ? [`${q('t0')}.${q(label)}`] : []),
+      ...(groupCol ? [`${groupCol} AS ${q('__group')}`] : []),
+    ].join(', ');
     const statement = `SELECT DISTINCT ${cols} FROM ${q(model)} AS ${q('t0')}${joinSql}${whereSql}`;
     sqlQuery = { sql: statement, params };
   } catch (err) {
@@ -80,7 +125,8 @@ const compileOne = (
  * Compile a DISTINCT(value) query — Prisma and SQL — per sourced field across
  * the projected lens. The WHERE is the field's composed eligibility: the model's
  * own narrowing at that path AND its source where(s). The app runs these (with
- * its own client) to materialize each field's option set.
+ * its own client) to materialize each field's option set — feed the fetched rows
+ * to `sourceValuesFromQueryRows`.
  */
 export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
   const { lens } = resolvePolicy(lensOrNarrowing);
@@ -90,12 +136,14 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
     for (const [field, sourceClauses] of Object.entries(visit.sources)) {
       const composedWhere = compose(visit.whereClauses, sourceClauses);
       const label = visit.sourceLabels[field];
+      const groupBy = visit.sourceGroupBys[field];
       const { prisma, sql } = compileOne(
         lens,
         visit.mapName,
         visit.modelName,
         field,
         label,
+        groupBy,
         composedWhere,
       );
       out.push({
@@ -104,6 +152,7 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
         model: visit.modelName,
         field,
         ...(label !== undefined ? { label } : {}),
+        ...(groupBy !== undefined ? { groupBy } : {}),
         composedWhere,
         prisma,
         sql,

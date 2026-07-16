@@ -2,6 +2,7 @@ import { type CheckOptions, check } from '../check.ts';
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { projectByPath, type SourceValues } from './projectByPath.ts';
+import { accumulateOption, groupAtPath, sortOptions } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 type Row = Record<string, unknown>;
@@ -53,33 +54,30 @@ export const sourceValuesFromRows = (
     for (const [field, sourceClauses] of sourceFields) {
       const where = composeEligibility(sourceClauses);
       const label = visit.sourceLabels[field];
+      const groupBy = visit.sourceGroupBys[field];
 
-      const byValue = new Map<string, SourceOption>();
+      const byKey = new Map<string, SourceOption>();
       for (const row of anchors) {
         if (check(where, row, options) !== true) continue;
         const rawValue = row[field];
         const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-        const rowLabel = label === undefined ? undefined : row[label];
+        const rawLabel = label === undefined ? undefined : row[label];
+        const rowLabel = rawLabel == null ? undefined : String(rawLabel);
+        // Unreachable group path (null hop) → the option stays ungrouped.
+        const group = groupBy === undefined ? undefined : groupAtPath(row, groupBy);
         for (const value of values) {
           if (value == null || typeof value === 'object') continue;
-          const key = String(value);
-          const existing = byValue.get(key);
-          if (existing === undefined) {
-            byValue.set(
-              key,
-              rowLabel == null ? { value: key } : { value: key, label: String(rowLabel) },
-            );
-          } else if (existing.label === undefined && rowLabel != null) {
-            byValue.set(key, { value: key, label: String(rowLabel) });
-          }
+          accumulateOption(byKey, String(value), rowLabel, group);
         }
       }
 
-      // Fixed locale: host-locale sorting would make option order machine-dependent.
-      const sorted = [...byValue.values()].sort((a, b) =>
-        (a.label ?? a.value).localeCompare(b.label ?? b.value, 'en', { numeric: true }),
-      );
-      out.push({ path, mapName: visit.mapName, model: visit.modelName, field, options: sorted });
+      out.push({
+        path,
+        mapName: visit.mapName,
+        model: visit.modelName,
+        field,
+        options: sortOptions(byKey),
+      });
     }
   }
 

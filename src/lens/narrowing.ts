@@ -5,10 +5,40 @@ import { intersectStringSet, normalizeSource } from './policy.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
+// A groupBy path descends to-one relations only and must land on a scalar/enum column.
+const groupByPathError = (
+  groupBy: string,
+  maps: Record<string, FieldMap>,
+  mapName: string,
+  modelName: string,
+): string | null => {
+  const segments = groupBy.split('.');
+  let curMap = mapName;
+  let curModel = modelName;
+  for (let i = 0; i < segments.length; i++) {
+    const entry = maps[curMap]?.models[curModel]?.fields[segments[i]];
+    if (!entry) return `groupBy segment '${segments[i]}' not on model '${curModel}'`;
+    const isLast = i === segments.length - 1;
+    if (entry.kind === 'object' || entry.kind === 'bridge') {
+      if (isLast) return `groupBy must end on a scalar column, '${segments[i]}' is a relation`;
+      if (entry.isList) return `groupBy cannot traverse to-many relation '${segments[i]}'`;
+      const target = resolveRelationTarget(entry, curMap);
+      if (!target) return `groupBy relation '${segments[i]}' has no resolvable target`;
+      curMap = target.mapName;
+      curModel = target.modelName;
+      continue;
+    }
+    if (!isLast) return `groupBy segment '${segments[i]}' is not a relation`;
+  }
+  return null;
+};
+
 const validateModelNode = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: ModelNarrowing[],
   sameLayerDefaults: ModelDefaultNarrowing | undefined,
+  maps: Record<string, FieldMap>,
+  mapName: string,
   modelFields: Record<string, FieldMapEntry>,
   modelName: string,
   enumRegistry: Record<string, readonly string[]> | undefined,
@@ -125,6 +155,10 @@ const validateModelNode = (
     const spec = normalizeSource(entry);
     if (spec.label !== undefined && !modelFields[spec.label]) {
       errors.push(`${position}.sources.${field}: label column '${spec.label}' not on model`);
+    }
+    if (spec.groupBy !== undefined) {
+      const err = groupByPathError(spec.groupBy, maps, mapName, modelName);
+      if (err) errors.push(`${position}.sources.${field}: ${err}`);
     }
     const where = spec.where;
     if (where !== undefined && where !== true && where !== false) {
@@ -333,6 +367,8 @@ const validatePathNarrowing = (
     narrowing,
     synthAncestors,
     sameLayerDefaultsForModel,
+    maps,
+    mapName,
     model.fields,
     modelName,
     fieldMap?.enums,
@@ -415,6 +451,8 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         dflt,
         ancestorDefaultsForModel as ModelNarrowing[],
         undefined,
+        set.maps,
+        mapName,
         model.fields,
         modelName,
         fieldMap.enums,

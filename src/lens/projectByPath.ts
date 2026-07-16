@@ -13,6 +13,8 @@ export type ProjectedVisit = {
   sources: Record<string, Condition[]>;
   /** Per-field display-label column for a sourced field (from a SourceSpec's `label`). */
   sourceLabels: Record<string, string>;
+  /** Per-field option-partition path for a sourced field (from a SourceSpec's `groupBy`). */
+  sourceGroupBys: Record<string, string>;
 };
 
 export type PathProjection = Map<string, ProjectedVisit>;
@@ -80,6 +82,11 @@ export const projectByPath = (
       if (isFieldVisible(effect, fieldName)) sourceLabels[fieldName] = label;
     }
 
+    const sourceGroupBys: Record<string, string> = {};
+    for (const [fieldName, groupBy] of effect.sourceGroupBys) {
+      if (isFieldVisible(effect, fieldName)) sourceGroupBys[fieldName] = groupBy;
+    }
+
     out.set(dottedPath, {
       mapName,
       modelName,
@@ -87,6 +94,7 @@ export const projectByPath = (
       whereClauses: effect.whereClauses,
       sources,
       sourceLabels,
+      sourceGroupBys,
     });
 
     for (const relField of effect.relations.keys()) {

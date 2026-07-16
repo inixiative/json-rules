@@ -42,12 +42,16 @@ export type ModelDefaultNarrowing = {
 };
 
 /**
- * A sourced field's eligibility `where` plus an optional sibling display-label column.
- * At least one key is required — `{}` is not a Condition; the unconstrained spelling is `true`.
+ * A sourced field's eligibility `where` plus an optional sibling display-label column
+ * and an optional `groupBy` — a dotted path (to-one hops only, ending on a scalar)
+ * whose value partitions the option set. Grouped options carry `group`; the classic
+ * flat set is the ungrouped case. At least one key is required — `{}` is not a
+ * Condition; the unconstrained spelling is `true`.
  */
 export type SourceSpec =
-  | { where: Condition; label?: string }
-  | { where?: Condition; label: string };
+  | { where: Condition; label?: string; groupBy?: string }
+  | { where?: Condition; label: string; groupBy?: string }
+  | { where?: Condition; label?: string; groupBy: string };
 
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
 export type SourceValue = Condition | SourceSpec;

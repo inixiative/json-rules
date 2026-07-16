@@ -1,9 +1,89 @@
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import { validateBindNames } from './bindings.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
-import { intersectStringSet, normalizeSource } from './policy.ts';
+import { augmentPicksWithRelations, intersectStringSet, normalizeSource } from './policy.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
+
+// A parent layer's removals bind descendant materialization targets: group keys and
+// label columns are client-visible option data, so a child source may not reference
+// what an ancestor removed. The declaring layer itself stays free — visibility ≠
+// materialization within one layer.
+const ancestorRemoval = (
+  name: string,
+  ancestorNodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[],
+): string | null => {
+  for (const anc of ancestorNodes) {
+    const augmented = augmentPicksWithRelations(anc);
+    if (augmented && !augmented.includes(name)) return "is not in an ancestor layer's picks";
+    if (anc.omits?.includes(name)) return 'was omitted by an ancestor layer';
+  }
+  return null;
+};
+
+const validateSourceTargetVisibility = (
+  narrowing: ModelNarrowing | ModelDefaultNarrowing,
+  ancestorChain: readonly ModelNarrowing[],
+  ancestorLayers: readonly LensNarrowing[],
+  maps: Record<string, FieldMap>,
+  mapName: string,
+  modelName: string,
+  position: string,
+  errors: string[],
+): void => {
+  const defaultsFor = (map: string, model: string): ModelDefaultNarrowing[] =>
+    ancestorLayers
+      .map((layer) => layer.mapDefaults?.[map]?.models?.[model])
+      .filter((x): x is ModelDefaultNarrowing => x !== undefined);
+
+  for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
+    const spec = normalizeSource(entry);
+
+    // An ancestor that declared the same target for this field already authorized
+    // materializing those values — re-declaring it is inherited authority, not a
+    // new reference past the ancestor's removals.
+    const ancestorSpecs = [...ancestorChain, ...defaultsFor(mapName, modelName)]
+      .map((n) => n.sources?.[field])
+      .filter((x): x is NonNullable<typeof x> => x !== undefined)
+      .map(normalizeSource);
+
+    if (spec.label !== undefined && !ancestorSpecs.some((s) => s.label === spec.label)) {
+      const removed = ancestorRemoval(spec.label, [
+        ...ancestorChain,
+        ...defaultsFor(mapName, modelName),
+      ]);
+      if (removed)
+        errors.push(`${position}.sources.${field}: label column '${spec.label}' ${removed}`);
+    }
+
+    if (spec.groupBy !== undefined && ancestorSpecs.some((s) => s.groupBy === spec.groupBy)) {
+      continue;
+    }
+    if (spec.groupBy !== undefined) {
+      const segments = spec.groupBy.split('.');
+      let nodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[] = ancestorChain;
+      let curMap = mapName;
+      let curModel = modelName;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const removed = ancestorRemoval(seg, [...nodes, ...defaultsFor(curMap, curModel)]);
+        if (removed) {
+          errors.push(`${position}.sources.${field}: groupBy segment '${seg}' ${removed}`);
+          break;
+        }
+        if (i === segments.length - 1) break;
+        const fieldEntry = maps[curMap]?.models[curModel]?.fields[seg];
+        const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
+        if (!target) break; // path resolvability is validated by groupByPathError
+        nodes = nodes
+          .map((n) => ('relations' in n ? n.relations?.[seg] : undefined))
+          .filter((x): x is ModelNarrowing => x !== undefined);
+        curMap = target.mapName;
+        curModel = target.modelName;
+      }
+    }
+  }
+};
 
 // A groupBy path descends to-one relations only and must land on a scalar/enum column.
 const groupByPathError = (
@@ -408,6 +488,17 @@ const validatePathNarrowing = (
     errors,
   );
 
+  validateSourceTargetVisibility(
+    narrowing,
+    ancestorChain,
+    chain,
+    maps,
+    mapName,
+    modelName,
+    position,
+    errors,
+  );
+
   for (const [relField, sub] of Object.entries(narrowing.relations ?? {})) {
     const entry = model.fields[relField];
     if (!entry) {
@@ -487,6 +578,16 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         undefined,
         ancestorDefaultsForModel,
         [],
+        `mapDefaults.${mapName}.models.${modelName}`,
+        errors,
+      );
+      validateSourceTargetVisibility(
+        dflt,
+        [],
+        ancestors,
+        set.maps,
+        mapName,
+        modelName,
         `mapDefaults.${mapName}.models.${modelName}`,
         errors,
       );

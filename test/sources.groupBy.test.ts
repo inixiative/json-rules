@@ -579,3 +579,96 @@ describe('validateNarrowing — "__group" is reserved on grouped sources', () =>
     expect(() => validateNarrowing(n)).not.toThrow();
   });
 });
+
+describe('groupBy/label — ancestor removals bind materialization targets', () => {
+  // Within one layer, visibility ≠ materialization: an author may groupBy/label
+  // their own unpicked columns. But a PARENT layer's removals bind descendants —
+  // otherwise a child source could exfiltrate a locked-down column's values
+  // through the option channel (group keys / display labels are client-visible).
+
+  test('own-layer unpicked targets stay allowed (single layer)', () => {
+    const n = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { label: 'mapId', groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+    });
+    expect(() => validateNarrowing(n)).not.toThrow();
+  });
+
+  test("a hop excluded by an ancestor node's picks is an error", () => {
+    // Parent narrows the enrichments node to picks: ['value'] — the `map`
+    // relation is removed there, so a child groupBy may not traverse it.
+    const parent = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: { enrichments: { picks: ['value'] } },
+      },
+    });
+    const child = withParent(parent, {
+      root: {
+        relations: {
+          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+  });
+
+  test('a hop the ancestor declares as a relation stays traversable', () => {
+    const parent = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: { picks: ['value'], relations: { map: {} } },
+        },
+      },
+    });
+    const child = withParent(parent, {
+      root: {
+        relations: {
+          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(child)).not.toThrow();
+  });
+
+  test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
+    const parent = withParent(base, {
+      mapDefaults: { app: { models: { FieldDef: { omits: ['label'] } } } },
+    });
+    const child = withParent(parent, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+    });
+    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+  });
+
+  test('a label column omitted by an ancestor is an error', () => {
+    const parent = withParent(base, {
+      mapDefaults: { app: { models: { Enrichment: { omits: ['mapId'] } } } },
+    });
+    const child = withParent(parent, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: { picks: ['value'], sources: { value: { label: 'mapId' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+  });
+});

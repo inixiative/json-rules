@@ -849,3 +849,17 @@ describe('toPrisma aggregate with dot-path and conditions', () => {
     expect(step.args.where).toEqual({ status: { equals: 'completed' } });
   });
 });
+
+// ─── executePrismaQueryPlan preserves compiled leaf objects ──────────────────
+describe('executePrismaQueryPlan — Date leaves survive step-ref resolution', () => {
+  it('a compiled Date in the where is returned as the same instant, not {}', async () => {
+    const plan = toPrisma(
+      { field: 'createdAt', dateOperator: DateOperator.after, value: '2024-01-01T00:00:00.000Z' },
+      { map: blogMap, model: 'Post' },
+    );
+    const where = await executePrismaQueryPlan(plan, {});
+    const gt = (where.createdAt as { gt: unknown }).gt;
+    expect(gt instanceof Date).toBe(true);
+    expect((gt as Date).toISOString()).toBe('2024-01-01T00:00:00.000Z');
+  });
+});

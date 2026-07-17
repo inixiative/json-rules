@@ -57,6 +57,11 @@ const resolveStepRefs = (obj: unknown, stepResults: unknown[][]): unknown => {
   }
 
   if (typeof obj === 'object') {
+    // Only plain objects are walked — a compiled leaf like a Date (or Decimal/
+    // Buffer) must pass through untouched; entry-copying it would strip its
+    // prototype and hand Prisma an empty object.
+    const proto = Object.getPrototypeOf(obj);
+    if (proto !== Object.prototype && proto !== null) return obj;
     const record = obj as Record<string, unknown>;
 
     if ('__step' in record && typeof record.__step === 'number') {

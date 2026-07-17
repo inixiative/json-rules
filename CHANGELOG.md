@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.18.1 — executePrismaQueryPlan preserves compiled Date leaves
+
+- `resolveStepRefs` walked every object while replacing `__step` sentinels,
+  entry-copying compiled `Date` values into empty plain objects — Prisma then
+  rejected the where with "Argument `_ref` is missing". Non-plain objects
+  (Date/Decimal/Buffer) now pass through untouched. Latent since 2.17's date
+  coercion started emitting real Dates into compiled wheres.
+
 ## 2.18.0 — composite `groupBy` + partition axes on the surface
 
 - **`SourceSpec.groupBy: string | string[]`** — a source may partition by several

@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.18.0 — composite `groupBy` + partition axes on the surface
+
+- **`SourceSpec.groupBy: string | string[]`** — a source may partition by several
+  axes at once (the (source, field, value) triple behind a 3-level cascade).
+  Options now carry **`groups?: string[]`**, index-aligned with the axes —
+  REPLACING 2.17's `group?: string` (one representation; 2.17's field shipped days
+  ago with only @inixiative/rules-builder 0.19 consuming it). SQL aliases are
+  indexed (`__group_0`, `__group_1`, …) and `__group*` names are reserved on
+  grouped sources. Dedup/union/sort key on the full axes vector; an option is
+  grouped all-or-nothing — any unreachable axis leaves it ungrouped, never partial.
+- **The surface carries the partition axes**: `exposedSurface` stamps
+  `FieldMapEntry.groupBy` (the normalized axes) on grouped fields, so a builder
+  can pin a field's options from a sibling clause on its axis. Two paths declaring
+  DIFFERENT axes for one (model, field) throw — a flattened surface field cannot
+  carry two partition namespaces.
+- **Source-`where` hop guards**: `traversalGuards` folds every traversed model's
+  narrowing wheres for groupBy axes (strict, fail-closed) AND for every relation
+  path a source `where` references (previously only groupBy hops were guarded —
+  safe by coincidence). Hops shared across paths fold once. Replaces the exported
+  `groupGuardClauses`.
+
+## 2.17.1 — ancestor removals bind groupBy/label targets
+
+- A parent layer's picks/omits bind a child source's `groupBy` hops and `label`
+  columns (option data is client-visible); ancestor-identical specs stay allowed.
+
+## 2.17.0 — grouped sources
+
+- `SourceSpec.groupBy` (single dotted to-one path), `SourceOption.group`,
+  `sourceValuesFromQueryRows`, tenancy guard fold on grouped traversals,
+  `(group, value)` option identity through union/dedup/sort.
+
 ## 2.16.0 — `fuzzy` matching + scoped `engineGlobals.with()`
 
 - **`fuzzy?: boolean | FuzzyConfig`** on field rules — typo-tolerant matching for `contains`/`notContains`, backed by `fastest-levenshtein` with the length-scaled token policy (short tokens exact, longer tolerate more; numbers are identity). `FuzzyConfig` is JSON-serializable — `{ maxDistance?: number; maxRatio?: number }` — where the two are **both caps** and the tighter wins (`{ maxRatio: 0.2, maxDistance: 2 }` = "≤20% of chars, but never more than 2"); with neither set, the default `0/1/2`-by-length curve applies. `check()`-only: `toPrisma`/`toSql` throw for a fuzzy rule (no server-side equivalent — evaluate in memory). Resolves `rule.fuzzy ?? engineGlobals string.fuzzy ?? false`.

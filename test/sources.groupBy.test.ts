@@ -153,14 +153,14 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
 describe('projectByPath — groupBy exposure', () => {
   test('exposes sourceGroupBys per sourced field', () => {
     const visit = projectByPath(grouped()).get('User.enrichments');
-    expect(visit?.sourceGroupBys).toEqual({ value: 'map.definition.label' });
+    expect(visit?.sourceGroupBys).toEqual({ value: ['map.definition.label'] });
   });
 });
 
 describe('sourceQueries — grouped compile', () => {
   test('carries groupBy, drops distinct, nests the group path into the prisma select', () => {
     const [q] = sourceQueries(grouped());
-    expect(q.groupBy).toBe('map.definition.label');
+    expect(q.groupBy).toEqual(['map.definition.label']);
     expect(q.prisma.distinct).toBeUndefined();
     expect(q.prisma.select).toEqual({
       value: true,
@@ -171,7 +171,7 @@ describe('sourceQueries — grouped compile', () => {
   test('selects the joined group column as "__group" in sql', () => {
     const [q] = sourceQueries(grouped());
     expect(q.sql.sql).toContain('SELECT DISTINCT');
-    expect(q.sql.sql).toContain('AS "__group"');
+    expect(q.sql.sql).toContain('AS "__group_0"');
     expect(q.sql.sql).toContain('LEFT JOIN "FieldDef"');
   });
 
@@ -211,10 +211,10 @@ describe('sourceValuesFromRows — grouped materialization', () => {
     expect(sv.path).toBe('User.enrichments');
     expect(sv.field).toBe('value');
     expect(sv.options).toEqual([
-      { value: 'marketing', group: 'business unit' },
-      { value: 'sales', group: 'business unit' },
-      { value: 'dup', group: 'department' },
-      { value: 'marketing', group: 'department' },
+      { value: 'marketing', groups: ['business unit'] },
+      { value: 'sales', groups: ['business unit'] },
+      { value: 'dup', groups: ['department'] },
+      { value: 'marketing', groups: ['department'] },
     ]);
   });
 
@@ -240,7 +240,10 @@ describe('sourceValuesFromRows — grouped materialization', () => {
       },
     ];
     const [sv] = sourceValuesFromRows(n, rows);
-    expect(sv.options).toEqual([{ value: 'orphan' }, { value: 'grouped', group: 'business unit' }]);
+    expect(sv.options).toEqual([
+      { value: 'orphan' },
+      { value: 'grouped', groups: ['business unit'] },
+    ]);
   });
 });
 
@@ -287,7 +290,7 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
       },
     ];
     const [sv] = sourceValuesFromRows(guarded(), rows);
-    expect(sv.options).toEqual([{ value: 'kept', group: 'business unit' }]);
+    expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 });
 
@@ -306,24 +309,24 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
       model: 'Enrichment',
       field: 'value',
       options: [
-        { value: 'marketing', group: 'business unit' },
-        { value: 'sales', group: 'department' },
+        { value: 'marketing', groups: ['business unit'] },
+        { value: 'sales', groups: ['department'] },
       ],
     });
   });
 
-  test('sql row shape reads the "__group" alias explicitly', () => {
+  test('sql row shape reads the "__group_0" alias explicitly', () => {
     const [q] = sourceQueries(grouped());
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'marketing', __group: 'business unit' }], {
+    const sv = sourceValuesFromQueryRows(q, [{ value: 'marketing', __group_0: 'business unit' }], {
       rowShape: 'sql',
     });
-    expect(sv.options).toEqual([{ value: 'marketing', group: 'business unit' }]);
+    expect(sv.options).toEqual([{ value: 'marketing', groups: ['business unit'] }]);
   });
 
   test('prisma row shape (the default) never reads a stray "__group" column', () => {
     const [q] = sourceQueries(grouped());
     // Null hop → ungrouped; a stray scalar column named __group must not mis-group it.
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'v', map: null, __group: 'STRAY' }]);
+    const sv = sourceValuesFromQueryRows(q, [{ value: 'v', map: null, __groups: ['STRAY'] }]);
     expect(sv.options).toEqual([{ value: 'v' }]);
   });
 
@@ -407,7 +410,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
       },
     ];
     const [sv] = sourceValuesFromRows(tenanted(), rows);
-    expect(sv.options).toEqual([{ value: 'kept', group: 'business unit' }]);
+    expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 
   test('a declared first hop does not drop the guard on the undeclared deeper hop', () => {
@@ -456,15 +459,15 @@ describe('exposedSurface — grouped options survive the per-model union', () =>
         model: 'Enrichment',
         field: 'value',
         options: [
-          { value: 'marketing', group: 'business unit' },
-          { value: 'marketing', group: 'department' },
+          { value: 'marketing', groups: ['business unit'] },
+          { value: 'marketing', groups: ['department'] },
         ],
       },
     ];
     const surface = exposedSurface(grouped(), { sourceValues });
     expect(surface.maps.app.models.Enrichment.fields.value.options).toEqual([
-      { value: 'marketing', group: 'business unit' },
-      { value: 'marketing', group: 'department' },
+      { value: 'marketing', groups: ['business unit'] },
+      { value: 'marketing', groups: ['department'] },
     ]);
   });
 });
@@ -531,8 +534,8 @@ describe('option sort — ungrouped is its own leading tier', () => {
     const [sv] = sourceValuesFromRows(n, rows);
     expect(sv.options).toEqual([
       { value: 'zzz' },
-      { value: 'aaa', group: '' },
-      { value: 'mmm', group: 'B' },
+      { value: 'aaa', groups: [''] },
+      { value: 'mmm', groups: ['B'] },
     ]);
   });
 });
@@ -783,9 +786,9 @@ describe('asymmetric traversal — the same model narrowed differently per path'
       sourceValuesFromRows(asym(), rows).map((sv) => [sv.path, sv]),
     );
     expect(byPath['User.enrichments'].options).toEqual([
-      { value: 'engineering', group: 'department' },
+      { value: 'engineering', groups: ['department'] },
     ]);
-    expect(byPath['User.archived'].options).toEqual([{ value: 'acme', group: 'account' }]);
+    expect(byPath['User.archived'].options).toEqual([{ value: 'acme', groups: ['account'] }]);
   });
 
   test('an ancestor removal on one path does not bind the sibling path', () => {

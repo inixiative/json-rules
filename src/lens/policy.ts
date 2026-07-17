@@ -18,10 +18,14 @@ export type VisitEffect = {
   sources: Map<string, Condition[]>;
   /** Per-field display-label column (from a SourceSpec's `label`); a later layer wins. */
   sourceLabels: Map<string, string>;
-  /** Per-field option-partition path (from a SourceSpec's `groupBy`); a later layer wins. */
-  sourceGroupBys: Map<string, string>;
+  /** Per-field option-partition axes (from a SourceSpec's `groupBy`, normalized); a later layer wins. */
+  sourceGroupBys: Map<string, string[]>;
   relations: Map<string, ModelNarrowing>;
 };
+
+/** Normalize a `groupBy` declaration to its axes array (a bare string is one axis). */
+export const normalizeGroupBy = (g: string | string[] | undefined): string[] | undefined =>
+  g === undefined ? undefined : Array.isArray(g) ? g : [g];
 
 /** A `sources` entry is a `SourceSpec` when it carries `where`/`label`/`groupBy`; else it's a bare `Condition`. */
 export const isSourceSpec = (v: SourceValue): v is SourceSpec =>
@@ -122,7 +126,8 @@ const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrow
       if (spec.where !== undefined) clauses.push(spec.where);
       out.sources.set(field, clauses); // register the field even when only a label is set
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
-      if (spec.groupBy !== undefined) out.sourceGroupBys.set(field, spec.groupBy);
+      const axes = normalizeGroupBy(spec.groupBy);
+      if (axes !== undefined) out.sourceGroupBys.set(field, axes);
     }
   }
 };

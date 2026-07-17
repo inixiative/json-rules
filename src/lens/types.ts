@@ -49,9 +49,9 @@ export type ModelDefaultNarrowing = {
  * Condition; the unconstrained spelling is `true`.
  */
 export type SourceSpec =
-  | { where: Condition; label?: string; groupBy?: string }
-  | { where?: Condition; label: string; groupBy?: string }
-  | { where?: Condition; label?: string; groupBy: string };
+  | { where: Condition; label?: string; groupBy?: string | string[] }
+  | { where?: Condition; label: string; groupBy?: string | string[] }
+  | { where?: Condition; label?: string; groupBy: string | string[] };
 
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
 export type SourceValue = Condition | SourceSpec;

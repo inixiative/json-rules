@@ -6,8 +6,9 @@ export type PrismaFilter = Record<string, unknown>;
 export type PrismaWhere = Record<string, unknown>;
 
 /** A selectable option — the standard `<select>` shape: a value with an optional display
- * label, plus the partition key when the source declares a `groupBy`. */
-export type SourceOption = { value: string; label?: string; group?: string };
+ * label, plus the partition keys (index-aligned with the source's `groupBy` axes)
+ * when the source is grouped. */
+export type SourceOption = { value: string; label?: string; groups?: string[] };
 
 // FieldMap is structurally compatible with PrismaMap from @inixiative/prisma-map.
 // It only requires the fields that json-rules needs for traversal.
@@ -31,6 +32,12 @@ export type FieldMapEntry = {
    * and for sourced fields (the fetched pairs from a materialized `SourceValues`).
    */
   options?: readonly SourceOption[];
+  /**
+   * Present on projection/surface output when the field's source partitions its
+   * options: the dotted to-one axes (relative to this model) whose values are
+   * each option's `groups`, index-aligned.
+   */
+  groupBy?: readonly string[];
 };
 
 export type ModelEntry = {

@@ -1,7 +1,12 @@
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import { validateBindNames } from './bindings.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
-import { augmentPicksWithRelations, intersectStringSet, normalizeSource } from './policy.ts';
+import {
+  augmentPicksWithRelations,
+  intersectStringSet,
+  normalizeGroupBy,
+  normalizeSource,
+} from './policy.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
@@ -56,11 +61,14 @@ const validateSourceTargetVisibility = (
         errors.push(`${position}.sources.${field}: label column '${spec.label}' ${removed}`);
     }
 
-    if (spec.groupBy !== undefined && ancestorSpecs.some((s) => s.groupBy === spec.groupBy)) {
+    const axes = normalizeGroupBy(spec.groupBy);
+    if (axes === undefined) continue;
+    const axesKey = JSON.stringify(axes);
+    if (ancestorSpecs.some((s) => JSON.stringify(normalizeGroupBy(s.groupBy)) === axesKey)) {
       continue;
     }
-    if (spec.groupBy !== undefined) {
-      const segments = spec.groupBy.split('.');
+    for (const axis of axes) {
+      const segments = axis.split('.');
       let nodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[] = ancestorChain;
       let curMap = mapName;
       let curModel = modelName;
@@ -236,25 +244,30 @@ const validateModelNode = (
     if (spec.label !== undefined && !modelFields[spec.label]) {
       errors.push(`${position}.sources.${field}: label column '${spec.label}' not on model`);
     }
-    if (spec.groupBy !== undefined) {
-      const err = groupByPathError(spec.groupBy, maps, mapName, modelName);
-      if (err) errors.push(`${position}.sources.${field}: ${err}`);
-      // The sql compile aliases the group column '__group' — a grouped source
-      // selecting a real column of that name would clobber it in flat rows.
-      if (field === '__group' || spec.label === '__group') {
+    const axes = normalizeGroupBy(spec.groupBy);
+    if (axes !== undefined) {
+      for (const axis of axes) {
+        const err = groupByPathError(axis, maps, mapName, modelName);
+        if (err) errors.push(`${position}.sources.${field}: ${err}`);
+      }
+      // The sql compile aliases each axis column '__group_i' — a grouped source
+      // selecting a real column of that shape would clobber it in flat rows.
+      const reserved = /^__group(_\d+)?$/;
+      if (reserved.test(field) || (spec.label !== undefined && reserved.test(spec.label))) {
         errors.push(
-          `${position}.sources.${field}: '__group' is reserved on grouped sources (sql group alias)`,
+          `${position}.sources.${field}: '__group*' names are reserved on grouped sources (sql group aliases)`,
         );
       }
-      // where/sources compose AND-only across layers; a divergent groupBy would
-      // silently re-partition an ancestor's option axis — fail loud instead.
+      // where/sources compose AND-only across layers; divergent axes would
+      // silently re-partition an ancestor's option namespace — fail loud instead.
+      const axesKey = JSON.stringify(axes);
       for (const anc of ancestorChain) {
         const ancEntry = anc.sources?.[field];
         if (ancEntry === undefined) continue;
-        const ancSpec = normalizeSource(ancEntry);
-        if (ancSpec.groupBy !== undefined && ancSpec.groupBy !== spec.groupBy) {
+        const ancAxes = normalizeGroupBy(normalizeSource(ancEntry).groupBy);
+        if (ancAxes !== undefined && JSON.stringify(ancAxes) !== axesKey) {
           errors.push(
-            `${position}.sources.${field}: groupBy '${spec.groupBy}' conflicts with an ancestor layer's groupBy '${ancSpec.groupBy}'`,
+            `${position}.sources.${field}: groupBy [${axes}] conflicts with an ancestor layer's groupBy [${ancAxes}]`,
           );
         }
       }

@@ -1,6 +1,6 @@
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { SourceValues } from './projectByPath.ts';
-import { accumulateOption, groupAtPath, sortOptions } from './sourceOptions.ts';
+import { accumulateOption, groupsAtPaths, sortOptions } from './sourceOptions.ts';
 import type { SourceQuery } from './sourceQuery.ts';
 
 type Row = Record<string, unknown>;
@@ -11,9 +11,10 @@ export type SourceRowShape = 'prisma' | 'sql';
 /**
  * Materialize one compiled `SourceQuery`'s fetched rows into its `SourceValues` —
  * the executor-side counterpart of `sourceQueries`, so apps never hand-map rows.
- * `rowShape` names the wire format: prisma rows (default) nest the `groupBy` path
- * as related objects; sql rows carry it flat under the statement's `__group` alias.
- * Grouped queries fetch without DISTINCT, so dedup per (group, value) happens here.
+ * `rowShape` names the wire format: prisma rows (default) nest each `groupBy` axis
+ * as related objects; sql rows carry them flat under the statement's `__group_i`
+ * aliases. Grouped queries fetch without DISTINCT, so dedup per (groups, value)
+ * happens here.
  */
 export const sourceValuesFromQueryRows = (
   query: SourceQuery,
@@ -27,13 +28,16 @@ export const sourceValuesFromQueryRows = (
     const values = Array.isArray(rawValue) ? rawValue : [rawValue];
     const rawLabel = query.label === undefined ? undefined : row[query.label];
     const label = rawLabel == null ? undefined : String(rawLabel);
-    const group =
+    const groups =
       query.groupBy === undefined
         ? undefined
-        : groupAtPath(row, rowShape === 'sql' ? '__group' : query.groupBy);
+        : groupsAtPaths(
+            row,
+            rowShape === 'sql' ? query.groupBy.map((_, i) => `__group_${i}`) : query.groupBy,
+          );
     for (const value of values) {
       if (value == null || typeof value === 'object') continue;
-      accumulateOption(byKey, String(value), label, group);
+      accumulateOption(byKey, String(value), label, groups);
     }
   }
   return {

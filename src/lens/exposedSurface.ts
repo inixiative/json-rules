@@ -23,12 +23,19 @@ const unionFieldInto = (
     fields.set(name, entry.values ? { ...entry, values: [...entry.values] } : entry);
     return;
   }
+  let next = existing;
   if (entry.values && existing.values) {
     const merged = new Set([...existing.values, ...entry.values]);
-    fields.set(name, { ...existing, values: [...merged] });
+    next = { ...next, values: [...merged] };
   } else if (!entry.values && existing.values) {
-    fields.set(name, { ...existing, values: undefined });
+    next = { ...next, values: undefined };
   }
+  // A later visit may carry the partition axes an earlier (e.g. off-path) visit
+  // lacked; divergence was already rejected before this merge.
+  if (entry.groupBy !== undefined && next.groupBy === undefined) {
+    next = { ...next, groupBy: entry.groupBy };
+  }
+  if (next !== existing) fields.set(name, next);
 };
 
 // Leak-safe total exposed surface of a narrowed lens, as a Lens. See docs/LENS.md.
@@ -46,7 +53,7 @@ export const exposedSurface = (
   for (const sv of opts.sourceValues ?? []) {
     const k = `${sv.mapName}::${sv.model}::${sv.field}`;
     const byKey = fetchedByModelField.get(k) ?? new Map<string, SourceOption>();
-    for (const o of sv.options) byKey.set(optionKey(o.group, o.value), o);
+    for (const o of sv.options) byKey.set(optionKey(o.groups, o.value), o);
     fetchedByModelField.set(k, byKey);
   }
 
@@ -94,6 +101,20 @@ export const exposedSurface = (
       const enumValues = effect.enumValuesByField.get(fieldName);
       let nextEntry = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
       if (fetchedOptions) nextEntry = { ...nextEntry, options: [...fetchedOptions.values()] };
+      // Stamp the partition axes so consumers know WHICH sibling path pins this
+      // field's options. The surface flattens per model, so two paths declaring
+      // DIFFERENT axes for one field would union two incompatible partition
+      // namespaces — fail loud instead of merging them.
+      const axes = effect.sourceGroupBys.get(fieldName);
+      if (axes !== undefined) {
+        const existing = acc.fields.get(fieldName)?.groupBy;
+        if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(axes)) {
+          throw new Error(
+            `exposedSurface: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
+          );
+        }
+        nextEntry = { ...nextEntry, groupBy: axes };
+      }
       unionFieldInto(acc.fields, fieldName, nextEntry);
 
       if (entry.kind === 'object' || entry.kind === 'bridge') {

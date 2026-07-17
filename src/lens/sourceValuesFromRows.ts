@@ -3,7 +3,7 @@ import type { SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
 import { projectByPath, type SourceValues } from './projectByPath.ts';
-import { accumulateOption, groupAtPath, groupGuardClauses, sortOptions } from './sourceOptions.ts';
+import { accumulateOption, groupsAtPaths, sortOptions, traversalGuards } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 type Row = Record<string, unknown>;
@@ -57,11 +57,15 @@ export const sourceValuesFromRows = (
     for (const [field, sourceClauses] of sourceFields) {
       const label = visit.sourceLabels[field];
       const groupBy = visit.sourceGroupBys[field];
-      const groupGuards =
-        groupBy === undefined
-          ? []
-          : groupGuardClauses(policy, visit.mapName, visit.modelName, relPath, groupBy);
-      const where = composeEligibility([...sourceClauses, ...groupGuards]);
+      const guards = traversalGuards(
+        policy,
+        visit.mapName,
+        visit.modelName,
+        relPath,
+        groupBy ?? [],
+        sourceClauses,
+      );
+      const where = composeEligibility([...sourceClauses, ...guards]);
 
       const byKey = new Map<string, SourceOption>();
       for (const row of anchors) {
@@ -70,11 +74,11 @@ export const sourceValuesFromRows = (
         const values = Array.isArray(rawValue) ? rawValue : [rawValue];
         const rawLabel = label === undefined ? undefined : row[label];
         const rowLabel = rawLabel == null ? undefined : String(rawLabel);
-        // Unreachable group path (null hop) → the option stays ungrouped.
-        const group = groupBy === undefined ? undefined : groupAtPath(row, groupBy);
+        // Any unreachable axis (null hop) → the option stays ungrouped, never partial.
+        const groups = groupBy === undefined ? undefined : groupsAtPaths(row, groupBy);
         for (const value of values) {
           if (value == null || typeof value === 'object') continue;
-          accumulateOption(byKey, String(value), rowLabel, group);
+          accumulateOption(byKey, String(value), rowLabel, groups);
         }
       }
 

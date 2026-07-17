@@ -672,3 +672,148 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
     expect(() => validateNarrowing(child)).toThrow(/ancestor/);
   });
 });
+
+describe('asymmetric traversal — the same model narrowed differently per path', () => {
+  // A model has no canonical schema: its shape is composed per VISIT. Two sibling
+  // paths reach the same Enrichment model; each grouped source must compose only
+  // its own path's narrowing — plus mapDefaults, the one symmetric layer.
+  const twoPathMap: FieldMap = {
+    models: {
+      ...map.models,
+      User: {
+        fields: {
+          ...map.models.User.fields,
+          archived: {
+            kind: 'object',
+            type: 'Enrichment',
+            isList: true,
+            fromFields: ['id'],
+            toFields: ['userId'],
+          },
+        },
+      },
+    },
+  };
+  const twoPathBase: Lens = { maps: { app: twoPathMap }, mapName: 'app', model: 'User' };
+
+  const asym = (): LensNarrowing =>
+    withParent(twoPathBase, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: {
+              map: { where: { field: 'brandId', operator: Operator.equals, value: 'b1' } },
+            },
+          },
+          archived: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: {
+              map: { where: { field: 'brandId', operator: Operator.equals, value: 'b2' } },
+            },
+          },
+        },
+      },
+    });
+
+  test('each grouped source composes only its own path narrowing', () => {
+    const byPath = Object.fromEntries(sourceQueries(asym()).map((query) => [query.path, query]));
+    expect(byPath['User.enrichments'].composedWhere).toEqual({
+      field: 'map.brandId',
+      operator: Operator.equals,
+      value: 'b1',
+    });
+    expect(byPath['User.archived'].composedWhere).toEqual({
+      field: 'map.brandId',
+      operator: Operator.equals,
+      value: 'b2',
+    });
+  });
+
+  test('mapDefaults folds into every path; declared narrowing stays per-visit', () => {
+    const n = withParent(twoPathBase, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: {
+              map: { where: { field: 'brandId', operator: Operator.equals, value: 'b1' } },
+            },
+          },
+          archived: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+      mapDefaults: {
+        app: {
+          models: {
+            FieldDef: { where: { field: 'id', operator: Operator.notEquals, value: 'hidden' } },
+          },
+        },
+      },
+    });
+    const byPath = Object.fromEntries(sourceQueries(n).map((query) => [query.path, query]));
+    expect(byPath['User.enrichments'].composedWhere).toEqual({
+      all: [
+        { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
+        { field: 'map.definition.id', operator: Operator.notEquals, value: 'hidden' },
+      ],
+    });
+    expect(byPath['User.archived'].composedWhere).toEqual({
+      field: 'map.definition.id',
+      operator: Operator.notEquals,
+      value: 'hidden',
+    });
+  });
+
+  test('in-memory: identical rows yield a different grouped vocabulary per path', () => {
+    const enrichmentRows = [
+      { value: 'engineering', map: { brandId: 'b1', definition: { label: 'department' } } },
+      { value: 'acme', map: { brandId: 'b2', definition: { label: 'account' } } },
+    ];
+    const rows = [{ id: 'u1', enrichments: enrichmentRows, archived: enrichmentRows }];
+    const byPath = Object.fromEntries(
+      sourceValuesFromRows(asym(), rows).map((sv) => [sv.path, sv]),
+    );
+    expect(byPath['User.enrichments'].options).toEqual([
+      { value: 'engineering', group: 'department' },
+    ]);
+    expect(byPath['User.archived'].options).toEqual([{ value: 'acme', group: 'account' }]);
+  });
+
+  test('an ancestor removal on one path does not bind the sibling path', () => {
+    const parent = withParent(twoPathBase, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: { picks: ['value'] }, // map removed on this visit only
+          archived: { picks: ['value'], relations: { map: {} } },
+        },
+      },
+    });
+    const throughKeptPath = withParent(parent, {
+      root: {
+        relations: {
+          archived: { sources: { value: { groupBy: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(throughKeptPath)).not.toThrow();
+
+    const throughRemovedPath = withParent(parent, {
+      root: {
+        relations: {
+          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(throughRemovedPath)).toThrow(/ancestor/);
+  });
+});

@@ -462,6 +462,43 @@ describe('executePrismaQueryPlan', () => {
     expect(resolved).toEqual({ AND: [{ id: { in: ['u1'] } }, { status: { equals: 'active' } }] });
   });
 
+  it('drops rows with a null join FK from the membership set (nullable FK relation)', async () => {
+    const result = toPrisma(
+      {
+        field: 'posts',
+        arrayOperator: ArrayOperator.atLeast,
+        count: 1,
+        condition: { field: 'published', operator: Operator.equals, value: true },
+      },
+      { map: blogMap, model: 'User' },
+    );
+
+    // groupBy over a nullable FK yields a null group for orphaned rows. That null
+    // must not ride into the `in` array — Prisma rejects a mixed null+string `in`.
+    const mockDelegate = {
+      post: {
+        groupBy: async () => [{ authorId: 'user-1' }, { authorId: null }, { authorId: 'user-2' }],
+      },
+    };
+
+    const resolved = await executePrismaQueryPlan(result, mockDelegate);
+    expect(resolved).toEqual({ id: { in: ['user-1', 'user-2'] } });
+  });
+
+  it('all join FKs null → empty membership set (in: [] matches nothing)', async () => {
+    const result = toPrisma(
+      { field: 'posts', arrayOperator: ArrayOperator.atLeast, count: 1 },
+      { map: blogMap, model: 'User' },
+    );
+
+    const mockDelegate = {
+      post: { groupBy: async () => [{ authorId: null }] },
+    };
+
+    const resolved = await executePrismaQueryPlan(result, mockDelegate);
+    expect(resolved).toEqual({ id: { in: [] } });
+  });
+
   it('throws when delegate missing for model', async () => {
     const result = toPrisma(
       { field: 'posts', arrayOperator: ArrayOperator.atLeast, count: 1 },

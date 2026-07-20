@@ -40,7 +40,16 @@ export const executePrismaQueryPlan = async (
       );
     }
     const rows = await delegate[step.operation](step.args);
-    stepResults.push((rows as Record<string, unknown>[]).map((r) => r[step.extract]));
+    // A related row whose join FK is null belongs to no root entity, so it can
+    // never contribute a membership id. groupBy over a nullable FK still emits a
+    // null group, and Prisma rejects a mixed null+string array in `in`/`notIn`,
+    // so drop nulls here at the gather point. An empty result stays a real `[]`:
+    // `in: []` matches nothing and `notIn: []` matches everything, both correct.
+    stepResults.push(
+      (rows as Record<string, unknown>[])
+        .map((r) => r[step.extract])
+        .filter((v) => v !== null && v !== undefined),
+    );
   }
 
   return resolveStepRefs(whereStep.where, stepResults) as Record<string, unknown>;

@@ -1,4 +1,4 @@
-import type { FieldMap } from './types';
+import type { FieldMap, FieldMapEntry } from './types';
 
 export type MapWalkResult =
   | { kind: 'direct' }
@@ -44,4 +44,29 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
   }
 
   return { kind: 'direct' };
+};
+
+/**
+ * The terminal field's map entry for a dot-notation path, walking to-one
+ * relations exactly like {@link walkFieldPath}. `undefined` when any segment
+ * fails to resolve (including a Json mid-path — the sub-path's value type is
+ * unknowable from the map) — callers treat that as "type unknown".
+ */
+export const leafFieldEntry = (
+  field: string,
+  map: FieldMap,
+  rootModel: string,
+): FieldMapEntry | undefined => {
+  const parts = field.split('.');
+  let currentModel = rootModel;
+
+  for (let i = 0; i < parts.length; i++) {
+    const fieldEntry = map.models?.[currentModel]?.fields[parts[i]];
+    if (!fieldEntry) return undefined;
+    if (i === parts.length - 1) return fieldEntry;
+    if (fieldEntry.kind !== 'object' || !map.models[fieldEntry.type]) return undefined;
+    currentModel = fieldEntry.type;
+  }
+
+  return undefined;
 };

@@ -7,28 +7,49 @@ import {
 } from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
-import { walkFieldPath } from './mapWalk';
+import { leafFieldEntry, walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
+
+/**
+ * Whether the emptiness operators may compare this column against `''`. Only a
+ * String column accepts it — Prisma rejects `equals: ''` on DateTime/Int/enum/…
+ * columns outright ("Expected ISO-8601 DateTime"), turning an authored `isEmpty`
+ * into a runtime 500. The field map is the authority; a stamped `coerceType` is
+ * the fallback; with neither, keep the legacy two-branch shape — an untyped
+ * String field must not lose its ''-branch.
+ */
+const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
+  const entry =
+    options?.map && options?.model
+      ? leafFieldEntry(rule.field, options.map as FieldMap, options.model)
+      : undefined;
+  if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
+  return rule.coerceType === undefined || rule.coerceType === 'String';
+};
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
   // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
   // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
   if (rule.operator === Operator.isEmpty) {
-    return {
-      OR: [
-        buildMapAwareFilter(rule.field, { equals: null }, options),
-        buildMapAwareFilter(rule.field, { equals: '' }, options),
-      ],
-    };
+    return acceptsEmptyString(rule, options)
+      ? {
+          OR: [
+            buildMapAwareFilter(rule.field, { equals: null }, options),
+            buildMapAwareFilter(rule.field, { equals: '' }, options),
+          ],
+        }
+      : buildMapAwareFilter(rule.field, { equals: null }, options);
   }
   if (rule.operator === Operator.notEmpty) {
-    return {
-      AND: [
-        buildMapAwareFilter(rule.field, { not: null }, options),
-        buildMapAwareFilter(rule.field, { not: '' }, options),
-      ],
-    };
+    return acceptsEmptyString(rule, options)
+      ? {
+          AND: [
+            buildMapAwareFilter(rule.field, { not: null }, options),
+            buildMapAwareFilter(rule.field, { not: '' }, options),
+          ],
+        }
+      : buildMapAwareFilter(rule.field, { not: null }, options);
   }
 
   const filter = buildLeafFilter(rule, options);

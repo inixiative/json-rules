@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.18.3 — toPrisma: isEmpty/notEmpty stop comparing non-String columns to `''`
+
+- The emptiness operators unconditionally emitted the `equals: ''` branch;
+  Prisma rejects `''` on DateTime/Int/enum columns outright ("Expected ISO-8601
+  DateTime"), so an authored `isEmpty` on any typed non-String column was a
+  guaranteed runtime 500 (ZLT-3899). The `''`-branch is now String/Json-only:
+  the field map is the authority (`walkFieldPath`'s `direct` result now carries
+  the leaf column's map entry, resolved through to-one relation paths), a
+  stamped `coerceType` is the fallback, and with no type information the legacy
+  two-branch shape survives.
+
 ## 2.18.1 — executePrismaQueryPlan preserves compiled Date leaves
 
 - `resolveStepRefs` walked every object while replacing `__step` sentinels,

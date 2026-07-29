@@ -82,6 +82,13 @@ describe('toPrisma isEmpty/notEmpty — the ""-branch is String-only', () => {
     expect(where).toEqual({ sourceUpdatedAt: { equals: null } });
   });
 
+  test('a coerceType of Json keeps the two-branch shape, matching the map path', () => {
+    const where = getWhere(
+      toPrisma({ field: 'metadata', operator: Operator.isEmpty, coerceType: 'Json' }),
+    );
+    expect(where).toEqual({ OR: [{ metadata: { equals: null } }, { metadata: { equals: '' } }] });
+  });
+
   test('with no type information at all, the legacy two-branch shape survives', () => {
     const where = getWhere(toPrisma({ field: 'anything', operator: Operator.isEmpty }));
     expect(where).toEqual({ OR: [{ anything: { equals: null } }, { anything: { equals: '' } }] });

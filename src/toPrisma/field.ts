@@ -7,49 +7,43 @@ import {
 } from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
-import { leafFieldEntry, walkFieldPath } from './mapWalk';
+import { walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
 /**
  * Whether the emptiness operators may compare this column against `''`. Only a
- * String column accepts it — Prisma rejects `equals: ''` on DateTime/Int/enum/…
- * columns outright ("Expected ISO-8601 DateTime"), turning an authored `isEmpty`
- * into a runtime 500. The field map is the authority; a stamped `coerceType` is
- * the fallback; with neither, keep the legacy two-branch shape — an untyped
- * String field must not lose its ''-branch.
+ * String column accepts it ('' is also a representable JSON value) — Prisma
+ * rejects `equals: ''` on DateTime/Int/enum/… columns outright ("Expected
+ * ISO-8601 DateTime"), turning an authored `isEmpty` into a runtime 500. The
+ * field map is the authority; a stamped `coerceType` is the fallback; with
+ * neither, keep the legacy two-branch shape — an untyped String field must not
+ * lose its ''-branch.
  */
 const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
-  const entry =
+  const walk =
     options?.map && options?.model
-      ? leafFieldEntry(rule.field, options.map as FieldMap, options.model)
+      ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
       : undefined;
+  const entry = walk?.kind === 'direct' ? walk.entry : undefined;
   if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
-  return rule.coerceType === undefined || rule.coerceType === 'String';
+  return (
+    rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
+  );
 };
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
   // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
   // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
   if (rule.operator === Operator.isEmpty) {
-    return acceptsEmptyString(rule, options)
-      ? {
-          OR: [
-            buildMapAwareFilter(rule.field, { equals: null }, options),
-            buildMapAwareFilter(rule.field, { equals: '' }, options),
-          ],
-        }
-      : buildMapAwareFilter(rule.field, { equals: null }, options);
+    const isNull = buildMapAwareFilter(rule.field, { equals: null }, options);
+    if (!acceptsEmptyString(rule, options)) return isNull;
+    return { OR: [isNull, buildMapAwareFilter(rule.field, { equals: '' }, options)] };
   }
   if (rule.operator === Operator.notEmpty) {
-    return acceptsEmptyString(rule, options)
-      ? {
-          AND: [
-            buildMapAwareFilter(rule.field, { not: null }, options),
-            buildMapAwareFilter(rule.field, { not: '' }, options),
-          ],
-        }
-      : buildMapAwareFilter(rule.field, { not: null }, options);
+    const notNull = buildMapAwareFilter(rule.field, { not: null }, options);
+    if (!acceptsEmptyString(rule, options)) return notNull;
+    return { AND: [notNull, buildMapAwareFilter(rule.field, { not: '' }, options)] };
   }
 
   const filter = buildLeafFilter(rule, options);

@@ -8,7 +8,7 @@ import type {
   SourceSpec,
   SourceValue,
 } from './types.ts';
-import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
+import { collectChain, getRoot, isJsonEntry, resolveRelationTarget } from './walk.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;
@@ -244,6 +244,8 @@ export const walkLensPath = (
   hopEffects: VisitEffect[];
   terminalEffect: VisitEffect;
   terminalFieldName: string;
+  /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
+  jsonSubPath: string[];
 } | null => {
   const parts = fieldPath.split('.');
   let mapName = startMap;
@@ -263,7 +265,7 @@ export const walkLensPath = (
     // A Json column has no declared sub-fields; a dotted sub-path into it is resolved
     // by the evaluators/compilers (check/toPrisma/toSql), so the field resolves to the
     // visible Json column — stop here and treat it as the terminal.
-    if (entry.kind === 'scalar' && entry.type === 'Json' && i < parts.length - 1) {
+    if (isJsonEntry(entry) && i < parts.length - 1) {
       return {
         mapName,
         modelName,
@@ -272,6 +274,7 @@ export const walkLensPath = (
         hopEffects,
         terminalEffect: effect,
         terminalFieldName: fieldName,
+        jsonSubPath: parts.slice(i + 1),
       };
     }
     if (i === parts.length - 1) {
@@ -283,6 +286,7 @@ export const walkLensPath = (
         hopEffects,
         terminalEffect: effect,
         terminalFieldName: fieldName,
+        jsonSubPath: [],
       };
     }
     hopEffects.push(effect);

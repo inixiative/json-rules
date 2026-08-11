@@ -19,6 +19,11 @@ const COERCIBLE_KINDS = new Set([
 type Scope = { mapName: string; modelName: string };
 type ResolvedField = { entry: FieldMapEntry; mapName: string };
 
+/**
+ * Resolves a dotted path to its declared entry. Returns undefined when the path descends past
+ * a leaf — including below a Json boundary, where the value's kind is undeclared and therefore
+ * uncoercible, so the rule is left unstamped.
+ */
 const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedField | undefined => {
   const segments = fieldPath.split('.');
   let { mapName, modelName } = scope;
@@ -34,6 +39,10 @@ const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedFiel
   return undefined;
 };
 
+/**
+ * The model scope a nested array/aggregate condition is evaluated against. Undefined when the
+ * field is not a relation — a Json array's elements are undeclared, so nothing below is stamped.
+ */
 const itemScope = (lens: Lens, scope: Scope, fieldPath: string | undefined): Scope | undefined => {
   if (!fieldPath) return undefined;
   const resolved = resolveField(lens, scope, fieldPath);

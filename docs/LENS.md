@@ -567,6 +567,44 @@ surface at the right visit, and reports:
 - nested-condition fields validated against the *relation target*, not the
   lens root
 
+#### The Json boundary
+
+A `Json` field declares no sub-fields, so a dotted sub-path into one is
+open-ended: `check`/`toPrisma`/`toSql` resolve the remaining segments against
+the JSON value at evaluation time. Path resolution therefore **stops at the Json
+column** and everything below it is accepted as-is.
+
+```ts
+checkRuleAgainstLens({ field: 'metadata.theme.color', operator: 'equals', value: 'red' }, lens);
+// ok — resolution stops at the visible `metadata` column
+checkRuleAgainstLens({ field: 'firstName.foo', operator: 'equals', value: 'x' }, lens);
+// violation — open-endedness is exclusively a Json-boundary property
+```
+
+What follows from that:
+
+- **Narrowing governs the column, not the sub-path.** Omit or pick away
+  `metadata` and every `metadata.*` rule is rejected with it; keep the column
+  and every sub-path under it is reachable.
+- **No relation traversal resumes below the boundary.** A JSON key that happens
+  to share a name with a declared relation is still just a JSON key.
+- **The column's own value set does not gate its sub-paths.** `values`,
+  `options`, `enumPicks`/`enumOmits` describe the column; a rule on
+  `metadata.theme` compares an undeclared value and is not checked against them.
+  A rule on the bare `metadata` column still is.
+- **Nested scopes below the boundary are open.** An `arrayOperator` or
+  `aggregate` over a JSON array iterates undeclared elements, so its
+  `condition`, `filter`, `orderBy` and `aggregate.field` — and any `$.`
+  comparison ref inside them — are accepted without resolution. A root-anchored
+  `path` ref is still gated: it resolves at the lens anchor, not in the JSON.
+- **No kind-specific narrowing applies.** The value kind below the boundary is
+  unknown, so the generic operator set is allowed and `stampCoercions` leaves
+  the rule unstamped. This mirrors `check`, which compares the traversed JSON
+  value untyped — a type mismatch fails the comparison rather than throwing.
+
+`describeRule` follows the same boundary, so a Json sub-path is never reported
+as a violation.
+
 ### `applyLens(rule, narrowing)` — compose with scope
 
 Once a rule has passed the gate, run it through `applyLens` to get the

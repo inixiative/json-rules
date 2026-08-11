@@ -2,6 +2,7 @@ import type { Condition } from '../types';
 import type { Policy } from './policy.ts';
 import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
+import { isJsonEntry } from './walk.ts';
 
 export type RuleLensViolation = {
   path: string;
@@ -35,33 +36,36 @@ const visit = (
   modelName: string,
   relPath: readonly string[],
   violations: RuleLensViolation[],
+  open = false,
 ): void => {
   if (typeof cond === 'boolean') return;
 
   if ('all' in cond) {
-    for (const c of cond.all) visit(c, policy, mapName, modelName, relPath, violations);
+    for (const c of cond.all) visit(c, policy, mapName, modelName, relPath, violations, open);
     return;
   }
   if ('any' in cond) {
-    for (const c of cond.any) visit(c, policy, mapName, modelName, relPath, violations);
+    for (const c of cond.any) visit(c, policy, mapName, modelName, relPath, violations, open);
     return;
   }
   if ('if' in cond) {
-    visit(cond.if, policy, mapName, modelName, relPath, violations);
-    visit(cond.then, policy, mapName, modelName, relPath, violations);
-    if (cond.else !== undefined) visit(cond.else, policy, mapName, modelName, relPath, violations);
+    visit(cond.if, policy, mapName, modelName, relPath, violations, open);
+    visit(cond.then, policy, mapName, modelName, relPath, violations, open);
+    if (cond.else !== undefined)
+      visit(cond.else, policy, mapName, modelName, relPath, violations, open);
     return;
   }
 
   let nextMap = mapName;
   let nextModel = modelName;
   let nextRelPath = relPath;
+  let nextOpen = open;
   let terminalFieldName: string | null = null;
   let terminalIsEnum = false;
   let terminalEnumType: string | null = null;
   let terminalAllowedValues: readonly string[] | null = null;
 
-  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
+  if (!open && 'field' in cond && typeof cond.field === 'string' && cond.field !== '') {
     const walked = walkLensPath(policy, mapName, modelName, relPath, cond.field);
     if (!walked) {
       violations.push({
@@ -73,7 +77,15 @@ const visit = (
     terminalFieldName = walked.terminalFieldName;
     terminalIsEnum = walked.entry.kind === 'enum';
     terminalEnumType = walked.entry.type;
-    terminalAllowedValues = allowedEnumValues(walked.terminalEffect, terminalFieldName);
+    // Below a Json boundary the value is undeclared, so the column's own allowed set
+    // says nothing about it — only gate a path that ends ON the declared entry.
+    terminalAllowedValues =
+      walked.jsonSubPath.length > 0
+        ? null
+        : allowedEnumValues(walked.terminalEffect, terminalFieldName);
+    // A Json column's elements/members are undeclared — anything nested under it
+    // (condition/filter/orderBy/aggregate.field, `$.` refs) is open-ended.
+    if (isJsonEntry(walked.entry)) nextOpen = true;
     // Walk into the relation target for nested condition descent
     if (walked.entry.kind === 'object' || walked.entry.kind === 'bridge') {
       const target =
@@ -92,27 +104,30 @@ const visit = (
   // Gate the RHS `path` ref the same way the LHS `field` is gated — otherwise a rule
   // can reference outside the lens through its comparison value. `$.`-prefixed paths are
   // current-element refs (resolve at the current anchor); bare paths are root/context refs
-  // (resolve at the lens anchor).
+  // (resolve at the lens anchor). Inside an open scope a `$.` ref points into the JSON
+  // value, so there is nothing to resolve — a root ref is still gated.
   if ('path' in cond && typeof cond.path === 'string' && cond.path !== '') {
     const isCurrentElement = cond.path.startsWith('$.');
-    const pathField = isCurrentElement ? cond.path.slice(2) : cond.path;
-    const walkedPath = isCurrentElement
-      ? walkLensPath(policy, mapName, modelName, relPath, pathField)
-      : walkLensPath(policy, policy.lens.mapName, policy.lens.model, [], pathField);
-    if (!walkedPath) {
-      violations.push({
-        path: cond.path,
-        reason: 'path (comparison ref) does not resolve through the narrowed lens',
-      });
+    if (!(isCurrentElement && open)) {
+      const pathField = isCurrentElement ? cond.path.slice(2) : cond.path;
+      const walkedPath = isCurrentElement
+        ? walkLensPath(policy, mapName, modelName, relPath, pathField)
+        : walkLensPath(policy, policy.lens.mapName, policy.lens.model, [], pathField);
+      if (!walkedPath) {
+        violations.push({
+          path: cond.path,
+          reason: 'path (comparison ref) does not resolve through the narrowed lens',
+        });
+      }
     }
   }
 
   // Gate the window's `filter` (a full Condition over the array elements) and `orderBy`
   // field refs — both are evaluated against the descended relation target.
   if ('filter' in cond && cond.filter !== undefined) {
-    visit(cond.filter as Condition, policy, nextMap, nextModel, nextRelPath, violations);
+    visit(cond.filter as Condition, policy, nextMap, nextModel, nextRelPath, violations, nextOpen);
   }
-  if ('orderBy' in cond && Array.isArray(cond.orderBy)) {
+  if (!nextOpen && 'orderBy' in cond && Array.isArray(cond.orderBy)) {
     for (const entry of cond.orderBy as { field?: unknown }[]) {
       if (entry && typeof entry.field === 'string' && entry.field !== '') {
         const walkedOrder = walkLensPath(policy, nextMap, nextModel, nextRelPath, entry.field);
@@ -149,6 +164,7 @@ const visit = (
 
   // Aggregate sub-field
   if (
+    !nextOpen &&
     'aggregate' in cond &&
     typeof cond.aggregate === 'object' &&
     cond.aggregate !== null &&
@@ -166,7 +182,7 @@ const visit = (
   }
 
   if ('condition' in cond && cond.condition !== undefined) {
-    visit(cond.condition, policy, nextMap, nextModel, nextRelPath, violations);
+    visit(cond.condition, policy, nextMap, nextModel, nextRelPath, violations, nextOpen);
   }
 };
 

@@ -4,6 +4,7 @@ import { extremalRewrite, hasWindow } from '../window';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
+import { isJsonEntry } from './walk.ts';
 
 export type RuleDescription = {
   sources: string[];
@@ -43,22 +44,23 @@ const visit = (
   mapName: string,
   modelName: string,
   relPath: readonly string[],
+  open = false,
 ): void => {
   if (typeof cond === 'boolean') return;
   acc.sources.add(mapName);
 
   if ('all' in cond) {
-    for (const c of cond.all) visit(c, acc, mapName, modelName, relPath);
+    for (const c of cond.all) visit(c, acc, mapName, modelName, relPath, open);
     return;
   }
   if ('any' in cond) {
-    for (const c of cond.any) visit(c, acc, mapName, modelName, relPath);
+    for (const c of cond.any) visit(c, acc, mapName, modelName, relPath, open);
     return;
   }
   if ('if' in cond) {
-    visit(cond.if, acc, mapName, modelName, relPath);
-    visit(cond.then, acc, mapName, modelName, relPath);
-    if (cond.else !== undefined) visit(cond.else, acc, mapName, modelName, relPath);
+    visit(cond.if, acc, mapName, modelName, relPath, open);
+    visit(cond.then, acc, mapName, modelName, relPath, open);
+    if (cond.else !== undefined) visit(cond.else, acc, mapName, modelName, relPath, open);
     return;
   }
 
@@ -67,15 +69,13 @@ const visit = (
   if (typeof record.dateOperator === 'string') restrictByOperator(acc, record.dateOperator);
   if (typeof record.arrayOperator === 'string') restrictByOperator(acc, record.arrayOperator);
   restrictByWindow(acc, record);
-  if (record.filter !== undefined) {
-    visit(record.filter as Condition, acc, mapName, modelName, relPath);
-  }
 
   let nextMap = mapName;
   let nextModel = modelName;
   let nextRelPath = relPath;
+  let nextOpen = open;
 
-  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
+  if (!open && 'field' in cond && typeof cond.field === 'string' && cond.field !== '') {
     const walked = walkLensPath(acc.policy, mapName, modelName, relPath, cond.field);
     if (!walked) {
       acc.violations.push(cond.field);
@@ -83,6 +83,8 @@ const visit = (
     }
     acc.sources.add(walked.mapName);
     if (walked.mapName !== mapName) acc.bridgesCrossed = true;
+    // A Json column's members are undeclared — nested refs below it resolve at evaluation time.
+    if (isJsonEntry(walked.entry)) nextOpen = true;
 
     if (walked.entry.kind === 'object' || walked.entry.kind === 'bridge') {
       if (walked.entry.kind === 'bridge') acc.bridgesCrossed = true;
@@ -99,8 +101,12 @@ const visit = (
     }
   }
 
+  // `filter` and `condition` are both evaluated against the descended target.
+  if (record.filter !== undefined) {
+    visit(record.filter as Condition, acc, nextMap, nextModel, nextRelPath, nextOpen);
+  }
   if ('condition' in cond && cond.condition !== undefined) {
-    visit(cond.condition, acc, nextMap, nextModel, nextRelPath);
+    visit(cond.condition, acc, nextMap, nextModel, nextRelPath, nextOpen);
   }
 };
 

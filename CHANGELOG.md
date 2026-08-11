@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.18.4 — the Json boundary is open-ended all the way down
+
+- 2.10.1 stopped `walkLensPath` at a Json column so `metadata.theme` would
+  validate, but callers could not tell "the path ended ON the column" from "the
+  path ended BELOW it". Two consequences, both fixed: the column's own allowed
+  value set (`values`/`options`/`enumPicks`) gated its sub-paths — `metadata.theme
+  equals 'dark'` was rejected as not in `metadata`'s allowed set — and a nested
+  scope below the boundary was resolved against the *current model*, so
+  `{ field: 'metadata.items', arrayOperator: 'any', condition: { field: 'color', … } }`
+  reported `color` as an unknown field while a sibling name like `firstName`
+  silently "resolved".
+- `walkLensPath` now returns **`jsonSubPath`** — the segments consumed below the
+  boundary, empty when the path ends on the declared entry. `checkRuleAgainstLens`
+  and `describeRule` use it to open the nested scope: `condition`, `filter`,
+  `orderBy`, `aggregate.field` and `$.` comparison refs below a Json column are
+  accepted without resolution. A root-anchored `path` ref is still gated.
+- Below the boundary the value kind is unknown, so no kind-specific narrowing
+  applies — the generic operator set stands and `stampCoercions` leaves the rule
+  unstamped, mirroring `check`'s untyped comparison of the traversed JSON value.
+  Open-endedness remains exclusively a Json property: `firstName.foo` is still a
+  violation, and no relation traversal resumes below a Json column.
+- `describeRule` now visits a rule's `filter` against the descended target rather
+  than the outer model, matching `checkRuleAgainstLens`.
+
 ## 2.18.3 — toPrisma: isEmpty/notEmpty stop comparing non-String columns to `''`
 
 - The emptiness operators unconditionally emitted the `equals: ''` branch;

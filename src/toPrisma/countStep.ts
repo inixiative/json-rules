@@ -16,15 +16,7 @@ type BuildConditionFn = (
   state?: PrismaBuildState,
 ) => PrismaWhere;
 
-/**
- * Generate a multi-step groupBy plan for count-based relation filtering.
- *
- * For { field: 'posts', arrayOperator: 'atLeast', count: 3, condition: ... } on User:
- *   step 0: groupBy Post by authorId where <condition> having _count >= 3
- *   where:  { id: { in: { __step: 0 } } }
- *
- * The step is pushed into state.steps and the WHERE clause is returned directly.
- */
+// gloss
 export const buildCountStep = (
   rule: ArrayRule,
   options: BuildOptions & { map: FieldMap; model: string },
@@ -57,7 +49,6 @@ export const buildCountStep = (
   let pkOnCurrent: string;
 
   if (fieldEntry.fromFields && fieldEntry.fromFields.length > 0) {
-    // Forward relation (current model has FK) — unusual for list relations but handle it
     if (fieldEntry.fromFields.length > 1) {
       throw new Error(
         `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
@@ -67,7 +58,6 @@ export const buildCountStep = (
     fkOnTarget = fieldEntry.toFields?.[0] ?? 'id';
     pkOnCurrent = fieldEntry.fromFields[0];
   } else {
-    // Back-relation: FK is on the target model. Find the reverse relation.
     const reverseRelation = findReverseRelation(
       map,
       targetModel,
@@ -119,8 +109,7 @@ export const buildCountStep = (
   return { [pkOnCurrent]: { in: stepRef } };
 };
 
-// Prisma 6.x having format: field first, then _count nested inside.
-// e.g. { fanUserUuid: { _count: { gte: 3 } } } — NOT { _count: { _all: { gte: 3 } } }
+// gloss
 const buildHaving = (
   op: ArrayOperator,
   count: number,

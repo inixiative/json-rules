@@ -13,7 +13,7 @@ import type {
 } from './types';
 import { buildNestedFilter } from './utils';
 
-// Forward declaration - provided by condition.ts to avoid circular import
+// gloss
 type BuildConditionFn = (
   condition: Condition,
   options?: BuildOptions,
@@ -59,15 +59,7 @@ export const buildAggregateRule = (
   );
 };
 
-/**
- * Walk a dot-notation field path through the FieldMap to find the terminal list relation.
- *
- * Returns the segments traversed, the final list relation entry, and the model it lives on.
- * E.g. for 'department.employees' on User:
- *   - segments: ['department', 'employees']
- *   - intermediate: User → Department (singular)
- *   - terminal: Department.employees → Employee (list)
- */
+// gloss
 const walkAggregateFieldPath = (
   field: string,
   map: FieldMap,
@@ -93,7 +85,6 @@ const walkAggregateFieldPath = (
     }
 
     if (i === segments.length - 1) {
-      // Terminal segment — must be a list relation
       if (!fieldEntry.isList) {
         throw new Error(`Field '${seg}' is not a list relation in model '${currentModel}'.`);
       }
@@ -105,7 +96,6 @@ const walkAggregateFieldPath = (
       };
     }
 
-    // Intermediate segment — must be a singular relation
     if (fieldEntry.isList) {
       throw new Error(
         `Intermediate field '${seg}' in path '${field}' is a list relation. ` +
@@ -120,6 +110,7 @@ const walkAggregateFieldPath = (
   throw new Error(`Field path '${field}' did not terminate at a list relation.`);
 };
 
+// gloss
 const buildAggregateStep = (
   rule: AggregateRule,
   options: BuildOptions & { map: FieldMap; model: string },
@@ -181,12 +172,10 @@ const buildAggregateStep = (
     pkOnTerminal = reverseRelation.toFields?.[0] ?? '';
   }
 
-  // Build inner WHERE from condition (if present)
   const innerWhere = rule.condition
     ? buildConditionRef(rule.condition, { ...options, model: targetModel }, state)
     : {};
 
-  // Prisma 6.x having format: field first, then aggregate operator nested inside.
   const aggKey = rule.aggregate.mode === 'sum' ? '_sum' : '_avg';
   const having = { [itemField]: { [aggKey]: buildPrismaFilter(rule) } };
 
@@ -202,10 +191,7 @@ const buildAggregateStep = (
 
   const stepRef: StepRef = { __step: stepIndex };
 
-  // If there are intermediate relations, nest the filter through them
   if (intermediateRelations.length > 0) {
-    // The step ref gives us IDs of the model that owns the terminal list relation.
-    // We need to filter back through intermediate relations to the root model.
     const leafFilter = { [pkOnTerminal]: { in: stepRef } };
     const relationPath = intermediateRelations.map((r) => r.fieldName).join('.');
     return buildNestedFilter(relationPath, leafFilter);

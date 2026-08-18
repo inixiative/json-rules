@@ -5,38 +5,19 @@ import type { DateConfig } from '../types';
 export type PrismaFilter = Record<string, unknown>;
 export type PrismaWhere = Record<string, unknown>;
 
-/** A selectable option — the standard `<select>` shape: a value with an optional display
- * label, plus the partition keys (index-aligned with the source's `groupBy` axes)
- * when the source is grouped. */
+// gloss
 export type SourceOption = { value: string; label?: string; groups?: string[] };
 
-// FieldMap is structurally compatible with PrismaMap from @inixiative/prisma-map.
-// It only requires the fields that json-rules needs for traversal.
+// gloss
 export type FieldMapEntry = {
   kind: 'scalar' | 'object' | 'enum' | 'bridge';
   type: string;
   isList?: boolean;
   fromFields?: string[];
   toFields?: string[];
-  relationName?: string; // disambiguates multiple relations between same two models
-  /**
-   * Per-field allowed values, primarily for enum fields. Takes precedence over
-   * `FieldMap.enums[type]` if both are set. Pass-through from codegen
-   * (e.g. prisma-map's `EnumField.values`). Consumed by `checkRuleAgainstLens`.
-   */
+  relationName?: string;
   values?: readonly string[];
-  /**
-   * A field's selectable option set as `{ value, label? }` pairs — the display
-   * shape a picker consumes. On projection/surface output this is populated for
-   * every value-gated field (enum members normalized to `{ value, label: value }`)
-   * and for sourced fields (the fetched pairs from a materialized `SourceValues`).
-   */
   options?: readonly SourceOption[];
-  /**
-   * Present on projection/surface output when the field's source partitions its
-   * options: the dotted to-one axes (relative to this model) whose values are
-   * each option's `groups`, index-aligned.
-   */
   groupBy?: readonly string[];
 };
 
@@ -45,14 +26,9 @@ export type ModelEntry = {
   fields: Record<string, FieldMapEntry>;
 };
 
-/**
- * A schema map: models keyed by name, plus an optional enum registry scoped to
- * this source. In multi-source setups (Prisma + Salesforce + CRM) each FieldMap
- * carries its own enums so namespaces don't collide across sources.
- */
+// gloss
 export type FieldMap = {
   models: Record<string, ModelEntry>;
-  /** Enum name → allowed values, e.g. `{ UserRole: ['ADMIN', 'USER'] }`. */
   enums?: Record<string, readonly string[]>;
 };
 
@@ -76,8 +52,7 @@ export type WhereStep = {
 
 export type PrismaStep = GroupByStep | WhereStep;
 
-// steps is always present; the last entry is always a WhereStep.
-// GroupBySteps precede it when count-based relation filtering is needed.
+// gloss
 export type ToPrismaResult = {
   steps: PrismaStep[];
 };
@@ -90,7 +65,7 @@ export type BuildOptions = {
   datasource?: { provider?: PrismaProvider };
 } & DateConfig;
 
-// Mutable state threaded through build calls to accumulate intermediate groupBy steps
+// gloss
 export type PrismaBuildState = {
   steps: GroupByStep[];
 };

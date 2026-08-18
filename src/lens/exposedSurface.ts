@@ -8,11 +8,12 @@ import { resolveRelationTarget } from './walk.ts';
 
 const modelKey = (mapName: string, modelName: string): string => `${mapName}::${modelName}`;
 
-// A relPath matching no declared root.relations path → resolveVisit applies mapDefaults only.
+// gloss
 const OFF_PATH: readonly string[] = ['__offpath__'];
 
 type SurfaceModel = { mapName: string; modelName: string; fields: Map<string, FieldMapEntry> };
 
+// gloss
 const unionFieldInto = (
   fields: Map<string, FieldMapEntry>,
   name: string,
@@ -30,15 +31,13 @@ const unionFieldInto = (
   } else if (!entry.values && existing.values) {
     next = { ...next, values: undefined };
   }
-  // A later visit may carry the partition axes an earlier (e.g. off-path) visit
-  // lacked; divergence was already rejected before this merge.
   if (entry.groupBy !== undefined && next.groupBy === undefined) {
     next = { ...next, groupBy: entry.groupBy };
   }
   if (next !== existing) fields.set(name, next);
 };
 
-// Leak-safe total exposed surface of a narrowed lens, as a Lens. See docs/LENS.md.
+// gloss
 export const exposedSurface = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectOptions = {},
@@ -46,9 +45,6 @@ export const exposedSurface = (
   const policy: Policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;
 
-  // Per-model union of fetched options (the flattened surface collapses paths):
-  // dedup by (group, value) across paths — the same key the materializers use —
-  // so a grouped field's partition survives the union; a later occurrence wins.
   const fetchedByModelField = new Map<string, Map<string, SourceOption>>();
   for (const sv of opts.sourceValues ?? []) {
     const k = `${sv.mapName}::${sv.model}::${sv.field}`;
@@ -101,10 +97,6 @@ export const exposedSurface = (
       const enumValues = effect.enumValuesByField.get(fieldName);
       let nextEntry = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
       if (fetchedOptions) nextEntry = { ...nextEntry, options: [...fetchedOptions.values()] };
-      // Stamp the partition axes so consumers know WHICH sibling path pins this
-      // field's options. The surface flattens per model, so two paths declaring
-      // DIFFERENT axes for one field would union two incompatible partition
-      // namespaces — fail loud instead of merging them.
       const axes = effect.sourceGroupBys.get(fieldName);
       if (axes !== undefined) {
         const existing = acc.fields.get(fieldName)?.groupBy;
@@ -149,9 +141,6 @@ export const exposedSurface = (
     const fieldRecord: Record<string, FieldMapEntry> = {};
     const enumValuesByType = new Map<string, Set<string>>();
     for (const [name, entry] of fields) {
-      // A sourced field already carries fetched `options`; otherwise a value-gated
-      // field surfaces its (unioned) allowed-set as options, so every selectable
-      // field exposes `options` uniformly. `values` stays as the validation input.
       fieldRecord[name] =
         entry.options === undefined && entry.values
           ? { ...entry, options: entry.values.map((v) => ({ value: v, label: v })) }
@@ -173,8 +162,6 @@ export const exposedSurface = (
     }
   }
 
-  // Keep a bridge only if one of its injected bridge-fields survived (else it
-  // touches unexposed surface and its `on` keys would leak).
   const bridges: Bridge[] | undefined = lens.bridges?.filter((b) => {
     const [a, bb] = b.endpoints;
     const aExposesB = maps[a.fieldMap]?.models[a.model]?.fields[`${bb.fieldMap}:${bb.model}`];

@@ -1,3 +1,5 @@
+// gloss:file
+
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
@@ -50,5 +52,4 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
   throw new Error('Unknown condition type');
 };
 
-// Wire up circular dependency
 setConditionBuilder(buildCondition);

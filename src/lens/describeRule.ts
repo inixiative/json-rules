@@ -38,6 +38,7 @@ const restrictByWindow = (acc: Acc, cond: Record<string, unknown>): void => {
   }
 };
 
+// gloss
 const visit = (
   cond: Condition,
   acc: Acc,
@@ -83,7 +84,6 @@ const visit = (
     }
     acc.sources.add(walked.mapName);
     if (walked.mapName !== mapName) acc.bridgesCrossed = true;
-    // A Json column's members are undeclared — nested refs below it resolve at evaluation time.
     if (isJsonEntry(walked.entry)) nextOpen = true;
 
     if (walked.entry.kind === 'object' || walked.entry.kind === 'bridge') {
@@ -101,7 +101,6 @@ const visit = (
     }
   }
 
-  // `filter` and `condition` are both evaluated against the descended target.
   if (record.filter !== undefined) {
     visit(record.filter as Condition, acc, nextMap, nextModel, nextRelPath, nextOpen);
   }

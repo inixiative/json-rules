@@ -4,27 +4,20 @@ import { isFieldVisible, resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
+// gloss
 export type ProjectedVisit = {
   mapName: string;
   modelName: string;
   fields: Record<string, FieldMapEntry>;
   whereClauses: Condition[];
-  /** Per-field source eligibility wheres, composed across layers (general + path). */
   sources: Record<string, Condition[]>;
-  /** Per-field display-label column for a sourced field (from a SourceSpec's `label`). */
   sourceLabels: Record<string, string>;
-  /** Per-field option-partition axes for a sourced field (from a SourceSpec's `groupBy`). */
   sourceGroupBys: Record<string, string[]>;
 };
 
 export type PathProjection = Map<string, ProjectedVisit>;
 
-/**
- * The materialized option set for one sourced field — the fetched companion to a
- * serializable lens. Its `options` are `{ value, label? }` pairs (the standard
- * `<select>` shape); it feeds both projections: `projectByPath` keys by
- * `path`+`field` (exact), `exposedSurface` by `mapName`+`model`+`field` (union).
- */
+// gloss
 export type SourceValues = {
   path: string;
   mapName: string;
@@ -35,6 +28,7 @@ export type SourceValues = {
 
 export type ProjectOptions = { sourceValues?: readonly SourceValues[] };
 
+// gloss
 export const projectByPath = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectOptions = {},
@@ -65,8 +59,6 @@ export const projectByPath = (
       const fetchedOptions = fetchedByPathField.get(`${dottedPath}|${fieldName}`);
       const enumValues = effect.enumValuesByField.get(fieldName);
       let projected = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
-      // A sourced field's fetched pairs win; otherwise a value-gated field surfaces
-      // its resolved allowed-set as options, so every selectable field exposes `options`.
       const options = fetchedOptions ?? enumValues?.map((v) => ({ value: v, label: v }));
       if (options) projected = { ...projected, options };
       fields[fieldName] = projected;

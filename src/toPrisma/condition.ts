@@ -1,3 +1,5 @@
+// gloss:file
+
 import type { Condition } from '../types';
 import { buildAggregateRule, setConditionBuilderForAggregate } from './aggregate';
 import { buildArrayRule, setConditionBuilderForArray } from './array';
@@ -29,7 +31,6 @@ export const buildCondition = (
   throw new Error('Unknown condition type');
 };
 
-// Wire up circular dependencies
 setConditionBuilder(buildCondition);
 setConditionBuilderForArray(buildCondition);
 setConditionBuilderForAggregate(buildCondition);

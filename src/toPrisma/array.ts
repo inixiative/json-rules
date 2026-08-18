@@ -10,7 +10,7 @@ const WINDOW_UNSUPPORTED =
   'only extremal (take:1, single orderBy on the compared field, aligned direction) ' +
   'rewrites to every/some. Evaluate other windowed rules with check().';
 
-// Forward declaration - provided by condition.ts to avoid circular import
+// gloss
 type BuildConditionFn = (
   condition: Condition,
   options?: BuildOptions,
@@ -22,6 +22,7 @@ export const setConditionBuilderForArray = (fn: BuildConditionFn) => {
   buildCondition = fn;
 };
 
+// gloss
 export const buildArrayRule = (
   rule: ArrayRule,
   options?: BuildOptions,
@@ -33,7 +34,6 @@ export const buildArrayRule = (
     return buildArrayRule(rewritten, options, state);
   }
 
-  // Count operators generate a full WHERE clause (step ref) — skip the nested-filter wrapper
   if (
     rule.arrayOperator === ArrayOperator.atLeast ||
     rule.arrayOperator === ArrayOperator.atMost ||
@@ -60,11 +60,7 @@ export const buildArrayRule = (
   return buildNestedFilter(rule.field, filter);
 };
 
-/**
- * Walk a relation field path and return the target model name, so inner conditions
- * resolve against the right model (enables JSON-path and bridge detection inside
- * some/every/none). Returns null if the path isn't a chain of object relations.
- */
+// gloss
 const resolveRelationTarget = (field: string, map: FieldMap, rootModel: string): string | null => {
   const parts = field.split('.');
   let cur = rootModel;
@@ -82,13 +78,12 @@ const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions 
   return target ? { ...options, model: target } : options;
 };
 
+// gloss
 const buildArrayLeafFilter = (
   rule: ArrayRule,
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): unknown => {
-  // Inner condition runs against the relation target model, not the parent.
-  // Without this, JSON-path and bridge detection misfire inside some/every/none.
   const childOptions = childOptionsFor(rule, options);
   switch (rule.arrayOperator) {
     case ArrayOperator.all:

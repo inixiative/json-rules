@@ -10,36 +10,31 @@ import { projectByPath } from './projectByPath.ts';
 import { traversalGuards } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
-/** Prisma `select` shape — nested for a grouped source's relation path. */
+// gloss
 export type SourceSelect = { [field: string]: true | { select: SourceSelect } };
 
+// gloss
 export type SourcePrismaQuery = {
   model: string;
-  /** Absent for grouped sources — DISTINCT on the value column alone would collapse
-   * same-value rows across groups; dedup happens in `sourceValuesFromQueryRows`. */
+  // why: unset for grouped sources — DISTINCT on the value column alone collapses same-value rows across groups
   distinct?: string[];
   select: SourceSelect;
   where: PrismaWhere;
-  /** Present only if the composed where used count operators (run via executePrismaQueryPlan). */
   steps?: PrismaStep[];
 };
 
-/** `sql` is null when the composed where uses a predicate SQL can't express
- * (e.g. array-condition operators); `error` then carries why. Prisma still
- * compiles — run that, or fall back to fetch + `check()`. */
+// gloss
 export type SourceSqlQuery = { sql: string | null; params: unknown[]; error?: string };
 
+// gloss
 export type SourceQuery = {
-  path: string; // dotted projection path (e.g. 'Region' or 'User.region')
+  path: string;
   mapName: string;
   model: string;
   field: string;
-  /** Sibling column co-selected as each value's display label (from a SourceSpec's `label`). */
   label?: string;
-  /** Option-partition axes (from a SourceSpec's `groupBy`, normalized); each axis
-   * column is selected nested in prisma and aliased `__group_i` in sql. */
   groupBy?: string[];
-  composedWhere: Condition; // node whereClauses ∧ source where(s)
+  composedWhere: Condition;
   prisma: SourcePrismaQuery;
   sql: SourceSqlQuery;
 };
@@ -51,8 +46,7 @@ const compose = (whereClauses: Condition[], sourceClauses: Condition[]): Conditi
   return all.length === 1 ? all[0] : { all };
 };
 
-// 'map.definition.label' → { map: { select: { definition: { select: { label: true } } } } };
-// axes sharing a prefix merge into one nested select tree.
+// gloss
 const mergeSelect = (into: SourceSelect, path: string[]): void => {
   const [head, ...rest] = path;
   if (rest.length === 0) {
@@ -70,6 +64,7 @@ const nestedSelects = (paths: readonly string[]): SourceSelect => {
   return out;
 };
 
+// gloss
 const compileOne = (
   lens: Lens,
   mapName: string,
@@ -103,8 +98,6 @@ const compileOne = (
     let joins: string[];
     let groupCols: string[] | undefined;
     if (groupBy) {
-      // Build the where and the group columns against one state so the axis
-      // paths reuse (and extend) the where's join registry.
       const state: BuilderState = {
         params: [],
         paramIndex: 0,
@@ -137,13 +130,7 @@ const compileOne = (
   return { prisma, sql: sqlQuery };
 };
 
-/**
- * Compile a DISTINCT(value) query — Prisma and SQL — per sourced field across
- * the projected lens. The WHERE is the field's composed eligibility: the model's
- * own narrowing at that path AND its source where(s). The app runs these (with
- * its own client) to materialize each field's option set — feed the fetched rows
- * to `sourceValuesFromQueryRows`.
- */
+// gloss
 export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;

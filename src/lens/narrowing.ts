@@ -10,10 +10,7 @@ import {
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
-// A parent layer's removals bind descendant materialization targets: group keys and
-// label columns are client-visible option data, so a child source may not reference
-// what an ancestor removed. The declaring layer itself stays free — visibility ≠
-// materialization within one layer.
+// gloss
 const ancestorRemoval = (
   name: string,
   ancestorNodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[],
@@ -26,6 +23,7 @@ const ancestorRemoval = (
   return null;
 };
 
+// gloss
 const validateSourceTargetVisibility = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: readonly ModelNarrowing[],
@@ -44,9 +42,6 @@ const validateSourceTargetVisibility = (
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     const spec = normalizeSource(entry);
 
-    // An ancestor that declared the same target for this field already authorized
-    // materializing those values — re-declaring it is inherited authority, not a
-    // new reference past the ancestor's removals.
     const ancestorSpecs = [...ancestorChain, ...defaultsFor(mapName, modelName)]
       .map((n) => n.sources?.[field])
       .filter((x): x is NonNullable<typeof x> => x !== undefined)
@@ -82,7 +77,7 @@ const validateSourceTargetVisibility = (
         if (i === segments.length - 1) break;
         const fieldEntry = maps[curMap]?.models[curModel]?.fields[seg];
         const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
-        if (!target) break; // path resolvability is validated by groupByPathError
+        if (!target) break;
         nodes = nodes
           .map((n) => ('relations' in n ? n.relations?.[seg] : undefined))
           .filter((x): x is ModelNarrowing => x !== undefined);
@@ -93,7 +88,7 @@ const validateSourceTargetVisibility = (
   }
 };
 
-// A groupBy path descends to-one relations only and must land on a scalar/enum column.
+// gloss
 const groupByPathError = (
   groupBy: string,
   maps: Record<string, FieldMap>,
@@ -121,6 +116,7 @@ const groupByPathError = (
   return null;
 };
 
+// gloss
 const validateModelNode = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: ModelNarrowing[],
@@ -250,16 +246,13 @@ const validateModelNode = (
         const err = groupByPathError(axis, maps, mapName, modelName);
         if (err) errors.push(`${position}.sources.${field}: ${err}`);
       }
-      // The sql compile aliases each axis column '__group_i' — a grouped source
-      // selecting a real column of that shape would clobber it in flat rows.
       const reserved = /^__group(_\d+)?$/;
       if (reserved.test(field) || (spec.label !== undefined && reserved.test(spec.label))) {
         errors.push(
           `${position}.sources.${field}: '__group*' names are reserved on grouped sources (sql group aliases)`,
         );
       }
-      // where/sources compose AND-only across layers; divergent axes would
-      // silently re-partition an ancestor's option namespace — fail loud instead.
+      // why: layers compose AND-only — divergent axes would silently re-partition an ancestor's option namespace
       const axesKey = JSON.stringify(axes);
       for (const anc of ancestorChain) {
         const ancEntry = anc.sources?.[field];
@@ -545,6 +538,7 @@ const validatePathNarrowing = (
   }
 };
 
+// gloss
 export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const errors: string[] = [];
   const set = getRoot(narrowing);
@@ -638,7 +632,6 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   }
 
   if (narrowing.root?.where !== undefined) {
-    // where filters incoming rows → validate against the parent surface, not this layer's own picks
     const check = checkRuleAgainstLens(narrowing.root.where, narrowing.parent);
     for (const v of check.violations) {
       errors.push(`root.where: '${v.path}' ${v.reason}`);

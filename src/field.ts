@@ -5,22 +5,17 @@ import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
 import type { Rule, RuleValue } from './types';
 
-// A value is "empty" iff it is null, undefined, or the empty string — matching the
-// SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
-// (lodash isEmpty would also treat Dates/numbers/populated arrays as empty, which
-// diverges from the compilers and breaks soft-delete grants like `deletedAt isEmpty`.)
+// gloss
 const isEmptyValue = (value: unknown): boolean =>
   value === null || value === undefined || value === '';
 
-// Mirrors the server-side coerceValueForField contract: null/undefined pass through
-// (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
-// kinds pass through, and an uncoercible value returns unchanged so the comparison
-// fails with the rule's normal error instead of throwing on one dirty row.
+// gloss
 const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
 
-// A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
+// gloss
 const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
+// gloss
 const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   if (value === null || value === undefined) return value;
 
@@ -32,11 +27,6 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
 
   switch (kind) {
     case 'DateTime': {
-      // Everything lands on epoch ms so equals/ordered compare across Date
-      // instances, ISO strings (any zone/format), and ms-timestamp strings.
-      // A naive (zoneless) datetime string anchors in UTC — deterministic across
-      // hosts, matching the date rail's parseDateValue default (Date.parse would
-      // anchor it in the host's local zone).
       if (value instanceof Date) return value.getTime();
       if (typeof value === 'number') return value;
       if (typeof value !== 'string') return value;
@@ -64,16 +54,15 @@ const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => 
   return coerceScalar(value, kind);
 };
 
+// gloss
 export const checkField = <TData extends Record<string, unknown>>(
   condition: Rule,
   data: TData,
   context: TData,
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
-  // Use data for field access (current element) but context remains available for path references
   const fieldValue = applyCoercion(get(data, condition.field) as unknown, condition.coerceType);
 
-  // Operators that don't need a value
   const noValueOps: Operator[] = [
     Operator.isEmpty,
     Operator.notEmpty,
@@ -92,8 +81,6 @@ export const checkField = <TData extends Record<string, unknown>>(
   const lhs = ci && typeof fieldValue === 'string' ? fieldValue.toLowerCase() : fieldValue;
   const rhs = ci && typeof value === 'string' ? value.toLowerCase() : value;
 
-  // Fuzzy applies to containment search: typo-tolerant token match over strings, else the
-  // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive.
   const fuzzy = resolveFuzzy(condition.fuzzy);
   const containsMatch = (): boolean =>
     fuzzy && typeof fieldValue === 'string' && typeof value === 'string'
@@ -183,6 +170,7 @@ export const checkField = <TData extends Record<string, unknown>>(
   }
 };
 
+// gloss
 const getValue = <TData extends Record<string, unknown>>(
   condition: Rule,
   data: TData,
@@ -191,20 +179,16 @@ const getValue = <TData extends Record<string, unknown>>(
 ): unknown => {
   if (condition.value !== undefined) return condition.value;
   if (condition.bind !== undefined) {
-    // Key presence is the contract: an unsupplied binding is a caller bug (a
-    // forgotten scope must never silently run). A supplied-but-nullish binding is
-    // a value — normalize undefined → null (a legit fail-closed filter).
+    // why: key presence is the contract — a forgotten scope must never silently run as an absent binding
     if (!bindings || !(condition.bind in bindings))
       throw new Error(`Missing binding for "${condition.bind}"`);
     const bound = bindings[condition.bind];
     return bound === undefined ? null : bound;
   }
   if (condition.path) {
-    // Special case: if path starts with "$." use data (current element)
     if (condition.path.startsWith('$.')) {
       return get(data, condition.path.substring(2));
     }
-    // Otherwise use context (root data)
     return get(context, condition.path);
   }
   throw new Error('No value or path specified');

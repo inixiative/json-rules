@@ -3,12 +3,10 @@ import type { FieldMapSet } from './types.ts';
 
 type Row = Record<string, unknown>;
 
+// gloss
 export type BridgeDictionary = Record<
-  string, // map name
-  Record<
-    string, // model name
-    Record<string, Record<string, Row | Row[]>> // on field → identifier → row(s)
-  >
+  string,
+  Record<string, Record<string, Record<string, Row | Row[]>>>
 >;
 
 const keyByUnique = (
@@ -36,6 +34,7 @@ const keyByUnique = (
   return out;
 };
 
+// gloss
 export const buildBridgeDictionary = (
   set: FieldMapSet,
   rawData: Record<string, Row[]>,
@@ -55,9 +54,7 @@ export const buildBridgeDictionary = (
       out[b.fieldMap] ??= {};
       out[b.fieldMap][b.model] ??= {};
       if (bridge.cardinality === 'oneToMany') {
-        // Filter null/undefined `on` values — lodash groupBy would otherwise stringify
-        // them into 'null'/'undefined' keys, causing spurious joins when looking up
-        // rows whose own join field is null.
+        // why: lodash groupBy stringifies null/undefined into 'null'/'undefined' keys → spurious joins
         const valid = rawData[bKey].filter((row) => row[b.on] !== null && row[b.on] !== undefined);
         out[b.fieldMap][b.model][b.on] = groupBy(valid, b.on);
       } else {

@@ -1,22 +1,6 @@
 import type { GroupByStep, ToPrismaResult, WhereStep } from './types';
 
-/**
- * Execute a Prisma query plan produced by toPrisma().
- *
- * The plan is a flat list of steps where all but the last are `groupBy` steps
- * that feed results (via { __step: N } sentinels) into subsequent steps.
- * The final step is always a `where` step whose resolved WHERE clause is returned.
- *
- * @param result         - Result from toPrisma()
- * @param prismaDelegate - Map of camelCase model name → Prisma delegate
- *                         e.g. { post: prisma.post, user: prisma.user }
- * @returns The resolved WHERE clause (ready for findMany/count/etc.)
- *
- * @example
- * const plan = toPrisma(condition, { map, model: 'User' });
- * const where = await executePrismaQueryPlan(plan, { post: prisma.post });
- * await prisma.user.findMany({ where });
- */
+// gloss
 export const executePrismaQueryPlan = async (
   result: ToPrismaResult,
   prismaDelegate: Record<string, Record<string, (...args: unknown[]) => unknown>>,
@@ -40,14 +24,10 @@ export const executePrismaQueryPlan = async (
       );
     }
     const rows = await delegate[step.operation](step.args);
-    // A related row whose join FK is null belongs to no root entity, so it can
-    // never contribute a membership id. groupBy over a nullable FK still emits a
-    // null group, and Prisma rejects a mixed null+string array in `in`/`notIn`,
-    // so drop nulls here at the gather point. An empty result stays a real `[]`:
-    // `in: []` matches nothing and `notIn: []` matches everything, both correct.
     stepResults.push(
       (rows as Record<string, unknown>[])
         .map((r) => r[step.extract])
+        // why: Prisma rejects a mixed null+string `in` array — drop the null group a nullable FK produces
         .filter((v) => v !== null && v !== undefined),
     );
   }
@@ -55,9 +35,7 @@ export const executePrismaQueryPlan = async (
   return resolveStepRefs(whereStep.where, stepResults) as Record<string, unknown>;
 };
 
-/**
- * Recursively replace { __step: N } sentinels with the corresponding step result array.
- */
+// gloss
 const resolveStepRefs = (obj: unknown, stepResults: unknown[][]): unknown => {
   if (obj === null || obj === undefined) return obj;
 
@@ -66,9 +44,7 @@ const resolveStepRefs = (obj: unknown, stepResults: unknown[][]): unknown => {
   }
 
   if (typeof obj === 'object') {
-    // Only plain objects are walked — a compiled leaf like a Date (or Decimal/
-    // Buffer) must pass through untouched; entry-copying it would strip its
-    // prototype and hand Prisma an empty object.
+    // why: entry-copying a compiled leaf (Date/Decimal) strips its prototype and hands Prisma an empty object
     const proto = Object.getPrototypeOf(obj);
     if (proto !== Object.prototype && proto !== null) return obj;
     const record = obj as Record<string, unknown>;

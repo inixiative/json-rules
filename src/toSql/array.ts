@@ -7,6 +7,7 @@ import type { BuilderState } from './types';
 const WINDOW_UNSUPPORTED =
   'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().';
 
+// gloss
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
   if (hasWindow(rule)) throw new Error(WINDOW_UNSUPPORTED);
   if (!rule.field) {
@@ -16,15 +17,11 @@ export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => 
   const fieldEntry = state.map?.models[state.currentModel ?? '']?.fields[rule.field];
   const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
 
-  // Different length functions for JSONB vs native PostgreSQL arrays
-  const lengthFn = isNative
-    ? `array_length(${field}, 1)` // Native: TEXT[], INT[], etc.
-    : `jsonb_array_length(${field})`; // JSONB arrays
+  const lengthFn = isNative ? `array_length(${field}, 1)` : `jsonb_array_length(${field})`;
 
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
       if (isNative) {
-        // Native arrays: NULL or empty (array_length returns NULL for empty)
         return `(${field} IS NULL OR ${lengthFn} IS NULL)`;
       }
       return `(${field} IS NULL OR ${lengthFn} = 0)`;

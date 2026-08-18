@@ -6,16 +6,7 @@ export type MapWalkResult =
   | { kind: 'bridge' }
   | { kind: 'fallback' };
 
-/**
- * Walk a dot-notation field path through the FieldMap.
- *
- * Returns how to interpret the path:
- * - 'direct'    – all segments are relations/scalars, use standard nested filter;
- *                 `entry` is the terminal field's map entry
- * - 'json-path' – a Json scalar was found mid-path; stopIndex segments form the
- *                 Prisma nested key, the rest become the JSON path array
- * - 'fallback'  – a segment was not found in the map; use existing behavior
- */
+// gloss
 export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): MapWalkResult => {
   const parts = field.split('.');
   let currentModel = rootModel;
@@ -30,7 +21,6 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
     if (fieldEntry.kind === 'bridge') return { kind: 'bridge' };
 
     if (fieldEntry.kind === 'scalar' && fieldEntry.type === 'Json' && i < parts.length - 1) {
-      // This segment is a Json field and there are more segments → JSON path
       return { kind: 'json-path', stopIndex: i + 1, jsonPath: parts.slice(i + 1) };
     }
 
@@ -41,7 +31,6 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
       continue;
     }
 
-    // scalar or enum at a terminal position
     return { kind: 'direct', entry: fieldEntry };
   }
 

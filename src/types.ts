@@ -15,8 +15,7 @@ export type OrderedRuleValue = string | number | Date;
 
 export type DateInputValue = string | number | Date;
 
-// --- Relative & calendar date expressions (v2.6.0) ---
-// Positive magnitudes only; direction lives in the keyword. Units are dayjs words.
+// gloss
 export type RelativeUnits = {
   years?: number;
   quarters?: number;
@@ -38,12 +37,12 @@ export type PeriodUnit =
   | 'minute'
   | 'second';
 
-// Point expressions — resolve to a single instant.
+// gloss
 export type RollingExpr = { ago: RelativeUnits } | { ahead: RelativeUnits };
 export type PeriodExpr = { this: PeriodUnit } | { last: PeriodUnit } | { next: PeriodUnit };
 export type EdgeExpr = { start: PeriodExpr } | { end: PeriodExpr };
 
-// A date expression is either a point (rolling/edge) or a range (period/rolling).
+// gloss
 export type DateExpr = RollingExpr | PeriodExpr | EdgeExpr;
 
 export type DateInputOrExpr = DateInputValue | DateExpr;
@@ -55,9 +54,7 @@ export type DateRuleValue =
   | string[];
 
 export type WeekStart = 'monday' | 'sunday';
-// The anchoring timezone for naive datetimes. Either a literal IANA zone string, or a
-// bound reference resolved from the evaluation's `bindings` (same bind mechanism as rule
-// values). Stays ONE zone per evaluation; absolute instants never consult it.
+// gloss
 export type TimeZoneConfig = string | { bind: string };
 export type DateConfig = {
   now?: DateInputValue;
@@ -220,8 +217,7 @@ export type StrictAggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleVal
       operator: AggregateRangeOperator;
     } & ValueSource<[number, number]>);
 
-// --- Windowing selector (v2.6.0) ---
-// Ordered selection on array/aggregate rules. Pipeline: order → skip → take.
+// gloss
 export type SortDir = 'asc' | 'desc';
 export type OrderBy = { field: string; dir: SortDir }[];
 export type WindowFields = {
@@ -242,6 +238,7 @@ export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = 
   error?: string;
 };
 
+// gloss
 export type Rule<TValue = RuleValue> = {
   field: string;
   operator: Operator;
@@ -251,8 +248,6 @@ export type Rule<TValue = RuleValue> = {
   error?: string;
   caseInsensitive?: boolean;
   fuzzy?: boolean | FuzzyConfig;
-  // Declared kind both sides coerce to before comparing — never inferred from the
-  // values. Stamp mechanically from a lens via stampCoercions().
   coerceType?: FieldKind;
 };
 

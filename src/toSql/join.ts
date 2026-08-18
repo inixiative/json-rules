@@ -3,15 +3,7 @@ import { escapeIdentifier } from './escape';
 import { quoteField, quoteQualifiedField } from './quoting';
 import type { BuilderState, FieldMap } from './types';
 
-/**
- * Resolve a dot-notation field to a fully-qualified SQL expression,
- * generating LEFT JOINs for any relation traversals found in the map.
- *
- * Falls back to quoteField() when map/model/alias are not set or a
- * segment is not found in the map.
- *
- * Mutates state.joins, state.joinCounter, and state.joinRegistry.
- */
+// gloss
 export const resolveFieldSql = (field: string, state: BuilderState): string => {
   if (!state.map || !state.currentModel || !state.currentAlias) {
     return quoteField(field);
@@ -23,13 +15,12 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
 
   for (let i = 0; i < parts.length; i++) {
     const modelEntry = state.map.models[currentModel];
-    if (!modelEntry) return quoteField(field); // fallback
+    if (!modelEntry) return quoteField(field);
 
     const fieldEntry = modelEntry.fields[parts[i]];
-    if (!fieldEntry) return quoteField(field); // fallback
+    if (!fieldEntry) return quoteField(field);
 
     if (fieldEntry.kind === 'object') {
-      // Traverse relation: generate (or reuse) a JOIN
       const registryKey = `${currentAlias}.${parts[i]}`;
       const existingAlias = state.joinRegistry?.get(registryKey);
       let targetAlias: string;
@@ -48,7 +39,7 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
           fieldEntry,
           targetAlias,
         );
-        if (!joinClause) return quoteField(field); // fallback: can't determine FK
+        if (!joinClause) return quoteField(field);
 
         state.joins?.push(joinClause);
         state.joinRegistry?.set(registryKey, targetAlias);
@@ -59,19 +50,14 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
       continue;
     }
 
-    // scalar or enum — remaining parts are either the column itself or JSON sub-path
     const remaining = parts.slice(i);
     return quoteQualifiedField(remaining.join('.'), currentAlias);
   }
 
-  // Reached end after only traversing relations (field is the relation itself)
   return quoteField(field);
 };
 
-/**
- * Build a LEFT JOIN clause string for a relation field traversal.
- * Returns null when the FK cannot be determined.
- */
+// gloss
 const buildJoinClause = (
   map: FieldMap,
   currentModel: string,
@@ -90,7 +76,6 @@ const buildJoinClause = (
     fieldEntry.toFields &&
     fieldEntry.toFields.length > 0
   ) {
-    // Forward relation: current model has FK (composite FK supported via multi-condition AND)
     onCondition = fieldEntry.fromFields
       .map(
         (from, i) =>
@@ -99,8 +84,6 @@ const buildJoinClause = (
       )
       .join(' AND ');
   } else {
-    // Back-relation: FK is on the target model — find the reverse relation.
-    // Pass relationName so multiple relations between the same two models are disambiguated.
     const reverse = findReverseRelation(map, targetModel, currentModel, fieldEntry.relationName);
     if (!reverse) return null;
     onCondition = (reverse.fromFields ?? [])

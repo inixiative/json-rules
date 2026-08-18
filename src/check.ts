@@ -96,6 +96,7 @@ const any = <TData extends CheckData>(
   return `At least one condition must pass: ${errors.join(' OR ')}`;
 };
 
+// gloss
 const checkIfThenElse = <TData extends CheckData>(
   condition: { if: Condition; then: Condition; else?: Condition },
   data: TData,
@@ -103,8 +104,6 @@ const checkIfThenElse = <TData extends CheckData>(
 ): boolean | string => {
   const ifResult = check(condition.if, data, opts);
   if (ifResult === true) return check(condition.then, data, opts);
-  // `false` is a legal else value (deny branch); use !== undefined so it's
-  // evaluated rather than skipped by truthiness.
   return condition.else !== undefined ? check(condition.else, data, opts) : true;
 };
 

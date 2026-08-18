@@ -10,31 +10,30 @@ import type {
 } from './types.ts';
 import { collectChain, getRoot, isJsonEntry, resolveRelationTarget } from './walk.ts';
 
+// gloss
 export type VisitEffect = {
   picks: Set<string> | null;
   omits: Set<string>;
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
   sources: Map<string, Condition[]>;
-  /** Per-field display-label column (from a SourceSpec's `label`); a later layer wins. */
   sourceLabels: Map<string, string>;
-  /** Per-field option-partition axes (from a SourceSpec's `groupBy`, normalized); a later layer wins. */
   sourceGroupBys: Map<string, string[]>;
   relations: Map<string, ModelNarrowing>;
 };
 
-/** Normalize a `groupBy` declaration to its axes array (a bare string is one axis). */
+// gloss
 export const normalizeGroupBy = (g: string | string[] | undefined): string[] | undefined =>
   g === undefined ? undefined : Array.isArray(g) ? g : [g];
 
-/** A `sources` entry is a `SourceSpec` when it carries `where`/`label`/`groupBy`; else it's a bare `Condition`. */
+// gloss
 export const isSourceSpec = (v: SourceValue): v is SourceSpec =>
   typeof v === 'object' &&
   v !== null &&
   !Array.isArray(v) &&
   ('where' in v || 'label' in v || 'groupBy' in v);
 
-/** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
+// gloss
 export const normalizeSource = (v: SourceValue): SourceSpec => {
   if (isSourceSpec(v)) return v;
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
@@ -116,6 +115,7 @@ export const accumulateEnumFields = (
   }
 };
 
+// gloss
 const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
   accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined) out.whereClauses.push(n.where);
@@ -124,7 +124,7 @@ const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrow
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
       if (spec.where !== undefined) clauses.push(spec.where);
-      out.sources.set(field, clauses); // register the field even when only a label is set
+      out.sources.set(field, clauses);
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       const axes = normalizeGroupBy(spec.groupBy);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);
@@ -132,6 +132,7 @@ const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrow
   }
 };
 
+// gloss
 export const resolveVisit = (
   policy: Policy,
   mapName: string,
@@ -194,10 +195,6 @@ export const resolveVisit = (
 
   for (const [fieldName, entry] of Object.entries(model.fields)) {
     const isEnum = entry.kind === 'enum';
-    // Enums draw from the registry; any other kind (scalar, Json) is gated by an explicit
-    // `values` set. A hydrated source's folded `options` gate too and win when present — a
-    // consumer re-feeds an exposed surface here, so this is load-bearing (see
-    // test/lens.sourceOptionsGating.test.ts).
     const optionValues = entry.options?.map((o) => o.value);
     const baseValues =
       optionValues ?? (isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values);
@@ -230,6 +227,7 @@ export const allowedEnumValues = (
   fieldName: string,
 ): readonly string[] | null => effect.enumValuesByField.get(fieldName) ?? null;
 
+// gloss
 export const walkLensPath = (
   policy: Policy,
   startMap: string,
@@ -244,7 +242,6 @@ export const walkLensPath = (
   hopEffects: VisitEffect[];
   terminalEffect: VisitEffect;
   terminalFieldName: string;
-  /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
   jsonSubPath: string[];
 } | null => {
   const parts = fieldPath.split('.');
@@ -262,9 +259,6 @@ export const walkLensPath = (
     if (!isFieldVisible(effect, fieldName)) return null;
     const entry = model.fields[fieldName];
     if (!entry) return null;
-    // A Json column has no declared sub-fields; a dotted sub-path into it is resolved
-    // by the evaluators/compilers (check/toPrisma/toSql), so the field resolves to the
-    // visible Json column — stop here and treat it as the terminal.
     if (isJsonEntry(entry) && i < parts.length - 1) {
       return {
         mapName,

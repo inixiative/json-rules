@@ -1,22 +1,11 @@
 import { escapeIdentifier } from './escape';
 
-/**
- * Escape a value for use in a LIKE pattern.
- * Escapes \, %, and _ which are special characters in PostgreSQL LIKE.
- */
+// gloss
 export const escapeLikePattern = (value: string): string => {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 };
 
-/**
- * Quote a field name as a SQL identifier, handling JSON paths.
- * Uses pg's escapeIdentifier for proper SQL injection prevention.
- *
- * Examples:
- *   "name" → "name"
- *   "data.theme" → "data"->>'theme'
- *   "settings.display.mode" → "settings"->'display'->>'mode'
- */
+// gloss
 export const quoteField = (field: string): string => {
   const parts = field.split('.');
   if (parts.length === 1) return escapeIdentifier(field);
@@ -27,14 +16,7 @@ export const quoteField = (field: string): string => {
   return buildJsonPath(escapeIdentifier(column), jsonPath);
 };
 
-/**
- * Quote a field (with possible JSON sub-path) qualified with a table alias.
- *
- * Examples:
- *   quoteQualifiedField('name', 't0')           → "t0"."name"
- *   quoteQualifiedField('data.theme', 't0')      → "t0"."data"->>'theme'
- *   quoteQualifiedField('data.a.b', 't0')        → "t0"."data"->'a'->>'b'
- */
+// gloss
 export const quoteQualifiedField = (field: string, alias: string): string => {
   const parts = field.split('.');
   if (parts.length === 1) {
@@ -59,14 +41,7 @@ const buildJsonPath = (columnExpr: string, jsonPath: string[]): string => {
   return `${columnExpr}->>${leaf}`;
 };
 
-/**
- * Like quoteField but keeps the leaf as JSONB (uses -> instead of ->> at the end).
- * Required when the result must be a JSONB value, e.g. as input to jsonb_array_elements().
- *
- * Examples:
- *   "scores"           → "scores"
- *   "settings.scores"  → "settings"->'scores'
- */
+// gloss
 export const quoteFieldAsJsonb = (field: string): string => {
   const parts = field.split('.');
   if (parts.length === 1) return escapeIdentifier(field);

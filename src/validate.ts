@@ -506,6 +506,7 @@ const validateArrayRule = (
   }
 };
 
+// gloss
 const validateDateRule = (
   rule: Record<string, unknown>,
   path: string,
@@ -569,14 +570,12 @@ const validateDateRule = (
   if (!requireValueOrPath(rule, path, context)) return;
   if ('path' in rule && typeof rule.path === 'string') return;
 
-  // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
   if (isDateExpr(rule.value)) {
     validateDateExpr(rule.value, operator, `${path}.value`, context);
     return;
   }
 
   if (operator === 'within') {
-    // `within` only accepts an expression range (period or rolling), not a literal pair.
     pushIssue(
       context,
       `${path}.value`,
@@ -621,8 +620,6 @@ const validateDateRule = (
     return;
   }
 
-  // A date-like value must actually parse — a string that survives validation but
-  // fails the compilers/check() would persist clean and then fail at evaluation.
   if (!parseDateValue(rule.value, 'UTC').isValid()) {
     pushIssue(
       context,
@@ -633,7 +630,7 @@ const validateDateRule = (
   }
 };
 
-// --- v2.6 date-expression validation ---
+// gloss
 const validateRelativeUnits = (units: unknown, path: string, context: ValidationContext): void => {
   if (!isPlainObject(units) || Object.keys(units).length === 0) {
     pushIssue(
@@ -777,6 +774,7 @@ const isDateRangeOrExprPair = (value: unknown): boolean =>
   (isDateInputValue(value[0]) || isDateExpr(value[0])) &&
   (isDateInputValue(value[1]) || isDateExpr(value[1]));
 
+// gloss
 const validateWindow = (
   rule: Record<string, unknown>,
   path: string,
@@ -789,7 +787,6 @@ const validateWindow = (
     ('skip' in rule && rule.skip !== undefined);
 
   if (windowed && context.target !== 'check') {
-    // toPrisma supports the extremal (take:1, aligned, unfiltered) rewrite to every/some.
     const eligible =
       context.target === 'toPrisma' && extremalRewrite(rule as unknown as ArrayRule) !== null;
     if (!eligible) {

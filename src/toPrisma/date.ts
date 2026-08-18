@@ -17,10 +17,7 @@ const dateConfigOf = (options?: BuildOptions): DateConfig => ({
   weekStart: options?.weekStart,
 });
 
-// Literal/path date values compile through the same parse-and-anchor seam check()
-// uses (naive strings → midnight in the resolved zone; instants as-is), emitted as
-// concrete Dates — a raw 'YYYY-MM-DD' in a Prisma where is rejected by Prisma and
-// would carry different zone semantics than check().
+// gloss
 const coerceDateLiteral = (value: unknown, config: DateConfig): unknown => {
   if (value === undefined || !isDateInputValue(value)) return value;
   const parsed = parseDateValue(value, resolveTimeZone(config));
@@ -33,12 +30,7 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
   return buildNestedFilter(rule.field, filter);
 };
 
-/**
- * Resolve the date value for a DateRule.
- * - rule.value → use literal
- * - rule.path starting with '$.' → throw (no column-to-column in Prisma WHERE)
- * - rule.path (context ref) → look up from options.context
- */
+// gloss
 const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
   if (rule.path) {
@@ -59,10 +51,9 @@ const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
   return undefined;
 };
 
+// gloss
 const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown => {
   const config = dateConfigOf(options);
-  // Point operators: resolve a date expression (operator-aware implied edges) to a
-  // concrete Date at compile time, else fall back to literal/path resolution.
   const point = (): unknown =>
     isDateExpr(rule.value)
       ? resolvePointForOperator(rule.value, rule.dateOperator, config).toDate()

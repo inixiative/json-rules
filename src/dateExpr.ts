@@ -34,7 +34,7 @@ const UNIT_FOR: Record<keyof RelativeUnits, ManipulateUnit> = {
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
 
-/** True when a DateRule `value` is a structured date expression rather than an absolute date. */
+// gloss
 export const isDateExpr = (value: unknown): value is DateExpr => {
   if (!isPlainObject(value)) return false;
   return (
@@ -48,12 +48,10 @@ export const isDateExpr = (value: unknown): value is DateExpr => {
   );
 };
 
+// gloss
 const requireNow = (config: DateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
     throw new Error('date expressions require `now` to be supplied to the evaluator');
-  // Only a literal zone string anchors `now` here; the bind form is resolved upstream (in
-  // checkDate, which normalizes config.timeZone to a concrete string) — there are no
-  // bindings at this layer (compilers), so a non-string zone means "no static anchor".
   const zone = typeof config.timeZone === 'string' ? config.timeZone : undefined;
   const base = zone ? dayjs(config.now).tz(zone) : dayjs(config.now);
   if (!base.isValid()) throw new Error(`invalid \`now\`: ${String(config.now)}`);
@@ -76,21 +74,20 @@ export const isPeriodExpr = (e: DateExpr): e is PeriodExpr =>
   'this' in e || 'last' in e || 'next' in e;
 export const isEdgeExpr = (e: DateExpr): e is EdgeExpr => 'start' in e || 'end' in e;
 
-// `week` is governed by weekStart (default monday → isoWeek). `isoWeek` is always Monday.
+// gloss
 const effectivePeriodUnit = (unit: PeriodUnit, config: DateConfig): dayjs.OpUnitType => {
   if (unit === 'week')
     return (config.weekStart === 'sunday' ? 'week' : 'isoWeek') as dayjs.OpUnitType;
   return unit as dayjs.OpUnitType;
 };
 
-/** Resolve a calendar period (this/last/next) to its [start, end] boundaries. */
+// gloss
 export const resolvePeriodRange = (
   expr: PeriodExpr,
   config: DateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs] => {
   const now = requireNow(config);
   const unit = 'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
-  // Step whole periods first, then snap — robust to month-length clamping.
   const stepUnit = (unit === 'isoWeek' ? 'week' : unit) as dayjs.QUnitType;
   let base = now;
   if ('last' in expr) base = now.subtract(1, stepUnit);
@@ -99,10 +96,7 @@ export const resolvePeriodRange = (
   return [base.startOf(eff), base.endOf(eff)];
 };
 
-/**
- * Resolve a point expression (for before/after/onOrBefore/onOrAfter).
- * Rolling → the offset instant; edge → the named boundary of a period.
- */
+// gloss
 export const resolveDateExpr = (expr: DateExpr, config: DateConfig): dayjs.Dayjs => {
   if (isRollingExpr(expr)) {
     const base = requireNow(config);
@@ -118,11 +112,7 @@ export const resolveDateExpr = (expr: DateExpr, config: DateConfig): dayjs.Dayjs
   );
 };
 
-/**
- * Resolve the single comparison point for before/after/onOrBefore/onOrAfter.
- * Bare period → implied edge (before/onOrBefore → start; after/onOrAfter → end).
- * Rolling/edge → their point. Shared by check, toPrisma, and toSql.
- */
+// gloss
 export const resolvePointForOperator = (
   expr: DateExpr,
   operator: string,
@@ -135,10 +125,7 @@ export const resolvePointForOperator = (
   return resolveDateExpr(expr, config);
 };
 
-/**
- * Resolve a range expression (for `within`).
- * Period → its [start, end]; rolling → [now-Δ, now] / [now, now+Δ].
- */
+// gloss
 export const resolveDateExprRange = (
   expr: DateExpr,
   config: DateConfig,

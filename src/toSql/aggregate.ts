@@ -23,8 +23,8 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
   return buildAggregateComparison(subquery, rule, state);
 };
 
+// gloss
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {
-  // Use JSONB-preserving field reference — aggregate functions need JSONB input, not text
   const field = quoteFieldAsJsonb(rule.field);
   const { mode, field: itemField } = rule.aggregate;
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
@@ -56,13 +56,11 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
   }
 
   if (itemField) {
-    // JSONB object array
     const extract = `(elem->>'${itemField}')::numeric`;
     const agg = fn === 'SUM' ? `COALESCE(SUM(${extract}), 0)` : `AVG(${extract})`;
     return `(SELECT ${agg} FROM jsonb_array_elements(${field}) AS elem)`;
   }
 
-  // JSONB primitive array
   const extract = `elem::numeric`;
   const agg = fn === 'SUM' ? `COALESCE(SUM(${extract}), 0)` : `AVG(${extract})`;
   return `(SELECT ${agg} FROM jsonb_array_elements_text(${field}) AS elem)`;

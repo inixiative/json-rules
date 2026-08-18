@@ -25,12 +25,14 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
     };
   }
   if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
+    // why: fail closed — path-ref semantics don't survive re-rooting; guessing emits a wrong grant
     if ('path' in cond && cond.path !== undefined) {
       throw new Error(
         `applyLens: cannot re-root a relation grant with a path reference ('${String(cond.path)}') ` +
           `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
       );
     }
+    // why: fail closed — a nested array/aggregate condition is row-scoped to another anchor
     if ('condition' in cond && cond.condition !== undefined) {
       throw new Error(
         `applyLens: cannot re-root a relation grant with a nested array/aggregate condition on ` +
@@ -56,6 +58,7 @@ const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] => {
   for (const hop of hops) {
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
     if (effect.whereClauses.length === 0) continue;
+    // why: fail closed — a to-many hop has no scalar path to AND; dropping it leaves the grant unenforced
     if (hop.isList) {
       throw new Error(
         `applyLens: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
@@ -149,6 +152,7 @@ const rewriteRule = (
       const allGrants: Condition[] = [];
       for (const whereClause of effectAtDescent.whereClauses) {
         if (arrayOp === ArrayOperator.all) {
+          // why: filter-first — a per-row negate implication is unsound under a window and partial-field semantics
           allGrants.push(whereClause);
         } else if (arrayOp) {
           inner = injectIntoArrayCondition(inner, whereClause);

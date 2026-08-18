@@ -16,6 +16,7 @@ export type SourceSelect = { [field: string]: true | { select: SourceSelect } };
 // gloss
 export type SourcePrismaQuery = {
   model: string;
+  // why: unset for grouped sources — DISTINCT on the value column alone collapses same-value rows across groups
   distinct?: string[];
   select: SourceSelect;
   where: PrismaWhere;

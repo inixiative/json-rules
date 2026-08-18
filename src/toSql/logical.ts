@@ -10,6 +10,7 @@ export const setConditionBuilder = (fn: BuildConditionFn) => {
 };
 
 // gloss
+// why: bridge predicates compile to 'TRUE' and NOT(TRUE) OR X collapses the implication — if/then must over-fetch
 const pathHitsBridge = (field: string, map: FieldMap, model: string): boolean => {
   const parts = field.split('.');
   let cur = model;

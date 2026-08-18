@@ -95,6 +95,7 @@ const visit = (
     }
   }
 
+  // why: gate the RHS path like the LHS field — else a rule reaches outside the lens via its comparison value
   if ('path' in cond && typeof cond.path === 'string' && cond.path !== '') {
     const isCurrentElement = cond.path.startsWith('$.');
     if (!(isCurrentElement && open)) {

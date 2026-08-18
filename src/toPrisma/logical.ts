@@ -31,6 +31,7 @@ const resolveRelationTargetModel = (
 };
 
 // gloss
+// why: bridge leaves compile to {} — if/then needs this detector to over-fetch instead of emitting NOT: {}
 const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolean => {
   if (typeof cond === 'boolean') return false;
   if (!options?.map || !options?.model) return false;
@@ -83,6 +84,7 @@ export const buildIfThenElse = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  // why: NOT: {} matches nothing in Prisma — a bridge in any branch corrupts the implication
   if (
     conditionTouchesBridge(cond.if, options) ||
     conditionTouchesBridge(cond.then, options) ||
@@ -108,4 +110,5 @@ export const buildIfThenElse = (
 };
 
 // gloss
+// why: self-contradiction on `id` — relies on the model having an id field
 const MATCH_NOTHING: PrismaWhere = { AND: [{ id: null }, { id: { not: null } }] };

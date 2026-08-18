@@ -252,6 +252,7 @@ const validateModelNode = (
           `${position}.sources.${field}: '__group*' names are reserved on grouped sources (sql group aliases)`,
         );
       }
+      // why: layers compose AND-only — divergent axes would silently re-partition an ancestor's option namespace
       const axesKey = JSON.stringify(axes);
       for (const anc of ancestorChain) {
         const ancEntry = anc.sources?.[field];

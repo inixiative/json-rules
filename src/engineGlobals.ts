@@ -57,6 +57,7 @@ export const engineGlobals = {
     store = merge(cloneDeep(prev), partial);
     try {
       const result = fn();
+      // why: a sync fn is atomic under run-to-completion; an async fn yields mid-scope and leaks the override
       if (isThenable(result))
         throw new Error(
           'engineGlobals.with() callback must be synchronous (it returned a Promise).',

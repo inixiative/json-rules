@@ -35,6 +35,7 @@ export const resolveBindings = (
   if (typeof node.bind === 'string' && node.bind in bindings) {
     const { bind, ...rest } = node;
     const bound = bindings[bind as string];
+    // why: undefined → null keeps the substituted condition serializable JSON
     node = { ...rest, value: bound === undefined ? null : bound };
   }
 

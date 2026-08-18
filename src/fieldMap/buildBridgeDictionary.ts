@@ -54,6 +54,7 @@ export const buildBridgeDictionary = (
       out[b.fieldMap] ??= {};
       out[b.fieldMap][b.model] ??= {};
       if (bridge.cardinality === 'oneToMany') {
+        // why: lodash groupBy stringifies null/undefined into 'null'/'undefined' keys → spurious joins
         const valid = rawData[bKey].filter((row) => row[b.on] !== null && row[b.on] !== undefined);
         out[b.fieldMap][b.model][b.on] = groupBy(valid, b.on);
       } else {

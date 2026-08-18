@@ -179,6 +179,7 @@ const getValue = <TData extends Record<string, unknown>>(
 ): unknown => {
   if (condition.value !== undefined) return condition.value;
   if (condition.bind !== undefined) {
+    // why: key presence is the contract — a forgotten scope must never silently run as an absent binding
     if (!bindings || !(condition.bind in bindings))
       throw new Error(`Missing binding for "${condition.bind}"`);
     const bound = bindings[condition.bind];

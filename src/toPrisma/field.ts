@@ -18,6 +18,7 @@ const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
       ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
       : undefined;
   const entry = walk?.kind === 'direct' ? walk.entry : undefined;
+  // why: Prisma rejects equals: '' on DateTime/Int/enum columns — a widened branch turns isEmpty into a 500
   if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
   return (
     rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
@@ -26,6 +27,7 @@ const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
 
 // gloss
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+  // why: emptiness needs OR/AND at the WHERE level — Prisma rejects mixed null/string in a field-level in/notIn
   if (rule.operator === Operator.isEmpty) {
     const isNull = buildMapAwareFilter(rule.field, { equals: null }, options);
     if (!acceptsEmptyString(rule, options)) return isNull;

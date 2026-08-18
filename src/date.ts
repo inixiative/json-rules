@@ -211,6 +211,7 @@ const hasExplicitZone = (value: string): boolean =>
 export const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
   if (typeof value === 'string' && !hasExplicitZone(value)) {
     const base = dayjs(value);
+    // why: dayjs.tz throws on a bad parse; the invalid base lets callers' isValid() report the friendly error
     if (!base.isValid()) return base;
     return dayjs.tz(value, tz);
   }

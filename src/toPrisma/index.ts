@@ -6,6 +6,7 @@ import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from '.
 const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined => {
   if (!options?.map) return options;
   const mapIsSet = 'maps' in options.map;
+  // why: a FieldMapSet without mapName would pass through as a FieldMap — silently losing map-awareness
   if (mapIsSet && !options.mapName) {
     throw new Error(
       `toPrisma: 'map' is a FieldMapSet — 'mapName' is required to resolve which map to use.`,

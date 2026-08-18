@@ -27,6 +27,7 @@ export const executePrismaQueryPlan = async (
     stepResults.push(
       (rows as Record<string, unknown>[])
         .map((r) => r[step.extract])
+        // why: Prisma rejects a mixed null+string `in` array — drop the null group a nullable FK produces
         .filter((v) => v !== null && v !== undefined),
     );
   }
@@ -43,6 +44,7 @@ const resolveStepRefs = (obj: unknown, stepResults: unknown[][]): unknown => {
   }
 
   if (typeof obj === 'object') {
+    // why: entry-copying a compiled leaf (Date/Decimal) strips its prototype and hands Prisma an empty object
     const proto = Object.getPrototypeOf(obj);
     if (proto !== Object.prototype && proto !== null) return obj;
     const record = obj as Record<string, unknown>;

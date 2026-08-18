@@ -129,11 +129,13 @@ export const accumulateOption = (
 // gloss
 export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
   [...byKey.values()].sort((a, b) => {
+    // why: ungrouped options tier first — an empty-string DB label is a real group, never "no group"
     const tier = (a.groups === undefined ? 0 : 1) - (b.groups === undefined ? 0 : 1);
     if (tier !== 0) return tier;
     const ga = a.groups ?? [];
     const gb = b.groups ?? [];
     for (let i = 0; i < Math.max(ga.length, gb.length); i++) {
+      // why: fixed locale — host-locale sorting would make option order machine-dependent
       const cmp = (ga[i] ?? '').localeCompare(gb[i] ?? '', 'en', { numeric: true });
       if (cmp !== 0) return cmp;
     }

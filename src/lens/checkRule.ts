@@ -14,21 +14,20 @@ export type RuleLensCheck = {
   violations: RuleLensViolation[];
 };
 
-// Extracts the leaf "value" from a rule for enum-value validation. Handles
-// scalar value, array value (for in/notIn), and value via path-ref (skipped —
-// we can't validate at compile time without context).
+// gloss
 const extractEnumLiterals = (cond: {
   value?: unknown;
   path?: unknown;
   operator?: unknown;
 }): readonly unknown[] | null => {
-  if (cond.path !== undefined) return null; // runtime value — skip
+  if (cond.path !== undefined) return null;
   const v = cond.value;
   if (v === undefined) return null;
   if (Array.isArray(v)) return v;
   return [v];
 };
 
+// gloss
 const visit = (
   cond: Condition,
   policy: Policy,
@@ -77,16 +76,11 @@ const visit = (
     terminalFieldName = walked.terminalFieldName;
     terminalIsEnum = walked.entry.kind === 'enum';
     terminalEnumType = walked.entry.type;
-    // Below a Json boundary the value is undeclared, so the column's own allowed set
-    // says nothing about it — only gate a path that ends ON the declared entry.
     terminalAllowedValues =
       walked.jsonSubPath.length > 0
         ? null
         : allowedEnumValues(walked.terminalEffect, terminalFieldName);
-    // A Json column's elements/members are undeclared — anything nested under it
-    // (condition/filter/orderBy/aggregate.field, `$.` refs) is open-ended.
     if (isJsonEntry(walked.entry)) nextOpen = true;
-    // Walk into the relation target for nested condition descent
     if (walked.entry.kind === 'object' || walked.entry.kind === 'bridge') {
       const target =
         walked.entry.kind === 'object'
@@ -101,11 +95,6 @@ const visit = (
     }
   }
 
-  // Gate the RHS `path` ref the same way the LHS `field` is gated — otherwise a rule
-  // can reference outside the lens through its comparison value. `$.`-prefixed paths are
-  // current-element refs (resolve at the current anchor); bare paths are root/context refs
-  // (resolve at the lens anchor). Inside an open scope a `$.` ref points into the JSON
-  // value, so there is nothing to resolve — a root ref is still gated.
   if ('path' in cond && typeof cond.path === 'string' && cond.path !== '') {
     const isCurrentElement = cond.path.startsWith('$.');
     if (!(isCurrentElement && open)) {
@@ -122,8 +111,6 @@ const visit = (
     }
   }
 
-  // Gate the window's `filter` (a full Condition over the array elements) and `orderBy`
-  // field refs — both are evaluated against the descended relation target.
   if ('filter' in cond && cond.filter !== undefined) {
     visit(cond.filter as Condition, policy, nextMap, nextModel, nextRelPath, violations, nextOpen);
   }
@@ -141,9 +128,6 @@ const visit = (
     }
   }
 
-  // Value-set validation for leaf rules. Fires whenever the field carries an
-  // allowed set — an enum (registry/narrowed) or any other kind with explicit
-  // `values`.
   if (terminalAllowedValues && 'operator' in cond && terminalFieldName) {
     const literals = extractEnumLiterals(
       cond as { value?: unknown; path?: unknown; operator?: unknown },
@@ -162,7 +146,6 @@ const visit = (
     }
   }
 
-  // Aggregate sub-field
   if (
     !nextOpen &&
     'aggregate' in cond &&
@@ -186,6 +169,7 @@ const visit = (
   }
 };
 
+// gloss
 export const checkRuleAgainstLens = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
@@ -193,7 +177,6 @@ export const checkRuleAgainstLens = (
   const policy = resolvePolicy(lensOrNarrowing);
   const violations: RuleLensViolation[] = [];
   visit(rule, policy, policy.lens.mapName, policy.lens.model, [], violations);
-  // Quickly validate that root visit doesn't have issues either (touches resolveVisit for the side effect, but mainly to ensure policy resolves)
   resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
   return { ok: violations.length === 0, violations };
 };

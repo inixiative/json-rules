@@ -4,10 +4,11 @@ import type { BuilderState, FieldMap, SqlResult } from './types';
 
 export type { FieldMap, SqlResult } from './types';
 
+// gloss
 type SqlBuildOptions = {
   map?: FieldMap;
   model?: string;
-  alias?: string; // root table alias, defaults to 't0' when map is provided
+  alias?: string;
   context?: Record<string, unknown>;
 } & DateConfig;
 

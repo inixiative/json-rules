@@ -8,6 +8,7 @@ import { nextParam } from './params';
 import { escapeLikePattern, quoteField } from './quoting';
 import type { BuilderState } from './types';
 
+// gloss
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   if (rule.fuzzy)
     throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
@@ -16,7 +17,6 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
     resolveCaseInsensitive(rule.caseInsensitive) ? `LOWER(${expr})` : expr;
   const rhs = resolveComparison(rule, state);
 
-  // Extract both variants up front so TypeScript doesn't need to narrow inside each case
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
 
@@ -110,14 +110,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
 
 type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
 
-/**
- * Resolve the right-hand side of a comparison from a Rule.
- *
- * - rule.value set        → { type: 'value', value }
- * - rule.path = '$.field' → { type: 'column', sql: '"alias"."field"' }  (column-to-column)
- * - rule.path = 'ctx.key' → { type: 'value', value: context[key] }      (external context)
- * - neither set           → { type: 'value', value: undefined } for no-value operators
- */
+// gloss
 const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) {
     return { type: 'value', value: rule.value };
@@ -147,6 +140,5 @@ const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
     );
   }
 
-  // No value, no path — valid for no-value operators (isEmpty, notEmpty, exists, notExists)
   return { type: 'value', value: undefined };
 };

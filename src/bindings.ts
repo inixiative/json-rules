@@ -4,10 +4,7 @@ type ObjCondition = Exclude<Condition, boolean>;
 
 const isObjCondition = (c: Condition): c is ObjCondition => typeof c === 'object' && c !== null;
 
-/**
- * Names of every `{ bind }` token reachable in a condition tree. The flat-set
- * shorthand a caller validates a bindings map against (`keys(bindings) ⊇ requiredBindings`).
- */
+// gloss
 export const requiredBindings = (condition: Condition): Set<string> => {
   const names = new Set<string>();
   const walk = (c: Condition): void => {
@@ -27,12 +24,7 @@ export const requiredBindings = (condition: Condition): Set<string> => {
   return names;
 };
 
-/**
- * Replace each `{ bind }` token the map covers with its `{ value }`, leaving uncovered
- * tokens in place (partial / progressive resolution — `requiredBindings` shrinks). A node
- * may carry both its own value-bind and a nested condition (aggregate/array), so both are
- * handled. Does not mutate the input.
- */
+// gloss
 export const resolveBindings = (
   condition: Condition,
   bindings: Record<string, RuleValue>,
@@ -42,9 +34,6 @@ export const resolveBindings = (
 
   if (typeof node.bind === 'string' && node.bind in bindings) {
     const { bind, ...rest } = node;
-    // A supplied binding (key present) resolves to its value; undefined → null so
-    // the substituted condition stays clean serializable JSON. Absent keys are
-    // left as tokens (partial resolution), never coerced.
     const bound = bindings[bind as string];
     node = { ...rest, value: bound === undefined ? null : bound };
   }

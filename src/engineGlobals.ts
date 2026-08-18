@@ -9,8 +9,8 @@ export type PrismaProvider =
   | 'cockroachdb'
   | 'mongodb';
 
+// gloss
 export type EngineGlobalsState = {
-  // Defaults for string operators; a rule's own `caseInsensitive` / `fuzzy` overrides them.
   string: {
     caseInsensitive: boolean;
     fuzzy: boolean | FuzzyConfig;
@@ -43,6 +43,7 @@ let store: EngineGlobalsState = cloneDeep(DEFAULTS);
 const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
 
+// gloss
 export const engineGlobals = {
   set: (path: string, value: unknown): void => {
     set(store, path, cloneDeep(value));
@@ -51,9 +52,6 @@ export const engineGlobals = {
   reset: (): void => {
     store = cloneDeep(DEFAULTS);
   },
-  // Scoped override: merge `partial` over the current state, run `fn`, restore. SYNCHRONOUS
-  // ONLY — JS run-to-completion makes a sync `fn` atomic, so overlapping evaluations never
-  // observe the override. An async `fn` would yield mid-scope and leak/collide, so it throws.
   with: <T>(partial: DeepPartial<EngineGlobalsState>, fn: () => T): T => {
     const prev = store;
     store = merge(cloneDeep(prev), partial);
@@ -70,8 +68,7 @@ export const engineGlobals = {
   },
 };
 
-// Providers whose Prisma connector accepts `mode: 'insensitive'` (QueryMode). The
-// rest are case-insensitive by collation and reject the argument.
+// gloss
 const QUERY_MODE_PROVIDERS: ReadonlySet<PrismaProvider> = new Set([
   'postgresql',
   'cockroachdb',
@@ -81,11 +78,11 @@ const QUERY_MODE_PROVIDERS: ReadonlySet<PrismaProvider> = new Set([
 export const supportsQueryMode = (provider: PrismaProvider): boolean =>
   QUERY_MODE_PROVIDERS.has(provider);
 
-// A rule's explicit flag wins; otherwise fall back to the engine-global default.
+// gloss
 export const resolveCaseInsensitive = (ruleFlag?: boolean): boolean =>
   ruleFlag ?? (engineGlobals.get('string.caseInsensitive') as boolean | undefined) ?? false;
 
-// Resolve a rule's fuzzy flag against the global default, normalized to a config or false.
+// gloss
 export const resolveFuzzy = (ruleFlag?: boolean | FuzzyConfig): FuzzyConfig | false => {
   const resolved =
     ruleFlag ?? (engineGlobals.get('string.fuzzy') as boolean | FuzzyConfig | undefined) ?? false;

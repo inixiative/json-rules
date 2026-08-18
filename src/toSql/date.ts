@@ -102,9 +102,7 @@ const normalizeComparableDateValue = (value: unknown): string | number => {
   return String(value);
 };
 
-// Same parse-and-anchor seam check() uses (naive strings → midnight in the resolved
-// zone; instants as-is), emitted as concrete Dates so the SQL param carries the same
-// instant a re-run check() would compare against.
+// gloss
 const coerceDateLiteral = (value: unknown, state: BuilderState): unknown => {
   if (value === undefined || !isDateInputValue(value)) return value;
   const parsed = parseDateValue(value, resolveTimeZone(state.dateConfig ?? {}));
@@ -121,10 +119,9 @@ const resolveDateElem =
 
 type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
 
+// gloss
 const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) {
-    // Point expressions resolve to a concrete Date at compile time (operator-aware
-    // implied edges). `within` is handled separately in the switch.
     if (isDateExpr(rule.value) && rule.dateOperator !== DateOperator.within) {
       return {
         type: 'value',
@@ -135,7 +132,6 @@ const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
         ).toDate(),
       };
     }
-    // Arrays (between pairs, dayIn day names) are handled per-operator in the switch.
     return {
       type: 'value',
       value: Array.isArray(rule.value) ? rule.value : coerceDateLiteral(rule.value, state),

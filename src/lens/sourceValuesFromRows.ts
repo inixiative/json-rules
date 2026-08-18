@@ -8,8 +8,7 @@ import type { Lens, LensNarrowing } from './types.ts';
 
 type Row = Record<string, unknown>;
 
-// Rows anchored at a projection path: segments after the root model name descend
-// relations, flattening to-many arrays (mirrors the joins a SourceQuery would emit).
+// gloss
 const rowsAtPath = (rows: readonly Row[], path: string): Row[] => {
   let current: Row[] = [...rows];
   for (const segment of path.split('.').slice(1)) {
@@ -29,17 +28,7 @@ const composeEligibility = (sourceClauses: Condition[]): Condition => {
   return sourceClauses.length === 1 ? sourceClauses[0] : { all: sourceClauses };
 };
 
-/**
- * Materialize each sourced field's option set from an already-fetched collection —
- * the in-memory executor of `sources` declarations, alongside `sourceQueries`
- * (which compiles the same declarations to DISTINCT queries for a DB). Rows are
- * the collection fetched UNDER the lens (relations inline), so they are already
- * lens-scoped: eligibility here is the field's source `where` only, evaluated via
- * `check()` (`options` feeds `{bind}` clauses). Scalar-list fields contribute one
- * option per element, labels take the first non-null sibling, and sorting is
- * numeric-aware in a fixed locale. Feed the result to `exposedSurface` /
- * `projectByPath` as `{ sourceValues }`.
- */
+// gloss
 export const sourceValuesFromRows = (
   lensOrNarrowing: Lens | LensNarrowing,
   rows: readonly Row[],
@@ -74,7 +63,6 @@ export const sourceValuesFromRows = (
         const values = Array.isArray(rawValue) ? rawValue : [rawValue];
         const rawLabel = label === undefined ? undefined : row[label];
         const rowLabel = rawLabel == null ? undefined : String(rawLabel);
-        // Any unreachable axis (null hop) → the option stays ungrouped, never partial.
         const groups = groupBy === undefined ? undefined : groupsAtPaths(row, groupBy);
         for (const value of values) {
           if (value == null || typeof value === 'object') continue;

@@ -19,8 +19,7 @@ const isParentRef = (name: string): boolean => name.startsWith(PARENT_PREFIX);
 const baseName = (name: string): string =>
   isParentRef(name) ? name.slice(PARENT_PREFIX.length) : name;
 
-// Every Condition a model node carries: its own `where`, each `sources` where,
-// and the same recursively for path-specific relations.
+// gloss
 const modelNodeConditions = (n: ModelDefaultNarrowing | ModelNarrowing): Condition[] => {
   const out: Condition[] = [];
   if (n.where !== undefined) out.push(n.where);
@@ -33,7 +32,7 @@ const modelNodeConditions = (n: ModelDefaultNarrowing | ModelNarrowing): Conditi
   return out;
 };
 
-// Every Condition one narrowing layer carries (root + mapDefaults).
+// gloss
 const layerConditions = (nrw: LensNarrowing): Condition[] => {
   const out: Condition[] = [];
   if (nrw.root) out.push(...modelNodeConditions(nrw.root));
@@ -42,8 +41,7 @@ const layerConditions = (nrw: LensNarrowing): Condition[] => {
   return out;
 };
 
-// Bind names a layer *declares* (introduces). `parent:` tokens are inherited
-// references, not declarations.
+// gloss
 const declaredNames = (nrw: LensNarrowing): Set<string> => {
   const names = new Set<string>();
   for (const cond of layerConditions(nrw))
@@ -51,13 +49,7 @@ const declaredNames = (nrw: LensNarrowing): Set<string> => {
   return names;
 };
 
-/**
- * Every bind name a lens (its whole narrowing chain) needs supplied to execute.
- * `parent:` references collapse to their base name — the caller supplies one value
- * per name and an inherited reference draws the same one. This is the "what does
- * this lens require" answer; pass `narrowing.parent` to see the names a child must
- * not collide with.
- */
+// gloss
 export const lensRequiredBindings = (lensOrNarrowing: Lens | LensNarrowing): Set<string> => {
   const names = new Set<string>();
   for (const nrw of collectChain(lensOrNarrowing))
@@ -113,19 +105,12 @@ const resolveMapDefaults = (
   return out;
 };
 
-/**
- * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
- * `where`/`sources`, returning a structurally-new lens with concrete conditions.
- * Partial — uncovered tokens stay, so stages bind progressively. Once resolved,
- * `applyLens` / `toPrisma` / `toSql` / `sourceQueries` / `projectByPath` consume the
- * lens unchanged: a bind needs nothing new downstream. `parent:name` draws the same
- * value as the ancestor's `name`. Does not mutate the input.
- */
+// gloss
 export const resolveLensBindings = (
   lensOrNarrowing: Lens | LensNarrowing,
   bindings: Record<string, RuleValue>,
 ): Lens | LensNarrowing => {
-  if (isLens(lensOrNarrowing)) return lensOrNarrowing; // a bare lens carries no where/sources
+  if (isLens(lensOrNarrowing)) return lensOrNarrowing;
   const effective: Record<string, RuleValue> = { ...bindings };
   for (const [k, v] of Object.entries(bindings)) effective[`${PARENT_PREFIX}${k}`] = v;
   return {
@@ -138,12 +123,7 @@ export const resolveLensBindings = (
   };
 };
 
-/**
- * Bind names are unique across a composed chain: a layer may not re-declare a name
- * an ancestor already declares — rename it, or reference the inherited one read-only
- * as `parent:name`. A `parent:name` reference must point at a name some ancestor
- * actually declares. Returns the violation messages (folded into `validateNarrowing`).
- */
+// gloss
 export const validateBindNames = (narrowing: LensNarrowing): string[] => {
   const errors: string[] = [];
   const occupied = new Set<string>();

@@ -19,6 +19,7 @@ dayjs.extend(timezone);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
+// gloss
 export const checkDate = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
@@ -32,16 +33,10 @@ export const checkDate = <TData extends Record<string, unknown>>(
   if (!isDateInputValue(fieldValue))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
-  // Resolve the anchoring zone ONCE (bind → literal → UTC) and normalize the config the
-  // date-expression layer sees: honor a resolved zone when the caller set one, but leave
-  // it unset otherwise so expression `now` resolution keeps its prior behavior.
   const tz = resolveTimeZone(config, bindings);
   const exprConfig: DateConfig =
     config.timeZone !== undefined ? { ...config, timeZone: tz } : config;
 
-  // A naive field string is anchored in the resolved zone (default UTC); an absolute
-  // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
-  // engine's config.timeZone policy used by dateExpr and both compilers.
   const fieldDate = parseDateValue(fieldValue, tz);
 
   if (!fieldDate.isValid())
@@ -118,6 +113,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
   }
 };
 
+// gloss
 const parseCompareDates = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
@@ -145,7 +141,6 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
       : parseDateValue(rawDate2 as DateInputValue, tz);
     if (!date1.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
     if (!date2.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
-    // Auto-sort: ensure startDate <= endDate
     const [startDate, endDate] =
       date1.isBefore(date2) || date1.isSame(date2) ? [date1, date2] : [date2, date1];
     return [startDate, endDate];
@@ -162,7 +157,6 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     let value: DateInputValue | undefined;
     if (condition.value !== undefined) {
       if (isDateExpr(condition.value)) {
-        // Bare period + before/after ⇒ implied edge (before→start, after→end).
         if (isPeriodExpr(condition.value)) {
           const [start, end] = resolvePeriodRange(condition.value, config);
           const useStart =
@@ -177,7 +171,6 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
       }
       value = condition.value as DateInputValue;
     } else if (condition.path) {
-      // Support $.path for current element
       if (condition.path.startsWith('$.')) {
         const pathValue = get(data, condition.path.substring(2)) as unknown;
         value = isDateInputValue(pathValue) ? pathValue : undefined;
@@ -193,16 +186,10 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     return [date, undefined];
   }
 
-  return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+  return [dayjs(), undefined];
 };
 
-/**
- * The single seam that decides which timezone anchors a NAIVE (zoneless) value and frames
- * the dayIn/dayNotIn weekday, for ONE evaluation. Precedence: a zone bound from the
- * evaluation's `bindings` → a literal `config.timeZone` → 'UTC'. A future extension can
- * source a per-record zone here (see docs/TIMEZONE.md) without touching call sites.
- * Absolute instants never reach this seam — they bypass anchoring entirely.
- */
+// gloss
 export const resolveTimeZone = (
   config: DateConfig,
   bindings?: Record<string, RuleValue>,
@@ -215,23 +202,14 @@ export const resolveTimeZone = (
   return zone ?? 'UTC';
 };
 
-// Detects an explicit zone on a date STRING only (never String(Date), whose render is
-// host-locale-dependent): a trailing `Z`, or a `±HH:MM`/`±HHMM` offset after the time.
+// gloss
 const TRAILING_OFFSET = /[+-]\d{2}:?\d{2}$/;
 const hasExplicitZone = (value: string): boolean =>
   /Z$/.test(value) || (value.includes('T') && TRAILING_OFFSET.test(value));
 
-/**
- * Parse a comparison/field value into an instant, given the already-resolved anchor zone.
- * - Date object / epoch number → absolute instant, used as-is (never anchored).
- * - String with an explicit zone (`Z` or `±HH:MM` after a time) → absolute.
- * - Naive string (date-only or zoneless datetime) → anchored in `tz` via dayjs.tz; a
- *   date-only string becomes midnight in that zone.
- */
+// gloss
 export const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
   if (typeof value === 'string' && !hasExplicitZone(value)) {
-    // dayjs.tz throws on an unparseable string; return the (invalid) base parse instead
-    // so callers' isValid() checks surface the friendly "not a valid date" error.
     const base = dayjs(value);
     if (!base.isValid()) return base;
     return dayjs.tz(value, tz);

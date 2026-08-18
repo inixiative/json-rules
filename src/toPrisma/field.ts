@@ -11,15 +11,7 @@ import { walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
-/**
- * Whether the emptiness operators may compare this column against `''`. Only a
- * String column accepts it ('' is also a representable JSON value) — Prisma
- * rejects `equals: ''` on DateTime/Int/enum/… columns outright ("Expected
- * ISO-8601 DateTime"), turning an authored `isEmpty` into a runtime 500. The
- * field map is the authority; a stamped `coerceType` is the fallback; with
- * neither, keep the legacy two-branch shape — an untyped String field must not
- * lose its ''-branch.
- */
+// gloss
 const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
   const walk =
     options?.map && options?.model
@@ -32,9 +24,8 @@ const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
   );
 };
 
+// gloss
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
-  // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
-  // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
   if (rule.operator === Operator.isEmpty) {
     const isNull = buildMapAwareFilter(rule.field, { equals: null }, options);
     if (!acceptsEmptyString(rule, options)) return isNull;
@@ -50,12 +41,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   return buildMapAwareFilter(rule.field, filter, options);
 };
 
-/**
- * Resolve the comparison value for a rule.
- * - rule.value → use literal value
- * - rule.path starting with '$.' → throw: Prisma WHERE has no column-to-column comparison
- * - rule.path (context ref) → look up from options.context via lodash get
- */
+// gloss
 const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
   if (rule.bind !== undefined) {
@@ -81,14 +67,13 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
   throw new Error(`Rule for field '${rule.field}' has neither value nor path set`);
 };
 
+// gloss
 const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
   if (rule.fuzzy)
     throw new Error(
       'Fuzzy matching has no Prisma equivalent — evaluate it in memory with check().',
     );
-  // Lazy resolver: only called by operators that need a value
   const val = () => resolveRuleValue(rule, options);
-  // QueryMode only where the connector accepts it; MySQL/SQLite reject `mode` (collation-driven).
   const provider = (options?.datasource?.provider ??
     engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
   const ci =
@@ -163,7 +148,6 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
 
     case Operator.isEmpty:
     case Operator.notEmpty:
-      // Handled in buildFieldRule — should not reach here
       throw new Error('isEmpty/notEmpty handled at buildFieldRule level');
 
     case Operator.exists:
@@ -177,11 +161,7 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
   }
 };
 
-/**
- * Build the Prisma WHERE using map-aware traversal when a map+model is available.
- * - JSON field mid-path → Prisma JSON path syntax: { metadata: { path: ['theme'], equals: 'dark' } }
- * - All other paths → standard nested relation filter
- */
+// gloss
 const buildMapAwareFilter = (
   field: string,
   filter: unknown,
@@ -203,7 +183,6 @@ const buildMapAwareFilter = (
       return {};
 
     case 'json-path': {
-      // Merge the json path array into the leaf filter, then nest normally
       const jsonFilter = { path: walkResult.jsonPath, ...(filter as object) };
       const fieldUpToJson = parts.slice(0, walkResult.stopIndex).join('.');
       return buildNestedFilter(fieldUpToJson, jsonFilter);

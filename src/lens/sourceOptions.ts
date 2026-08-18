@@ -6,19 +6,7 @@ import { resolveRelationTarget } from './walk.ts';
 
 type Row = Record<string, unknown>;
 
-/**
- * Fold the traversal guards one dotted path picks up: every traversed model's
- * effective narrowing `where` (tenancy/soft-delete) — declared relation nodes AND
- * mapDefaults, composed across all layers via `resolveVisit` — re-rooted onto the
- * sourced model, the same hop-where fold `applyLens` performs for rule paths. The
- * compile always joins every hop the path names, so every hop must carry its guard
- * whether or not the narrowing declares it.
- *
- * `strict` (groupBy axes): an unresolvable hop is fail-closed — throw.
- * Lenient (where-clause field paths): stop at the first non-relation segment (a
- * plain column, or a Json column with a sub-path tail) — no join past it exists.
- * `seen` dedups hops shared across paths: one guard fold per traversed node.
- */
+// gloss
 const foldPathGuards = (
   policy: Policy,
   mapName: string,
@@ -33,7 +21,6 @@ const foldPathGuards = (
   let curMap = mapName;
   let curModel = modelName;
   const relPath = [...baseRelPath];
-  // The last segment is the column; guards live on the traversed models.
   for (let i = 0; i < segments.length - 1; i++) {
     const entry = policy.lens.maps[curMap]?.models[curModel]?.fields[segments[i]];
     const target = entry ? resolveRelationTarget(entry, curMap) : null;
@@ -43,7 +30,7 @@ const foldPathGuards = (
           `groupBy '${dotted}': hop '${segments[i]}' is not a resolvable relation on '${curModel}' — cannot guard its join`,
         );
       }
-      return; // plain column / Json sub-path — nothing joins past here
+      return;
     }
     relPath.push(segments[i]);
     curMap = target.mapName;
@@ -57,10 +44,7 @@ const foldPathGuards = (
   }
 };
 
-/** Every dotted `field` a condition references (all/any/if recursion; array and
- * aggregate rules contribute their own anchor `field` — their nested conditions
- * are element-relative and compile inside the relation filter, not as new joins
- * from this model). */
+// gloss
 const collectFieldPaths = (condition: Condition, out: string[] = []): string[] => {
   if (typeof condition !== 'object' || condition === null) return out;
   const c = condition as Record<string, unknown>;
@@ -75,12 +59,7 @@ const collectFieldPaths = (condition: Condition, out: string[] = []): string[] =
   return out;
 };
 
-/**
- * The composed traversal guards for one source: guards for every groupBy axis
- * (strict) and for every relation path its `where` clauses reference (lenient) —
- * the where ships those joins just as surely as the group select does. Hops are
- * folded once each across all paths.
- */
+// gloss
 export const traversalGuards = (
   policy: Policy,
   mapName: string,
@@ -102,7 +81,7 @@ export const traversalGuards = (
   return out;
 };
 
-/** Walk a dotted to-one path through nested row objects; undefined when unreachable. */
+// gloss
 export const groupAtPath = (row: Row, path: string): string | undefined => {
   let cur: unknown = row;
   for (const segment of path.split('.')) {
@@ -112,8 +91,7 @@ export const groupAtPath = (row: Row, path: string): string | undefined => {
   return cur == null || typeof cur === 'object' ? undefined : String(cur);
 };
 
-/** Resolve every axis for a row — all-or-nothing: any unreachable axis leaves the
- * option ungrouped. A partial key would make partition pins unpredictable. */
+// gloss
 export const groupsAtPaths = (row: Row, paths: readonly string[]): string[] | undefined => {
   const out: string[] = [];
   for (const path of paths) {
@@ -124,11 +102,11 @@ export const groupsAtPaths = (row: Row, paths: readonly string[]): string[] | un
   return out;
 };
 
-/** Dedup key — options are unique per (groups, value), not per value. */
+// gloss
 export const optionKey = (groups: readonly string[] | undefined, value: string): string =>
   JSON.stringify([groups ?? null, value]);
 
-/** Merge one occurrence into the accumulator; the first non-null label wins. */
+// gloss
 export const accumulateOption = (
   byKey: Map<string, SourceOption>,
   value: string,
@@ -148,10 +126,7 @@ export const accumulateOption = (
   }
 };
 
-// Fixed locale: host-locale sorting would make option order machine-dependent.
-// Ungrouped options are their own leading tier — an empty-string DB label is a
-// real group and must never interleave with "no group". Grouped options order by
-// their axes lexicographically, then label/value.
+// gloss
 export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
   [...byKey.values()].sort((a, b) => {
     const tier = (a.groups === undefined ? 0 : 1) - (b.groups === undefined ? 0 : 1);

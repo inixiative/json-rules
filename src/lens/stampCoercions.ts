@@ -5,7 +5,7 @@ import { resolvePolicy } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
-// Kinds check() knows how to coerce — see coerceScalar in src/field.ts.
+// gloss
 const COERCIBLE_KINDS = new Set([
   'Int',
   'BigInt',
@@ -19,11 +19,7 @@ const COERCIBLE_KINDS = new Set([
 type Scope = { mapName: string; modelName: string };
 type ResolvedField = { entry: FieldMapEntry; mapName: string };
 
-/**
- * Resolves a dotted path to its declared entry. Returns undefined when the path descends past
- * a leaf — including below a Json boundary, where the value's kind is undeclared and therefore
- * uncoercible, so the rule is left unstamped.
- */
+// gloss
 const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedField | undefined => {
   const segments = fieldPath.split('.');
   let { mapName, modelName } = scope;
@@ -39,10 +35,7 @@ const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedFiel
   return undefined;
 };
 
-/**
- * The model scope a nested array/aggregate condition is evaluated against. Undefined when the
- * field is not a relation — a Json array's elements are undeclared, so nothing below is stamped.
- */
+// gloss
 const itemScope = (lens: Lens, scope: Scope, fieldPath: string | undefined): Scope | undefined => {
   if (!fieldPath) return undefined;
   const resolved = resolveField(lens, scope, fieldPath);
@@ -52,6 +45,7 @@ const itemScope = (lens: Lens, scope: Scope, fieldPath: string | undefined): Sco
   return target ?? undefined;
 };
 
+// gloss
 const stampCondition = (condition: Condition, lens: Lens, scope: Scope): Condition => {
   if (typeof condition === 'boolean') return condition;
 
@@ -70,9 +64,6 @@ const stampCondition = (condition: Condition, lens: Lens, scope: Scope): Conditi
     };
   }
 
-  // Array/aggregate rules: the nested condition/filter evaluate per item, so they
-  // stamp against the relation's target model. The aggregate comparison itself is
-  // numeric by contract and takes no coercion.
   if ('arrayOperator' in condition || 'aggregate' in condition) {
     const target = itemScope(lens, scope, condition.field);
     if (!target) return condition;
@@ -100,9 +91,7 @@ const stampCondition = (condition: Condition, lens: Lens, scope: Scope): Conditi
   return condition;
 };
 
-// Walk a condition and stamp coerceType onto every field rule from the lens's
-// field map — the explicit dual of the server's coerceValueForField: the rule
-// carries its coercion, check() never infers types from values.
+// gloss
 export const stampCoercions = (
   condition: Condition,
   lensOrNarrowing: Lens | LensNarrowing,

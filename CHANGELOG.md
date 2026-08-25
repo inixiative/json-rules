@@ -8,9 +8,10 @@
   this segment reference", "which ids does this clone have to remap"), and every
   hand-rolled copy re-implements the grammar — so it goes blind, silently, the day
   the rule format grows a node type. The walk descends relation by relation,
-  consuming the path's segments, and accepts both authoring spellings of the same
-  reference (nested `{ field: 'orders', arrayOperator, condition: { field: 'sku' } }`
-  and dotted `{ field: 'orders.sku' }`).
+  consuming the path's steps — a dot is a traversal step, through a relation or into
+  a to-one object/Json column, whether the steps sit on a relation node's `field`
+  (`{ field: 'orders', arrayOperator, condition: { field: 'sku' } }`) or on a leaf's
+  (`{ field: 'orders.sku' }`). Step sequences, not string chunks, are what match.
 - It is quantifier- and operator-blind on purpose: a `none` relation names its value
   as much as an `any` one does, and `in` / `notIn` / `between` lists are flattened.
   An aggregate node's own comparison value belongs to the aggregate, not to the

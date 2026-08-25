@@ -66,7 +66,7 @@ describe('referencedFieldValues', () => {
     expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['inner', 'windowed']);
   });
 
-  test('collects the dotted spelling of the same path', () => {
+  test('a dotted leaf field is the same traversal, step for step', () => {
     const rule: Condition = { field: MEMBERSHIP, operator: Operator.equals, value: 'dotted' };
     expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['dotted']);
   });

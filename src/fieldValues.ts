@@ -31,9 +31,12 @@ export type FieldValueRefs = {
 };
 
 /**
- * The values a condition tree compares `fieldPath` against, both authoring spellings,
- * quantifier- and operator-blind. Non-literal sources are reported by name in
- * `binds` / `paths`, never dropped — resolveBindings first to shrink `binds`.
+ * The values a condition tree compares `fieldPath` against. Dots are traversal steps —
+ * a relation hop or a descent into a to-one object/Json column; relation nodes
+ * contribute their `field`'s steps, leaves theirs, and a reference matches when the
+ * step sequences coincide. Quantifier- and operator-blind. Non-literal sources are
+ * reported by name in `binds` / `paths`, never dropped — resolveBindings first to
+ * shrink `binds`.
  */
 export const referencedFieldValues = (condition: Condition, fieldPath: string): FieldValueRefs => {
   const values = new Set<RuleValue>();

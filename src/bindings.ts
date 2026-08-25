@@ -22,6 +22,10 @@ export const requiredBindings = (condition: Condition): Set<string> => {
       if (node.else !== undefined) walk(node.else as Condition);
     }
     if (node.condition) walk(node.condition as Condition);
+    // A windowing `filter` is a condition like any other, so a bind inside one is just as
+    // required. Omitting it reported such a rule as fully bound and let evaluation reach an
+    // unresolved token.
+    if (node.filter) walk(node.filter as Condition);
   };
   walk(condition);
   return names;
@@ -59,6 +63,7 @@ export const resolveBindings = (
     if (node.else !== undefined) node.else = resolveBindings(node.else as Condition, bindings);
   }
   if (node.condition) node.condition = resolveBindings(node.condition as Condition, bindings);
+  if (node.filter) node.filter = resolveBindings(node.filter as Condition, bindings);
 
   return node as Condition;
 };

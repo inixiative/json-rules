@@ -344,24 +344,9 @@ format grows a node type, and it goes blind silently.
 
 | Function | Purpose |
 | --- | --- |
-| `referencedFieldValues(rule, fieldPath)` | The values a rule compares a dotted `fieldPath` against — `{ values, binds, paths }`, all plain arrays. Walks `all` / `any` / `if-then-else`, relation `condition`s and windowing `filter`s, consuming path segments step by step — a dot is a traversal step, through a relation or into a to-one object/Json column, whether the steps sit on a relation node's `field` or a leaf's. Quantifier-blind (`none` mentions its value as much as `any` does) and operator-blind (`in` / `between` lists are flattened). Non-literal sources are reported by name — `binds` (shrink them with `resolveBindings` first) and `paths` (`'$.col'` row refs, dynamic by nature) — never silently dropped; a gate that must fail closed checks both. |
-| `transformFieldValues(rule, fieldPath, mapping)` | The write half: rewrites every string/number literal at that path through a `Record<string, RuleValue>` lookup, leaving the tree's shape, every other leaf, and `path` / `bind` leaves untouched. Plain data on both sides, so the remap serializes with the rule. Does not mutate the input. For callers that re-key the data a rule names (cloning an environment, remapping ids). |
 | `requiredBindings(rule)` | Names of every `{ bind }` token in the tree — the set a bindings map must cover. |
 | `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
 
-```ts
-const rule = {
-  field: 'fanUserGroups',
-  arrayOperator: ArrayOperator.none,
-  condition: { field: 'group.uuid', operator: Operator.in, value: ['a', 'b'] },
-};
-
-referencedFieldValues(rule, 'fanUserGroups.group.uuid');
-// { values: ['a', 'b'], binds: [], paths: [] }
-
-transformFieldValues(rule, 'fanUserGroups.group.uuid', { a: 'a2', b: 'b2' });
-// same rule with the uuids re-pointed
-```
 
 ## Runtime Validation
 

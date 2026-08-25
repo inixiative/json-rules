@@ -1,40 +1,19 @@
 # Changelog
 
-## 2.20.0 — rule introspection: which values does this tree name?
+## 2.19.3 — binds inside windowing filters are required and resolvable
 
-- New `referencedFieldValues(rule, fieldPath)` → `{ values, binds, paths }`: the values
-  a condition tree compares a dotted field path against. Consumers were hand-rolling
-  this walk to answer questions about their own stored rules ("which segments does
-  this segment reference", "which ids does this clone have to remap"), and every
-  hand-rolled copy re-implements the grammar — so it goes blind, silently, the day
-  the rule format grows a node type. The walk descends relation by relation,
-  consuming the path's steps — a dot is a traversal step, through a relation or into
-  a to-one object/Json column, whether the steps sit on a relation node's `field`
-  (`{ field: 'orders', arrayOperator, condition: { field: 'sku' } }`) or on a leaf's
-  (`{ field: 'orders.sku' }`). Step sequences, not string chunks, are what match.
-- It is quantifier- and operator-blind on purpose: a `none` relation names its value
-  as much as an `any` one does, and `in` / `notIn` / `between` lists are flattened.
-  An aggregate node's own comparison value belongs to the aggregate, not to the
-  relation it names, so it is never reported as one. A relation with no `field` (root
-  array) consumes no segments and is walked THROUGH — callers are gates, and a
-  missed reference is the dangerous direction.
-- Everything is plain serializable data: `values` is an array (first-seen order,
-  deduped), and non-literal sources are reported by name — `binds` (resolve with
-  `resolveBindings` first to turn them into literals) and `paths` (`'$.col'` row
-  refs). A gate that must fail closed checks both instead of reading "no literals"
-  as "no reference".
-- New `transformFieldValues(rule, fieldPath, mapping)` — the write half of the same
-  walk, for callers that re-key the data a rule names. String/number literals remap
-  through a `Record<string, RuleValue>` lookup — data, not a callback, so the remap
-  serializes with the rule. Leaves the tree shape, other leaves, and `path` / `bind`
-  leaves alone. Does not mutate the input.
-- One walker: both halves and `requiredBindings` / `resolveBindings` now share a
-  single structural traversal (`src/traverse.ts`) that lists the grammar's child
-  slots exactly once. This closes the class of bug fixed below — a walk that
-  hand-rolls the grammar goes blind when the grammar grows.
-- Fix: `requiredBindings` / `resolveBindings` never descended into a windowing
-  `filter`, so a `{ bind }` inside one was reported as not required and survived
-  resolution as an unresolved token. Both now walk it.
+- `requiredBindings` / `resolveBindings` never descended into a windowing `filter`,
+  so a `{ bind }` inside one was reported as not required and survived resolution as
+  an unresolved token. Both now walk it.
+- `resolveBindings` looks up binds as own properties — a bind named `toString` no
+  longer "resolves" from `Object.prototype` when the bindings map doesn't cover it.
+- Internal: the condition grammar's child slots (`all` / `any`, `if` / `then` /
+  `else`, `condition` + `filter`) are listed once, in `src/traverse.ts`, and both
+  binding functions consume that walk — the slot lists were previously duplicated
+  per function, which is how the `filter` blindness happened.
+- The engine remains an evaluator: no rule-introspection API. A rule is blind to
+  other rules; cross-rule concerns (reference graphs, ordering, remapping) belong
+  to the caller that authors the rules.
 
 ## 2.19.2 — negated date operators keep NULL rows
 

@@ -23,7 +23,7 @@ export const resolveBindings = (
 ): Condition =>
   mapCondition(condition, undefined, {
     rewrite: (node) => {
-      if (typeof node.bind !== 'string' || !(node.bind in bindings)) return node;
+      if (typeof node.bind !== 'string' || !Object.hasOwn(bindings, node.bind)) return node;
       const { bind, ...rest } = node;
       const bound = bindings[bind as string];
       return { ...rest, value: bound === undefined ? null : bound };

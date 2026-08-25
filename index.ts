@@ -2,7 +2,6 @@ export * from './src/bindings';
 export * from './src/check';
 export * from './src/engineGlobals';
 export * from './src/fieldMap';
-export * from './src/fieldValues';
 export * from './src/fuzzy';
 export * from './src/lens';
 export * from './src/operator';

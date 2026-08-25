@@ -5,27 +5,14 @@ export type ConditionNode = Record<string, unknown>;
 export const isObjCondition = (c: Condition): c is Exclude<Condition, boolean> =>
   typeof c === 'object' && c !== null;
 
-/**
- * Array rules (`arrayOperator`) and aggregate rules (`aggregate`) are the two nodes that
- * descend into a relation's rows: their `field` names the relation, and both `condition`
- * and the windowing `filter` are evaluated against a row, not against the parent model.
- */
 export const isRelationNode = (node: ConditionNode): boolean =>
   'arrayOperator' in node || 'aggregate' in node;
 
-/**
- * Child-state derivation for `condition` / `filter` descent. Return the state those
- * children see, or null to prune the descent. Omitted = state passes through unchanged.
- */
 type Descend<S> = (node: ConditionNode, state: S) => S | null;
 
-/**
- * THE structural walk over a condition tree — every read that enumerates nodes goes
- * through here (`requiredBindings`, `referencedFieldValues`, …). The grammar's child
- * slots are listed exactly once: `all` / `any`, `if` / `then` / `else`, and a node's
- * `condition` + windowing `filter`. A new node type added here is picked up by every
- * consumer at once; a walk added elsewhere goes blind the day the grammar grows.
- */
+// The one structural walk over a condition tree — the grammar's child slots are listed
+// here and nowhere else. `descend` derives the state `condition`/`filter` children see;
+// null prunes, omitted passes state through.
 export const visitCondition = <S>(
   condition: Condition,
   state: S,
@@ -52,12 +39,8 @@ export const visitCondition = <S>(
   }
 };
 
-/**
- * The rewrite twin of `visitCondition` — every structure-preserving transform goes
- * through here (`resolveBindings`, `transformFieldValues`, …). Pre-order: `rewrite`
- * receives a shallow clone of each node before its children are rebuilt, so a
- * substitution's own children are still walked. Never mutates the input.
- */
+// Rewrite twin: pre-order (`rewrite` sees a shallow clone before its children rebuild,
+// so a substitution's own children are still walked). Never mutates the input.
 export const mapCondition = <S>(
   condition: Condition,
   state: S,

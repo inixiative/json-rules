@@ -16,6 +16,12 @@ export type FieldMapEntry = {
   kind: 'scalar' | 'object' | 'enum' | 'bridge';
   type: string;
   isList?: boolean;
+  /**
+   * Whether the column is NOT NULL. `toPrisma` reads this to decide if a negated
+   * operator needs an explicit `equals: null` arm (Prisma's `not`/`notIn` follow SQL
+   * three-valued logic and drop NULL rows); absent = unknown = no arm.
+   */
+  isRequired?: boolean;
   fromFields?: string[];
   toFields?: string[];
   relationName?: string; // disambiguates multiple relations between same two models

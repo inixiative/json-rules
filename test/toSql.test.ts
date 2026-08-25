@@ -37,7 +37,7 @@ describe('toSql', () => {
         operator: Operator.notEquals,
         value: 'guest',
       });
-      expect(sql).toBe('"role" <> $1');
+      expect(sql).toBe('("role" <> $1 OR "role" IS NULL)');
       expect(params).toEqual(['guest']);
     });
 
@@ -101,7 +101,7 @@ describe('toSql', () => {
         operator: Operator.notIn,
         value: ['spam', 'deleted'],
       });
-      expect(sql).toBe('"type" <> ALL($1)');
+      expect(sql).toBe('("type" <> ALL($1) OR "type" IS NULL)');
       expect(params).toEqual([['spam', 'deleted']]);
     });
 
@@ -123,7 +123,7 @@ describe('toSql', () => {
         operator: Operator.notContains,
         value: 'spam',
       });
-      expect(sql).toBe('"email" NOT LIKE $1');
+      expect(sql).toBe('("email" NOT LIKE $1 OR "email" IS NULL)');
       expect(params).toEqual(['%spam%']);
     });
 
@@ -159,7 +159,7 @@ describe('toSql', () => {
         operator: Operator.notMatches,
         value: 'test',
       });
-      expect(sql).toBe('"code" !~ $1');
+      expect(sql).toBe('("code" !~ $1 OR "code" IS NULL)');
       expect(params).toEqual(['test']);
     });
 
@@ -181,7 +181,7 @@ describe('toSql', () => {
         operator: Operator.notBetween,
         value: [0, 10],
       });
-      expect(sql).toBe('"score" NOT BETWEEN $1 AND $2');
+      expect(sql).toBe('("score" NOT BETWEEN $1 AND $2 OR "score" IS NULL)');
       expect(params).toEqual([0, 10]);
     });
 
@@ -191,7 +191,7 @@ describe('toSql', () => {
         operator: Operator.notBetween,
         value: [10, 0],
       });
-      expect(sql).toBe('"score" NOT BETWEEN $1 AND $2');
+      expect(sql).toBe('("score" NOT BETWEEN $1 AND $2 OR "score" IS NULL)');
       expect(params).toEqual([0, 10]);
     });
 

@@ -21,33 +21,80 @@ import { buildNestedFilter } from './utils';
  * lose its ''-branch.
  */
 const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
-  const walk =
-    options?.map && options?.model
-      ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
-      : undefined;
-  const entry = walk?.kind === 'direct' ? walk.entry : undefined;
+  const entry = directEntry(rule, options);
   if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
   return (
     rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
   );
 };
 
+const directEntry = (rule: Rule, options?: BuildOptions) => {
+  const walk =
+    options?.map && options?.model
+      ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
+      : undefined;
+  return walk?.kind === 'direct' ? walk.entry : undefined;
+};
+
+/**
+ * Known nullable per the field map. Unknown (no map, no `isRequired`) reads as
+ * required: an `equals: null` arm on a NOT NULL column is a Prisma validation
+ * error at runtime, so the map is the only authority that can license one.
+ */
+const isNullableColumn = (rule: Rule, options?: BuildOptions): boolean =>
+  directEntry(rule, options)?.isRequired === false;
+
+const NEGATED: readonly Operator[] = [
+  Operator.notEquals,
+  Operator.notContains,
+  Operator.notBetween,
+];
+
+const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
+  if (!Array.isArray(list)) return { values: [], hasNull: false };
+  const values = list.filter((v) => v !== null);
+  return { values, hasNull: values.length !== list.length };
+};
+
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+  const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
+
   // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
   // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
   if (rule.operator === Operator.isEmpty) {
-    const isNull = buildMapAwareFilter(rule.field, { equals: null }, options);
+    const isNull = at({ equals: null });
     if (!acceptsEmptyString(rule, options)) return isNull;
-    return { OR: [isNull, buildMapAwareFilter(rule.field, { equals: '' }, options)] };
+    return { OR: [isNull, at({ equals: '' })] };
   }
   if (rule.operator === Operator.notEmpty) {
-    const notNull = buildMapAwareFilter(rule.field, { not: null }, options);
+    const notNull = at({ not: null });
     if (!acceptsEmptyString(rule, options)) return notNull;
-    return { AND: [notNull, buildMapAwareFilter(rule.field, { not: '' }, options)] };
+    return { AND: [notNull, at({ not: '' })] };
   }
 
-  const filter = buildLeafFilter(rule, options);
-  return buildMapAwareFilter(rule.field, filter, options);
+  // Prisma's `not` / `notIn` compile to SQL `<>` / `NOT IN`, which drop NULL rows under
+  // three-valued logic. check() treats a negation as the complement of its positive form,
+  // so a nullable column gets an explicit null arm to keep the two engines in agreement.
+  const nullable = isNullableColumn(rule, options);
+
+  if (rule.operator === Operator.in || rule.operator === Operator.notIn) {
+    const { values, hasNull } = splitNull(resolveRuleValue(rule, options));
+    if (rule.operator === Operator.in) {
+      const inList = at({ in: values });
+      return hasNull && nullable ? { OR: [inList, at({ equals: null })] } : inList;
+    }
+    const notInList = at({ notIn: values });
+    if (!nullable) return notInList;
+    return hasNull
+      ? { AND: [notInList, at({ not: null })] }
+      : { OR: [notInList, at({ equals: null })] };
+  }
+
+  const filter = at(buildLeafFilter(rule, options));
+  if (nullable && NEGATED.includes(rule.operator) && resolveRuleValue(rule, options) !== null) {
+    return { OR: [filter, at({ equals: null })] };
+  }
+  return filter;
 };
 
 /**

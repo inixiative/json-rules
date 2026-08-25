@@ -20,16 +20,21 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
 
+  // A negated predicate is the complement of its positive form, as check() evaluates it.
+  // SQL's three-valued logic makes `col <> $1` NULL — never true — for a NULL column, so
+  // every negation carries the NULL rows explicitly.
+  const orNull = (expr: string): string => `(${expr} OR ${field} IS NULL)`;
+
   switch (rule.operator) {
     case Operator.equals:
-      if (rhsCol !== undefined) return `${lc(field)} = ${lc(rhsCol)}`;
+      if (rhsCol !== undefined) return `${lc(field)} IS NOT DISTINCT FROM ${lc(rhsCol)}`;
       if (rhsVal === null) return `${field} IS NULL`;
       return `${lc(field)} = ${lc(nextParam(state, rhsVal))}`;
 
     case Operator.notEquals:
-      if (rhsCol !== undefined) return `${lc(field)} <> ${lc(rhsCol)}`;
+      if (rhsCol !== undefined) return `${lc(field)} IS DISTINCT FROM ${lc(rhsCol)}`;
       if (rhsVal === null) return `${field} IS NOT NULL`;
-      return `${lc(field)} <> ${lc(nextParam(state, rhsVal))}`;
+      return orNull(`${lc(field)} <> ${lc(nextParam(state, rhsVal))}`);
 
     case Operator.lessThan:
       if (rhsCol !== undefined) return `${field} < ${rhsCol}`;
@@ -47,19 +52,27 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       if (rhsCol !== undefined) return `${field} >= ${rhsCol}`;
       return `${field} >= ${nextParam(state, rhsVal)}`;
 
-    case Operator.in:
-      if (!Array.isArray(rhsVal) || rhsVal.length === 0) return 'FALSE';
-      return `${field} = ANY(${nextParam(state, rhsVal)})`;
+    case Operator.in: {
+      const { values, hasNull } = splitNull(rhsVal);
+      if (!values.length) return hasNull ? `${field} IS NULL` : 'FALSE';
+      const anyOf = `${field} = ANY(${nextParam(state, values)})`;
+      return hasNull ? orNull(anyOf) : anyOf;
+    }
 
-    case Operator.notIn:
-      if (!Array.isArray(rhsVal) || rhsVal.length === 0) return 'TRUE';
-      return `${field} <> ALL(${nextParam(state, rhsVal)})`;
+    case Operator.notIn: {
+      const { values, hasNull } = splitNull(rhsVal);
+      if (!values.length) return hasNull ? `${field} IS NOT NULL` : 'TRUE';
+      const noneOf = `${field} <> ALL(${nextParam(state, values)})`;
+      return hasNull ? `(${noneOf} AND ${field} IS NOT NULL)` : orNull(noneOf);
+    }
 
     case Operator.contains:
       return `${lc(field)} LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`))}`;
 
     case Operator.notContains:
-      return `${lc(field)} NOT LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`))}`;
+      return orNull(
+        `${lc(field)} NOT LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}%`))}`,
+      );
 
     case Operator.startsWith:
       return `${lc(field)} LIKE ${lc(nextParam(state, `${escapeLikePattern(String(rhsVal))}%`))}`;
@@ -71,7 +84,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       return `${field} ~ ${nextParam(state, rhsVal)}`;
 
     case Operator.notMatches:
-      return `${field} !~ ${nextParam(state, rhsVal)}`;
+      return orNull(`${field} !~ ${nextParam(state, rhsVal)}`);
 
     case Operator.between: {
       const v = rhsVal as unknown[];
@@ -88,7 +101,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
         throw new Error('notBetween operator requires an array of two values');
       }
       const [min, max] = (v[0] as number) <= (v[1] as number) ? v : [v[1], v[0]];
-      return `${field} NOT BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
+      return orNull(`${field} NOT BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`);
     }
 
     case Operator.isEmpty:
@@ -109,6 +122,12 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
 };
 
 type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
+
+const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
+  if (!Array.isArray(list)) return { values: [], hasNull: false };
+  const values = list.filter((v) => v !== null);
+  return { values, hasNull: values.length !== list.length };
+};
 
 /**
  * Resolve the right-hand side of a comparison from a Rule.

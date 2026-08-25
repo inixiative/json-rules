@@ -165,9 +165,9 @@ export const checkField = <TData extends Record<string, unknown>>(
     case Operator.notEmpty:
       return !isEmptyValue(fieldValue) || getError(`must not be empty`);
     case Operator.exists:
-      return fieldValue !== undefined || getError(`must exist`);
+      return fieldValue != null || getError(`must exist`);
     case Operator.notExists:
-      return fieldValue === undefined || getError(`must not exist`);
+      return fieldValue == null || getError(`must not exist`);
     case Operator.startsWith:
       return (
         (typeof lhs === 'string' && typeof rhs === 'string' && lhs.startsWith(rhs)) ||

@@ -33,13 +33,13 @@ describe('toSql path ref: $.field', () => {
     expect(params).toEqual([]);
   });
 
-  it('$.field with equals → column = column', () => {
+  it('$.field with equals → column IS NOT DISTINCT FROM column', () => {
     const { sql, params } = toSql({
       field: 'confirmedAt',
       operator: Operator.equals,
       path: '$.createdAt',
     });
-    expect(sql).toBe('"confirmedAt" = "createdAt"');
+    expect(sql).toBe('"confirmedAt" IS NOT DISTINCT FROM "createdAt"');
     expect(params).toEqual([]);
   });
 

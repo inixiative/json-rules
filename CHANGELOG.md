@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.19.0 — negation keeps NULL rows in both compilers
+
+- `check()` already treated a negated operator as the complement of its
+  positive form (`null !== 'x'` is true), while `toSql` / `toPrisma` emitted bare
+  `<>` / `NOT IN` / `NOT LIKE` / `!~` / `NOT BETWEEN`, which SQL three-valued
+  logic drops for a NULL column. The same stored rule gave opposite answers per
+  engine on any nullable field — a segment "job title is not X" enrolled a fan
+  with no job title in the per-user pass and evicted them in the batch pass.
+- `toSql`: `notEquals` / `notIn` / `notContains` / `notMatches` / `notBetween`
+  become `(… OR col IS NULL)`; `in` with a null member becomes
+  `(col = ANY($1) OR col IS NULL)` and `notIn` with one becomes
+  `(col <> ALL($1) AND col IS NOT NULL)`; column-to-column `equals` / `notEquals`
+  (`path: '$.x'`) use `IS [NOT] DISTINCT FROM`.
+- `toPrisma`: the same arms as `{ OR: [filter, { col: { equals: null } }] }`,
+  gated on the field map's **new `FieldMapEntry.isRequired?: boolean`**
+  (prisma-map already emits it). Nullability unknown → bare filter, as before,
+  because `equals: null` on a NOT NULL column is a Prisma validation error.
+- `check()`: `exists` / `notExists` are now `!= null` / `== null` — "has a
+  value", matching `IS NOT NULL`, instead of key presence.
+- Added `test/nullSemantics.test.ts`: a `check()` ↔ `toSql()` parity matrix over
+  every field operator on a NULL row (PGlite), plus the `toPrisma` shapes.
+
 ## 2.18.4 — the Json boundary is open-ended all the way down
 
 - 2.10.1 stopped `walkLensPath` at a Json column so `metadata.theme` would

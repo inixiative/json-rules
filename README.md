@@ -494,6 +494,31 @@ Not every backend supports every rule shape.
 | Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
 
+### NULL Semantics
+
+A negated operator is the complement of its positive form — the same answer
+`check()` gives, where `null !== 'x'` is simply true. SQL's three-valued logic
+disagrees (`col <> 'x'` is NULL, never true, for a NULL column), so the
+compilers carry NULL rows explicitly:
+
+| Rule | `check()` on `{ col: null }` | `toSql()` | `toPrisma()` (nullable column) |
+| --- | --- | --- | --- |
+| `notEquals 'x'` / `notContains` / `notMatches` / `notBetween` | matches | `(col <> $1 OR col IS NULL)` | `{ OR: [{ col: { not: 'x' } }, { col: { equals: null } }] }` |
+| `notIn ['x']` | matches | `(col <> ALL($1) OR col IS NULL)` | `{ OR: [{ col: { notIn: ['x'] } }, { col: { equals: null } }] }` |
+| `in ['x', null]` | matches | `(col = ANY($1) OR col IS NULL)` | `{ OR: [{ col: { in: ['x'] } }, { col: { equals: null } }] }` |
+| `notIn ['x', null]` | no match | `(col <> ALL($1) AND col IS NOT NULL)` | `{ AND: [{ col: { notIn: ['x'] } }, { col: { not: null } }] }` |
+| `equals` / `notEquals` with `path: '$.other'` | `null === null` | `IS [NOT] DISTINCT FROM` | — |
+| `exists` / `notExists` | `!= null` / `== null` | `IS NOT NULL` / `IS NULL` | `{ not: null }` / `{ equals: null }` |
+
+`toPrisma()` can only add the null arm when it knows the column is nullable —
+an `equals: null` on a NOT NULL column is a Prisma validation error. Nullability
+comes from the field map: `FieldMapEntry.isRequired: false` (prisma-map emits it).
+Without `{ map, model }`, or on an entry that doesn't declare it, the bare
+`not` / `notIn` is emitted and NULL rows fall out, as they always did.
+
+Date rules are unaffected: `check()` throws on a NULL date column rather than
+answering, and the compilers keep the bare `NOT BETWEEN`.
+
 ### Prisma Limitations
 
 - `matches` and `notMatches` are not supported by Prisma output

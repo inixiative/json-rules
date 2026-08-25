@@ -336,6 +336,33 @@ Inside array conditions, `$.` means "read from the current element":
 }
 ```
 
+## Rule Introspection
+
+Reading a stored rule's own content — which values it names, which bindings it needs — is
+engine work, not caller work: a walk written outside the engine goes blind the day the rule
+format grows a node type, and it goes blind silently.
+
+| Function | Purpose |
+| --- | --- |
+| `referencedFieldValues(rule, path)` | The literals a rule compares a dotted `path` against — `{ values, dynamic }`. Walks `all` / `any` / `if-then-else`, relation `condition`s and windowing `filter`s, consuming path segments relation by relation, and accepts both the nested and the dotted spelling. Quantifier-blind (`none` mentions its value as much as `any` does) and operator-blind (`in` / `between` lists are flattened). `dynamic: true` means a matching leaf read its value from `path` / `bind`, so the set is incomplete by construction — gates read it instead of treating "no literals" as "no reference". |
+| `transformFieldValues(rule, path, fn)` | The write half: rewrites every literal at that path, leaving the tree's shape, every other leaf, and `path` / `bind` leaves untouched. Does not mutate the input. For callers that re-key the data a rule names (cloning an environment, remapping ids). |
+| `requiredBindings(rule)` | Names of every `{ bind }` token in the tree — the set a bindings map must cover. |
+| `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
+
+```ts
+const rule = {
+  field: 'fanUserGroups',
+  arrayOperator: ArrayOperator.none,
+  condition: { field: 'group.uuid', operator: Operator.in, value: ['a', 'b'] },
+};
+
+referencedFieldValues(rule, 'fanUserGroups.group.uuid');
+// { values: Set { 'a', 'b' }, dynamic: false }
+
+transformFieldValues(rule, 'fanUserGroups.group.uuid', (uuid) => remap[String(uuid)] ?? uuid);
+// same rule with the uuids re-pointed
+```
+
 ## Runtime Validation
 
 `check()` evaluates a rule against data and returns:

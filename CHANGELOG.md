@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.20.0 — rule introspection: which values does this tree name?
+
+- New `referencedFieldValues(rule, path)` → `{ values, dynamic }`: the literals a
+  condition tree compares a dotted path against. Consumers were hand-rolling this
+  walk to answer questions about their own stored rules ("which segments does this
+  segment reference", "which ids does this clone have to remap"), and every
+  hand-rolled copy re-implements the grammar — so it goes blind, silently, the day
+  the rule format grows a node type. The walk descends relation by relation,
+  consuming the path's segments, and accepts both authoring spellings of the same
+  reference (nested `{ field: 'orders', arrayOperator, condition: { field: 'sku' } }`
+  and dotted `{ field: 'orders.sku' }`).
+- It is quantifier- and operator-blind on purpose: a `none` relation names its value
+  as much as an `any` one does, and `in` / `notIn` / `between` lists are flattened.
+  An aggregate node's own comparison value belongs to the aggregate, not to the
+  relation it names, so it is never reported as one. A relation with no `field` (root
+  array) consumes no segments and is walked THROUGH — callers are gates, and a
+  missed reference is the dangerous direction.
+- `dynamic: true` reports that a matching leaf sourced its value from `path` / `bind`,
+  so the set is incomplete by construction. Gates read the flag instead of reading
+  "no literals" as "no reference".
+- New `transformFieldValues(rule, path, fn)` — the write half of the same walk, for
+  callers that re-key the data a rule names. Rewrites literals only; leaves the tree
+  shape, other leaves, and `path` / `bind` leaves alone. Does not mutate the input.
+- **Fix:** `requiredBindings` / `resolveBindings` never descended into a windowing
+  `filter`, so a `{ bind }` inside one was reported as not required and survived
+  resolution as an unresolved token. Both now walk it.
+- Added `test/fieldValues.test.ts` (extraction, remap, and the filter-carried binding
+  regression). Documented under README §Rule Introspection.
+
 ## 2.19.1 — a null date column is a non-match, not a throw
 
 - 2.19.0 aligned the engines on NEGATION over a NULL column; the date rail kept the

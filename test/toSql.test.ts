@@ -323,7 +323,7 @@ describe('toSql', () => {
         dateOperator: DateOperator.notBetween,
         value: [end, start],
       });
-      expect(sql).toBe('"eventDate" NOT BETWEEN $1 AND $2');
+      expect(sql).toBe('("eventDate" NOT BETWEEN $1 AND $2 OR "eventDate" IS NULL)');
       expect(params).toEqual([start, end]);
     });
 
@@ -343,7 +343,7 @@ describe('toSql', () => {
         dateOperator: DateOperator.dayNotIn,
         value: ['saturday', 'sunday'],
       });
-      expect(sql).toBe('EXTRACT(DOW FROM "deliveryDate") <> ALL($1)');
+      expect(sql).toBe('(EXTRACT(DOW FROM "deliveryDate") <> ALL($1) OR "deliveryDate" IS NULL)');
       expect(params).toEqual([[6, 0]]);
     });
   });

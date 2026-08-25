@@ -28,7 +28,7 @@ const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
   );
 };
 
-const directEntry = (rule: Rule, options?: BuildOptions) => {
+const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
   const walk =
     options?.map && options?.model
       ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
@@ -41,7 +41,7 @@ const directEntry = (rule: Rule, options?: BuildOptions) => {
  * required: an `equals: null` arm on a NOT NULL column is a Prisma validation
  * error at runtime, so the map is the only authority that can license one.
  */
-const isNullableColumn = (rule: Rule, options?: BuildOptions): boolean =>
+export const isNullableColumn = (rule: Pick<Rule, 'field'>, options?: BuildOptions): boolean =>
   directEntry(rule, options)?.isRequired === false;
 
 const NEGATED: readonly Operator[] = [

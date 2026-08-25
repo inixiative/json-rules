@@ -516,15 +516,20 @@ comes from the field map: `FieldMapEntry.isRequired: false` (prisma-map emits it
 Without `{ map, model }`, or on an entry that doesn't declare it, the bare
 `not` / `notIn` is emitted and NULL rows fall out, as they always did.
 
-Date rules answer the same way on both rails, from the other direction: a bare
-boundary is not something a NULL column satisfies, so `check()` reports the rule's
-ordinary non-match (honoring `error`) for a null or absent field, and the compilers
-keep the bare `<` / `NOT BETWEEN`. To match the never-seen rows too, ask for them:
+Date rules follow the same split. The positive operators answer non-match on both
+rails — a bare boundary is not something a NULL column satisfies, so `check()`
+reports the rule's ordinary non-match (honoring `error`) and the compilers keep the
+bare `<` / `BETWEEN`. The negative-flavored ones (`notBetween`, `dayNotIn`) follow
+the negation ruling instead: a never-set date is not in the range, so a null column
+MATCHES, and the compilers carry the `IS NULL` arm. To match never-seen rows under a
+positive operator, ask for them:
 `{ any: [{ field, operator: 'notExists' }, { field, dateOperator: 'before', … }] }`.
 
 | Rule | `check()` on `{ col: null }` | `toSql()` | `toPrisma()` |
 | --- | --- | --- | --- |
-| any `dateOperator` | no match | `col < $1` (NULL never satisfies) | `{ col: { lt: … } }` |
+| positive `dateOperator` (`before`, `between`, `dayIn`, …) | no match | `col < $1` (NULL never satisfies) | `{ col: { lt: … } }` |
+| `notBetween` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ col: { NOT: … } }, { col: { equals: null } }] }` (nullable column, same field-map licensing as above) |
+| `dayNotIn` | matches | `(EXTRACT(DOW FROM col) <> ALL($1) OR col IS NULL)` | — (no Prisma output) |
 | `notExists` OR `before` | matches via the first arm | `(col IS NULL OR col < $1)` | `{ OR: [{ col: { equals: null } }, { col: { lt: … } }] }` |
 
 `0` is an instant (1970-01-01) and compares; `''` is malformed data and raises

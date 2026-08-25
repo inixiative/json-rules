@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.19.2 — negated date operators keep NULL rows
+
+- 2.19.1 made a null date column a non-match for every date operator. Right for the
+  positive ones; wrong for the negative-flavored ones. Per the 2.19.0 negation ruling
+  — not(X) is the complement of X, and no value does not satisfy X — a never-set
+  date IS "not between January and June", and its day IS "not monday".
+- `check()` now answers `true` for `notBetween` / `dayNotIn` over a null or absent
+  field. `toSql` ORs an `IS NULL` arm onto both. `toPrisma` adds the `equals: null`
+  arm on `notBetween` under the same field-map licensing as the plain negated
+  operators (`isRequired: false`); `dayNotIn` still has no Prisma output.
+- The positive date operators are unchanged: null is a non-match, the compilers stay
+  bare, and the `notExists`-arm composition remains the way to claim never-seen rows.
+
 ## 2.19.1 — a null date column is a non-match, not a throw
 
 - 2.19.0 aligned the engines on NEGATION over a NULL column; the date rail kept the

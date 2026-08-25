@@ -19,6 +19,11 @@ dayjs.extend(timezone);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
+const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
+  DateOperator.notBetween,
+  DateOperator.dayNotIn,
+];
+
 export const checkDate = <TData extends Record<string, unknown>>(
   condition: DateRule,
   data: TData,
@@ -28,17 +33,19 @@ export const checkDate = <TData extends Record<string, unknown>>(
 ): boolean | string => {
   const fieldValue = get(data, condition.field) as unknown;
 
-  // A comparison against a missing date is a NON-MATCH, not an evaluation failure: both
-  // compilers emit a bare boundary (`lt` / `gte`+`lte`) that a NULL column never
-  // satisfies, so a throw here made the same stored rule crash the per-row pass while
-  // the batch pass classified the row cleanly — the divergence 2.19.0 closed for
-  // negations, in the one place it still remained. Symmetric with `exists`: no value is
-  // no value, whichever rail asks.
+  // A missing date is a NON-MATCH for the positive operators — both compilers emit a
+  // bare boundary (`lt` / `gte`+`lte`) that a NULL column never satisfies — and a MATCH
+  // for the negative-flavored ones, per the 2.19.0 negation ruling: not(X) is the
+  // complement of X, and no value does not satisfy X. The compilers carry the same
+  // split (an IS NULL arm on notBetween/dayNotIn only), so the rails agree either way.
   //
   // `== null`, not falsy: epoch 0 is a real instant (1970-01-01) that must compare, and
   // `''` is malformed data — it falls to the validity error below instead of being
   // misreported as absent.
-  if (fieldValue == null) return condition.error || `${condition.field} has no value`;
+  if (fieldValue == null) {
+    if (NEGATED_DATE_OPERATORS.includes(condition.dateOperator)) return true;
+    return condition.error || `${condition.field} has no value`;
+  }
   if (!isDateInputValue(fieldValue))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 

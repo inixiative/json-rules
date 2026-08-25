@@ -15,12 +15,18 @@ const DATE_RULES: Record<string, Record<string, unknown>> = {
   onOrAfter: { field: 'lastLoginAt', dateOperator: 'onOrAfter', value: '2026-01-01' },
   within: { field: 'lastLoginAt', dateOperator: 'within', value: { ago: { days: 30 } } },
   between: { field: 'lastLoginAt', dateOperator: 'between', value: ['2026-01-01', '2026-06-01'] },
+  dayIn: { field: 'lastLoginAt', dateOperator: 'dayIn', value: ['monday'] },
+};
+
+// The negative-flavored date operators follow the 2.19.0 negation ruling instead: a
+// null column MATCHES not(X), because no value does not satisfy X. Covered in
+// date.negatedNull.test.ts.
+const NEGATED_DATE_RULES: Record<string, Record<string, unknown>> = {
   notBetween: {
     field: 'lastLoginAt',
     dateOperator: 'notBetween',
     value: ['2026-01-01', '2026-06-01'],
   },
-  dayIn: { field: 'lastLoginAt', dateOperator: 'dayIn', value: ['monday'] },
   dayNotIn: { field: 'lastLoginAt', dateOperator: 'dayNotIn', value: ['monday'] },
 };
 
@@ -29,6 +35,13 @@ describe('checkDate — a null field is a non-match, not a throw', () => {
     test(`${label} over a null column does not match and does not throw`, () => {
       expect(check(rule as never, { lastLoginAt: null }, opts)).not.toBe(true);
       expect(check(rule as never, {}, opts)).not.toBe(true);
+    });
+  }
+
+  for (const [label, rule] of Object.entries(NEGATED_DATE_RULES)) {
+    test(`${label} over a null column matches, per the negation ruling`, () => {
+      expect(check(rule as never, { lastLoginAt: null }, opts)).toBe(true);
+      expect(check(rule as never, {}, opts)).toBe(true);
     });
   }
 

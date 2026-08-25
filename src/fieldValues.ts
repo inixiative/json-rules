@@ -1,26 +1,35 @@
 import { type ConditionNode, isRelationNode, mapCondition, visitCondition } from './traverse';
 import type { Condition, RuleValue } from './types';
 
-/** `path` with `prefix`'s segments removed, or null when `prefix` isn't a segment prefix. */
-const stripPrefix = (path: string, prefix: string): string | null => {
-  if (path === prefix) return '';
-  return path.startsWith(`${prefix}.`) ? path.slice(prefix.length + 1) : null;
+type Segments = readonly string[];
+
+/**
+ * The one path primitive: a node's `field` consumes leading segments of the remaining
+ * fieldPath, or null when it names something else. Both spellings reduce to it — descent
+ * keeps the remainder, and a leaf MATCH is full consumption (empty remainder).
+ */
+const consume = (path: Segments, field: string): Segments | null => {
+  const parts = field.split('.');
+  if (parts.length > path.length) return null;
+  for (let i = 0; i < parts.length; i++) if (parts[i] !== path[i]) return null;
+  return path.slice(parts.length);
 };
 
 /**
- * Relation descent consumes the segments the relation's `field` names; a relation with no
+ * Relation descent: the relation's `field` consumes its segments; a relation with no
  * `field` (a root array) consumes none and is walked THROUGH — the callers are gates, and
  * a missed reference is the dangerous direction. Non-relation nodes never scope children
  * to a row, so their `condition` / `filter` are pruned for field-path purposes.
  */
-const descendByFieldPath = (node: ConditionNode, fieldPath: string): string | null => {
+const descendByFieldPath = (node: ConditionNode, path: Segments): Segments | null => {
   if (!isRelationNode(node)) return null;
-  const field = typeof node.field === 'string' ? node.field : undefined;
-  return field === undefined ? fieldPath : stripPrefix(fieldPath, field);
+  return typeof node.field === 'string' ? consume(path, node.field) : path;
 };
 
-const matchesLeaf = (node: ConditionNode, fieldPath: string): boolean =>
-  !isRelationNode(node) && typeof node.field === 'string' && node.field === fieldPath;
+const matchesLeaf = (node: ConditionNode, path: Segments): boolean =>
+  !isRelationNode(node) &&
+  typeof node.field === 'string' &&
+  consume(path, node.field)?.length === 0;
 
 export type FieldValueRefs = {
   /** Every literal a matching leaf compares against, list operators flattened, first-seen order. */
@@ -49,7 +58,7 @@ export const referencedFieldValues = (condition: Condition, fieldPath: string): 
   const binds = new Set<string>();
   const paths = new Set<string>();
 
-  visitCondition(condition, fieldPath, {
+  visitCondition(condition, fieldPath.split('.') as Segments, {
     descend: descendByFieldPath,
     enter: (node, path) => {
       if (!matchesLeaf(node, path)) return;
@@ -93,7 +102,7 @@ export const transformFieldValues = (
   fieldPath: string,
   mapping: Record<string, RuleValue>,
 ): Condition =>
-  mapCondition(condition, fieldPath, {
+  mapCondition(condition, fieldPath.split('.') as Segments, {
     descend: descendByFieldPath,
     rewrite: (node, path) => {
       if (!matchesLeaf(node, path)) return node;

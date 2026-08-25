@@ -516,8 +516,19 @@ comes from the field map: `FieldMapEntry.isRequired: false` (prisma-map emits it
 Without `{ map, model }`, or on an entry that doesn't declare it, the bare
 `not` / `notIn` is emitted and NULL rows fall out, as they always did.
 
-Date rules are unaffected: `check()` throws on a NULL date column rather than
-answering, and the compilers keep the bare `NOT BETWEEN`.
+Date rules answer the same way on both rails, from the other direction: a bare
+boundary is not something a NULL column satisfies, so `check()` reports the rule's
+ordinary non-match (honoring `error`) for a null or absent field, and the compilers
+keep the bare `<` / `NOT BETWEEN`. To match the never-seen rows too, ask for them:
+`{ any: [{ field, operator: 'notExists' }, { field, dateOperator: 'before', … }] }`.
+
+| Rule | `check()` on `{ col: null }` | `toSql()` | `toPrisma()` |
+| --- | --- | --- | --- |
+| any `dateOperator` | no match | `col < $1` (NULL never satisfies) | `{ col: { lt: … } }` |
+| `notExists` OR `before` | matches via the first arm | `(col IS NULL OR col < $1)` | `{ OR: [{ col: { equals: null } }, { col: { lt: … } }] }` |
+
+`0` is an instant (1970-01-01) and compares; `''` is malformed data and raises
+`"is not a valid date"`.
 
 ### Prisma Limitations
 

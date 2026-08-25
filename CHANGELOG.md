@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.19.1 — a null date column is a non-match, not a throw
+
+- 2.19.0 aligned the engines on NEGATION over a NULL column; the date rail kept the
+  last divergence. `checkDate` threw `"<field> is null or undefined"` for a missing
+  value, while `toSql` / `toPrisma` emit a bare boundary (`<` / `BETWEEN`, `lt` /
+  `gte`+`lte`) that a NULL column simply does not satisfy. The same stored rule
+  crashed a per-row pass and classified the row cleanly in the batch pass — a
+  segment "last login before 30 days ago" reported every never-seen member as
+  unevaluable per row and as a non-match in bulk.
+- `checkDate` now returns the rule's ordinary non-match (honoring `error`) when the
+  field is null or absent, for every date operator. Symmetric with `exists`, which
+  2.19.0 defined as "has a value".
+- The guard is `== null`, not falsy: epoch `0` is a real instant (1970-01-01) and now
+  compares instead of throwing, and `''` reaches the existing
+  `"is not a valid date"` error instead of being misreported as absent.
+
 ## 2.19.0 — negation keeps NULL rows in both compilers
 
 - `check()` already treated a negated operator as the complement of its

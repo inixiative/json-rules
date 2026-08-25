@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.19.3 — binds inside windowing filters are required and resolvable
+
+- `requiredBindings` / `resolveBindings` never descended into a windowing `filter`,
+  so a `{ bind }` inside one was reported as not required and survived resolution as
+  an unresolved token. Both now walk it.
+- `resolveBindings` looks up binds as own properties — a bind named `toString` no
+  longer "resolves" from `Object.prototype` when the bindings map doesn't cover it.
+- Internal: the condition grammar's child slots (`all` / `any`, `if` / `then` /
+  `else`, `condition` + `filter`) are listed once, in `src/traverse.ts`, and both
+  binding functions consume that walk — the slot lists were previously duplicated
+  per function, which is how the `filter` blindness happened.
+- The engine remains an evaluator: no rule-introspection API. A rule is blind to
+  other rules; cross-rule concerns (reference graphs, ordering, remapping) belong
+  to the caller that authors the rules.
+
 ## 2.19.2 — negated date operators keep NULL rows
 
 - 2.19.1 made a null date column a non-match for every date operator. Right for the

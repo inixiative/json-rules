@@ -1,4 +1,5 @@
 import type { SourceOption } from '../toPrisma/types.ts';
+import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
 import { prefixConditionFields } from './applyLens.ts';
 import { type Policy, resolveVisit } from './policy.ts';
@@ -57,21 +58,16 @@ const foldPathGuards = (
   }
 };
 
-/** Every dotted `field` a condition references (all/any/if recursion; array and
- * aggregate rules contribute their own anchor `field` — their nested conditions
- * are element-relative and compile inside the relation filter, not as new joins
- * from this model). */
+/** Every dotted `field` a condition references. Relation nodes contribute their own
+ * anchor `field`; their nested conditions are element-relative and compile inside the
+ * relation filter, not as new joins from this model, so descent stops there. */
 const collectFieldPaths = (condition: Condition, out: string[] = []): string[] => {
-  if (typeof condition !== 'object' || condition === null) return out;
-  const c = condition as Record<string, unknown>;
-  if (Array.isArray(c.all)) for (const child of c.all as Condition[]) collectFieldPaths(child, out);
-  if (Array.isArray(c.any)) for (const child of c.any as Condition[]) collectFieldPaths(child, out);
-  if (c.if !== undefined) {
-    collectFieldPaths(c.if as Condition, out);
-    collectFieldPaths(c.then as Condition, out);
-    if (c.else !== undefined) collectFieldPaths(c.else as Condition, out);
-  }
-  if (typeof c.field === 'string') out.push(c.field);
+  visitCondition(condition, {
+    enter: (node) => {
+      if (typeof node.field === 'string') out.push(node.field);
+    },
+    descend: () => false,
+  });
   return out;
 };
 

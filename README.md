@@ -336,6 +336,18 @@ Inside array conditions, `$.` means "read from the current element":
 }
 ```
 
+## Rule Introspection
+
+Reading a stored rule's own content — which values it names, which bindings it needs — is
+engine work, not caller work: a walk written outside the engine goes blind the day the rule
+format grows a node type, and it goes blind silently.
+
+| Function | Purpose |
+| --- | --- |
+| `requiredBindings(rule)` | Names of every `{ bind }` token in the tree — the set a bindings map must cover. |
+| `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
+
+
 ## Runtime Validation
 
 `check()` evaluates a rule against data and returns:

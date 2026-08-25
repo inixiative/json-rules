@@ -1,16 +1,5 @@
+import { type ConditionNode, isRelationNode, mapCondition, visitCondition } from './traverse';
 import type { Condition, RuleValue } from './types';
-
-type ObjCondition = Exclude<Condition, boolean>;
-type Node = Record<string, unknown>;
-
-const isObjCondition = (c: Condition): c is ObjCondition => typeof c === 'object' && c !== null;
-
-/**
- * Array rules (`arrayOperator`) and aggregate rules (`aggregate`) are the two nodes that
- * descend into a relation's rows: their `field` names the relation, and both `condition`
- * and the windowing `filter` are evaluated against a row, not against the parent model.
- */
-const isRelationNode = (node: Node): boolean => 'arrayOperator' in node || 'aggregate' in node;
 
 /** `path` with `prefix`'s segments removed, or null when `prefix` isn't a segment prefix. */
 const stripPrefix = (path: string, prefix: string): string | null => {
@@ -19,52 +8,27 @@ const stripPrefix = (path: string, prefix: string): string | null => {
 };
 
 /**
- * The one walk that resolves a dotted path against a condition tree, descending relation
- * by relation and consuming the segments each relation's `field` names. Both spellings of
- * the same reference arrive here: nested (`{ field: 'orders', arrayOperator, condition:
- * { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`).
- *
- * `all` / `any` / `if-then-else` consume no segments. A relation whose `field` is absent
- * (a root array over primitives) consumes none either and is walked THROUGH, so a matching
- * leaf can never hide behind it — the callers are gates, and a missed reference is the
- * dangerous direction.
+ * Relation descent consumes the segments the relation's `field` names; a relation with no
+ * `field` (a root array) consumes none and is walked THROUGH — the callers are gates, and
+ * a missed reference is the dangerous direction. Non-relation nodes never scope children
+ * to a row, so their `condition` / `filter` are pruned for field-path purposes.
  */
-const walkFieldValues = (condition: Condition, path: string, visit: (node: Node) => void): void => {
-  if (!isObjCondition(condition)) return;
-  const node = condition as Node;
-
-  if (Array.isArray(node.all))
-    for (const child of node.all as Condition[]) walkFieldValues(child, path, visit);
-  if (Array.isArray(node.any))
-    for (const child of node.any as Condition[]) walkFieldValues(child, path, visit);
-  if ('if' in node) {
-    walkFieldValues(node.if as Condition, path, visit);
-    walkFieldValues(node.then as Condition, path, visit);
-    if (node.else !== undefined) walkFieldValues(node.else as Condition, path, visit);
-  }
-
+const descendByFieldPath = (node: ConditionNode, fieldPath: string): string | null => {
+  if (!isRelationNode(node)) return null;
   const field = typeof node.field === 'string' ? node.field : undefined;
-
-  if (isRelationNode(node)) {
-    const inner = field === undefined ? path : stripPrefix(path, field);
-    if (inner === null) return;
-    if (node.condition !== undefined) walkFieldValues(node.condition as Condition, inner, visit);
-    if (node.filter !== undefined) walkFieldValues(node.filter as Condition, inner, visit);
-    return;
-  }
-
-  if (field !== undefined && field === path) visit(node);
+  return field === undefined ? fieldPath : stripPrefix(fieldPath, field);
 };
 
+const matchesLeaf = (node: ConditionNode, fieldPath: string): boolean =>
+  !isRelationNode(node) && typeof node.field === 'string' && node.field === fieldPath;
+
 export type FieldValueRefs = {
-  /** Every literal a matching leaf compares against, list operators flattened. */
-  values: Set<RuleValue>;
-  /**
-   * A matching leaf sourced its value from `path` / `bind` rather than a literal, so the
-   * set is incomplete by construction. Gates that must fail closed read this instead of
-   * treating "no literals" as "no reference".
-   */
-  dynamic: boolean;
+  /** Every literal a matching leaf compares against, list operators flattened, first-seen order. */
+  values: RuleValue[];
+  /** Bind names on matching leaves — resolve with `resolveBindings` to turn them into literals. */
+  binds: string[];
+  /** `path` sources on matching leaves (`'$.col'` / context refs) — dynamic by nature. */
+  paths: string[];
 };
 
 /**
@@ -72,72 +36,72 @@ export type FieldValueRefs = {
  * (`transformFieldValues` is the write half), and the engine-owned answer to "which X does
  * this rule mention".
  *
- * `path` is dotted from the tree's root model (`'fanUserGroups.group.uuid'`). Values are
- * collected regardless of operator and quantifier: `equals` and `notEquals` carry a scalar,
- * `in` / `notIn` a list, `between` a tuple, and a `none` relation mentions its value just as
- * much as an `any` one does. An aggregate node's own comparison value belongs to the
- * aggregate, not to the relation it names, so it is never collected as one.
+ * `fieldPath` is dotted from the tree's root model (`'fanUserGroups.group.uuid'`), matching
+ * both authoring spellings (nested relation `condition`s and dotted `field`s). Values are
+ * collected regardless of operator and quantifier: a `none` relation mentions its value as
+ * much as an `any` one, and `in` / `notIn` / `between` lists flatten. An aggregate node's
+ * own comparison value belongs to the aggregate, not to the relation it names. Non-literal
+ * sources are reported by name in `binds` / `paths`, never silently dropped — a gate that
+ * must fail closed checks those, and can `resolveBindings` first to shrink `binds`.
  */
-export const referencedFieldValues = (condition: Condition, path: string): FieldValueRefs => {
+export const referencedFieldValues = (condition: Condition, fieldPath: string): FieldValueRefs => {
   const values = new Set<RuleValue>();
-  let dynamic = false;
+  const binds = new Set<string>();
+  const paths = new Set<string>();
 
-  walkFieldValues(condition, path, (node) => {
-    if (typeof node.path === 'string' || typeof node.bind === 'string') {
-      dynamic = true;
-      return;
-    }
-    if (!('value' in node)) return;
-    const value = node.value as RuleValue;
-    for (const entry of Array.isArray(value) ? value : [value]) values.add(entry);
+  visitCondition(condition, fieldPath, {
+    descend: descendByFieldPath,
+    enter: (node, path) => {
+      if (!matchesLeaf(node, path)) return;
+      if (typeof node.bind === 'string') {
+        binds.add(node.bind);
+        return;
+      }
+      if (typeof node.path === 'string') {
+        paths.add(node.path);
+        return;
+      }
+      if (!('value' in node)) return;
+      const value = node.value as RuleValue;
+      for (const entry of Array.isArray(value) ? value : [value]) values.add(entry);
+    },
   });
 
-  return { values, dynamic };
+  return { values: [...values], binds: [...binds], paths: [...paths] };
+};
+
+/** String and number literals carry ids; anything else has no key and never remaps. */
+const remapLiteral = (value: RuleValue, mapping: Record<string, RuleValue>): RuleValue => {
+  if (typeof value !== 'string' && typeof value !== 'number') return value;
+  const key = String(value);
+  return key in mapping ? mapping[key] : value;
 };
 
 /**
- * Rewrite every literal a given field is compared against, leaving the tree's shape and
- * every other leaf untouched. The remap primitive for callers that clone or re-key the
- * data a rule names (a sandbox clone re-pointing ids, a merge re-pointing a renamed key).
+ * Rewrite the literals a given field is compared against through a lookup table, leaving
+ * the tree's shape and every other leaf untouched. The remap primitive for callers that
+ * clone or re-key the data a rule names (a sandbox clone re-pointing ids, a merge
+ * re-pointing a renamed key). Plain data on both sides — the mapping serializes with the
+ * rule it rewrites.
  *
- * Same path semantics as `referencedFieldValues`. `path` / `bind` leaves are left alone —
- * there is no literal to rewrite, and inventing one would silently change the rule.
- * Does not mutate the input.
+ * Same `fieldPath` semantics as `referencedFieldValues`. `path` / `bind` leaves are left
+ * alone — there is no literal to rewrite, and inventing one would silently change the
+ * rule. Does not mutate the input.
  */
 export const transformFieldValues = (
   condition: Condition,
-  path: string,
-  fn: (value: RuleValue) => RuleValue,
-): Condition => {
-  if (!isObjCondition(condition)) return condition;
-  const node: Node = { ...(condition as Node) };
-
-  if (Array.isArray(node.all))
-    node.all = (node.all as Condition[]).map((c) => transformFieldValues(c, path, fn));
-  if (Array.isArray(node.any))
-    node.any = (node.any as Condition[]).map((c) => transformFieldValues(c, path, fn));
-  if ('if' in node) {
-    node.if = transformFieldValues(node.if as Condition, path, fn);
-    node.then = transformFieldValues(node.then as Condition, path, fn);
-    if (node.else !== undefined) node.else = transformFieldValues(node.else as Condition, path, fn);
-  }
-
-  const field = typeof node.field === 'string' ? node.field : undefined;
-
-  if (isRelationNode(node)) {
-    const inner = field === undefined ? path : stripPrefix(path, field);
-    if (inner === null) return node as Condition;
-    if (node.condition !== undefined)
-      node.condition = transformFieldValues(node.condition as Condition, inner, fn);
-    if (node.filter !== undefined)
-      node.filter = transformFieldValues(node.filter as Condition, inner, fn);
-    return node as Condition;
-  }
-
-  if (field === path && 'value' in node && node.path === undefined && node.bind === undefined) {
-    const value = node.value as RuleValue;
-    node.value = Array.isArray(value) ? value.map(fn) : fn(value);
-  }
-
-  return node as Condition;
-};
+  fieldPath: string,
+  mapping: Record<string, RuleValue>,
+): Condition =>
+  mapCondition(condition, fieldPath, {
+    descend: descendByFieldPath,
+    rewrite: (node, path) => {
+      if (!matchesLeaf(node, path)) return node;
+      if (!('value' in node) || node.path !== undefined || node.bind !== undefined) return node;
+      const value = node.value as RuleValue;
+      node.value = Array.isArray(value)
+        ? value.map((entry) => remapLiteral(entry, mapping))
+        : remapLiteral(value, mapping);
+      return node;
+    },
+  });

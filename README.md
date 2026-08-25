@@ -344,8 +344,8 @@ format grows a node type, and it goes blind silently.
 
 | Function | Purpose |
 | --- | --- |
-| `referencedFieldValues(rule, path)` | The literals a rule compares a dotted `path` against — `{ values, dynamic }`. Walks `all` / `any` / `if-then-else`, relation `condition`s and windowing `filter`s, consuming path segments relation by relation, and accepts both the nested and the dotted spelling. Quantifier-blind (`none` mentions its value as much as `any` does) and operator-blind (`in` / `between` lists are flattened). `dynamic: true` means a matching leaf read its value from `path` / `bind`, so the set is incomplete by construction — gates read it instead of treating "no literals" as "no reference". |
-| `transformFieldValues(rule, path, fn)` | The write half: rewrites every literal at that path, leaving the tree's shape, every other leaf, and `path` / `bind` leaves untouched. Does not mutate the input. For callers that re-key the data a rule names (cloning an environment, remapping ids). |
+| `referencedFieldValues(rule, fieldPath)` | The values a rule compares a dotted `fieldPath` against — `{ values, binds, paths }`, all plain arrays. Walks `all` / `any` / `if-then-else`, relation `condition`s and windowing `filter`s, consuming path segments relation by relation, and accepts both the nested and the dotted spelling. Quantifier-blind (`none` mentions its value as much as `any` does) and operator-blind (`in` / `between` lists are flattened). Non-literal sources are reported by name — `binds` (shrink them with `resolveBindings` first) and `paths` (`'$.col'` row refs, dynamic by nature) — never silently dropped; a gate that must fail closed checks both. |
+| `transformFieldValues(rule, fieldPath, mapping)` | The write half: rewrites every string/number literal at that path through a `Record<string, RuleValue>` lookup, leaving the tree's shape, every other leaf, and `path` / `bind` leaves untouched. Plain data on both sides, so the remap serializes with the rule. Does not mutate the input. For callers that re-key the data a rule names (cloning an environment, remapping ids). |
 | `requiredBindings(rule)` | Names of every `{ bind }` token in the tree — the set a bindings map must cover. |
 | `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
 
@@ -357,9 +357,9 @@ const rule = {
 };
 
 referencedFieldValues(rule, 'fanUserGroups.group.uuid');
-// { values: Set { 'a', 'b' }, dynamic: false }
+// { values: ['a', 'b'], binds: [], paths: [] }
 
-transformFieldValues(rule, 'fanUserGroups.group.uuid', (uuid) => remap[String(uuid)] ?? uuid);
+transformFieldValues(rule, 'fanUserGroups.group.uuid', { a: 'a2', b: 'b2' });
 // same rule with the uuids re-pointed
 ```
 

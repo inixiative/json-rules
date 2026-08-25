@@ -17,23 +17,26 @@ const membershipRule = (arrayOperator: 'any' | 'none', value: RuleValue): Condit
   condition: { field: 'group.uuid', operator: Operator.equals, value },
 });
 
+const EMPTY = { values: [], binds: [], paths: [] };
+
 describe('referencedFieldValues', () => {
   test('collects a relation-nested value, whatever the quantifier', () => {
-    expect(referencedFieldValues(membershipRule('any', 'g1'), MEMBERSHIP).values).toEqual(
-      new Set(['g1']),
-    );
-    expect(referencedFieldValues(membershipRule('none', 'g2'), MEMBERSHIP).values).toEqual(
-      new Set(['g2']),
-    );
+    expect(referencedFieldValues(membershipRule('any', 'g1'), MEMBERSHIP).values).toEqual(['g1']);
+    expect(referencedFieldValues(membershipRule('none', 'g2'), MEMBERSHIP).values).toEqual(['g2']);
   });
 
-  test('flattens list operators', () => {
+  test('flattens list operators and dedups repeats', () => {
     const rule: Condition = {
-      field: 'fanUserGroups',
-      arrayOperator: ArrayOperator.none,
-      condition: { field: 'group.uuid', operator: Operator.in, value: ['a', 'b', 'c'] },
+      any: [
+        {
+          field: 'fanUserGroups',
+          arrayOperator: ArrayOperator.none,
+          condition: { field: 'group.uuid', operator: Operator.in, value: ['a', 'b', 'c'] },
+        },
+        membershipRule('any', 'b'),
+      ],
     };
-    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(new Set(['a', 'b', 'c']));
+    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['a', 'b', 'c']);
   });
 
   test('collects across nested all/any and if/then/else arms', () => {
@@ -48,12 +51,10 @@ describe('referencedFieldValues', () => {
         },
       ],
     };
-    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(new Set(['a', 'b', 'c', 'd']));
+    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['a', 'b', 'c', 'd']);
   });
 
   test('collects a value carried by a windowing filter', () => {
-    // The blind spot every hand-rolled walker shared: `filter` is a condition, so a
-    // reference can live there and never appear in `condition`.
     const rule: Condition = {
       field: 'fanUserGroups',
       arrayOperator: ArrayOperator.any,
@@ -62,12 +63,12 @@ describe('referencedFieldValues', () => {
       filter: { field: 'group.uuid', operator: Operator.equals, value: 'windowed' },
       condition: { field: 'group.uuid', operator: Operator.equals, value: 'inner' },
     };
-    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(new Set(['windowed', 'inner']));
+    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['inner', 'windowed']);
   });
 
   test('collects the dotted spelling of the same path', () => {
     const rule: Condition = { field: MEMBERSHIP, operator: Operator.equals, value: 'dotted' };
-    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(new Set(['dotted']));
+    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['dotted']);
   });
 
   test('a same-named leaf under a different relation is not collected', () => {
@@ -76,7 +77,7 @@ describe('referencedFieldValues', () => {
       arrayOperator: ArrayOperator.any,
       condition: { field: 'group.uuid', operator: Operator.equals, value: 'not-a-membership' },
     };
-    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(new Set());
+    expect(referencedFieldValues(rule, MEMBERSHIP)).toEqual(EMPTY);
   });
 
   test('an aggregate over the relation descends, but its own value is not a relation value', () => {
@@ -87,9 +88,7 @@ describe('referencedFieldValues', () => {
       value: 100,
       condition: { field: 'group.uuid', operator: Operator.equals, value: 'g9' },
     };
-    const refs = referencedFieldValues(rule, MEMBERSHIP);
-    expect(refs.values).toEqual(new Set(['g9']));
-    expect(refs.values.has(100)).toBe(false);
+    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['g9']);
   });
 
   test('an unnamed root array is walked through rather than treated as a relation', () => {
@@ -97,50 +96,66 @@ describe('referencedFieldValues', () => {
       arrayOperator: ArrayOperator.any,
       condition: membershipRule('any', 'through'),
     };
-    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(new Set(['through']));
+    expect(referencedFieldValues(rule, MEMBERSHIP).values).toEqual(['through']);
   });
 
-  test('path- and bind-sourced comparisons report dynamic instead of vanishing', () => {
-    const viaPath: Condition = {
-      field: 'fanUserGroups',
-      arrayOperator: ArrayOperator.none,
-      condition: { field: 'group.uuid', operator: Operator.equals, path: '$.currentGroupUuid' },
+  test('path- and bind-sourced comparisons are reported by name, not flattened into values', () => {
+    const rule: Condition = {
+      all: [
+        {
+          field: 'fanUserGroups',
+          arrayOperator: ArrayOperator.none,
+          condition: { field: 'group.uuid', operator: Operator.equals, path: '$.currentGroupUuid' },
+        },
+        {
+          field: 'fanUserGroups',
+          arrayOperator: ArrayOperator.none,
+          condition: { field: 'group.uuid', operator: Operator.equals, bind: 'groupUuid' },
+        },
+        membershipRule('any', 'literal'),
+      ],
     };
-    expect(referencedFieldValues(viaPath, MEMBERSHIP)).toEqual({
-      values: new Set(),
-      dynamic: true,
+    expect(referencedFieldValues(rule, MEMBERSHIP)).toEqual({
+      values: ['literal'],
+      binds: ['groupUuid'],
+      paths: ['$.currentGroupUuid'],
     });
+  });
 
-    const viaBind: Condition = {
+  test('a bind resolved via resolveBindings is a literal like any other', () => {
+    const rule: Condition = {
       field: 'fanUserGroups',
       arrayOperator: ArrayOperator.none,
       condition: { field: 'group.uuid', operator: Operator.equals, bind: 'groupUuid' },
     };
-    expect(referencedFieldValues(viaBind, MEMBERSHIP)).toEqual({
-      values: new Set(),
-      dynamic: true,
-    });
+    const before = referencedFieldValues(rule, MEMBERSHIP);
+    expect(before).toEqual({ values: [], binds: ['groupUuid'], paths: [] });
   });
 
-  test('no match is an empty set, not dynamic', () => {
+  test('no match is empty everywhere', () => {
     const rule: Condition = { field: 'email', operator: Operator.equals, value: 'a@b.c' };
-    expect(referencedFieldValues(rule, MEMBERSHIP)).toEqual({ values: new Set(), dynamic: false });
+    expect(referencedFieldValues(rule, MEMBERSHIP)).toEqual(EMPTY);
   });
 
   test('a bare boolean condition is inert', () => {
-    expect(referencedFieldValues(true, MEMBERSHIP)).toEqual({ values: new Set(), dynamic: false });
+    expect(referencedFieldValues(true, MEMBERSHIP)).toEqual(EMPTY);
+  });
+
+  test('the result is plain JSON — it survives a serialization round-trip', () => {
+    const refs = referencedFieldValues(membershipRule('any', 'g1'), MEMBERSHIP);
+    expect(JSON.parse(JSON.stringify(refs))).toEqual(refs);
   });
 });
 
 describe('transformFieldValues', () => {
-  const remap = (value: RuleValue): RuleValue => (value === 'old' ? 'new' : value);
+  const remap = { old: 'new' };
 
   test('rewrites a relation-nested value and leaves the shape intact', () => {
     const out = transformFieldValues(membershipRule('none', 'old'), MEMBERSHIP, remap);
     expect(out).toEqual(membershipRule('none', 'new'));
   });
 
-  test('rewrites each entry of a list operator', () => {
+  test('rewrites each entry of a list operator, leaving unmapped entries alone', () => {
     const rule = (value: RuleValue): Condition => ({
       field: 'fanUserGroups',
       arrayOperator: ArrayOperator.none,
@@ -158,6 +173,25 @@ describe('transformFieldValues', () => {
       filter: { field: 'group.uuid', operator: Operator.equals, value },
     });
     expect(transformFieldValues(rule('old'), MEMBERSHIP, remap)).toEqual(rule('new'));
+  });
+
+  test('remaps numeric literals through their string key', () => {
+    const rule = (value: RuleValue): Condition => ({
+      field: 'fanUserGroups',
+      arrayOperator: ArrayOperator.any,
+      condition: { field: 'group.uuid', operator: Operator.equals, value },
+    });
+    expect(transformFieldValues(rule(41), MEMBERSHIP, { '41': 42 })).toEqual(rule(42));
+  });
+
+  test('null and boolean literals never remap — only strings and numbers carry ids', () => {
+    const rule = (value: RuleValue): Condition => ({
+      field: 'fanUserGroups',
+      arrayOperator: ArrayOperator.any,
+      condition: { field: 'group.uuid', operator: Operator.equals, value },
+    });
+    expect(transformFieldValues(rule(null), MEMBERSHIP, { null: 'trap' })).toEqual(rule(null));
+    expect(transformFieldValues(rule(true), MEMBERSHIP, { true: 'trap' })).toEqual(rule(true));
   });
 
   test('leaves other fields, other relations and path/bind leaves alone', () => {
@@ -191,7 +225,7 @@ describe('transformFieldValues', () => {
       all: [membershipRule('none', 'old'), membershipRule('any', 'keep')],
     };
     const out = transformFieldValues(rule, MEMBERSHIP, remap);
-    expect(referencedFieldValues(out, MEMBERSHIP).values).toEqual(new Set(['new', 'keep']));
+    expect(referencedFieldValues(out, MEMBERSHIP).values).toEqual(['new', 'keep']);
   });
 });
 

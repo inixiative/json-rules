@@ -18,9 +18,7 @@ const DATE_RULES: Record<string, Record<string, unknown>> = {
   dayIn: { field: 'lastLoginAt', dateOperator: 'dayIn', value: ['monday'] },
 };
 
-// The negative-flavored date operators follow the 2.19.0 negation ruling instead: a
-// null column MATCHES not(X), because no value does not satisfy X. Covered in
-// date.negatedNull.test.ts.
+// Negative-flavored operators match instead (2.19.0 ruling) — see date.negatedNull.test.ts.
 const NEGATED_DATE_RULES: Record<string, Record<string, unknown>> = {
   notBetween: {
     field: 'lastLoginAt',

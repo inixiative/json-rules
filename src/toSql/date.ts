@@ -61,7 +61,6 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
         throw new Error('notBetween date operator requires an array of two values');
       }
       const [start, end] = normalizeDateRange(raw.map(resolveDateElem(state)));
-      // Negation keeps NULL rows (2.19.0 ruling): a never-set date is not in the range.
       return `(${field} NOT BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)} OR ${field} IS NULL)`;
     }
 
@@ -78,7 +77,6 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
         throw new Error('dayNotIn operator requires an array of day names');
       }
       const days = mapDayNames(rule.value.map((day) => String(day)));
-      // Negation keeps NULL rows (2.19.0 ruling): a never-set date's day is not in the list.
       return `(EXTRACT(DOW FROM ${field}) <> ALL(${nextParam(state, days)}) OR ${field} IS NULL)`;
     }
 

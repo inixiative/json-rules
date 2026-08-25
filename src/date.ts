@@ -33,15 +33,9 @@ export const checkDate = <TData extends Record<string, unknown>>(
 ): boolean | string => {
   const fieldValue = get(data, condition.field) as unknown;
 
-  // A missing date is a NON-MATCH for the positive operators — both compilers emit a
-  // bare boundary (`lt` / `gte`+`lte`) that a NULL column never satisfies — and a MATCH
-  // for the negative-flavored ones, per the 2.19.0 negation ruling: not(X) is the
-  // complement of X, and no value does not satisfy X. The compilers carry the same
-  // split (an IS NULL arm on notBetween/dayNotIn only), so the rails agree either way.
-  //
-  // `== null`, not falsy: epoch 0 is a real instant (1970-01-01) that must compare, and
-  // `''` is malformed data — it falls to the validity error below instead of being
-  // misreported as absent.
+  // Null: non-match for positive operators, match for negated ones (2.19.0 negation
+  // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
+  // real instant and compares; '' falls to the validity error below.
   if (fieldValue == null) {
     if (NEGATED_DATE_OPERATORS.includes(condition.dateOperator)) return true;
     return condition.error || `${condition.field} has no value`;

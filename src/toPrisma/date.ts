@@ -32,9 +32,7 @@ const coerceDateLiteral = (value: unknown, config: DateConfig): unknown => {
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
   const filter = buildDateLeafFilter(rule, options);
   const nested = buildNestedFilter(rule.field, filter);
-  // Negation keeps NULL rows (2.19.0 ruling). Same licensing as field.ts: only the
-  // field map can prove the column nullable — an `equals: null` arm on a NOT NULL
-  // column is a Prisma validation error at runtime.
+  // Negation keeps NULL rows; the field map licenses the null arm (see isNullableColumn).
   if (rule.dateOperator === DateOperator.notBetween && isNullableColumn(rule, options)) {
     return { OR: [nested, buildNestedFilter(rule.field, { equals: null })] };
   }

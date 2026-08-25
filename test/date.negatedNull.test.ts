@@ -4,11 +4,8 @@ import type { Condition, FieldMap } from '../index';
 import { check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
-// 2.19.0 ruled that negation keeps NULL rows: not(X) is the complement of X, and a
-// column with no value does not satisfy X. The date rail's negative-flavored operators
-// — notBetween and dayNotIn — are the same intent under a different spelling, so a
-// never-set date is "not between January and June" and its day is "not monday".
-// 2.19.1 left them dropping NULL rows on both rails; this aligns them with the ruling.
+// Negation keeps NULL rows (2.19.0 ruling), including the date rail's negative-flavored
+// operators: notBetween and dayNotIn.
 
 const NOW = new Date('2026-08-25T00:00:00Z');
 const opts = { now: NOW };

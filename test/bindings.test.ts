@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { Operator, requiredBindings, resolveBindings } from '../index';
+import {
+  ArrayOperator,
+  type Condition,
+  Operator,
+  requiredBindings,
+  resolveBindings,
+} from '../index';
 
 describe('requiredBindings', () => {
   test('collects bind names across nested all/any', () => {
@@ -53,5 +59,42 @@ describe('resolveBindings', () => {
     const rule = { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' };
     resolveBindings(rule, { brandUuid: 'acme-1' });
     expect(rule).toEqual({ field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' });
+  });
+});
+
+describe('the walk covers every grammar slot', () => {
+  const rule: Condition = {
+    all: [{ field: 'a', operator: Operator.equals, bind: 'inAll' }],
+    any: [
+      {
+        if: { field: 'b', operator: Operator.equals, bind: 'inIf' },
+        then: { field: 'c', operator: Operator.equals, bind: 'inThen' },
+        else: {
+          field: 'rel',
+          arrayOperator: ArrayOperator.any,
+          filter: { field: 'd', operator: Operator.equals, bind: 'inFilter' },
+          condition: { field: 'e', operator: Operator.equals, bind: 'inCondition' },
+        },
+      },
+    ],
+  } as never;
+
+  test('requiredBindings reaches all/any, if/then/else, condition and filter', () => {
+    expect(requiredBindings(rule)).toEqual(
+      new Set(['inAll', 'inIf', 'inThen', 'inFilter', 'inCondition']),
+    );
+  });
+
+  test('resolveBindings substitutes in every slot', () => {
+    const bindings = Object.fromEntries(
+      ['inAll', 'inIf', 'inThen', 'inFilter', 'inCondition'].map((n) => [n, `${n}-v`]),
+    );
+    expect(requiredBindings(resolveBindings(rule, bindings))).toEqual(new Set());
+  });
+
+  test('a bind whose name is an Object.prototype key does not resolve from the prototype', () => {
+    const trap: Condition = { field: 'a', operator: Operator.equals, bind: 'toString' } as never;
+    expect(resolveBindings(trap, {})).toEqual(trap);
+    expect(requiredBindings(resolveBindings(trap, {}))).toEqual(new Set(['toString']));
   });
 });

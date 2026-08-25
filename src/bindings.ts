@@ -4,7 +4,7 @@ import type { Condition, RuleValue } from './types';
 /** Names of every `{ bind }` token in the tree — the set a bindings map must cover. */
 export const requiredBindings = (condition: Condition): Set<string> => {
   const names = new Set<string>();
-  visitCondition(condition, undefined, {
+  visitCondition(condition, {
     enter: (node) => {
       if (typeof node.bind === 'string') names.add(node.bind);
     },
@@ -21,7 +21,7 @@ export const resolveBindings = (
   condition: Condition,
   bindings: Record<string, RuleValue>,
 ): Condition =>
-  mapCondition(condition, undefined, {
+  mapCondition(condition, {
     rewrite: (node) => {
       if (typeof node.bind !== 'string' || !Object.hasOwn(bindings, node.bind)) return node;
       const { bind, ...rest } = node;

@@ -157,7 +157,14 @@ const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
           `Pass context in options when calling toSql().`,
       );
     }
-    return { type: 'value', value: get(state.context, rule.path) };
+    // Same parse-and-anchor seam as the literal branch — a naive string from context
+    // must not reach the DB unanchored. Arrays pass through; the per-operator cases
+    // anchor their elements.
+    const resolved = get(state.context, rule.path);
+    return {
+      type: 'value',
+      value: Array.isArray(resolved) ? resolved : coerceDateLiteral(resolved, state),
+    };
   }
 
   return { type: 'value', value: undefined };

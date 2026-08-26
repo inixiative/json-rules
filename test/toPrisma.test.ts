@@ -342,31 +342,46 @@ describe('toPrisma multi-step count operators', () => {
     expect(w.where).toEqual({ id: { in: { __step: 0 } } });
   });
 
-  it('atMost → having lte', () => {
+  it('atMost → NOT-IN over an atLeast count+1 step (zero-match roots included)', () => {
     const result = toPrisma(
-      { field: 'posts', arrayOperator: ArrayOperator.atMost, count: 5 },
+      {
+        field: 'posts',
+        arrayOperator: ArrayOperator.atMost,
+        count: 5,
+        condition: { field: 'published', operator: Operator.equals, value: true },
+      },
       { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
-    expect(groupBy.args.having).toEqual({ authorId: { _count: { lte: 5 } } });
+    expect(groupBy.args.having).toEqual({ authorId: { _count: { gte: 6 } } });
+    expect((result.steps[1] as WhereStep).where).toEqual({ NOT: { id: { in: { __step: 0 } } } });
   });
 
-  it('exactly → having equals', () => {
+  it('exactly N>=1 → having equals, direct IN form', () => {
     const result = toPrisma(
-      { field: 'posts', arrayOperator: ArrayOperator.exactly, count: 2 },
+      {
+        field: 'posts',
+        arrayOperator: ArrayOperator.exactly,
+        count: 2,
+        condition: { field: 'published', operator: Operator.equals, value: true },
+      },
       { map: blogMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
     expect(groupBy.args.having).toEqual({ authorId: { _count: { equals: 2 } } });
   });
 
-  it('count defaults to 1 when not specified', () => {
-    const result = toPrisma(
-      { field: 'posts', arrayOperator: ArrayOperator.atLeast },
-      { map: blogMap, model: 'User' },
-    );
-    const groupBy = result.steps[0] as GroupByStep;
-    expect(groupBy.args.having).toEqual({ authorId: { _count: { gte: 1 } } });
+  it('missing count throws, as check() does', () => {
+    expect(() =>
+      toPrisma(
+        {
+          field: 'posts',
+          arrayOperator: ArrayOperator.atLeast,
+          condition: { field: 'published', operator: Operator.equals, value: true },
+        },
+        { map: blogMap, model: 'User' },
+      ),
+    ).toThrow('requires a count');
   });
 
   it('atLeast without map → throws', () => {
@@ -391,8 +406,18 @@ describe('toPrisma multi-step count operators', () => {
     const result = toPrisma(
       {
         all: [
-          { field: 'posts', arrayOperator: ArrayOperator.atLeast, count: 2 },
-          { field: 'posts', arrayOperator: ArrayOperator.atMost, count: 10 },
+          {
+            field: 'posts',
+            arrayOperator: ArrayOperator.atLeast,
+            count: 2,
+            condition: { field: 'published', operator: Operator.equals, value: true },
+          },
+          {
+            field: 'posts',
+            arrayOperator: ArrayOperator.atMost,
+            count: 10,
+            condition: { field: 'published', operator: Operator.equals, value: true },
+          },
         ],
       },
       { map: blogMap, model: 'User' },
@@ -404,7 +429,7 @@ describe('toPrisma multi-step count operators', () => {
 
     const w = result.steps[2] as WhereStep;
     expect(w.where).toEqual({
-      AND: [{ id: { in: { __step: 0 } } }, { id: { in: { __step: 1 } } }],
+      AND: [{ id: { in: { __step: 0 } } }, { NOT: { id: { in: { __step: 1 } } } }],
     });
   });
 });
@@ -487,7 +512,12 @@ describe('executePrismaQueryPlan', () => {
 
   it('all join FKs null → empty membership set (in: [] matches nothing)', async () => {
     const result = toPrisma(
-      { field: 'posts', arrayOperator: ArrayOperator.atLeast, count: 1 },
+      {
+        field: 'posts',
+        arrayOperator: ArrayOperator.atLeast,
+        count: 1,
+        condition: { field: 'published', operator: Operator.equals, value: true },
+      },
       { map: blogMap, model: 'User' },
     );
 
@@ -501,7 +531,12 @@ describe('executePrismaQueryPlan', () => {
 
   it('throws when delegate missing for model', async () => {
     const result = toPrisma(
-      { field: 'posts', arrayOperator: ArrayOperator.atLeast, count: 1 },
+      {
+        field: 'posts',
+        arrayOperator: ArrayOperator.atLeast,
+        count: 1,
+        condition: { field: 'published', operator: Operator.equals, value: true },
+      },
       { map: blogMap, model: 'User' },
     );
     await expect(executePrismaQueryPlan(result, {})).rejects.toThrow('post');
@@ -702,7 +737,12 @@ describe('toPrisma error cases', () => {
 describe('toPrisma multiple relations between same two models', () => {
   it('count on first back-relation finds correct FK via relationName', () => {
     const result = toPrisma(
-      { field: 'authoredPosts', arrayOperator: ArrayOperator.atLeast, count: 2 },
+      {
+        field: 'authoredPosts',
+        arrayOperator: ArrayOperator.atLeast,
+        count: 2,
+        condition: { field: 'authorId', operator: Operator.exists },
+      },
       { map: multiRelMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;
@@ -712,7 +752,12 @@ describe('toPrisma multiple relations between same two models', () => {
 
   it('count on second back-relation finds correct FK via relationName', () => {
     const result = toPrisma(
-      { field: 'editedPosts', arrayOperator: ArrayOperator.atLeast, count: 1 },
+      {
+        field: 'editedPosts',
+        arrayOperator: ArrayOperator.atLeast,
+        count: 1,
+        condition: { field: 'editorId', operator: Operator.exists },
+      },
       { map: multiRelMap, model: 'User' },
     );
     const groupBy = result.steps[0] as GroupByStep;

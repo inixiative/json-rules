@@ -196,7 +196,7 @@ describe('NULL semantics — toPrisma adds a null arm on nullable columns', () =
   it('notBetween on a nullable column keeps NULL rows', () => {
     expect(
       getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 5] }, opts)),
-    ).toEqual({ OR: [{ score: { NOT: { gte: 0, lte: 5 } } }, { score: { equals: null } }] });
+    ).toEqual({ OR: [{ NOT: { score: { gte: 0, lte: 5 } } }, { score: { equals: null } }] });
   });
 
   it('walks a relation path to the leaf column', () => {

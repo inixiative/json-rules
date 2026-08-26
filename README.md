@@ -553,8 +553,8 @@ positive operator, ask for them:
 | --- | --- | --- | --- |
 | positive `dateOperator` (`before`, `between`, `dayIn`, …) | no match | `col < $1` (NULL never satisfies) | `{ col: { lt: … } }` |
 | `notAfter X` / `notBefore X` | matches | `(col <= $1 OR col IS NULL)` / `(col >= $1 OR col IS NULL)` | `{ OR: [{ col: { lte } }, { col: { equals: null } }] }` (nullable column) |
-| `notWithin { ago: { days: 30 } }` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ col: { NOT: { gte, lte } } }, { col: { equals: null } }] }` (nullable column) |
-| `notBetween` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ col: { NOT: … } }, { col: { equals: null } }] }` (nullable column, same field-map licensing as above) |
+| `notWithin { ago: { days: 30 } }` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ NOT: { col: { gte, lte } } }, { col: { equals: null } }] }` (nullable column) |
+| `notBetween` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ NOT: { col: … } }, { col: { equals: null } }] }` (nullable column, same field-map licensing as above) |
 | `dayNotIn` | matches | `(EXTRACT(DOW FROM col) <> ALL($1) OR col IS NULL)` | — (no Prisma output) |
 | `notExists` OR `before` | matches via the first arm | `(col IS NULL OR col < $1)` | `{ OR: [{ col: { equals: null } }, { col: { lt: … } }] }` |
 

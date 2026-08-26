@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.19.7 — the range complements negate the clause, not the column filter
+
+- `notBetween` and `notWithin` compiled to `{ col: { NOT: { gte, lte } } }`, which Prisma
+  rejects outright (`Unknown argument \`NOT\``) — a rule that validated and compiled cleanly
+  500'd the moment it ran. Prisma has no field-level negation of a two-sided range at all:
+  it distributes `not` over the nested filter's keys, so the lowercase spelling is worse
+  than the error — `NOT(col >= a) AND NOT(col <= b)` is unsatisfiable for any window, and
+  it fails SILENTLY, reporting an empty audience while check() answers correctly on the
+  same rule. Both now emit `{ NOT: { col: { gte, lte } } }`, the negation of the whole
+  clause, which is what a complement means and what `toSql` has always emitted
+  (`NOT BETWEEN`). The `equals: null` arm stays outside the `NOT`, as before.
+- The single-boundary complements (`notBefore` / `notAfter`, 2.19.6) were never affected:
+  they compile to a plain `gte` / `lte` and carry no negation.
+- Pinned as a family invariant, not three literals: no column filter any negated operator
+  emits may carry a clause-level `NOT` at any depth (`test/toPrisma.rangeComplement.test.ts`).
+
 ## 2.19.6 — `notBefore` / `notAfter`, the null-carrying boundary complements
 
 - `onOrAfter X` is not the complement of `before X`: it is positive, so a null column

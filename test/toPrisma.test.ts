@@ -124,13 +124,13 @@ describe('toPrisma scalar operators', () => {
   it('notBetween', () => {
     expect(
       getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [0, 10] })),
-    ).toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
+    ).toEqual({ NOT: { score: { gte: 0, lte: 10 } } });
   });
 
   it('[P2] notBetween auto-sorts reversed range', () => {
     expect(
       getWhere(toPrisma({ field: 'score', operator: Operator.notBetween, value: [10, 0] })),
-    ).toEqual({ score: { NOT: { gte: 0, lte: 10 } } });
+    ).toEqual({ NOT: { score: { gte: 0, lte: 10 } } });
   });
 
   it('isEmpty', () => {
@@ -602,7 +602,7 @@ describe('toPrisma date operators', () => {
       getWhere(
         toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [d, end] }),
       ),
-    ).toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
+    ).toEqual({ NOT: { eventDate: { gte: d, lte: end } } });
   });
 
   it('[P2] notBetween auto-sorts reversed date range', () => {
@@ -611,7 +611,7 @@ describe('toPrisma date operators', () => {
       getWhere(
         toPrisma({ field: 'eventDate', dateOperator: DateOperator.notBetween, value: [end, d] }),
       ),
-    ).toEqual({ eventDate: { NOT: { gte: d, lte: end } } });
+    ).toEqual({ NOT: { eventDate: { gte: d, lte: end } } });
   });
 
   it('dayIn → throws (no Prisma equivalent)', () => {

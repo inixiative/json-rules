@@ -534,6 +534,13 @@ compilers carry NULL rows explicitly:
 | `equals` / `notEquals` with `path: '$.other'` | `null === null` | `IS [NOT] DISTINCT FROM` | — |
 | `exists` / `notExists` | `!= null` / `== null` | `IS NOT NULL` / `IS NULL` | `{ not: null }` / `{ equals: null }` |
 
+The **absent set** of a path is wider than a NULL leaf: an optional to-one hop can be NULL too,
+and `{ rel: { col: { equals: null } } }` only matches when the relation exists. So every negation
+also carries `{ rel: { is: null } }` for each optional to-one hop on the path (licensed by the
+relation entry's `isRequired: false`) — `profile.bio notEquals 'x'` compiles to
+`{ OR: [{ profile: { bio: { not: 'x' } } }, { profile: { bio: { equals: null } } }, { profile: { is: null } }] }`,
+matching check() (a missing hop reads as `undefined`) and toSql (LEFT JOIN + `IS NULL`).
+
 `toPrisma()` can only add the null arm when it knows the column is nullable —
 an `equals: null` on a NOT NULL column is a Prisma validation error. Nullability
 comes from the field map: `FieldMapEntry.isRequired: false` (prisma-map emits it).

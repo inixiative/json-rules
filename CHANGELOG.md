@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.19.8 — negations through an optional to-one carry the absent relation
+
+- Negations through an OPTIONAL to-one relation carry `{ rel: { is: null } }` per optional hop.
+  The null arm was only ever the leaf's `{ rel: { col: { equals: null } } }`, which Prisma
+  satisfies only when the relation EXISTS — so a row with no relation fell out of `notEquals`,
+  `notIn`, `notExists`, `notBefore`, `notAfter` (and `isEmpty`) through it, while check() (path
+  → undefined → complement) and toSql (LEFT JOIN → `IS NULL`) both kept it. Proven against real
+  Prisma/MySQL on `FanUsers.lastFanMission`: five rules diverged before, none after. Licensing is
+  the relation entry's `isRequired: false`, the same authority as the column arm
+  (`absentArms` in `src/toPrisma/field.ts`; `test/toPrisma.absentRelation.test.ts`). The
+  clause-level `NOT` of `notWithin` / `notBetween` already included the null relation.
+
 ## 2.19.7 — the range complements negate the clause, not the column filter
 
 - `notBetween` and `notWithin` compiled to `{ col: { NOT: { gte, lte } } }`, which Prisma
@@ -15,6 +27,7 @@
   they compile to a plain `gte` / `lte` and carry no negation.
 - Pinned as a family invariant, not three literals: no column filter any negated operator
   emits may carry a clause-level `NOT` at any depth (`test/toPrisma.rangeComplement.test.ts`).
+
 
 ## 2.19.6 — `notBefore` / `notAfter`, the null-carrying boundary complements
 

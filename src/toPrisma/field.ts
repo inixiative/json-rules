@@ -7,7 +7,7 @@ import {
 } from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
-import { walkFieldPath } from './mapWalk';
+import { optionalToOneHops, walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -41,8 +41,33 @@ const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
  * required: an `equals: null` arm on a NOT NULL column is a Prisma validation
  * error at runtime, so the map is the only authority that can license one.
  */
-export const isNullableColumn = (rule: Pick<Rule, 'field'>, options?: BuildOptions): boolean =>
+const isNullableColumn = (rule: Pick<Rule, 'field'>, options?: BuildOptions): boolean =>
   directEntry(rule, options)?.isRequired === false;
+
+/**
+ * The arms that make a negation match the rows where the path is ABSENT — what check()
+ * sees as `undefined`/`null`. Two kinds, both licensed by the field map: the leaf column
+ * NULL (`isRequired: false` on the column), and each optional to-one hop NULL
+ * (`{ hop: { is: null } }` — Prisma's `{ rel: { col: { equals: null } } }` requires the
+ * relation to exist, so a member with no relation would otherwise fall out of every
+ * negation while the in-memory rail keeps them). Empty when nothing is licensed.
+ */
+const hopArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): PrismaWhere[] =>
+  options?.map && options?.model
+    ? optionalToOneHops(rule.field, options.map as FieldMap, options.model).map((hop) =>
+        buildNestedFilter(hop, { is: null }),
+      )
+    : [];
+
+export const absentArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): PrismaWhere[] => [
+  ...(isNullableColumn(rule, options)
+    ? [buildMapAwareFilter(rule.field, { equals: null }, options)]
+    : []),
+  ...hopArms(rule, options),
+];
+
+const orWith = (head: PrismaWhere, arms: PrismaWhere[]): PrismaWhere =>
+  arms.length ? { OR: [head, ...arms] } : head;
 
 const NEGATED: readonly Operator[] = [Operator.notEquals, Operator.notContains];
 
@@ -72,10 +97,17 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
 
   // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
   // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
+  const arms = absentArms(rule, options);
+
   if (rule.operator === Operator.isEmpty) {
-    const isNull = at({ equals: null });
-    if (!acceptsEmptyString(rule, options)) return isNull;
-    return { OR: [isNull, at({ equals: '' })] };
+    // isEmpty carries the leaf null arm unconditionally (it IS the operator); the optional hops
+    // ride beside it, then the ''-arm on String/Json columns.
+    const nulls = [at({ equals: null }), ...hopArms(rule, options)];
+    const empties = acceptsEmptyString(rule, options) ? [...nulls, at({ equals: '' })] : nulls;
+    return empties.length === 1 ? empties[0] : { OR: empties };
+  }
+  if (rule.operator === Operator.notExists && arms.length) {
+    return arms.length === 1 ? arms[0] : { OR: arms };
   }
   if (rule.operator === Operator.notEmpty) {
     const notNull = at({ not: null });
@@ -92,24 +124,21 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     const { values, hasNull } = splitNull(resolveRuleValue(rule, options));
     if (rule.operator === Operator.in) {
       const inList = at({ in: values });
-      return hasNull && nullable ? { OR: [inList, at({ equals: null })] } : inList;
+      return hasNull ? orWith(inList, arms) : inList;
     }
     const notInList = at({ notIn: values });
-    if (!nullable) return notInList;
-    return hasNull
-      ? { AND: [notInList, at({ not: null })] }
-      : { OR: [notInList, at({ equals: null })] };
+    if (hasNull) return nullable ? { AND: [notInList, at({ not: null })] } : notInList;
+    return orWith(notInList, arms);
   }
 
   if (RANGE_COMPLEMENT.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
-    const negated = { NOT: at(buildLeafFilter(rule, options)) };
-    return nullable ? { OR: [negated, at({ equals: null })] } : negated;
+    return orWith({ NOT: at(buildLeafFilter(rule, options)) }, arms);
   }
 
   const filter = at(buildLeafFilter(rule, options));
-  if (nullable && NEGATED.includes(rule.operator) && resolveRuleValue(rule, options) !== null) {
-    return { OR: [filter, at({ equals: null })] };
+  if (NEGATED.includes(rule.operator) && resolveRuleValue(rule, options) !== null) {
+    return orWith(filter, arms);
   }
   return filter;
 };

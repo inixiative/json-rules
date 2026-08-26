@@ -8,7 +8,7 @@ import {
 } from '../dateExpr';
 import { DateOperator } from '../operator';
 import type { DateConfig, DateRule } from '../types';
-import { isNullableColumn } from './field';
+import { absentArms } from './field';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -56,10 +56,10 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
   const nested = RANGE_COMPLEMENT_DATE_OPERATORS.includes(rule.dateOperator)
     ? { NOT: positive }
     : positive;
-  // Negation keeps NULL rows; the field map licenses the null arm (see isNullableColumn).
-  if (NEGATED_DATE_OPERATORS.includes(rule.dateOperator) && isNullableColumn(rule, options)) {
-    return { OR: [nested, buildNestedFilter(rule.field, { equals: null })] };
-  }
+  // Negation keeps the absent rows — a NULL column and every NULL optional to-one hop on the
+  // path; the field map licenses each arm (see absentArms).
+  const arms = NEGATED_DATE_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
+  if (arms.length) return { OR: [nested, ...arms] };
   return nested;
 };
 

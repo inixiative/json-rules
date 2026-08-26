@@ -100,7 +100,7 @@ export const buildCountStep = (
 
   // Same contract as check(): a count operator without a condition or count is an
   // authoring error, not a default.
-  if (!rule.condition)
+  if (rule.condition === undefined)
     throw new Error(`${rule.arrayOperator} requires a condition to check against array elements`);
   if (rule.count === undefined) throw new Error(`${rule.arrayOperator} requires a count`);
 

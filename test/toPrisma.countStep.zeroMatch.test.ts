@@ -175,3 +175,58 @@ describe('count-step compiled shapes', () => {
     ).toThrow('requires a count');
   });
 });
+
+describe('boolean conditions are legal grammar, not missing conditions', () => {
+  it('check(): condition false means zero elements match', () => {
+    const atMost = {
+      field: 'posts',
+      arrayOperator: ArrayOperator.atMost,
+      count: 1,
+      condition: false,
+    };
+    const exactly0 = {
+      field: 'posts',
+      arrayOperator: ArrayOperator.exactly,
+      count: 0,
+      condition: false,
+    };
+    const atLeast = {
+      field: 'posts',
+      arrayOperator: ArrayOperator.atLeast,
+      count: 1,
+      condition: false,
+    };
+    expect(checkPassing(atMost)).toEqual(['u1', 'u2', 'u3', 'u4']);
+    expect(checkPassing(exactly0)).toEqual(['u1', 'u2', 'u3', 'u4']);
+    expect(checkPassing(atLeast)).toEqual([]);
+    const anyFalse = { field: 'posts', arrayOperator: ArrayOperator.any, condition: false };
+    const noneFalse = { field: 'posts', arrayOperator: ArrayOperator.none, condition: false };
+    expect(checkPassing(anyFalse)).toEqual([]);
+    expect(checkPassing(noneFalse)).toEqual(['u1', 'u2', 'u3', 'u4']);
+  });
+
+  it('check(): condition true means every element matches', async () => {
+    const rule = {
+      field: 'posts',
+      arrayOperator: ArrayOperator.atLeast,
+      count: 2,
+      condition: true,
+    };
+    expect(checkPassing(rule)).toEqual(['u1']);
+    expect(await passing(rule)).toEqual(['u1']);
+  });
+
+  it("toPrisma: condition false hits the engine's standing boolean-false throw, not 'requires a condition'", () => {
+    expect(() =>
+      toPrisma(
+        {
+          field: 'posts',
+          arrayOperator: ArrayOperator.atMost,
+          count: 1,
+          condition: false,
+        } as never,
+        { map, model: 'User' },
+      ),
+    ).toThrow('no direct Prisma WHERE equivalent');
+  });
+});

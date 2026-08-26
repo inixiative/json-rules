@@ -1,4 +1,5 @@
 import type { FieldKind } from '../operatorCatalog.ts';
+import { own } from '../own';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
@@ -28,8 +29,7 @@ const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedFiel
   const segments = fieldPath.split('.');
   let { mapName, modelName } = scope;
   for (let i = 0; i < segments.length; i += 1) {
-    const fields = lens.maps[mapName]?.models[modelName]?.fields;
-    const entry = fields && Object.hasOwn(fields, segments[i]) ? fields[segments[i]] : undefined;
+    const entry = own(lens.maps[mapName]?.models[modelName]?.fields, segments[i]);
     if (!entry) return undefined;
     if (i === segments.length - 1) return { entry, mapName };
     if (entry.kind !== 'object' && entry.kind !== 'bridge') return undefined;

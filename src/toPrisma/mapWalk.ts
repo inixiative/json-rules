@@ -1,3 +1,4 @@
+import { own } from '../own';
 import type { FieldMap, FieldMapEntry } from './types';
 
 export type MapWalkResult =
@@ -24,9 +25,7 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
     const modelEntry = map.models[currentModel];
     if (!modelEntry) return { kind: 'fallback' };
 
-    const fieldEntry = Object.hasOwn(modelEntry.fields, parts[i])
-      ? modelEntry.fields[parts[i]]
-      : undefined;
+    const fieldEntry = own(modelEntry.fields, parts[i]);
     if (!fieldEntry) return { kind: 'fallback' };
 
     if (fieldEntry.kind === 'bridge') return { kind: 'bridge' };

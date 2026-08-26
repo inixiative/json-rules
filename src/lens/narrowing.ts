@@ -1,3 +1,4 @@
+import { own } from '../own';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import { validateBindNames } from './bindings.ts';
 import { checkRuleAgainstLens } from './checkRule.ts';
@@ -80,8 +81,7 @@ const validateSourceTargetVisibility = (
           break;
         }
         if (i === segments.length - 1) break;
-        const curFields = maps[curMap]?.models[curModel]?.fields;
-        const fieldEntry = curFields && Object.hasOwn(curFields, seg) ? curFields[seg] : undefined;
+        const fieldEntry = own(maps[curMap]?.models[curModel]?.fields, seg);
         const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
         if (!target) break; // path resolvability is validated by groupByPathError
         nodes = nodes
@@ -105,9 +105,7 @@ const groupByPathError = (
   let curMap = mapName;
   let curModel = modelName;
   for (let i = 0; i < segments.length; i++) {
-    const segFields = maps[curMap]?.models[curModel]?.fields;
-    const entry =
-      segFields && Object.hasOwn(segFields, segments[i]) ? segFields[segments[i]] : undefined;
+    const entry = own(maps[curMap]?.models[curModel]?.fields, segments[i]);
     if (!entry) return `groupBy segment '${segments[i]}' not on model '${curModel}'`;
     const isLast = i === segments.length - 1;
     if (entry.kind === 'object' || entry.kind === 'bridge') {
@@ -391,7 +389,7 @@ const validateEnumFieldAgainstChain = (
     fieldName: string,
     values: readonly string[],
   ): void => {
-    const entry = modelFields[fieldName];
+    const entry = own(modelFields, fieldName);
     if (!entry || entry.kind !== 'enum') return;
     const enumType = entry.type;
 
@@ -516,7 +514,7 @@ const validatePathNarrowing = (
   );
 
   for (const [relField, sub] of Object.entries(narrowing.relations ?? {})) {
-    const entry = Object.hasOwn(model.fields, relField) ? model.fields[relField] : undefined;
+    const entry = own(model.fields, relField);
     if (!entry) {
       errors.push(`${position}.relations: '${relField}' not on model`);
       continue;

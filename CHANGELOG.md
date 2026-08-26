@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.19.4 — five rail-parity fixes from the whole-project adversarial sweep
+
+- `toSql` isEmpty/notEmpty: the ''-branch is String/Json-only (toPrisma's 2.18.3
+  `acceptsEmptyString`, ported). A typed non-String column compiles to a pure null
+  check — the documented `deletedAt isEmpty` soft-delete lens grant was
+  guaranteed-unrunnable SQL (`timestamp = ''`).
+- `toPrisma` count-step: `atMost N` compiles to NOT(atLeast N+1), `exactly 0` to
+  NOT(atLeast 1) — a groupBy cannot emit zero-count groups, so roots with zero
+  matching children were silently dropped and `exactly: 0` matched nothing.
+  `atLeast 0` is everyone. Missing condition/count throw, as check() does.
+- Date `path` values: toSql anchors context-path scalars through the same
+  parse-and-anchor seam as literals; checkDate resolves `path` for
+  between/notBetween instead of throwing on a rule validateRule accepts.
+- `toSql` dayIn/dayNotIn: the weekday is computed in the resolved timezone — the
+  column anchors as a UTC instant (Prisma convention) and converts to the zone,
+  ending naive, so EXTRACT never consults the DB session's TimeZone GUC.
+- Lens field-map lookups are own-property checks: a prototype member name
+  ('constructor', '__proto__', 'toString') no longer resolves as a declared field
+  that the policy gate approves and check() evaluates as unconditionally true.
+
 ## 2.19.3 — binds inside windowing filters are required and resolvable
 
 - `requiredBindings` / `resolveBindings` never descended into a windowing `filter`,

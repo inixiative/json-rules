@@ -137,6 +137,12 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     valueShape: 'dateWindow',
     acceptsExpr: true,
   },
+  [DateOperator.notWithin]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateWindow',
+    acceptsExpr: true,
+  },
   [DateOperator.between]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,

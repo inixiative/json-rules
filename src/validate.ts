@@ -1,4 +1,4 @@
-import { parseDateValue } from './date';
+import { isRangeOperator, parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
 import { ArrayOperator, type DateOperator, Operator } from './operator';
 import {
@@ -575,13 +575,13 @@ const validateDateRule = (
     return;
   }
 
-  if (operator === 'within') {
-    // `within` only accepts an expression range (period or rolling), not a literal pair.
+  if (isRangeOperator(operator)) {
+    // The range operators only accept an expression range (period or rolling), not a literal pair.
     pushIssue(
       context,
       `${path}.value`,
       'invalid_date_range',
-      `Date operator 'within' requires a range date expression (a period or rolling window)`,
+      `Date operator '${operator}' requires a range date expression (a period or rolling window)`,
     );
     return;
   }
@@ -677,7 +677,7 @@ const validateDateExpr = (
   path: string,
   context: ValidationContext,
 ): void => {
-  const isRange = operator === 'within';
+  const isRange = isRangeOperator(operator);
 
   if (isRollingExpr(expr)) {
     validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context);
@@ -696,7 +696,7 @@ const validateDateExpr = (
         context,
         path,
         'invalid_date_range',
-        `'within' requires a range (period or rolling); a start/end edge is a single point`,
+        `'${operator}' requires a range (period or rolling); a start/end edge is a single point`,
       );
       return;
     }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.19.5 — `notWithin`, the complement of `within`
+
+- New date operator `notWithin`: takes the same range expression as `within` (a
+  period or rolling window) and matches outside it. Negative-flavored, so under the
+  2.19.0 negation ruling a never-set date matches on every rail — check() returns
+  true for null, toSql ORs `IS NULL`, toPrisma adds the `equals: null` arm on a
+  nullable column. "Hasn't been seen in the last 30 days" is one leaf:
+  `{ field: 'lastLoginAt', dateOperator: 'notWithin', value: { ago: { days: 30 } } }`,
+  instead of the `any: [notExists, before]` pair the README had prescribed.
+- Catalog: `dateWindow` shape, `acceptsExpr`, all targets — a builder that renders
+  `within` renders this unchanged.
+
 ## 2.19.4 — five rail-parity fixes from the whole-project adversarial sweep
 
 - `toSql` isEmpty/notEmpty: the ''-branch is String/Json-only (toPrisma's 2.18.3

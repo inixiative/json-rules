@@ -1,5 +1,5 @@
 import { get } from 'lodash-es';
-import { isDateInputValue, parseDateValue, resolveTimeZone } from '../date';
+import { isDateInputValue, isRangeOperator, parseDateValue, resolveTimeZone } from '../date';
 import {
   isDateExpr,
   resolveDateExpr,
@@ -44,6 +44,13 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
         throw new Error('within date operator requires a range date expression');
       const [start, end] = resolveDateExprRange(rule.value, state.dateConfig ?? {});
       return `${field} BETWEEN ${nextParam(state, start.toDate())} AND ${nextParam(state, end.toDate())}`;
+    }
+
+    case DateOperator.notWithin: {
+      if (!isDateExpr(rule.value))
+        throw new Error('notWithin date operator requires a range date expression');
+      const [start, end] = resolveDateExprRange(rule.value, state.dateConfig ?? {});
+      return `(${field} NOT BETWEEN ${nextParam(state, start.toDate())} AND ${nextParam(state, end.toDate())} OR ${field} IS NULL)`;
     }
 
     case DateOperator.between: {
@@ -130,8 +137,8 @@ type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: st
 const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) {
     // Point expressions resolve to a concrete Date at compile time (operator-aware
-    // implied edges). `within` is handled separately in the switch.
-    if (isDateExpr(rule.value) && rule.dateOperator !== DateOperator.within) {
+    // implied edges). The range operators are handled separately in the switch.
+    if (isDateExpr(rule.value) && !isRangeOperator(rule.dateOperator)) {
       return {
         type: 'value',
         value: resolvePointForOperator(

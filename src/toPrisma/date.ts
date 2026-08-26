@@ -12,6 +12,13 @@ import { isNullableColumn } from './field';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
+// The negated range operators carry the `equals: null` arm (2.19.0 negation ruling) — the
+// column-nullability licensing is the same as the scalar negations in ./field.ts.
+const NEGATED_RANGE_OPERATORS: readonly DateOperator[] = [
+  DateOperator.notWithin,
+  DateOperator.notBetween,
+];
+
 const dateConfigOf = (options?: BuildOptions): DateConfig => ({
   now: options?.now,
   timeZone: options?.timeZone,
@@ -33,7 +40,7 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
   const filter = buildDateLeafFilter(rule, options);
   const nested = buildNestedFilter(rule.field, filter);
   // Negation keeps NULL rows; the field map licenses the null arm (see isNullableColumn).
-  if (rule.dateOperator === DateOperator.notBetween && isNullableColumn(rule, options)) {
+  if (NEGATED_RANGE_OPERATORS.includes(rule.dateOperator) && isNullableColumn(rule, options)) {
     return { OR: [nested, buildNestedFilter(rule.field, { equals: null })] };
   }
   return nested;
@@ -94,6 +101,13 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
         throw new Error('within date operator requires a range date expression');
       const [start, end] = resolveDateExprRange(rule.value, config);
       return { gte: start.toDate(), lte: end.toDate() };
+    }
+
+    case DateOperator.notWithin: {
+      if (!isDateExpr(rule.value))
+        throw new Error('notWithin date operator requires a range date expression');
+      const [start, end] = resolveDateExprRange(rule.value, config);
+      return { NOT: { gte: start.toDate(), lte: end.toDate() } };
     }
 
     case DateOperator.between: {

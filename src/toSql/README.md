@@ -36,6 +36,7 @@ Dot notation accesses JSONB fields:
 
 ### Date Operators
 - `before`, `after`, `onOrBefore`, `onOrAfter`
+- `within`, `notWithin` (range expressions: a period or rolling window)
 - `between`, `notBetween`
 - `dayIn`, `dayNotIn` (day of week filtering)
 

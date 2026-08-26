@@ -102,6 +102,7 @@ Supported comparison operators for aggregate rules: `equals`, `notEquals`, `less
 - `onOrBefore`
 - `onOrAfter`
 - `within`
+- `notWithin`
 - `between`
 - `notBetween`
 - `dayIn`
@@ -234,7 +235,7 @@ or as `between` endpoints:
 { field: 'completedAt', dateOperator: DateOperator.before, value: { end: { last: 'month' } } }
 ```
 
-**Range expressions** — pair with the `within` operator:
+**Range expressions** — pair with `within` / `notWithin`:
 
 ```ts
 // "this month"
@@ -245,6 +246,10 @@ or as `between` endpoints:
 
 // rolling window: "within the last 30 days"  →  [now - 30d, now]
 { field: 'completedAt', dateOperator: DateOperator.within, value: { ago: { days: 30 } } }
+
+// its complement: "not in the last 30 days" — a never-set date is not in the window, so
+// NULL matches (see NULL Semantics). The dormancy rule, in one leaf.
+{ field: 'lastLoginAt', dateOperator: DateOperator.notWithin, value: { ago: { days: 30 } } }
 ```
 
 A **bare period** with `before` / `after` resolves to the only sensible edge —
@@ -531,7 +536,7 @@ Without `{ map, model }`, or on an entry that doesn't declare it, the bare
 Date rules follow the same split. The positive operators answer non-match on both
 rails — a bare boundary is not something a NULL column satisfies, so `check()`
 reports the rule's ordinary non-match (honoring `error`) and the compilers keep the
-bare `<` / `BETWEEN`. The negative-flavored ones (`notBetween`, `dayNotIn`) follow
+bare `<` / `BETWEEN`. The negative-flavored ones (`notWithin`, `notBetween`, `dayNotIn`) follow
 the negation ruling instead: a never-set date is not in the range, so a null column
 MATCHES, and the compilers carry the `IS NULL` arm. To match never-seen rows under a
 positive operator, ask for them:
@@ -540,6 +545,7 @@ positive operator, ask for them:
 | Rule | `check()` on `{ col: null }` | `toSql()` | `toPrisma()` |
 | --- | --- | --- | --- |
 | positive `dateOperator` (`before`, `between`, `dayIn`, …) | no match | `col < $1` (NULL never satisfies) | `{ col: { lt: … } }` |
+| `notWithin { ago: { days: 30 } }` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ col: { NOT: { gte, lte } } }, { col: { equals: null } }] }` (nullable column) |
 | `notBetween` | matches | `(col NOT BETWEEN $1 AND $2 OR col IS NULL)` | `{ OR: [{ col: { NOT: … } }, { col: { equals: null } }] }` (nullable column, same field-map licensing as above) |
 | `dayNotIn` | matches | `(EXTRACT(DOW FROM col) <> ALL($1) OR col IS NULL)` | — (no Prisma output) |
 | `notExists` OR `before` | matches via the first arm | `(col IS NULL OR col < $1)` | `{ OR: [{ col: { equals: null } }, { col: { lt: … } }] }` |

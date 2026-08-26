@@ -20,9 +20,19 @@ dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
 const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
+  DateOperator.notWithin,
   DateOperator.notBetween,
   DateOperator.dayNotIn,
 ];
+
+// `within` and its complement take a RANGE expression (period or rolling window), never a
+// point or a literal pair — the one date shape the compilers resolve to two bounds.
+export const RANGE_DATE_OPERATORS: readonly DateOperator[] = [
+  DateOperator.within,
+  DateOperator.notWithin,
+];
+export const isRangeOperator = (operator: string): boolean =>
+  (RANGE_DATE_OPERATORS as readonly string[]).includes(operator);
 
 export const checkDate = <TData extends Record<string, unknown>>(
   condition: DateRule,
@@ -91,6 +101,15 @@ export const checkDate = <TData extends Record<string, unknown>>(
       );
     }
 
+    case DateOperator.notWithin: {
+      if (!endDate) throw new Error('notWithin operator requires a range');
+      return (
+        fieldDate.isBefore(compareDate) ||
+        fieldDate.isAfter(endDate) ||
+        getError(`must not be within ${compareDate.format()} and ${endDate.format()}`)
+      );
+    }
+
     case DateOperator.between: {
       if (!endDate) throw new Error('between operator requires an end date');
       return (
@@ -136,9 +155,9 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   config: DateConfig,
   tz: string,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
-  if (condition.dateOperator === DateOperator.within) {
+  if (isRangeOperator(condition.dateOperator)) {
     if (!isDateExpr(condition.value))
-      throw new Error('within operator requires a range date expression');
+      throw new Error(`${condition.dateOperator} operator requires a range date expression`);
     return resolveDateExprRange(condition.value, config);
   }
 

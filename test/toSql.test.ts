@@ -333,8 +333,10 @@ describe('toSql', () => {
         dateOperator: DateOperator.dayIn,
         value: ['monday', 'wednesday', 'friday'],
       });
-      expect(sql).toBe('EXTRACT(DOW FROM "scheduledAt") = ANY($1)');
-      expect(params).toEqual([[1, 3, 5]]);
+      expect(sql).toBe(
+        `EXTRACT(DOW FROM ("scheduledAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) = ANY($2)`,
+      );
+      expect(params).toEqual(['UTC', [1, 3, 5]]);
     });
 
     it('dayNotIn', () => {
@@ -343,8 +345,10 @@ describe('toSql', () => {
         dateOperator: DateOperator.dayNotIn,
         value: ['saturday', 'sunday'],
       });
-      expect(sql).toBe('(EXTRACT(DOW FROM "deliveryDate") <> ALL($1) OR "deliveryDate" IS NULL)');
-      expect(params).toEqual([[6, 0]]);
+      expect(sql).toBe(
+        `(EXTRACT(DOW FROM ("deliveryDate" AT TIME ZONE 'UTC' AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
+      );
+      expect(params).toEqual(['UTC', [6, 0]]);
     });
   });
 

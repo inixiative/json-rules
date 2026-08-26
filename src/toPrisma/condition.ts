@@ -11,11 +11,9 @@ export const buildCondition = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  // Prisma's empty OR matches nothing — `false` compiles, same as toSql's FALSE.
   if (typeof condition === 'boolean') {
-    if (condition) return {};
-    throw new Error(
-      `Boolean 'false' has no direct Prisma WHERE equivalent. toPrisma is designed for structured Rule conditions.`,
-    );
+    return condition ? {} : { OR: [] };
   }
 
   if ('all' in condition) return buildAll(condition, options, state);

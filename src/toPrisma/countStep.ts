@@ -98,12 +98,32 @@ export const buildCountStep = (
     pkOnCurrent = reverseRelation.toFields?.[0] ?? '';
   }
 
-  const innerWhere = rule.condition
-    ? buildCondition(rule.condition, { ...options, model: targetModel }, state)
-    : {};
+  // Same contract as check(): a count operator without a condition or count is an
+  // authoring error, not a default.
+  if (rule.condition === undefined)
+    throw new Error(`${rule.arrayOperator} requires a condition to check against array elements`);
+  if (rule.count === undefined) throw new Error(`${rule.arrayOperator} requires a count`);
 
-  const count = rule.count ?? 1;
-  const having = buildHaving(rule.arrayOperator, count, fkOnTarget);
+  const innerWhere = buildCondition(rule.condition, { ...options, model: targetModel }, state);
+  const count = rule.count;
+
+  if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return {};
+
+  // A groupBy only emits groups with >=1 surviving row, so a root with ZERO matching
+  // children can never appear in an IN. The zero-inclusive operators therefore compile
+  // to the COMPLEMENT of an atLeast step: atMost N = NOT(atLeast N+1), exactly 0 =
+  // NOT(atLeast 1). exactly N>=1 and atLeast N>=1 keep the direct IN form.
+  const complement =
+    rule.arrayOperator === ArrayOperator.atMost ||
+    (rule.arrayOperator === ArrayOperator.exactly && count === 0);
+
+  const having = complement
+    ? buildHaving(
+        ArrayOperator.atLeast,
+        rule.arrayOperator === ArrayOperator.atMost ? count + 1 : 1,
+        fkOnTarget,
+      )
+    : buildHaving(rule.arrayOperator, count, fkOnTarget);
 
   const step: GroupByStep = {
     operation: 'groupBy',
@@ -116,7 +136,8 @@ export const buildCountStep = (
   state.steps.push(step);
 
   const stepRef: StepRef = { __step: stepIndex };
-  return { [pkOnCurrent]: { in: stepRef } };
+  const membership = { [pkOnCurrent]: { in: stepRef } };
+  return complement ? { NOT: membership } : membership;
 };
 
 // Prisma 6.x having format: field first, then _count nested inside.

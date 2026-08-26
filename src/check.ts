@@ -228,7 +228,7 @@ const checkArray = <TData extends CheckData>(
   ];
 
   const itemCondition = condition.condition;
-  if (requiresCondition.includes(condition.arrayOperator) && !itemCondition)
+  if (requiresCondition.includes(condition.arrayOperator) && itemCondition === undefined)
     throw new Error(
       `${condition.arrayOperator} requires a condition to check against array elements`,
     );
@@ -241,7 +241,7 @@ const checkArray = <TData extends CheckData>(
   let failures = 0;
 
   if (requiresCondition.includes(condition.arrayOperator)) {
-    if (!itemCondition) {
+    if (itemCondition === undefined) {
       throw new Error(
         `${condition.arrayOperator} requires a condition to check against array elements`,
       );

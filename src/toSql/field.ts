@@ -1,12 +1,30 @@
 import { get } from 'lodash-es';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { Operator } from '../operator';
+import { walkFieldPath } from '../toPrisma/mapWalk';
+import type { FieldMap } from '../toPrisma/types';
 import type { Rule } from '../types';
 import { escapeIdentifier } from './escape';
 import { resolveFieldSql } from './join';
 import { nextParam } from './params';
 import { escapeLikePattern, quoteField } from './quoting';
 import type { BuilderState } from './types';
+
+// The ''-branch of isEmpty/notEmpty belongs to String (and Json) columns only —
+// Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
+// ported). Field map is the authority, a stamped coerceType the fallback; with
+// neither, the legacy two-branch shape stays so an untyped String field keeps it.
+const acceptsEmptyString = (rule: Rule, state: BuilderState): boolean => {
+  const walk =
+    state.map && state.currentModel
+      ? walkFieldPath(rule.field, state.map as FieldMap, state.currentModel)
+      : undefined;
+  const entry = walk?.kind === 'direct' ? walk.entry : undefined;
+  if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
+  return (
+    rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
+  );
+};
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   if (rule.fuzzy)
@@ -105,9 +123,11 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
     }
 
     case Operator.isEmpty:
+      if (!acceptsEmptyString(rule, state)) return `${field} IS NULL`;
       return `(${field} IS NULL OR ${field} = '')`;
 
     case Operator.notEmpty:
+      if (!acceptsEmptyString(rule, state)) return `${field} IS NOT NULL`;
       return `(${field} IS NOT NULL AND ${field} <> '')`;
 
     case Operator.exists:

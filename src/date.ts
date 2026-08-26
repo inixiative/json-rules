@@ -145,17 +145,25 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
   const requiresTwoDates: DateOperator[] = [DateOperator.between, DateOperator.notBetween];
 
   if (requiresTwoDates.includes(condition.dateOperator)) {
-    if (!Array.isArray(condition.value) || condition.value.length !== 2)
+    // `path` resolves here exactly as the one-date branch resolves it below — a rule
+    // validateRule accepts and toSql executes must not throw on the per-row rail.
+    let raw: unknown = condition.value;
+    if (raw === undefined && condition.path) {
+      raw = condition.path.startsWith('$.')
+        ? (get(data, condition.path.substring(2)) as unknown)
+        : (get(context, condition.path) as unknown);
+    }
+    if (!Array.isArray(raw) || raw.length !== 2)
       throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const [rawDate1, rawDate2] = condition.value as [unknown, unknown];
+    const [rawDate1, rawDate2] = raw as [unknown, unknown];
     const date1 = isDateExpr(rawDate1)
       ? resolveDateExpr(rawDate1, config)
       : parseDateValue(rawDate1 as DateInputValue, tz);
     const date2 = isDateExpr(rawDate2)
       ? resolveDateExpr(rawDate2, config)
       : parseDateValue(rawDate2 as DateInputValue, tz);
-    if (!date1.isValid()) throw new Error(`Invalid start date: ${condition.value[0]}`);
-    if (!date2.isValid()) throw new Error(`Invalid end date: ${condition.value[1]}`);
+    if (!date1.isValid()) throw new Error(`Invalid start date: ${String(rawDate1)}`);
+    if (!date2.isValid()) throw new Error(`Invalid end date: ${String(rawDate2)}`);
     // Auto-sort: ensure startDate <= endDate
     const [startDate, endDate] =
       date1.isBefore(date2) || date1.isSame(date2) ? [date1, date2] : [date2, date1];

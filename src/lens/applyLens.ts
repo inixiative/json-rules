@@ -1,4 +1,5 @@
 import { ArrayOperator } from '../operator.ts';
+import { own } from '../own';
 import type { Condition } from '../types.ts';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, resolveVisit } from './policy.ts';
@@ -151,7 +152,7 @@ const rewriteRule = (
     for (let i = 0; i < parts.length; i++) {
       const m = policy.lens.maps[curMap]?.models[curModel];
       if (!m) break;
-      const entry = m.fields[parts[i]];
+      const entry = own(m.fields, parts[i]);
       if (!entry) break;
       const isFinal = i === parts.length - 1;
       if (entry.kind !== 'object' && entry.kind !== 'bridge') break; // scalar/Json — stop descent

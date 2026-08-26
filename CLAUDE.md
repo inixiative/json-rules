@@ -5,17 +5,19 @@ Standing rulings from Aron. These are architectural law, not suggestions; the gi
 
 ## The engine is an evaluator. Full stop.
 
-It evaluates ONE rule against data. Rules are blind to each other by design.
+The CORE evaluates ONE rule against data; rules are blind to each other at evaluation.
 
-- **No rule-introspection APIs.** "Which values does this tree reference," "which rules
-  mention X," remap/re-point tools — all REJECTED (see #9/#10: `referencedFieldValues` /
-  `transformFieldValues` were built, reworked, and ripped out the same day). Cross-rule
-  concerns — reference graphs, reconcile ordering, cycle detection, clone id-remapping —
-  belong to the CALLER, which authors the rules and knows where its reference arms live.
-- **The lens owns vocabulary questions.** If a caller-side need is really "which values
-  does a rule use at a field the lens declares as a source," the sanctioned home is a
-  lens API keyed by the lens's own source declarations — never a free function taking a
-  caller-supplied dotted path.
+- **Introspection is fine in principle — at the right layer.** The rejected shape (#9/#10:
+  `referencedFieldValues` / `transformFieldValues`, built, reworked, and ripped out the
+  same day) was a free-floating grammar walk in the core, keyed by a caller-supplied
+  dotted path, with no named consumer. The sanctioned home for "which values does a rule
+  use at field X" is the LENS, keyed by its own source declarations (the
+  `ruleSourceValues(lens, rule)` shape) — the lens owns the vocabulary, so it answers
+  questions about it. Callers never pass magic dot-strings.
+- **Cross-rule GRAPH concerns stay with the caller.** Reference graphs, reconcile
+  ordering, cycle detection, and what to do about an unmappable reference in a clone are
+  decisions of the system that authors the rules — the engine/lens can report what a rule
+  names; it never orders, freezes, or remaps on anyone's behalf.
 - **No new API without its first consumer named in the PR.** A plausible story is not a
   consumer. Speculative surface gets polished instead of challenged, and that is how the
   messes happen.

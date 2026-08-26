@@ -260,7 +260,7 @@ export const walkLensPath = (
     const effect = resolveVisit(policy, mapName, modelName, relPath);
     const fieldName = parts[i];
     if (!isFieldVisible(effect, fieldName)) return null;
-    const entry = model.fields[fieldName];
+    const entry = Object.hasOwn(model.fields, fieldName) ? model.fields[fieldName] : undefined;
     if (!entry) return null;
     // A Json column has no declared sub-fields; a dotted sub-path into it is resolved
     // by the evaluators/compilers (check/toPrisma/toSql), so the field resolves to the

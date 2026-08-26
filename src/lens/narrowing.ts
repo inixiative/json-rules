@@ -80,7 +80,8 @@ const validateSourceTargetVisibility = (
           break;
         }
         if (i === segments.length - 1) break;
-        const fieldEntry = maps[curMap]?.models[curModel]?.fields[seg];
+        const curFields = maps[curMap]?.models[curModel]?.fields;
+        const fieldEntry = curFields && Object.hasOwn(curFields, seg) ? curFields[seg] : undefined;
         const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
         if (!target) break; // path resolvability is validated by groupByPathError
         nodes = nodes
@@ -104,7 +105,9 @@ const groupByPathError = (
   let curMap = mapName;
   let curModel = modelName;
   for (let i = 0; i < segments.length; i++) {
-    const entry = maps[curMap]?.models[curModel]?.fields[segments[i]];
+    const segFields = maps[curMap]?.models[curModel]?.fields;
+    const entry =
+      segFields && Object.hasOwn(segFields, segments[i]) ? segFields[segments[i]] : undefined;
     if (!entry) return `groupBy segment '${segments[i]}' not on model '${curModel}'`;
     const isLast = i === segments.length - 1;
     if (entry.kind === 'object' || entry.kind === 'bridge') {
@@ -513,7 +516,7 @@ const validatePathNarrowing = (
   );
 
   for (const [relField, sub] of Object.entries(narrowing.relations ?? {})) {
-    const entry = model.fields[relField];
+    const entry = Object.hasOwn(model.fields, relField) ? model.fields[relField] : undefined;
     if (!entry) {
       errors.push(`${position}.relations: '${relField}' not on model`);
       continue;

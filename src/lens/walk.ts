@@ -60,7 +60,7 @@ export const walkPath = (
   for (let i = 0; i < parts.length; i++) {
     const model: ModelEntry | undefined = set.maps[mapName]?.models[modelName];
     if (!model) return null;
-    const entry = model.fields[parts[i]];
+    const entry = Object.hasOwn(model.fields, parts[i]) ? model.fields[parts[i]] : undefined;
     if (!entry) return null;
     if (i === parts.length - 1) return { entry, mapName, modelName };
     const target = resolveRelationTarget(entry, mapName);

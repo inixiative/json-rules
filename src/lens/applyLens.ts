@@ -151,7 +151,7 @@ const rewriteRule = (
     for (let i = 0; i < parts.length; i++) {
       const m = policy.lens.maps[curMap]?.models[curModel];
       if (!m) break;
-      const entry = m.fields[parts[i]];
+      const entry = Object.hasOwn(m.fields, parts[i]) ? m.fields[parts[i]] : undefined;
       if (!entry) break;
       const isFinal = i === parts.length - 1;
       if (entry.kind !== 'object' && entry.kind !== 'bridge') break; // scalar/Json — stop descent

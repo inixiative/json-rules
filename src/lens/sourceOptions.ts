@@ -36,7 +36,8 @@ const foldPathGuards = (
   const relPath = [...baseRelPath];
   // The last segment is the column; guards live on the traversed models.
   for (let i = 0; i < segments.length - 1; i++) {
-    const entry = policy.lens.maps[curMap]?.models[curModel]?.fields[segments[i]];
+    const fields = policy.lens.maps[curMap]?.models[curModel]?.fields;
+    const entry = fields && Object.hasOwn(fields, segments[i]) ? fields[segments[i]] : undefined;
     const target = entry ? resolveRelationTarget(entry, curMap) : null;
     if (!target) {
       if (strict) {

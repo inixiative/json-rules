@@ -28,7 +28,8 @@ const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedFiel
   const segments = fieldPath.split('.');
   let { mapName, modelName } = scope;
   for (let i = 0; i < segments.length; i += 1) {
-    const entry = lens.maps[mapName]?.models[modelName]?.fields[segments[i]];
+    const fields = lens.maps[mapName]?.models[modelName]?.fields;
+    const entry = fields && Object.hasOwn(fields, segments[i]) ? fields[segments[i]] : undefined;
     if (!entry) return undefined;
     if (i === segments.length - 1) return { entry, mapName };
     if (entry.kind !== 'object' && entry.kind !== 'bridge') return undefined;

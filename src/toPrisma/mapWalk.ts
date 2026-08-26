@@ -24,7 +24,9 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
     const modelEntry = map.models[currentModel];
     if (!modelEntry) return { kind: 'fallback' };
 
-    const fieldEntry = modelEntry.fields[parts[i]];
+    const fieldEntry = Object.hasOwn(modelEntry.fields, parts[i])
+      ? modelEntry.fields[parts[i]]
+      : undefined;
     if (!fieldEntry) return { kind: 'fallback' };
 
     if (fieldEntry.kind === 'bridge') return { kind: 'bridge' };

@@ -182,7 +182,9 @@ export type StrictDateComparisonRule =
   | (DateRuleBase<DateOperatorValues['before']> & ValueSource<DateInputValue>)
   | (DateRuleBase<DateOperatorValues['after']> & ValueSource<DateInputValue>)
   | (DateRuleBase<DateOperatorValues['onOrBefore']> & ValueSource<DateInputValue>)
-  | (DateRuleBase<DateOperatorValues['onOrAfter']> & ValueSource<DateInputValue>);
+  | (DateRuleBase<DateOperatorValues['onOrAfter']> & ValueSource<DateInputValue>)
+  | (DateRuleBase<DateOperatorValues['notBefore']> & ValueSource<DateInputValue>)
+  | (DateRuleBase<DateOperatorValues['notAfter']> & ValueSource<DateInputValue>);
 
 export type StrictDateRangeRule =
   | (DateRuleBase<DateOperatorValues['between']> & ValueSource<[DateInputValue, DateInputValue]>)

@@ -6,10 +6,9 @@ import utc from 'dayjs/plugin/utc.js';
 import { get } from 'lodash-es';
 import {
   isDateExpr,
-  isPeriodExpr,
   resolveDateExpr,
   resolveDateExprRange,
-  resolvePeriodRange,
+  resolvePointForOperator,
 } from './dateExpr';
 import { DateOperator } from './operator';
 import type { DateConfig, DateInputValue, DateRule, RuleValue } from './types';
@@ -20,6 +19,8 @@ dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
 const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
+  DateOperator.notBefore,
+  DateOperator.notAfter,
   DateOperator.notWithin,
   DateOperator.notBetween,
   DateOperator.dayNotIn,
@@ -100,6 +101,18 @@ export const checkDate = <TData extends Record<string, unknown>>(
         getError(`must be within ${compareDate.format()} and ${endDate.format()}`)
       );
     }
+
+    case DateOperator.notBefore:
+      return (
+        fieldDate.isSameOrAfter(compareDate) ||
+        getError(`must not be before ${compareDate.format()}`)
+      );
+
+    case DateOperator.notAfter:
+      return (
+        fieldDate.isSameOrBefore(compareDate) ||
+        getError(`must not be after ${compareDate.format()}`)
+      );
 
     case DateOperator.notWithin: {
       if (!endDate) throw new Error('notWithin operator requires a range');
@@ -194,21 +207,20 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     DateOperator.after,
     DateOperator.onOrBefore,
     DateOperator.onOrAfter,
+    DateOperator.notBefore,
+    DateOperator.notAfter,
   ];
 
   if (requiresOneDate.includes(condition.dateOperator)) {
     let value: DateInputValue | undefined;
     if (condition.value !== undefined) {
       if (isDateExpr(condition.value)) {
-        // Bare period + before/after ⇒ implied edge (before→start, after→end).
-        if (isPeriodExpr(condition.value)) {
-          const [start, end] = resolvePeriodRange(condition.value, config);
-          const useStart =
-            condition.dateOperator === DateOperator.before ||
-            condition.dateOperator === DateOperator.onOrBefore;
-          return [useStart ? start : end, undefined];
-        }
-        return [resolveDateExpr(condition.value, config), undefined];
+        // Bare period + before/after ⇒ implied edge (before→start, after→end); the one
+        // anchoring rule all three rails share.
+        return [
+          resolvePointForOperator(condition.value, condition.dateOperator, config),
+          undefined,
+        ];
       }
       if (Array.isArray(condition.value)) {
         throw new Error(`${condition.dateOperator} operator requires a single date value`);

@@ -41,6 +41,8 @@ export const DateOperator = {
   after: 'after',
   onOrBefore: 'onOrBefore',
   onOrAfter: 'onOrAfter',
+  notBefore: 'notBefore',
+  notAfter: 'notAfter',
   within: 'within',
   notWithin: 'notWithin',
   between: 'between',

@@ -39,6 +39,16 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       if (rhsCol !== undefined) return `${field} >= ${rhsCol}`;
       return `${field} >= ${nextParam(state, rhsVal)}`;
 
+    case DateOperator.notBefore: {
+      const rhs = rhsCol !== undefined ? rhsCol : nextParam(state, rhsVal);
+      return `(${field} >= ${rhs} OR ${field} IS NULL)`;
+    }
+
+    case DateOperator.notAfter: {
+      const rhs = rhsCol !== undefined ? rhsCol : nextParam(state, rhsVal);
+      return `(${field} <= ${rhs} OR ${field} IS NULL)`;
+    }
+
     case DateOperator.within: {
       if (!isDateExpr(rule.value))
         throw new Error('within date operator requires a range date expression');

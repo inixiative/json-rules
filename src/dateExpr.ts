@@ -130,7 +130,10 @@ export const resolvePointForOperator = (
 ): dayjs.Dayjs => {
   if (isPeriodExpr(expr)) {
     const [start, end] = resolvePeriodRange(expr, config);
-    return operator === 'before' || operator === 'onOrBefore' ? start : end;
+    // A complement anchors to the same edge as its positive form: notBefore is the start.
+    return operator === 'before' || operator === 'onOrBefore' || operator === 'notBefore'
+      ? start
+      : end;
   }
   return resolveDateExpr(expr, config);
 };

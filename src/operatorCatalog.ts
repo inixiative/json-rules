@@ -131,6 +131,18 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     valueShape: 'dateValue',
     acceptsExpr: true,
   },
+  [DateOperator.notBefore]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateValue',
+    acceptsExpr: true,
+  },
+  [DateOperator.notAfter]: {
+    kinds: ['DateTime'],
+    targets: ALL_TARGETS,
+    valueShape: 'dateValue',
+    acceptsExpr: true,
+  },
   [DateOperator.within]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.19.6 — `notBefore` / `notAfter`, the null-carrying boundary complements
+
+- `onOrAfter X` is not the complement of `before X`: it is positive, so a null column
+  never satisfies it. `notBefore X` (on/after X, or never) and `notAfter X` (on/before
+  X, or never) are — negative-flavored under the negation ruling on every rail.
+  `lastLoginAt notAfter '2026-01-01'` is "hasn't logged in since Jan 1, including never";
+  `completedAt notBefore <deadline>` is "hadn't completed by the deadline, including never".
+- Point operators: literal date, rolling point, or a period edge, exactly like
+  `before`/`after`; a period anchors to the same edge as the positive form
+  (`notBefore { this: 'month' }` is the month's start).
+- Catalog: `dateValue` shape, `acceptsExpr`, all targets.
+
 ## 2.19.5 — `notWithin`, the complement of `within`
 
 - New date operator `notWithin`: takes the same range expression as `within` (a

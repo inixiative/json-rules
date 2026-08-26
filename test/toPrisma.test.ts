@@ -665,8 +665,8 @@ describe('toPrisma logical operators', () => {
     expect(getWhere(toPrisma(true))).toEqual({});
   });
 
-  it('boolean false → throws', () => {
-    expect(() => toPrisma(false)).toThrow();
+  it('boolean false → empty OR (matches nothing, like toSql FALSE)', () => {
+    expect(getWhere(toPrisma(false))).toEqual({ OR: [] });
   });
 });
 

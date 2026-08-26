@@ -50,12 +50,15 @@ const USERS = [
 const fakePost = {
   groupBy: async (args: unknown) => {
     const { where, having } = args as {
-      where: { published?: { equals: boolean } };
+      where: { published?: { equals: boolean }; OR?: unknown[] };
       having: { authorId: { _count: Record<string, number> } };
     };
-    const surviving = POSTS.filter(
-      (p) => where.published === undefined || p.published === where.published.equals,
-    );
+    const surviving =
+      Array.isArray(where.OR) && where.OR.length === 0
+        ? []
+        : POSTS.filter(
+            (p) => where.published === undefined || p.published === where.published.equals,
+          );
     const counts = new Map<string, number>();
     for (const p of surviving) counts.set(p.authorId, (counts.get(p.authorId) ?? 0) + 1);
     const cmp = having.authorId._count;
@@ -216,17 +219,20 @@ describe('boolean conditions are legal grammar, not missing conditions', () => {
     expect(await passing(rule)).toEqual(['u1']);
   });
 
-  it("toPrisma: condition false hits the engine's standing boolean-false throw, not 'requires a condition'", () => {
-    expect(() =>
-      toPrisma(
-        {
-          field: 'posts',
-          arrayOperator: ArrayOperator.atMost,
-          count: 1,
-          condition: false,
-        } as never,
-        { map, model: 'User' },
-      ),
-    ).toThrow('no direct Prisma WHERE equivalent');
+  it('toPrisma: condition false compiles to match-nothing — full parity with check()', async () => {
+    const atMost = {
+      field: 'posts',
+      arrayOperator: ArrayOperator.atMost,
+      count: 1,
+      condition: false,
+    };
+    expect(await passing(atMost)).toEqual(['u1', 'u2', 'u3', 'u4']);
+    const atLeast = {
+      field: 'posts',
+      arrayOperator: ArrayOperator.atLeast,
+      count: 1,
+      condition: false,
+    };
+    expect(await passing(atLeast)).toEqual([]);
   });
 });

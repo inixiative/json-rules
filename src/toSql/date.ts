@@ -64,12 +64,15 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       return `(${field} NOT BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)} OR ${field} IS NULL)`;
     }
 
+    // The weekday is computed in the RESOLVED zone, never the DB session's: the column
+    // is anchored as a UTC instant (Prisma convention — DateTime stores UTC wall time)
+    // and converted to the zone, ending NAIVE so EXTRACT can't consult the session GUC.
     case DateOperator.dayIn: {
       if (!Array.isArray(rule.value)) {
         throw new Error('dayIn operator requires an array of day names');
       }
       const days = mapDayNames(rule.value.map((day) => String(day)));
-      return `EXTRACT(DOW FROM ${field}) = ANY(${nextParam(state, days)})`;
+      return `EXTRACT(DOW FROM ${zonedDay(field, state)}) = ANY(${nextParam(state, days)})`;
     }
 
     case DateOperator.dayNotIn: {
@@ -77,13 +80,16 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
         throw new Error('dayNotIn operator requires an array of day names');
       }
       const days = mapDayNames(rule.value.map((day) => String(day)));
-      return `(EXTRACT(DOW FROM ${field}) <> ALL(${nextParam(state, days)}) OR ${field} IS NULL)`;
+      return `(EXTRACT(DOW FROM ${zonedDay(field, state)}) <> ALL(${nextParam(state, days)}) OR ${field} IS NULL)`;
     }
 
     default:
       throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
   }
 };
+
+const zonedDay = (field: string, state: BuilderState): string =>
+  `(${field} AT TIME ZONE 'UTC' AT TIME ZONE ${nextParam(state, resolveTimeZone(state.dateConfig ?? {}))})`;
 
 const normalizeDateRange = (value: unknown[]): [unknown, unknown] => {
   const [first, second] = value;

@@ -84,13 +84,13 @@ describe('toPrisma — notWithin keeps NULL rows when the map licenses the arm',
 
   it('nullable column gets the equals:null arm', () => {
     expect(getWhere(toPrisma(notWithin as never, mapOpts))).toEqual({
-      OR: [{ lastLoginAt: { NOT: window } }, { lastLoginAt: { equals: null } }],
+      OR: [{ NOT: { lastLoginAt: window } }, { lastLoginAt: { equals: null } }],
     });
   });
 
   it('required column stays bare', () => {
     expect(getWhere(toPrisma({ ...notWithin, field: 'createdAt' } as never, mapOpts))).toEqual({
-      createdAt: { NOT: window },
+      NOT: { createdAt: window },
     });
   });
 });

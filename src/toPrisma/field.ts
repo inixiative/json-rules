@@ -44,11 +44,22 @@ const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
 export const isNullableColumn = (rule: Pick<Rule, 'field'>, options?: BuildOptions): boolean =>
   directEntry(rule, options)?.isRequired === false;
 
-const NEGATED: readonly Operator[] = [
-  Operator.notEquals,
-  Operator.notContains,
-  Operator.notBetween,
-];
+const NEGATED: readonly Operator[] = [Operator.notEquals, Operator.notContains];
+
+/**
+ * The complement of a BOUNDED range, which Prisma can only express at the WHERE level.
+ *
+ * There is no field-level negation of a two-sided filter: Prisma distributes `not` over the keys
+ * of the nested filter, so `{ col: { not: { gte: a, lte: b } } }` becomes
+ * `NOT(col >= a) AND NOT(col <= b)` — unsatisfiable for any window, and it fails silently: the
+ * query validates, runs, and returns nothing. `{ NOT: { col: { gte: a, lte: b } } }` negates the
+ * whole clause, which is what a complement means, and matches what `toSql` has always emitted
+ * (`NOT BETWEEN`). Same WHERE-level hoist the emptiness operators need above, for the same class
+ * of reason.
+ *
+ * These carry their own `equals: null` arm below, so they are deliberately not in `NEGATED`.
+ */
+const RANGE_COMPLEMENT: readonly Operator[] = [Operator.notBetween];
 
 const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
   if (!Array.isArray(list)) return { values: [], hasNull: false };
@@ -88,6 +99,12 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return hasNull
       ? { AND: [notInList, at({ not: null })] }
       : { OR: [notInList, at({ equals: null })] };
+  }
+
+  if (RANGE_COMPLEMENT.includes(rule.operator)) {
+    // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
+    const negated = { NOT: at(buildLeafFilter(rule, options)) };
+    return nullable ? { OR: [negated, at({ equals: null })] } : negated;
   }
 
   const filter = at(buildLeafFilter(rule, options));
@@ -199,13 +216,15 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
       return { gte: min, lte: max };
     }
 
+    // The POSITIVE range: `buildFieldRule` negates the whole clause (see RANGE_COMPLEMENT),
+    // because a field filter cannot carry the negation of a two-sided range.
     case Operator.notBetween: {
       const v = val();
       if (!Array.isArray(v) || v.length !== 2) {
         throw new Error('notBetween operator requires an array of two values');
       }
       const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
-      return { NOT: { gte: min, lte: max } };
+      return { gte: min, lte: max };
     }
 
     case Operator.isEmpty:

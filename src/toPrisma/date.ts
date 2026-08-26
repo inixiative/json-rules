@@ -21,6 +21,16 @@ const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
   DateOperator.notBetween,
 ];
 
+// The two range complements, hoisted to the WHERE level for the same reason as ./field.ts's
+// RANGE_COMPLEMENT: Prisma distributes a field-level `not` over the nested filter's keys, so
+// `{ col: { not: { gte, lte } } }` asks for `NOT(col >= a) AND NOT(col <= b)` — no row satisfies
+// it, and nothing complains. The single-boundary complements (notBefore/notAfter) compile to a
+// plain `gte`/`lte` and need no negation at all.
+const RANGE_COMPLEMENT_DATE_OPERATORS: readonly DateOperator[] = [
+  DateOperator.notWithin,
+  DateOperator.notBetween,
+];
+
 const dateConfigOf = (options?: BuildOptions): DateConfig => ({
   now: options?.now,
   timeZone: options?.timeZone,
@@ -40,7 +50,12 @@ const coerceDateLiteral = (value: unknown, config: DateConfig): unknown => {
 
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
   const filter = buildDateLeafFilter(rule, options);
-  const nested = buildNestedFilter(rule.field, filter);
+  // The leaf builder returns the POSITIVE range for the complements; the negation wraps the
+  // whole clause here (see RANGE_COMPLEMENT_DATE_OPERATORS).
+  const positive = buildNestedFilter(rule.field, filter);
+  const nested = RANGE_COMPLEMENT_DATE_OPERATORS.includes(rule.dateOperator)
+    ? { NOT: positive }
+    : positive;
   // Negation keeps NULL rows; the field map licenses the null arm (see isNullableColumn).
   if (NEGATED_DATE_OPERATORS.includes(rule.dateOperator) && isNullableColumn(rule, options)) {
     return { OR: [nested, buildNestedFilter(rule.field, { equals: null })] };
@@ -115,7 +130,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
       if (!isDateExpr(rule.value))
         throw new Error('notWithin date operator requires a range date expression');
       const [start, end] = resolveDateExprRange(rule.value, config);
-      return { NOT: { gte: start.toDate(), lte: end.toDate() } };
+      return { gte: start.toDate(), lte: end.toDate() };
     }
 
     case DateOperator.between: {
@@ -133,7 +148,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
         throw new Error('notBetween date operator requires an array of two values');
       }
       const [start, end] = normalizeDateRange(v.map(resolveElem));
-      return { NOT: { gte: start, lte: end } };
+      return { gte: start, lte: end };
     }
 
     case DateOperator.dayIn:

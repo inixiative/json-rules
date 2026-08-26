@@ -96,19 +96,19 @@ describe('toPrisma — notBetween keeps NULL rows when the map licenses the arm'
 
   it('nullable column gets the equals:null arm', () => {
     expect(getWhere(toPrisma(notBetween as never, mapOpts))).toEqual({
-      OR: [{ lastLoginAt: { NOT: range } }, { lastLoginAt: { equals: null } }],
+      OR: [{ NOT: { lastLoginAt: range } }, { lastLoginAt: { equals: null } }],
     });
   });
 
   it('required column stays bare', () => {
     expect(getWhere(toPrisma({ ...notBetween, field: 'createdAt' } as never, mapOpts))).toEqual({
-      createdAt: { NOT: range },
+      NOT: { createdAt: range },
     });
   });
 
   it('no map stays bare (nullability unknown)', () => {
     expect(getWhere(toPrisma(notBetween as never, { now: NOW }))).toEqual({
-      lastLoginAt: { NOT: range },
+      NOT: { lastLoginAt: range },
     });
   });
 });

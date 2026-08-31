@@ -166,3 +166,126 @@ describe('ruleSourceValues — the values a rule names at each declared source',
     expect(ruleSourceValues(narrowing, rule)).toEqual([]);
   });
 });
+
+describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
+  test('a mapDefaults-declared source answers wherever its model appears, with no root.relations spelling', () => {
+    const byDefaults: LensNarrowing = {
+      parent: lens,
+      mapDefaults: { app: { models: { Tag: { sources: { id: true } } } } },
+    };
+    const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'in', value: ['t1', 't2'] };
+    expect(ruleSourceValues(byDefaults, rule)).toEqual([
+      { ...tagSource, values: ['t1', 't2'], dynamic: false },
+    ]);
+  });
+
+  test('non-enumerating shapes mark the source dynamic instead of inventing values: between, contains, matches', () => {
+    const rules: Condition[] = [
+      { field: 'tagAttachments.tag.id', operator: 'between', value: ['a', 'z'] },
+      { field: 'tagAttachments.tag.id', operator: 'contains', value: 'gol' },
+      { field: 'tagAttachments.tag.id', operator: 'matches', value: '^gold$' },
+    ];
+    for (const rule of rules) {
+      expect(ruleSourceValues(narrowing, rule)).toEqual([
+        { ...tagSource, values: [], dynamic: true },
+      ]);
+    }
+  });
+
+  test('an operator the catalog does not know fails closed', () => {
+    const rule = {
+      field: 'tier',
+      operator: 'definitelyNotAnOperator',
+      value: 'x',
+    } as unknown as Condition;
+    expect(ruleSourceValues(narrowing, rule)).toEqual([
+      { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: true },
+    ]);
+  });
+
+  test('path: undefined is a literal leaf, not a dynamic one', () => {
+    const rule = {
+      field: 'tier',
+      operator: 'equals',
+      value: 'gold',
+      path: undefined,
+      bind: undefined,
+    } as unknown as Condition;
+    expect(ruleSourceValues(narrowing, rule)).toEqual([
+      {
+        path: 'User',
+        mapName: 'app',
+        model: 'User',
+        field: 'tier',
+        values: ['gold'],
+        dynamic: false,
+      },
+    ]);
+  });
+
+  test('a stray variable key is data, not a value source', () => {
+    const rule = {
+      field: 'tier',
+      operator: 'equals',
+      value: 'gold',
+      variable: {},
+    } as unknown as Condition;
+    expect(ruleSourceValues(narrowing, rule)).toEqual([
+      {
+        path: 'User',
+        mapName: 'app',
+        model: 'User',
+        field: 'tier',
+        values: ['gold'],
+        dynamic: false,
+      },
+    ]);
+  });
+
+  test('structured values dedupe by content: equal Dates and equal object literals collapse', () => {
+    const day = () => new Date(1735689600000);
+    const rule: Condition = {
+      all: [
+        { field: 'tier', operator: 'equals', value: day() },
+        { field: 'tier', operator: 'equals', value: day() },
+        { field: 'tier', operator: 'in', value: [{ a: 1 }, { a: 1 }] },
+      ],
+    };
+    expect(ruleSourceValues(narrowing, rule)).toEqual([
+      {
+        path: 'User',
+        mapName: 'app',
+        model: 'User',
+        field: 'tier',
+        values: [day(), { a: 1 }],
+        dynamic: false,
+      },
+    ]);
+  });
+
+  test('a null inside an in list is a named value', () => {
+    const rule = { field: 'tier', operator: 'in', value: ['a', null] } as unknown as Condition;
+    expect(ruleSourceValues(narrowing, rule)).toEqual([
+      {
+        path: 'User',
+        mapName: 'app',
+        model: 'User',
+        field: 'tier',
+        values: ['a', null],
+        dynamic: false,
+      },
+    ]);
+  });
+
+  test('an array count arm contributes neither a value nor dynamic', () => {
+    const rule: Condition = {
+      field: 'tagAttachments',
+      arrayOperator: 'exactly',
+      count: 0,
+      condition: { field: 'tag.id', operator: 'equals', value: 'a' },
+    };
+    expect(ruleSourceValues(narrowing, rule)).toEqual([
+      { ...tagSource, values: ['a'], dynamic: false },
+    ]);
+  });
+});

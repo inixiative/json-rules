@@ -1,89 +1,133 @@
-import type { DateOperator, Operator } from '../operator';
-import { DATE_OPERATOR_CATALOG, FIELD_OPERATOR_CATALOG } from '../operatorCatalog';
+import {
+  type CatalogEntry,
+  DATE_OPERATOR_CATALOG,
+  FIELD_OPERATOR_CATALOG,
+  ValueShape,
+} from '../operatorCatalog';
 import { own } from '../own';
 import { type ConditionNode, isRelationNode, visitCondition } from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
-import { resolvePolicy } from './policy.ts';
-import { projectByPath } from './projectByPath.ts';
+import { resolvePolicy, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
  * The values one rule compares at one declared source — keyed the way `projectByPath`
- * keys the source (`path` + `field`), so the caller can join it back to the source's
- * model without spelling a path of its own.
+ * keys a source (`path` + `field`), so the caller can join it back to the source's
+ * model without spelling a path of its own. A `mapDefaults`-declared source resolves
+ * wherever its model appears, so `path` may name a relation chain the narrowing never
+ * spelled under `root.relations`; the dotted format is the same.
  */
 export type RuleSourceValues = {
   path: string;
   mapName: string;
   model: string;
   field: string;
-  /** Every literal a leaf at this source compared against; list operators flattened, deduped. */
+  /** Every literal a leaf at this source named; list operators flattened, deduped by content. */
   values: RuleValue[];
   /**
-   * A leaf at this source took its value from `path` / `bind` / `variable` instead of naming
-   * one. `values` cannot be complete, so a caller deciding anything from it must fail closed.
+   * The set of values cannot be enumerated from literals: a leaf took its value from
+   * `path` / `bind`, used an operator that describes values without naming them
+   * (substring, pattern, range, date window), or used an operator the catalog does not
+   * know. A caller deciding anything from `values` must fail closed.
    */
   dynamic: boolean;
 };
 
-const DYNAMIC_KEYS = ['path', 'bind', 'variable'] as const;
+const DYNAMIC_KEYS = ['path', 'bind'] as const;
 
-const comparesAValue = (node: ConditionNode): boolean => {
-  if (typeof node.operator === 'string') {
-    return own(FIELD_OPERATOR_CATALOG, node.operator as Operator)?.valueShape !== 'none';
-  }
-  if (typeof node.dateOperator === 'string') {
-    return own(DATE_OPERATOR_CATALOG, node.dateOperator as DateOperator)?.valueShape !== 'none';
-  }
-  return false;
+/** Shapes whose `value` IS the named value(s): a literal, an ordered literal, a list, a
+ * day list, or a date literal / point expression. Everything else describes values
+ * without enumerating them. */
+const ENUMERABLE_SHAPES = new Set<string>([
+  ValueShape.scalar,
+  ValueShape.ordered,
+  ValueShape.array,
+  ValueShape.dayList,
+  ValueShape.dateValue,
+]);
+
+/** Shapes whose `value` is not about the field's values at all (a flag, a cardinality). */
+const VALUELESS_SHAPES = new Set<string>([ValueShape.none, ValueShape.count]);
+
+const catalogEntry = (node: ConditionNode): CatalogEntry | undefined => {
+  if (typeof node.operator === 'string') return own(FIELD_OPERATOR_CATALOG, node.operator);
+  if (typeof node.dateOperator === 'string') return own(DATE_OPERATOR_CATALOG, node.dateOperator);
+  return undefined;
 };
 
 const literals = (value: unknown): RuleValue[] =>
   Array.isArray(value) ? value.flatMap(literals) : [value as RuleValue];
 
+type Contribution = { values: RuleValue[]; dynamic: boolean };
+
+const contribution = (node: ConditionNode): Contribution => {
+  if (DYNAMIC_KEYS.some((k) => own(node as Record<string, unknown>, k) !== undefined)) {
+    return { values: [], dynamic: true };
+  }
+  const entry = catalogEntry(node);
+  if (!entry) return { values: [], dynamic: true };
+  if (VALUELESS_SHAPES.has(entry.valueShape)) return { values: [], dynamic: false };
+  if (!ENUMERABLE_SHAPES.has(entry.valueShape)) return { values: [], dynamic: true };
+  if (!('value' in node)) return { values: [], dynamic: false };
+  return { values: literals(node.value), dynamic: false };
+};
+
+const dedupeKey = (value: RuleValue): string => {
+  if (value instanceof Date) return `d:${+value}`;
+  if (value instanceof RegExp) return `r:${value}`;
+  if (typeof value === 'object' && value !== null) return `j:${JSON.stringify(value)}`;
+  return `p:${typeof value}:${String(value)}`;
+};
+
 /**
  * Which values a rule names at each source the lens declares — the lens owns the
  * vocabulary, so it answers questions about it; callers never spell a path. A leaf reaches a
  * source by its absolute path through the lens: nested (`{ field: 'orders', arrayOperator,
- * condition: { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`) spellings are one path.
- * Quantifier- and operator-blind on purpose — a `none` relation names its value as much as an
- * `any` one, `notIn` as much as `in` — except that operators which take no value (`exists`,
- * `isEmpty`, …) contribute nothing. A relation node's own comparison (an aggregate's threshold)
- * belongs to the aggregate, not to a source. Sources under relations the narrowing does not
- * declare, or beneath a Json column, are not sources; leaves there are silent.
+ * condition: { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`) spellings are one path,
+ * resolved by `walkLensPath` — visibility, `mapDefaults`, and the Json boundary all apply, so a
+ * source declared in `mapDefaults` answers wherever its model appears. Quantifier-blind on
+ * purpose — a `none` relation names its value as much as an `any` one, `notIn` as much as `in` —
+ * but shape-aware via the operator catalog: only literal-naming shapes contribute `values`;
+ * substring / pattern / range / window operators, and operators the catalog does not know, mark
+ * the source `dynamic` instead of inventing values. A relation node's own comparison (an
+ * aggregate's threshold, an array `count`) belongs to the node, not to a source. Paths invisible
+ * under the lens, unmapped segments, and sub-paths beneath a Json column are silent.
  */
 export const ruleSourceValues = (
   lensOrNarrowing: Lens | LensNarrowing,
   rule: Condition,
 ): RuleSourceValues[] => {
-  const projection = projectByPath(lensOrNarrowing);
-  const root = resolvePolicy(lensOrNarrowing).lens.model;
+  const policy = resolvePolicy(lensOrNarrowing);
+  const root = policy.lens.model;
   const out = new Map<string, RuleSourceValues>();
 
   const record = (segments: string[], node: ConditionNode): void => {
     if (segments.length === 0) return;
-    const field = segments[segments.length - 1];
-    const path = [root, ...segments.slice(0, -1)].join('.');
-    const visit = projection.get(path);
-    if (!visit || !own(visit.sources, field)) return;
+    const resolved = walkLensPath(policy, policy.lens.mapName, root, [], segments.join('.'));
+    if (!resolved || resolved.jsonSubPath.length > 0) return;
+    const { mapName, modelName, relPath, terminalEffect, terminalFieldName } = resolved;
+    if (!terminalEffect.sources.has(terminalFieldName)) return;
 
-    const key = `${path}|${field}`;
+    const path = [root, ...relPath].join('.');
+    const key = `${path}|${terminalFieldName}`;
     let entry = out.get(key);
     if (!entry) {
       entry = {
         path,
-        mapName: visit.mapName,
-        model: visit.modelName,
-        field,
+        mapName,
+        model: modelName,
+        field: terminalFieldName,
         values: [],
         dynamic: false,
       };
       out.set(key, entry);
     }
-    if (DYNAMIC_KEYS.some((k) => k in node)) entry.dynamic = true;
-    if (!('value' in node) || !comparesAValue(node)) return;
-    for (const literal of literals(node.value)) {
-      if (!entry.values.some((seen) => Object.is(seen, literal))) entry.values.push(literal);
+    const found = contribution(node);
+    if (found.dynamic) entry.dynamic = true;
+    for (const literal of found.values) {
+      if (!entry.values.some((seen) => dedupeKey(seen) === dedupeKey(literal))) {
+        entry.values.push(literal);
+      }
     }
   };
 

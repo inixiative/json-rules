@@ -3,17 +3,23 @@
 ## 2.20.0 — `ruleSourceValues(lens, rule)`: the values a rule names at each declared source
 
 - The lens answers "which values does this rule use at source X" — keyed by its own source
-  declarations (`projectByPath`'s `path` + `field`), so a caller never spells a dotted path
-  (the #9/#10 shape, rejected for exactly that). Nested and dotted relation spellings are one
-  path; quantifier- and operator-blind (`none` / `notIn` name their values as much as `any` /
-  `in`), except that no-value operators (`exists`, `isEmpty`, …) contribute nothing; a
-  windowing `filter` is walked at its relation anchor; an aggregate's own threshold is not a
-  source value; `path` / `bind` / `variable` at a source report `dynamic: true` with no value,
-  so a caller deciding from the set fails closed. Sources under relations the narrowing does
-  not declare, or beneath a Json column, are silent. Walk is `visitCondition` (one structural
-  walk), relation boundary handled once. First consumer: the rule reference registry
-  (Zealot ZLT-4441 / template INFRA-030) — every edge's referenced model is the source's
-  model, never a constant. `test/lens.ruleSourceValues.test.ts`.
+  declarations (`projectByPath`'s `path` + `field` format), so a caller never spells a dotted
+  path (the #9/#10 shape, rejected for exactly that). Resolution is `walkLensPath`, so
+  visibility, the Json boundary, and `mapDefaults` all apply: a source declared in
+  `mapDefaults` answers wherever its model appears, including relation chains
+  `root.relations` never spelled. Nested and dotted relation spellings are one path; a
+  windowing `filter` is walked at its relation anchor; an aggregate's threshold and an array
+  `count` are not source values.
+- Shape-aware via the operator catalog: only literal-naming shapes (`scalar`, `ordered`,
+  `array`, `dayList`, `dateValue`) contribute `values`; substring / pattern / range / window
+  operators — and operators the catalog does not know — mark the source `dynamic` instead of
+  inventing values (`between: [a, z]` names a range, not two rows). `path` / `bind` at a
+  source is `dynamic` by key *value*, not key presence (`path: undefined` is a literal leaf).
+  Structured values dedupe by content (Dates, object literals).
+- First consumer: the rule reference registry (Zealot ZLT-4441 / template INFRA-030) — every
+  edge's referenced model is the source's model, never a constant, and `dynamic` is the
+  fail-closed signal its save gate refuses on. `test/lens.ruleSourceValues.test.ts`; the
+  adversarial findings that shaped the final semantics are each pinned by a test.
 
 ## 2.19.8 — negations through an optional to-one carry the absent relation
 

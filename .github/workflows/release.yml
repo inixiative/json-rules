@@ -1,0 +1,29 @@
+# Trusted publishing: a release is "push a tag". Publishing runs here via npm OIDC —
+# no token, no laptop, no dist commit. The npm-side half must ALSO be configured for
+# each package: add this repo + this workflow filename as the trusted publisher, and
+# set publishing access to require it (otherwise token publishes still work and the
+# one-account gate remains). prepublishOnly runs check + build, so the tag needs no
+# committed dist/.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - run: bun install
+      - run: npm publish

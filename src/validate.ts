@@ -6,6 +6,7 @@ import {
   DATE_OPERATOR_CATALOG,
   FIELD_OPERATOR_CATALOG,
   FieldKind,
+  getAggregateOperators,
   getValueShape,
   isAggregateRangeOperator,
   isAggregateSingleOperator,
@@ -348,12 +349,12 @@ const validateAggregateRule = (
     return;
   }
 
-  if (context.target === 'toPrisma' && rule.operator === Operator.notBetween) {
+  if (!getAggregateOperators(context.target).includes(rule.operator as Operator)) {
     pushIssue(
       context,
       `${path}.operator`,
-      'unsupported_prisma_aggregate_operator',
-      `Operator 'notBetween' is not supported by toPrisma() for aggregate rules`,
+      `unsupported_${targetSlug(context.target)}_aggregate_operator`,
+      `Operator '${rule.operator}' is not supported by ${context.target}() for aggregate rules`,
     );
   }
 

@@ -241,6 +241,23 @@ export const AGGREGATE_OPERATORS: readonly Operator[] = [
   Operator.notBetween,
 ];
 
+/** Aggregate threshold comparisons a target cannot compile. `toPrisma()` builds the
+ *  threshold as a Prisma `having` filter, which has no complement for a range, so
+ *  `notBetween` is unavailable there — `check()` and `toSql()` both handle it. */
+const AGGREGATE_UNSUPPORTED: Partial<Record<RuleTarget, readonly Operator[]>> = {
+  toPrisma: [Operator.notBetween],
+};
+
+/** The aggregate threshold comparisons `target` can compile — all of them when no
+ *  target is given. The one source for both the validator's rejection and a builder's
+ *  threshold picker, so neither has to restate which target drops which operator. */
+export const getAggregateOperators = (target?: RuleTarget): readonly Operator[] => {
+  const unsupported = target === undefined ? undefined : AGGREGATE_UNSUPPORTED[target];
+  return unsupported === undefined
+    ? AGGREGATE_OPERATORS
+    : AGGREGATE_OPERATORS.filter((op) => !unsupported.includes(op));
+};
+
 export const isAggregateSingleOperator = (operator: Operator): boolean => {
   const entry = FIELD_OPERATOR_CATALOG[operator];
   if (!entry) return false;

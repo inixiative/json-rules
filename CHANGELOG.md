@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.21.0 — `getAggregateOperators(target)`: the threshold list a target can compile
+
+- **`getAggregateOperators(target?)`** — the aggregate threshold comparisons a target
+  compiles, all of them when no target is given. `toPrisma()` builds the threshold as a
+  Prisma `having` filter, which has no complement for a range, so `notBetween` drops
+  there; `check()` and `toSql()` both handle it.
+- **`validateRule` rejects off that list** instead of restating the `toPrisma` +
+  `notBetween` pair inline, and its issue code follows the usual target slug —
+  `unsupported_prisma_aggregate_operator` is unchanged, and another target's exclusion
+  would name itself. Consumers that draw a threshold picker (the rule builder) can now
+  derive the offered set for their own target instead of hardcoding the Prisma-safe
+  subset for everyone.
+
 ## 2.20.0 — `ruleSourceValues(lens, rule)`: the values a rule names at each declared source
 
 - The lens answers "which values does this rule use at source X" — keyed by its own source

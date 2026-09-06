@@ -166,6 +166,19 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
     expect(() => toSql(composed, { map, model: 'Customer' })).toThrow(/Windowing/);
   });
 
+  test('an empty orderBy is not a window: AND injection is kept and still compiles', () => {
+    const rule = {
+      field: 'orders',
+      arrayOperator: ArrayOperator.any,
+      orderBy: [],
+      condition: paid,
+    } as unknown as Condition;
+    const composed = applyLens(rule, scoped) as { filter?: Condition; condition: Condition };
+    expect(composed.filter).toBeUndefined();
+    expect(composed.condition).toEqual({ all: [scope, paid] });
+    expect(() => toPrisma(composed as Condition, prismaOpts)).not.toThrow();
+  });
+
   test('un-windowed any retains its scoped Prisma query', () => {
     const rule = {
       field: 'orders',

@@ -1,6 +1,7 @@
 import { ArrayOperator } from '../operator.ts';
 import { own } from '../own';
-import type { Condition } from '../types.ts';
+import type { Condition, WindowFields } from '../types.ts';
+import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -178,12 +179,9 @@ const rewriteRule = (
       const effectAtDescent = resolveVisit(policy, curMap, curModel, curRelPath);
       let inner = rewriteRule(rule.condition, policy, curMap, curModel, curRelPath);
       const arrayOp = 'arrayOperator' in rule ? (rule.arrayOperator as ArrayOperator) : undefined;
-      const filterFirst =
-        arrayOp === ArrayOperator.all ||
-        ('filter' in rule && rule.filter !== undefined) ||
-        ('orderBy' in rule && rule.orderBy !== undefined) ||
-        ('take' in rule && rule.take !== undefined) ||
-        ('skip' in rule && rule.skip !== undefined);
+      // `hasWindow` is the compilers' notion of a window (an empty `orderBy` is none), so an
+      // un-windowed grant keeps the AND injection that compiles on every rail.
+      const filterFirst = arrayOp === ArrayOperator.all || hasWindow(rule as WindowFields);
       const filterGrants: Condition[] = [];
       for (const whereClause of effectAtDescent.whereClauses) {
         if (filterFirst) {

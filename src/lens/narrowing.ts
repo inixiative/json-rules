@@ -2,43 +2,44 @@ import { own } from '../own';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { validateBindNames } from './bindings.ts';
-import { checkRuleAgainstLens } from './checkRule.ts';
+import { checkConditionAtVisit } from './checkRule.ts';
 import {
   augmentPicksWithRelations,
   intersectStringSet,
   normalizeGroupBy,
   normalizeSource,
+  OFF_PATH,
+  type Policy,
+  resolvePolicy,
 } from './policy.ts';
 import { projectByPath } from './projectByPath.ts';
-import type { Lens, LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
+import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
-const parentAtVisit = (
-  root: Lens,
-  ancestors: readonly LensNarrowing[],
-  mapName: string,
-  modelName: string,
-  relPath?: readonly string[],
-): Lens | LensNarrowing => {
-  let parent: Lens | LensNarrowing = { ...root, mapName, model: modelName };
-  for (const ancestor of ancestors) {
-    let node = relPath === undefined ? undefined : ancestor.root;
-    for (const segment of relPath ?? []) node = node?.relations?.[segment];
-    parent = { parent, mapDefaults: ancestor.mapDefaults, root: node };
-  }
-  return parent;
-};
+/** A visit of the PARENT surface a `where` is validated at: the where's own model, reached
+ * at `relPath` (a declared path, `[]` for the anchor, or `OFF_PATH` for the model-intrinsic
+ * visit a model default gets everywhere else). */
+type WhereVisit = { mapName: string; modelName: string; relPath: readonly string[] };
 
+// A where filters incoming rows, so its refs must resolve on the parent surface at the visit it
+// is anchored to — never against this layer's own picks/omits, and never against a re-anchored
+// lens: the policy keeps its real root so a bare `path` ref (check()'s root context) is gated at
+// the lens anchor while `field` and `$.` refs are gated at the visit.
 const validateWhere = (
   condition: Condition | undefined,
-  parents: readonly (Lens | LensNarrowing)[],
+  parentPolicy: Policy,
+  visits: readonly WhereVisit[],
   position: string,
   errors: string[],
 ): void => {
   if (condition === undefined) return;
-  for (const parent of parents) {
-    for (const violation of checkRuleAgainstLens(condition, parent).violations) {
-      errors.push(`${position}: '${violation.path}' ${violation.reason}`);
+  const seen = new Set<string>();
+  for (const { mapName, modelName, relPath } of visits) {
+    for (const v of checkConditionAtVisit(condition, parentPolicy, mapName, modelName, relPath)) {
+      const message = `${position}: '${v.path}' ${v.reason}`;
+      if (seen.has(message)) continue;
+      seen.add(message);
+      errors.push(message);
     }
   }
 };
@@ -165,7 +166,8 @@ const validateModelNode = (
   enumRegistry: Record<string, readonly string[]> | undefined,
   position: string,
   errors: string[],
-  parentSurfaces: readonly (Lens | LensNarrowing)[],
+  parentPolicy: Policy,
+  whereVisits: readonly WhereVisit[],
   isDefault = false,
 ): void => {
   if (narrowing.picks && narrowing.omits) {
@@ -264,7 +266,7 @@ const validateModelNode = (
     validateEnumOp('enumOmits', field, vals);
   }
 
-  validateWhere(narrowing.where, parentSurfaces, `${position}.where`, errors);
+  validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     if (!modelFields[field]) {
@@ -303,7 +305,7 @@ const validateModelNode = (
         }
       }
     }
-    validateWhere(spec.where, parentSurfaces, `${position}.sources.${field}`, errors);
+    validateWhere(spec.where, parentPolicy, whereVisits, `${position}.sources.${field}`, errors);
   }
 };
 
@@ -444,6 +446,7 @@ const validatePathNarrowing = (
   modelName: string,
   position: string,
   errors: string[],
+  parentPolicy: Policy,
   relPath: readonly string[],
 ): void => {
   const fieldMap = maps[mapName];
@@ -475,7 +478,8 @@ const validatePathNarrowing = (
     fieldMap?.enums,
     position,
     errors,
-    [parentAtVisit(getRoot(current), chain, mapName, modelName, relPath)],
+    parentPolicy,
+    [{ mapName, modelName, relPath }],
     false,
   );
 
@@ -531,6 +535,7 @@ const validatePathNarrowing = (
       target.modelName,
       `${position}.relations.${relField}`,
       errors,
+      parentPolicy,
       [...relPath, relField],
     );
   }
@@ -540,6 +545,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const errors: string[] = [];
   const set = getRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
+  const parentPolicy = resolvePolicy(narrowing.parent);
   const parentVisits = projectByPath(narrowing.parent);
 
   for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
@@ -562,12 +568,12 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
       const ancestorDefaultsForModel = ancestors
         .map((anc) => anc.mapDefaults?.[mapName]?.models?.[modelName])
         .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-      const parentSurfaces = [parentAtVisit(set, ancestors, mapName, modelName)];
+      // A model default applies at EVERY visit of the model: the model-intrinsic (off-path)
+      // visit plus each path the parent declares for it, so its where must resolve at all.
+      const whereVisits: WhereVisit[] = [{ mapName, modelName, relPath: OFF_PATH }];
       for (const [path, visit] of parentVisits) {
         if (visit.mapName === mapName && visit.modelName === modelName) {
-          parentSurfaces.push(
-            parentAtVisit(set, ancestors, mapName, modelName, path.split('.').slice(1)),
-          );
+          whereVisits.push({ mapName, modelName, relPath: path.split('.').slice(1) });
         }
       }
       validateModelNode(
@@ -581,7 +587,8 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         fieldMap.enums,
         `mapDefaults.${mapName}.models.${modelName}`,
         errors,
-        parentSurfaces,
+        parentPolicy,
+        whereVisits,
         true,
       );
       validateEnumFieldAgainstChain(
@@ -634,6 +641,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
         lensModel,
         'root',
         errors,
+        parentPolicy,
         [],
       );
     }

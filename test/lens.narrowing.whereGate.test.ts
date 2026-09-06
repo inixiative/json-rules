@@ -63,7 +63,7 @@ describe('validateNarrowing — every where position is gated against the parent
     ).toThrow(/secretMargin.*does not resolve/);
   });
 
-  test('a relation where comparison reference is checked at the related model', () => {
+  test('a relation where `$.` comparison ref to an ancestor-hidden related field → error', () => {
     const platform = withParent(lens, {
       root: { relations: { orders: { omits: ['secretMargin'] } } },
     });
@@ -73,17 +73,56 @@ describe('validateNarrowing — every where position is gated against the parent
           root: {
             relations: {
               orders: {
-                where: {
-                  field: 'id',
-                  operator: Operator.equals,
-                  path: 'secretMargin',
-                },
+                where: { field: 'id', operator: Operator.equals, path: '$.secretMargin' },
               },
             },
           },
         }),
       ),
-    ).toThrow(/secretMargin.*comparison ref/);
+    ).toThrow(/orders\.where: '\$\.secretMargin' .*comparison ref/);
+  });
+
+  test('a bare comparison ref is root context: gated at the lens anchor, not the related model', () => {
+    // check() resolves a bare `path` against the root row and applyLens injects a to-many
+    // grant unchanged, so `path: 'email'` in an Order grant means Customer.email — legal even
+    // though Order has no `email` column.
+    const rootRef = withParent(lens, {
+      mapDefaults: {
+        prisma: {
+          models: {
+            Order: { where: { field: 'status', operator: Operator.equals, path: 'email' } },
+          },
+        },
+      },
+    });
+    expect(() => validateNarrowing(rootRef)).not.toThrow();
+
+    // ...and it is gated by the ANCESTOR's anchor surface, like any root ref.
+    const platform = withParent(lens, { root: { omits: ['internalScore'] } });
+    const hiddenRootRef = withParent(platform, {
+      mapDefaults: {
+        prisma: {
+          models: {
+            Order: {
+              where: { field: 'secretMargin', operator: Operator.equals, path: 'internalScore' },
+            },
+          },
+        },
+      },
+    });
+    expect(() => validateNarrowing(hiddenRootRef)).toThrow(
+      /Order\.where: 'internalScore' .*comparison ref/,
+    );
+
+    // A bare ref naming a related-model-only column resolves to nothing at the root.
+    const relatedOnly = withParent(lens, {
+      root: {
+        relations: {
+          orders: { where: { field: 'id', operator: Operator.equals, path: 'secretMargin' } },
+        },
+      },
+    });
+    expect(() => validateNarrowing(relatedOnly)).toThrow(/'secretMargin' .*comparison ref/);
   });
   test('root.relations[R].where on a field the ancestor hid at that path → error', () => {
     const platform = withParent(lens, {

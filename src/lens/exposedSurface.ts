@@ -1,15 +1,12 @@
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
-import { isFieldVisible, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
+import { isFieldVisible, OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectOptions } from './projectByPath.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
 const modelKey = (mapName: string, modelName: string): string => `${mapName}::${modelName}`;
-
-// A relPath matching no declared root.relations path → resolveVisit applies mapDefaults only.
-const OFF_PATH: readonly string[] = ['__offpath__'];
 
 type SurfaceModel = { mapName: string; modelName: string; fields: Map<string, FieldMapEntry> };
 

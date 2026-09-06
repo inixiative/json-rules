@@ -16,7 +16,7 @@ import { resolveRelationTarget } from './walk.ts';
 //
 // Operator-specific injection inside an arrayRule:
 //   - any/none/atLeast/atMost/exactly/aggregate.condition: AND with original condition
-//   - all: filter-first via the array rule's window `filter` (drops out-of-scope rows before
+//   - all and windowed rules: filter-first via the array rule's window `filter` (drops out-of-scope rows before
 //     order/take/skip and before the all-check) — never a per-row negate implication
 
 const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition => {
@@ -178,13 +178,19 @@ const rewriteRule = (
       const effectAtDescent = resolveVisit(policy, curMap, curModel, curRelPath);
       let inner = rewriteRule(rule.condition, policy, curMap, curModel, curRelPath);
       const arrayOp = 'arrayOperator' in rule ? (rule.arrayOperator as ArrayOperator) : undefined;
-      const allGrants: Condition[] = [];
+      const filterFirst =
+        arrayOp === ArrayOperator.all ||
+        ('filter' in rule && rule.filter !== undefined) ||
+        ('orderBy' in rule && rule.orderBy !== undefined) ||
+        ('take' in rule && rule.take !== undefined) ||
+        ('skip' in rule && rule.skip !== undefined);
+      const filterGrants: Condition[] = [];
       for (const whereClause of effectAtDescent.whereClauses) {
-        if (arrayOp === ArrayOperator.all) {
+        if (filterFirst) {
           // Filter-first: an `all` grant drops out-of-scope rows via the window `filter`, which
           // `check` applies before order/take/skip AND before the all-check. A per-row `negate`
           // implication is unsound under a window and under partial (missing-field) semantics.
-          allGrants.push(whereClause);
+          filterGrants.push(whereClause);
         } else if (arrayOp) {
           inner = injectIntoArrayCondition(inner, whereClause);
         } else {
@@ -192,18 +198,24 @@ const rewriteRule = (
           inner = { all: [whereClause, inner] };
         }
       }
-      const existingFilter = (rule as { filter?: Condition }).filter;
+      const rawFilter = (rule as { filter?: Condition }).filter;
+      const existingFilter =
+        rawFilter === undefined
+          ? undefined
+          : rewriteRule(rawFilter, policy, curMap, curModel, curRelPath);
       const rewritten = (
-        allGrants.length
+        filterGrants.length || existingFilter !== undefined
           ? {
               ...rule,
               condition: inner,
               filter:
                 existingFilter !== undefined
-                  ? { all: [existingFilter, ...allGrants] }
-                  : allGrants.length === 1
-                    ? allGrants[0]
-                    : { all: allGrants },
+                  ? filterGrants.length
+                    ? { all: [existingFilter, ...filterGrants] }
+                    : existingFilter
+                  : filterGrants.length === 1
+                    ? filterGrants[0]
+                    : { all: filterGrants },
             }
           : { ...rule, condition: inner }
       ) as Condition;

@@ -186,13 +186,36 @@ const visit = (
   }
 };
 
+/**
+ * Gate a condition whose `field` refs are relative to the visit (mapName, modelName, relPath)
+ * of `policy` — the shape of a narrowing `where` anchored at a relation node or a model
+ * default. The policy keeps its real anchor, so a bare `path` ref still resolves at the lens
+ * root (check()'s root context) and a `$.` ref at the visit. Internal to the lens layer.
+ */
+export const checkConditionAtVisit = (
+  cond: Condition,
+  policy: Policy,
+  mapName: string,
+  modelName: string,
+  relPath: readonly string[],
+): RuleLensViolation[] => {
+  const violations: RuleLensViolation[] = [];
+  visit(cond, policy, mapName, modelName, relPath, violations);
+  return violations;
+};
+
 export const checkRuleAgainstLens = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
 ): RuleLensCheck => {
   const policy = resolvePolicy(lensOrNarrowing);
-  const violations: RuleLensViolation[] = [];
-  visit(rule, policy, policy.lens.mapName, policy.lens.model, [], violations);
+  const violations = checkConditionAtVisit(
+    rule,
+    policy,
+    policy.lens.mapName,
+    policy.lens.model,
+    [],
+  );
   // Quickly validate that root visit doesn't have issues either (touches resolveVisit for the side effect, but mainly to ensure policy resolves)
   resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
   return { ok: violations.length === 0, violations };

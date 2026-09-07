@@ -1,6 +1,7 @@
 import { ArrayOperator } from '../operator.ts';
 import { own } from '../own';
-import type { Condition } from '../types.ts';
+import type { Condition, WindowFields } from '../types.ts';
+import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -16,7 +17,7 @@ import { resolveRelationTarget } from './walk.ts';
 //
 // Operator-specific injection inside an arrayRule:
 //   - any/none/atLeast/atMost/exactly/aggregate.condition: AND with original condition
-//   - all: filter-first via the array rule's window `filter` (drops out-of-scope rows before
+//   - all and windowed rules: filter-first via the array rule's window `filter` (drops out-of-scope rows before
 //     order/take/skip and before the all-check) — never a per-row negate implication
 
 const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition => {
@@ -178,13 +179,16 @@ const rewriteRule = (
       const effectAtDescent = resolveVisit(policy, curMap, curModel, curRelPath);
       let inner = rewriteRule(rule.condition, policy, curMap, curModel, curRelPath);
       const arrayOp = 'arrayOperator' in rule ? (rule.arrayOperator as ArrayOperator) : undefined;
-      const allGrants: Condition[] = [];
+      // `hasWindow` is the compilers' notion of a window (an empty `orderBy` is none), so an
+      // un-windowed grant keeps the AND injection that compiles on every rail.
+      const filterFirst = arrayOp === ArrayOperator.all || hasWindow(rule as WindowFields);
+      const filterGrants: Condition[] = [];
       for (const whereClause of effectAtDescent.whereClauses) {
-        if (arrayOp === ArrayOperator.all) {
+        if (filterFirst) {
           // Filter-first: an `all` grant drops out-of-scope rows via the window `filter`, which
           // `check` applies before order/take/skip AND before the all-check. A per-row `negate`
           // implication is unsound under a window and under partial (missing-field) semantics.
-          allGrants.push(whereClause);
+          filterGrants.push(whereClause);
         } else if (arrayOp) {
           inner = injectIntoArrayCondition(inner, whereClause);
         } else {
@@ -192,18 +196,24 @@ const rewriteRule = (
           inner = { all: [whereClause, inner] };
         }
       }
-      const existingFilter = (rule as { filter?: Condition }).filter;
+      const rawFilter = (rule as { filter?: Condition }).filter;
+      const existingFilter =
+        rawFilter === undefined
+          ? undefined
+          : rewriteRule(rawFilter, policy, curMap, curModel, curRelPath);
       const rewritten = (
-        allGrants.length
+        filterGrants.length || existingFilter !== undefined
           ? {
               ...rule,
               condition: inner,
               filter:
                 existingFilter !== undefined
-                  ? { all: [existingFilter, ...allGrants] }
-                  : allGrants.length === 1
-                    ? allGrants[0]
-                    : { all: allGrants },
+                  ? filterGrants.length
+                    ? { all: [existingFilter, ...filterGrants] }
+                    : existingFilter
+                  : filterGrants.length === 1
+                    ? filterGrants[0]
+                    : { all: filterGrants },
             }
           : { ...rule, condition: inner }
       ) as Condition;

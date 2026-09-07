@@ -61,7 +61,7 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
     expect((where as { where: object }).where).toEqual({});
   });
 
-  test('AND of prisma-pushable + bridge: bridge slot becomes {}', () => {
+  test('AND of prisma-pushable + bridge: the bridge slot folds away, local arm stays', () => {
     const rule = {
       all: [
         { field: 'email', operator: Operator.equals, value: 'foo@bar.com' },
@@ -71,10 +71,13 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
     const result = toPrisma(rule, { map: lens, mapName: lens.mapName, model: lens.model });
     const where = (result.steps[result.steps.length - 1] as unknown as { where: { AND: object[] } })
       .where;
-    expect(where.AND).toEqual([{ email: { equals: 'foo@bar.com' } }, {}]);
+    expect(where.AND).toEqual([{ email: { equals: 'foo@bar.com' } }]);
   });
 
-  test('OR of prisma-pushable + bridge: bridge slot becomes {} (over-fetch)', () => {
+  test('OR of prisma-pushable + bridge: the whole disjunction over-fetches', () => {
+    // Prisma drops a `{}` arm inside OR, so `OR: [email, {}]` would silently UNDER-fetch
+    // to the email arm alone. The bridge sentinel is `true` for the pushable rail, and a
+    // true arm absorbs the OR: match-all, then the caller's check() filters precisely.
     const rule = {
       any: [
         { field: 'email', operator: Operator.equals, value: 'foo@bar.com' },
@@ -82,9 +85,8 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
       ],
     };
     const result = toPrisma(rule, { map: lens, mapName: lens.mapName, model: lens.model });
-    const where = (result.steps[result.steps.length - 1] as unknown as { where: { OR: object[] } })
-      .where;
-    expect(where.OR).toEqual([{ email: { equals: 'foo@bar.com' } }, {}]);
+    const where = (result.steps[result.steps.length - 1] as unknown as { where: object }).where;
+    expect(where).toEqual({});
   });
 });
 

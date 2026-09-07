@@ -48,6 +48,10 @@ export type Policy = {
   chain: LensNarrowing[];
 };
 
+/** A relPath matching no declared `root.relations` path — `resolveVisit` then applies
+ * mapDefaults only: the model-intrinsic visit a model gets wherever it is reached off-path. */
+export const OFF_PATH: readonly string[] = ['__offpath__'];
+
 export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => {
   const lens = getRoot(lensOrNarrowing);
   const chain =

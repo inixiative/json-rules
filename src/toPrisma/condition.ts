@@ -11,7 +11,9 @@ export const buildCondition = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
-  // Prisma's empty OR matches nothing — `false` compiles, same as toSql's FALSE.
+  // Prisma's empty OR matches nothing — `false` compiles, same as toSql's FALSE. `{}` is
+  // match-all only at the top level and under AND; the logical builders fold both
+  // constants so neither ever lands under OR or NOT (see logical.ts).
   if (typeof condition === 'boolean') {
     return condition ? {} : { OR: [] };
   }

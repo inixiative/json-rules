@@ -1,6 +1,7 @@
 import { get } from 'lodash-es';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { Operator } from '../operator';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import { walkFieldPath } from '../toPrisma/mapWalk';
 import type { FieldMap } from '../toPrisma/types';
 import type { Rule } from '../types';
@@ -163,8 +164,10 @@ const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
   }
 
   if (rule.path) {
-    if (rule.path.startsWith('$.')) {
-      const refField = rule.path.substring(2);
+    const scoped = parseScopeRef(rule.path);
+    if (scoped) {
+      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toSql'));
+      const refField = scoped.path;
       const sql = state.currentAlias
         ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(refField)}`
         : quoteField(refField);

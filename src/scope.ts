@@ -29,3 +29,11 @@ export const readPath = (ref: string, scopes: Scopes, context: unknown): unknown
   const parsed = parseScopeRef(ref);
   return parsed ? readScoped(ref, parsed, scopes) : get(context, ref);
 };
+
+export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): string =>
+  `Scope ref '${ref}' is not supported by ${rail}(); evaluate with check()`;
+
+export const rejectScopedField = (condition: object, rail: 'toSql' | 'toPrisma'): void => {
+  if (!('field' in condition) || typeof condition.field !== 'string') return;
+  if (parseScopeRef(condition.field)) throw new Error(checkOnlyScopeRef(condition.field, rail));
+};

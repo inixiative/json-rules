@@ -6,6 +6,7 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { Operator } from '../operator';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { Rule } from '../types';
 import { optionalToOneHops, walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
@@ -158,7 +159,9 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
     );
   }
   if (rule.path) {
-    if (rule.path.startsWith('$.')) {
+    const scoped = parseScopeRef(rule.path);
+    if (scoped) {
+      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toPrisma'));
       throw new Error(
         `Prisma WHERE has no column-to-column comparison for path '${rule.path}'. ` +
           `Use prisma.$queryRaw for field-to-field filtering.`,

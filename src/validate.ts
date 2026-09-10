@@ -14,6 +14,7 @@ import {
   type RuleTarget,
   type ValueShape,
 } from './operatorCatalog';
+import { parseScopeRef, scopeOutOfBounds } from './scope';
 import type { ArrayRule, Condition, DateExpr, DateInputValue, OrderedRuleValue } from './types';
 import { extremalRewrite } from './window';
 
@@ -68,7 +69,7 @@ export const validateRule = (
     errors: [],
   };
 
-  validateCondition(condition, '$', context);
+  validateCondition(condition, '$', context, 1);
   return { ok: context.errors.length === 0, errors: context.errors };
 };
 
@@ -83,7 +84,12 @@ export const assertValidRule = (
   throw new Error(`Invalid rule:\n${message}`);
 };
 
-const validateCondition = (condition: unknown, path: string, context: ValidationContext): void => {
+const validateCondition = (
+  condition: unknown,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
   if (typeof condition === 'boolean') {
     if (context.target === 'toPrisma' && condition === false) {
       pushIssue(
@@ -114,29 +120,29 @@ const validateCondition = (condition: unknown, path: string, context: Validation
 
   switch (shape) {
     case 'all':
-      validateLogicalArray(condition.all, `${path}.all`, context);
+      validateLogicalArray(condition.all, `${path}.all`, context, depth);
       break;
     case 'any':
-      validateLogicalArray(condition.any, `${path}.any`, context);
+      validateLogicalArray(condition.any, `${path}.any`, context, depth);
       break;
     case 'if':
-      validateCondition(condition.if, `${path}.if`, context);
-      validateCondition(condition.then, `${path}.then`, context);
+      validateCondition(condition.if, `${path}.if`, context, depth);
+      validateCondition(condition.then, `${path}.then`, context, depth);
       if ('else' in condition && condition.else !== undefined) {
-        validateCondition(condition.else, `${path}.else`, context);
+        validateCondition(condition.else, `${path}.else`, context, depth);
       }
       break;
     case 'field':
-      validateFieldRule(condition, path, context);
+      validateFieldRule(condition, path, context, depth);
       break;
     case 'aggregate':
-      validateAggregateRule(condition, path, context);
+      validateAggregateRule(condition, path, context, depth);
       break;
     case 'array':
-      validateArrayRule(condition, path, context);
+      validateArrayRule(condition, path, context, depth);
       break;
     case 'date':
-      validateDateRule(condition, path, context);
+      validateDateRule(condition, path, context, depth);
       break;
   }
 };
@@ -158,7 +164,12 @@ const detectShape = (
   return uniqueShapes[0] as 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
 };
 
-const validateLogicalArray = (value: unknown, path: string, context: ValidationContext): void => {
+const validateLogicalArray = (
+  value: unknown,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
   if (!Array.isArray(value)) {
     pushIssue(
       context,
@@ -170,18 +181,58 @@ const validateLogicalArray = (value: unknown, path: string, context: ValidationC
   }
 
   value.forEach((item, index) => {
-    validateCondition(item, `${path}[${index}]`, context);
+    validateCondition(item, `${path}[${index}]`, context, depth);
   });
+};
+
+const validateScopeRef = (
+  rule: Record<string, unknown>,
+  key: 'field' | 'path',
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  const ref = rule[key];
+  if (typeof ref !== 'string') return;
+  const parsed = parseScopeRef(ref);
+  if (!parsed) return;
+  const label = key === 'field' ? 'Field' : 'Path';
+  if (parsed.depth > depth) {
+    pushIssue(
+      context,
+      `${path}.${key}`,
+      'scope_out_of_bounds',
+      scopeOutOfBounds(ref, parsed.depth, depth),
+    );
+  }
+  if (context.target === 'toPrisma') {
+    pushIssue(
+      context,
+      `${path}.${key}`,
+      `unsupported_prisma_${key}`,
+      `${label} '${ref}' is not supported by toPrisma()`,
+    );
+  } else if (context.target === 'toSql' && (key === 'field' || parsed.depth > 1)) {
+    pushIssue(
+      context,
+      `${path}.${key}`,
+      `unsupported_sql_${key}`,
+      `${label} '${ref}' is not supported by toSql()`,
+    );
+  }
 };
 
 const validateFieldRule = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Field rule requires a string field');
   }
+  validateScopeRef(rule, 'field', path, context, depth);
+  validateScopeRef(rule, 'path', path, context, depth);
 
   if (typeof rule.operator !== 'string' || !FIELD_OPERATORS.has(rule.operator)) {
     pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
@@ -196,19 +247,6 @@ const validateFieldRule = (
       `${path}.operator`,
       `unsupported_${targetSlug(context.target)}_operator`,
       `Operator '${operator}' is not supported by ${context.target}()`,
-    );
-  }
-
-  if (
-    context.target === 'toPrisma' &&
-    typeof rule.path === 'string' &&
-    rule.path.startsWith('$.')
-  ) {
-    pushIssue(
-      context,
-      `${path}.path`,
-      'unsupported_prisma_path',
-      `Path '${rule.path}' is not supported by toPrisma()`,
     );
   }
 
@@ -303,12 +341,15 @@ const validateAggregateRule = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
-  validateWindow(rule, path, context);
+  validateWindow(rule, path, context, depth);
 
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Aggregate rule requires a string field');
   }
+  validateScopeRef(rule, 'field', path, context, depth);
+  validateScopeRef(rule, 'path', path, context, depth);
 
   if (!isPlainObject(rule.aggregate)) {
     pushIssue(context, `${path}.aggregate`, 'invalid_aggregate', 'aggregate must be an object');
@@ -376,7 +417,7 @@ const validateAggregateRule = (
         `Aggregate condition filtering is not supported by toSql(); use check() or toPrisma()`,
       );
     }
-    validateCondition(rule.condition, `${path}.condition`, context);
+    validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
   }
 
   if (!requireValueOrPath(rule, path, context)) return;
@@ -408,6 +449,7 @@ const validateArrayRule = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
   if (typeof rule.field !== 'string') {
     if (context.target !== 'check') {
@@ -419,8 +461,9 @@ const validateArrayRule = (
       );
     }
   }
+  validateScopeRef(rule, 'field', path, context, depth);
 
-  validateWindow(rule, path, context);
+  validateWindow(rule, path, context, depth);
 
   if (typeof rule.arrayOperator !== 'string' || !ARRAY_OPERATORS.has(rule.arrayOperator)) {
     pushIssue(context, `${path}.arrayOperator`, 'invalid_array_operator', 'Unknown array operator');
@@ -469,7 +512,7 @@ const validateArrayRule = (
           `Array operator '${operator}' requires condition`,
         );
       } else {
-        validateCondition(rule.condition, `${path}.condition`, context);
+        validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
       }
       if ('count' in rule && rule.count !== undefined) {
         pushIssue(
@@ -501,7 +544,7 @@ const validateArrayRule = (
           `Array operator '${operator}' requires condition for check()`,
         );
       } else if ('condition' in rule && rule.condition !== undefined) {
-        validateCondition(rule.condition, `${path}.condition`, context);
+        validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
       }
       break;
   }
@@ -511,10 +554,13 @@ const validateDateRule = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Date rule requires a string field');
   }
+  validateScopeRef(rule, 'field', path, context, depth);
+  validateScopeRef(rule, 'path', path, context, depth);
 
   if (typeof rule.dateOperator !== 'string' || !DATE_OPERATORS.has(rule.dateOperator)) {
     pushIssue(context, `${path}.dateOperator`, 'invalid_date_operator', 'Unknown date operator');
@@ -529,19 +575,6 @@ const validateDateRule = (
       `${path}.dateOperator`,
       `unsupported_${targetSlug(context.target)}_date_operator`,
       `Date operator '${operator}' is not supported by ${context.target}()`,
-    );
-  }
-
-  if (
-    context.target === 'toPrisma' &&
-    typeof rule.path === 'string' &&
-    rule.path.startsWith('$.')
-  ) {
-    pushIssue(
-      context,
-      `${path}.path`,
-      'unsupported_prisma_path',
-      `Path '${rule.path}' is not supported by toPrisma()`,
     );
   }
 
@@ -782,6 +815,7 @@ const validateWindow = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
   const windowed =
     ('filter' in rule && rule.filter !== undefined) ||
@@ -804,7 +838,7 @@ const validateWindow = (
   }
 
   if ('filter' in rule && rule.filter !== undefined) {
-    validateCondition(rule.filter, `${path}.filter`, context);
+    validateCondition(rule.filter, `${path}.filter`, context, depth + 1);
   }
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {

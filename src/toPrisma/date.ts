@@ -7,6 +7,7 @@ import {
   resolvePointForOperator,
 } from '../dateExpr';
 import { DateOperator } from '../operator';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { DateConfig, DateRule } from '../types';
 import { absentArms } from './field';
 import type { BuildOptions, PrismaWhere } from './types';
@@ -72,7 +73,9 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
 const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
   if (rule.path) {
-    if (rule.path.startsWith('$.')) {
+    const scoped = parseScopeRef(rule.path);
+    if (scoped) {
+      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toPrisma'));
       throw new Error(
         `Prisma WHERE has no column-to-column date comparison for path '${rule.path}'. ` +
           `Use prisma.$queryRaw for field-to-field filtering.`,

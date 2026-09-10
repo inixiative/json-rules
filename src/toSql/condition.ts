@@ -1,3 +1,4 @@
+import { rejectScopedField } from '../scope';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
@@ -28,6 +29,7 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
   if (typeof condition === 'boolean') {
     return condition ? 'TRUE' : 'FALSE';
   }
+  rejectScopedField(condition, 'toSql');
 
   if (
     'field' in condition &&

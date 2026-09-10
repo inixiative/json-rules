@@ -1,3 +1,4 @@
+import { rejectScopedField } from '../scope';
 import type { Condition } from '../types';
 import { buildAggregateRule, setConditionBuilderForAggregate } from './aggregate';
 import { buildArrayRule, setConditionBuilderForArray } from './array';
@@ -17,6 +18,7 @@ export const buildCondition = (
   if (typeof condition === 'boolean') {
     return condition ? {} : { OR: [] };
   }
+  rejectScopedField(condition, 'toPrisma');
 
   if ('all' in condition) return buildAll(condition, options, state);
   if ('any' in condition) return buildAny(condition, options, state);

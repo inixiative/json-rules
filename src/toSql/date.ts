@@ -7,6 +7,7 @@ import {
   resolvePointForOperator,
 } from '../dateExpr';
 import { DateOperator } from '../operator';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { DateRule } from '../types';
 import { mapDayNames } from './dayNames';
 import { escapeIdentifier } from './escape';
@@ -166,8 +167,10 @@ const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
   }
 
   if (rule.path) {
-    if (rule.path.startsWith('$.')) {
-      const refField = rule.path.substring(2);
+    const scoped = parseScopeRef(rule.path);
+    if (scoped) {
+      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toSql'));
+      const refField = scoped.path;
       const sql = state.currentAlias
         ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(refField)}`
         : quoteField(refField);

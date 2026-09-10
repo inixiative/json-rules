@@ -1,5 +1,6 @@
 import { get } from 'lodash-es';
 import { Operator } from '../operator';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { AggregateRule } from '../types';
 import { hasWindow } from '../window';
 import { escapeIdentifier } from './escape';
@@ -74,8 +75,10 @@ const resolveRhs = (rule: AggregateRule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) return { type: 'value', value: rule.value };
 
   if (rule.path) {
-    if (rule.path.startsWith('$.')) {
-      const refField = rule.path.substring(2);
+    const scoped = parseScopeRef(rule.path);
+    if (scoped) {
+      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toSql'));
+      const refField = scoped.path;
       const sql = state.currentAlias
         ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(refField)}`
         : quoteField(refField);

@@ -3,7 +3,6 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
-import { get } from 'lodash-es';
 import {
   isDateExpr,
   resolveDateExpr,
@@ -11,6 +10,7 @@ import {
   resolvePointForOperator,
 } from './dateExpr';
 import { DateOperator } from './operator';
+import { readField, readPath, type Scopes } from './scope';
 import type { DateConfig, DateInputValue, DateRule, RuleValue } from './types';
 
 dayjs.extend(utc);
@@ -35,14 +35,14 @@ export const RANGE_DATE_OPERATORS: readonly DateOperator[] = [
 export const isRangeOperator = (operator: string): boolean =>
   (RANGE_DATE_OPERATORS as readonly string[]).includes(operator);
 
-export const checkDate = <TData extends Record<string, unknown>>(
+export const checkDate = (
   condition: DateRule,
-  data: TData,
-  context: TData,
+  scopes: Scopes,
+  context: unknown,
   config: DateConfig = {},
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
-  const fieldValue = get(data, condition.field) as unknown;
+  const fieldValue = readField(condition.field, scopes);
 
   // Null: non-match for positive operators, match for negated ones (2.19.0 negation
   // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
@@ -71,7 +71,7 @@ export const checkDate = <TData extends Record<string, unknown>>(
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
-  const dates = parseCompareDates(condition, data, context, exprConfig, tz);
+  const dates = parseCompareDates(condition, scopes, context, exprConfig, tz);
   const compareDate = dates[0];
   const endDate = dates[1];
 
@@ -161,10 +161,10 @@ export const checkDate = <TData extends Record<string, unknown>>(
   }
 };
 
-const parseCompareDates = <TData extends Record<string, unknown>>(
+const parseCompareDates = (
   condition: DateRule,
-  data: TData,
-  context: TData,
+  scopes: Scopes,
+  context: unknown,
   config: DateConfig,
   tz: string,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
@@ -180,11 +180,7 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
     // `path` resolves here exactly as the one-date branch resolves it below — a rule
     // validateRule accepts and toSql executes must not throw on the per-row rail.
     let raw: unknown = condition.value;
-    if (raw === undefined && condition.path) {
-      raw = condition.path.startsWith('$.')
-        ? (get(data, condition.path.substring(2)) as unknown)
-        : (get(context, condition.path) as unknown);
-    }
+    if (raw === undefined && condition.path) raw = readPath(condition.path, scopes, context);
     if (!Array.isArray(raw) || raw.length !== 2)
       throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
     const [rawDate1, rawDate2] = raw as [unknown, unknown];
@@ -227,14 +223,8 @@ const parseCompareDates = <TData extends Record<string, unknown>>(
       }
       value = condition.value as DateInputValue;
     } else if (condition.path) {
-      // Support $.path for current element
-      if (condition.path.startsWith('$.')) {
-        const pathValue = get(data, condition.path.substring(2)) as unknown;
-        value = isDateInputValue(pathValue) ? pathValue : undefined;
-      } else {
-        const pathValue = get(context, condition.path) as unknown;
-        value = isDateInputValue(pathValue) ? pathValue : undefined;
-      }
+      const pathValue = readPath(condition.path, scopes, context);
+      value = isDateInputValue(pathValue) ? pathValue : undefined;
     } else {
       throw new Error('No value or path specified for date comparison');
     }

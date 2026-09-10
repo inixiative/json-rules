@@ -2,6 +2,7 @@ import { get, isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
 import { ArrayOperator, Operator } from './operator';
+import { readField, readPath, type Scopes } from './scope';
 import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
 import { applyWindow } from './window';
 
@@ -12,6 +13,8 @@ export type CheckOptions = {
   context?: CheckData;
   bindings?: Record<string, RuleValue>;
 } & DateConfig;
+
+type EvalOptions = CheckOptions & { context: CheckData; scopes: Scopes };
 
 const validateRootArrayShape = (rule: Condition): void => {
   if (typeof rule === 'boolean') return;
@@ -35,33 +38,48 @@ export const check = <TData extends CheckData>(
   options?: CheckOptions,
 ): boolean | string => {
   if (Array.isArray(data)) validateRootArrayShape(conditions);
-  if (typeof conditions === 'boolean') return conditions;
+  return evaluate(conditions, data, {
+    ...options,
+    context: options?.context ?? data,
+    scopes: [data],
+  });
+};
 
-  const opts: CheckOptions = { ...options, context: options?.context ?? data };
+const evaluate = <TData extends CheckData>(
+  conditions: Condition,
+  data: TData,
+  opts: EvalOptions,
+): boolean | string => {
+  if (typeof conditions === 'boolean') return conditions;
 
   if ('all' in conditions) return all(conditions.all, data, opts, conditions.error);
   if ('any' in conditions) return any(conditions.any, data, opts, conditions.error);
-  if ('arrayOperator' in conditions) return checkArray(conditions, data, opts);
+  if ('arrayOperator' in conditions) return checkArray(conditions, opts);
   if ('dateOperator' in conditions)
-    return checkDate(conditions, data as Row, opts.context as Row, opts, opts.bindings);
-  if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, data, opts);
+    return checkDate(conditions, opts.scopes, opts.context as Row, opts, opts.bindings);
+  if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, opts);
   if ('field' in conditions)
-    return checkField(conditions, data as Row, opts.context as Row, opts.bindings);
+    return checkField(conditions, opts.scopes, opts.context as Row, opts.bindings);
   if ('if' in conditions) return checkIfThenElse(conditions, data, opts);
 
   return false;
 };
 
+const enter = (opts: EvalOptions, item: unknown): EvalOptions => ({
+  ...opts,
+  scopes: [...opts.scopes, item],
+});
+
 const all = <TData extends CheckData>(
   conditions: Condition[],
   data: TData,
-  opts: CheckOptions,
+  opts: EvalOptions,
   error?: string,
 ): boolean | string => {
   const errors: string[] = [];
 
   for (const condition of conditions) {
-    const result = check(condition, data, opts);
+    const result = evaluate(condition, data, opts);
     if (result !== true) {
       if (typeof result === 'string') {
         errors.push(result);
@@ -80,13 +98,13 @@ const all = <TData extends CheckData>(
 const any = <TData extends CheckData>(
   conditions: Condition[],
   data: TData,
-  opts: CheckOptions,
+  opts: EvalOptions,
   error?: string,
 ): boolean | string => {
   const errors: string[] = [];
 
   for (const condition of conditions) {
-    const result = check(condition, data, opts);
+    const result = evaluate(condition, data, opts);
     if (result === true) return true;
     if (typeof result === 'string') errors.push(result);
   }
@@ -99,27 +117,25 @@ const any = <TData extends CheckData>(
 const checkIfThenElse = <TData extends CheckData>(
   condition: { if: Condition; then: Condition; else?: Condition },
   data: TData,
-  opts: CheckOptions,
+  opts: EvalOptions,
 ): boolean | string => {
-  const ifResult = check(condition.if, data, opts);
-  if (ifResult === true) return check(condition.then, data, opts);
+  const ifResult = evaluate(condition.if, data, opts);
+  if (ifResult === true) return evaluate(condition.then, data, opts);
   // `false` is a legal else value (deny branch); use !== undefined so it's
   // evaluated rather than skipped by truthiness.
-  return condition.else !== undefined ? check(condition.else, data, opts) : true;
+  return condition.else !== undefined ? evaluate(condition.else, data, opts) : true;
 };
 
-const checkAggregate = <TData extends CheckData>(
-  condition: AggregateRule,
-  data: TData,
-  opts: CheckOptions,
-): boolean | string => {
-  const rawArray = get(data, condition.field);
+const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
+  const rawArray = readField(condition.field, opts.scopes);
   if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
   const windowFilter = condition.filter;
   const arrayValue = applyWindow(
     rawArray,
     condition,
-    windowFilter ? (item) => check(windowFilter, item as Row, opts) === true : undefined,
+    windowFilter
+      ? (item) => evaluate(windowFilter, item as Row, enter(opts, item)) === true
+      : undefined,
   );
 
   const { mode, field: itemField } = condition.aggregate;
@@ -129,7 +145,9 @@ const checkAggregate = <TData extends CheckData>(
 
   const nestedCondition = condition.condition;
   const filtered = nestedCondition
-    ? arrayValue.filter((item) => check(nestedCondition, item as Row, opts) === true)
+    ? arrayValue.filter(
+        (item) => evaluate(nestedCondition, item as Row, enter(opts, item)) === true,
+      )
     : arrayValue;
 
   const numbers: number[] = filtered.map((item, index) => {
@@ -144,14 +162,11 @@ const checkAggregate = <TData extends CheckData>(
   const sum = numbers.reduce((s, n) => s + n, 0);
   const result = mode === 'sum' ? sum : numbers.length === 0 ? 0 : sum / numbers.length;
 
-  const context = opts.context as TData;
   let rhs: unknown;
   if (condition.value !== undefined) {
     rhs = condition.value;
   } else if (condition.path) {
-    rhs = condition.path.startsWith('$.')
-      ? get(data, condition.path.substring(2))
-      : get(context, condition.path);
+    rhs = readPath(condition.path, opts.scopes, opts.context);
   } else {
     throw new Error('Aggregate rule requires value or path');
   }
@@ -195,19 +210,19 @@ const checkAggregate = <TData extends CheckData>(
   }
 };
 
-const checkArray = <TData extends CheckData>(
-  condition: ArrayRule,
-  data: TData,
-  opts: CheckOptions,
-): boolean | string => {
-  const rawArray = condition.field ? get(data, condition.field) : data;
+const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string => {
+  const rawArray = condition.field
+    ? readField(condition.field, opts.scopes)
+    : opts.scopes[opts.scopes.length - 1];
 
   if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
   const windowFilter = condition.filter;
   const arrayValue = applyWindow(
     rawArray,
     condition,
-    windowFilter ? (item) => check(windowFilter, item as Row, opts) === true : undefined,
+    windowFilter
+      ? (item) => evaluate(windowFilter, item as Row, enter(opts, item)) === true
+      : undefined,
   );
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
@@ -252,7 +267,9 @@ const checkArray = <TData extends CheckData>(
         `contains only primitive values; use 'in' or 'contains' instead of array operators on primitive arrays`,
       );
 
-    const results = arrayValue.map((item) => check(itemCondition, item as Row, opts));
+    const results = arrayValue.map((item) =>
+      evaluate(itemCondition, item as Row, enter(opts, item)),
+    );
     matches = results.filter((r) => r === true).length;
     failures = results.filter((r) => typeof r === 'string').length;
   }

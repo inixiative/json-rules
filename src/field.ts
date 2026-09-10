@@ -1,8 +1,8 @@
-import { get } from 'lodash-es';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
 import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
+import { readField, readPath, type Scopes } from './scope';
 import type { Rule, RuleValue } from './types';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
@@ -64,14 +64,13 @@ const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => 
   return coerceScalar(value, kind);
 };
 
-export const checkField = <TData extends Record<string, unknown>>(
+export const checkField = (
   condition: Rule,
-  data: TData,
-  context: TData,
+  scopes: Scopes,
+  context: unknown,
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
-  // Use data for field access (current element) but context remains available for path references
-  const fieldValue = applyCoercion(get(data, condition.field) as unknown, condition.coerceType);
+  const fieldValue = applyCoercion(readField(condition.field, scopes), condition.coerceType);
 
   // Operators that don't need a value
   const noValueOps: Operator[] = [
@@ -82,7 +81,7 @@ export const checkField = <TData extends Record<string, unknown>>(
   ];
   const needsValue = !noValueOps.includes(condition.operator);
   const value = needsValue
-    ? applyCoercion(getValue(condition, data, context, bindings), condition.coerceType)
+    ? applyCoercion(getValue(condition, scopes, context, bindings), condition.coerceType)
     : undefined;
 
   const getError = (op: string) =>
@@ -183,10 +182,10 @@ export const checkField = <TData extends Record<string, unknown>>(
   }
 };
 
-const getValue = <TData extends Record<string, unknown>>(
+const getValue = (
   condition: Rule,
-  data: TData,
-  context: TData,
+  scopes: Scopes,
+  context: unknown,
   bindings?: Record<string, RuleValue>,
 ): unknown => {
   if (condition.value !== undefined) return condition.value;
@@ -201,14 +200,7 @@ const getValue = <TData extends Record<string, unknown>>(
     const bound = bindings[condition.bind];
     return bound === undefined ? null : bound;
   }
-  if (condition.path) {
-    // Special case: if path starts with "$." use data (current element)
-    if (condition.path.startsWith('$.')) {
-      return get(data, condition.path.substring(2));
-    }
-    // Otherwise use context (root data)
-    return get(context, condition.path);
-  }
+  if (condition.path) return readPath(condition.path, scopes, context);
   throw new Error('No value or path specified');
 };
 

@@ -596,7 +596,9 @@ What follows from that:
   `aggregate` over a JSON array iterates undeclared elements, so its
   `condition`, `filter`, `orderBy` and `aggregate.field` — and any `$.`
   comparison ref inside them — are accepted without resolution. A root-anchored
-  `path` ref is still gated: it resolves at the lens anchor, not in the JSON.
+  `path` ref is still gated: it resolves at the lens anchor, not in the JSON. So
+  is a `$$.` ref that climbs back out to a declared ancestor: it is gated at the
+  scope it names, exactly as it would be outside the boundary.
 - **No kind-specific narrowing applies.** The value kind below the boundary is
   unknown, so the generic operator set is allowed and `stampCoercions` leaves
   the rule unstamped. This mirrors `check`, which compares the traversed JSON

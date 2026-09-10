@@ -1,5 +1,6 @@
 import type { FieldKind } from '../operatorCatalog.ts';
 import { own } from '../own';
+import { resolveScopeRef } from '../scope';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
@@ -25,9 +26,15 @@ type ResolvedField = { entry: FieldMapEntry; mapName: string };
  * a leaf — including below a Json boundary, where the value's kind is undeclared and therefore
  * uncoercible, so the rule is left unstamped.
  */
-const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedField | undefined => {
-  const segments = fieldPath.split('.');
-  let { mapName, modelName } = scope;
+const resolveField = (
+  lens: Lens,
+  scopes: readonly Scope[],
+  fieldPath: string,
+): ResolvedField | undefined => {
+  const target = resolveScopeRef(fieldPath, scopes);
+  if ('outOfBounds' in target) return undefined;
+  const segments = target.path.split('.');
+  let { mapName, modelName } = target.scope;
   for (let i = 0; i < segments.length; i += 1) {
     const entry = own(lens.maps[mapName]?.models[modelName]?.fields, segments[i]);
     if (!entry) return undefined;
@@ -44,29 +51,33 @@ const resolveField = (lens: Lens, scope: Scope, fieldPath: string): ResolvedFiel
  * The model scope a nested array/aggregate condition is evaluated against. Undefined when the
  * field is not a relation — a Json array's elements are undeclared, so nothing below is stamped.
  */
-const itemScope = (lens: Lens, scope: Scope, fieldPath: string | undefined): Scope | undefined => {
+const itemScope = (
+  lens: Lens,
+  scopes: readonly Scope[],
+  fieldPath: string | undefined,
+): Scope | undefined => {
   if (!fieldPath) return undefined;
-  const resolved = resolveField(lens, scope, fieldPath);
+  const resolved = resolveField(lens, scopes, fieldPath);
   if (!resolved || (resolved.entry.kind !== 'object' && resolved.entry.kind !== 'bridge'))
     return undefined;
   const target = resolveRelationTarget(resolved.entry, resolved.mapName);
   return target ?? undefined;
 };
 
-const stampCondition = (condition: Condition, lens: Lens, scope: Scope): Condition => {
+const stampCondition = (condition: Condition, lens: Lens, scopes: readonly Scope[]): Condition => {
   if (typeof condition === 'boolean') return condition;
 
   if ('all' in condition)
-    return { ...condition, all: condition.all.map((c) => stampCondition(c, lens, scope)) };
+    return { ...condition, all: condition.all.map((c) => stampCondition(c, lens, scopes)) };
   if ('any' in condition)
-    return { ...condition, any: condition.any.map((c) => stampCondition(c, lens, scope)) };
+    return { ...condition, any: condition.any.map((c) => stampCondition(c, lens, scopes)) };
   if ('if' in condition) {
     return {
       ...condition,
-      if: stampCondition(condition.if, lens, scope),
-      then: stampCondition(condition.then, lens, scope),
+      if: stampCondition(condition.if, lens, scopes),
+      then: stampCondition(condition.then, lens, scopes),
       ...(condition.else !== undefined
-        ? { else: stampCondition(condition.else, lens, scope) }
+        ? { else: stampCondition(condition.else, lens, scopes) }
         : {}),
     };
   }
@@ -75,15 +86,16 @@ const stampCondition = (condition: Condition, lens: Lens, scope: Scope): Conditi
   // stamp against the relation's target model. The aggregate comparison itself is
   // numeric by contract and takes no coercion.
   if ('arrayOperator' in condition || 'aggregate' in condition) {
-    const target = itemScope(lens, scope, condition.field);
+    const target = itemScope(lens, scopes, condition.field);
     if (!target) return condition;
+    const below = [...scopes, target];
     return {
       ...condition,
       ...(condition.condition !== undefined
-        ? { condition: stampCondition(condition.condition, lens, target) }
+        ? { condition: stampCondition(condition.condition, lens, below) }
         : {}),
       ...(condition.filter !== undefined
-        ? { filter: stampCondition(condition.filter, lens, target) }
+        ? { filter: stampCondition(condition.filter, lens, below) }
         : {}),
     };
   }
@@ -92,7 +104,7 @@ const stampCondition = (condition: Condition, lens: Lens, scope: Scope): Conditi
 
   if ('operator' in condition) {
     if (condition.coerceType) return condition;
-    const resolved = resolveField(lens, scope, condition.field);
+    const resolved = resolveField(lens, scopes, condition.field);
     if (!resolved || resolved.entry.kind !== 'scalar' || !COERCIBLE_KINDS.has(resolved.entry.type))
       return condition;
     return { ...condition, coerceType: resolved.entry.type as FieldKind };
@@ -109,5 +121,5 @@ export const stampCoercions = (
   lensOrNarrowing: Lens | LensNarrowing,
 ): Condition => {
   const { lens } = resolvePolicy(lensOrNarrowing);
-  return stampCondition(condition, lens, { mapName: lens.mapName, modelName: lens.model });
+  return stampCondition(condition, lens, [{ mapName: lens.mapName, modelName: lens.model }]);
 };

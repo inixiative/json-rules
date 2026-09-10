@@ -1,5 +1,6 @@
 import { ArrayOperator } from '../operator.ts';
 import { own } from '../own';
+import { parseScopeRef, resolveScopeRef } from '../scope';
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
@@ -50,6 +51,12 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
           `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
       );
     }
+    if (parseScopeRef(cond.field)) {
+      throw new Error(
+        `applyLens: cannot re-root a relation grant with a scope ref field ('${cond.field}') ` +
+          `under '${prefix}'. Author the grant against the model's own columns.`,
+      );
+    }
     if ('condition' in cond && cond.condition !== undefined) {
       throw new Error(
         `applyLens: cannot re-root a relation grant with a nested array/aggregate condition on ` +
@@ -60,6 +67,8 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
   }
   throw new Error(`applyLens: cannot re-root a relation grant of unknown shape under '${prefix}'`);
 };
+
+type Visit = { mapName: string; modelName: string; relPath: readonly string[] };
 
 type RelationHop = {
   map: string;
@@ -103,51 +112,41 @@ const injectIntoArrayCondition = (
 // Walks the user rule recursively, looking for points where a model anchor
 // matches a `where` declared in the policy. At each such anchor, injects the
 // `where` with the appropriate semantic for the surrounding rule shape.
-const rewriteRule = (
-  rule: Condition,
-  policy: Policy,
-  mapName: string,
-  modelName: string,
-  relPath: readonly string[],
-): Condition => {
+const rewriteRule = (rule: Condition, policy: Policy, scopes: readonly Visit[]): Condition => {
   if (typeof rule === 'boolean') return rule;
 
   if ('all' in rule) {
-    return {
-      ...rule,
-      all: rule.all.map((c) => rewriteRule(c, policy, mapName, modelName, relPath)),
-    };
+    return { ...rule, all: rule.all.map((c) => rewriteRule(c, policy, scopes)) };
   }
   if ('any' in rule) {
-    return {
-      ...rule,
-      any: rule.any.map((c) => rewriteRule(c, policy, mapName, modelName, relPath)),
-    };
+    return { ...rule, any: rule.any.map((c) => rewriteRule(c, policy, scopes)) };
   }
   if ('if' in rule) {
     return {
       ...rule,
-      if: rewriteRule(rule.if, policy, mapName, modelName, relPath),
-      then: rewriteRule(rule.then, policy, mapName, modelName, relPath),
-      else:
-        rule.else !== undefined
-          ? rewriteRule(rule.else, policy, mapName, modelName, relPath)
-          : rule.else,
+      if: rewriteRule(rule.if, policy, scopes),
+      then: rewriteRule(rule.then, policy, scopes),
+      else: rule.else !== undefined ? rewriteRule(rule.else, policy, scopes) : rule.else,
     };
   }
 
   // arrayRule, aggregate, dateRule, plain Rule — all have a `field`.
   if ('field' in rule && typeof rule.field === 'string' && rule.field !== '') {
-    const fieldMap = policy.lens.maps[mapName];
-    const model = fieldMap?.models[modelName];
+    // A `$`-prefixed field names an ancestor scope; its grants are re-rooted under the same
+    // prefix so they resolve where the field does. Out of bounds fails closed.
+    const target = resolveScopeRef(rule.field, scopes);
+    if ('outOfBounds' in target) throw new Error(`applyLens: ${target.outOfBounds}`);
+    const scopePrefix = rule.field.slice(0, rule.field.length - target.path.length);
+    const fieldMap = policy.lens.maps[target.scope.mapName];
+    const model = fieldMap?.models[target.scope.modelName];
     if (!model) return rule;
-    const parts = rule.field.split('.');
+    const parts = target.path.split('.');
     // Walk the field path, recording EVERY relation hop it traverses (including mid-path
     // to-one hops), so each hop's model-anchored `where` grant can be enforced — not only
     // when the FINAL segment is a relation.
-    let curMap = mapName;
-    let curModel = modelName;
-    let curRelPath: string[] = [...relPath];
+    let curMap = target.scope.mapName;
+    let curModel = target.scope.modelName;
+    let curRelPath: string[] = [...target.scope.relPath];
     let descended = false;
     const relationHops: RelationHop[] = [];
     for (let i = 0; i < parts.length; i++) {
@@ -157,16 +156,16 @@ const rewriteRule = (
       if (!entry) break;
       const isFinal = i === parts.length - 1;
       if (entry.kind !== 'object' && entry.kind !== 'bridge') break; // scalar/Json — stop descent
-      const target = resolveRelationTarget(entry, curMap);
-      if (!target) break;
+      const relation = resolveRelationTarget(entry, curMap);
+      if (!relation) break;
       curRelPath = [...curRelPath, parts[i]];
-      curMap = target.mapName;
-      curModel = target.modelName;
+      curMap = relation.mapName;
+      curModel = relation.modelName;
       relationHops.push({
         map: curMap,
         model: curModel,
         relPath: [...curRelPath],
-        prefix: parts.slice(0, i + 1).join('.'),
+        prefix: `${scopePrefix}${parts.slice(0, i + 1).join('.')}`,
         isList: entry.isList === true,
       });
       if (isFinal) descended = true;
@@ -177,7 +176,8 @@ const rewriteRule = (
     // row-scoped semantic. Mid-path hops before it are enforced via re-rooting.
     if ('condition' in rule && rule.condition !== undefined && descended) {
       const effectAtDescent = resolveVisit(policy, curMap, curModel, curRelPath);
-      let inner = rewriteRule(rule.condition, policy, curMap, curModel, curRelPath);
+      const below = [...scopes, { mapName: curMap, modelName: curModel, relPath: curRelPath }];
+      let inner = rewriteRule(rule.condition, policy, below);
       const arrayOp = 'arrayOperator' in rule ? (rule.arrayOperator as ArrayOperator) : undefined;
       // `hasWindow` is the compilers' notion of a window (an empty `orderBy` is none), so an
       // un-windowed grant keeps the AND injection that compiles on every rail.
@@ -198,9 +198,7 @@ const rewriteRule = (
       }
       const rawFilter = (rule as { filter?: Condition }).filter;
       const existingFilter =
-        rawFilter === undefined
-          ? undefined
-          : rewriteRule(rawFilter, policy, curMap, curModel, curRelPath);
+        rawFilter === undefined ? undefined : rewriteRule(rawFilter, policy, below);
       const rewritten = (
         filterGrants.length || existingFilter !== undefined
           ? {
@@ -234,7 +232,9 @@ export const applyLens = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing
   const rootEffect = resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
 
   // First rewrite the rule, injecting where clauses at their anchors.
-  const rewritten = rewriteRule(rule, policy, policy.lens.mapName, policy.lens.model, []);
+  const rewritten = rewriteRule(rule, policy, [
+    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] },
+  ]);
 
   // Then wrap with root-anchored where clauses (root.where +
   // mapDefaults[lens.mapName].models[lens.model].where).

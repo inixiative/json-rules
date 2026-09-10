@@ -72,12 +72,7 @@ describe('lens gate — scoped path refs walk from the ancestor visit', () => {
   });
 
   test('$$. path outside the narrowed lens is a violation', () => {
-    const narrowed = createLens({
-      maps: { prisma: map },
-      mapName: 'prisma',
-      model: 'Org',
-      narrowing: { Order: { fields: ['id', 'lineItems'] } },
-    } as never);
+    const narrowed = { parent: lens, root: { relations: { orders: { omits: ['maxQty'] } } } };
     const result = checkRuleAgainstLens(
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$.maxQty' }) as never,
       narrowed,

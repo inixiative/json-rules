@@ -1,6 +1,6 @@
 import { isRangeOperator, parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
-import { ArrayOperator, type DateOperator, Operator } from './operator';
+import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
   DATE_OPERATOR_CATALOG,

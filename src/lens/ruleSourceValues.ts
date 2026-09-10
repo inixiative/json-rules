@@ -5,6 +5,7 @@ import {
   ValueShape,
 } from '../operatorCatalog';
 import { own } from '../own';
+import { resolveScopeRef } from '../scope';
 import { type ConditionNode, isRelationNode, visitCondition } from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { resolvePolicy, walkLensPath } from './policy.ts';
@@ -131,22 +132,33 @@ export const ruleSourceValues = (
     }
   };
 
-  const walk = (condition: Condition, prefix: string[]): void => {
+  // `prefixes` is the stack of absolute anchors, innermost last; a `$`-prefixed field
+  // anchors at the scope it names. An out-of-bounds ref anchors nowhere and is silent.
+  const walk = (condition: Condition, prefixes: readonly string[][]): void => {
+    const anchorOf = (field: string): string[] | undefined => {
+      const target = resolveScopeRef(field, prefixes);
+      if ('outOfBounds' in target) return undefined;
+      return [...target.scope, ...target.path.split('.')];
+    };
     visitCondition(condition, {
       enter: (node) => {
         if (isRelationNode(node)) return;
-        if (typeof node.field === 'string') record([...prefix, ...node.field.split('.')], node);
+        if (typeof node.field !== 'string') return;
+        const anchor = anchorOf(node.field);
+        if (anchor) record(anchor, node);
       },
       descend: (node) => {
         const anchor =
-          typeof node.field === 'string' ? [...prefix, ...node.field.split('.')] : prefix;
-        if (node.condition !== undefined) walk(node.condition as Condition, anchor);
-        if (node.filter !== undefined) walk(node.filter as Condition, anchor);
+          typeof node.field === 'string' ? anchorOf(node.field) : prefixes[prefixes.length - 1];
+        if (!anchor) return false;
+        const below = [...prefixes, anchor];
+        if (node.condition !== undefined) walk(node.condition as Condition, below);
+        if (node.filter !== undefined) walk(node.filter as Condition, below);
         return false;
       },
     });
   };
 
-  walk(rule, []);
+  walk(rule, [[]]);
   return [...out.values()];
 };

@@ -46,7 +46,7 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - ordered windowing — first/last `N` with `orderBy` / `take` / `skip` (check-only)
 - date comparisons with timezone-aware runtime evaluation
 - relative & calendar date expressions — "last 30 days", "this month" — via `within` and `ago`/`ahead`/`this`/`last`/`next`
-- relative value references via `path`
+- relative value references via `path`, and `$$.` scope refs up through nested arrays
 - custom error messages on every rule
 - compilation to Prisma and PostgreSQL for supported subsets
 
@@ -332,21 +332,42 @@ In runtime validation, a plain path is resolved from the root context:
 }
 ```
 
-### Current Array Element Reference
+### Scope References
 
-Inside array conditions, `$.` means "read from the current element":
+Inside an array operator's `condition` or `filter`, `$.` reads from the current element.
+Each additional `$` reaches one enclosing element further out: `$$.` is the element of the
+enclosing array operator, `$$$.` the one above that, up to the root row. Logical
+combinators (`all` / `any` / `if`) never add a level — only array and aggregate rules do.
+
+Both `field` and `path` take the prefix. A bare `field` is always the current element; a
+bare `path` is always the root context (`options.context`, defaulting to the root row).
 
 ```ts
 {
   field: 'orders',
   arrayOperator: ArrayOperator.all,
   condition: {
-    field: 'total',
-    operator: Operator.lessThanEquals,
-    path: '$.maxBudget'
-  }
+    field: 'lineItems',
+    arrayOperator: ArrayOperator.all,
+    condition: {
+      all: [
+        // line item qty against its order's cap
+        { field: 'qty', operator: Operator.lessThanEquals, path: '$$.maxQty' },
+        // order cap against the root row's limit — neither side is the line item
+        { field: '$$.maxQty', operator: Operator.lessThanEquals, path: '$$$.orgLimit' },
+      ],
+    },
+  },
 }
 ```
+
+A ref deeper than the nesting (`$$.` at the top level, `$$$.` one array deep) throws in
+`check()`, is a `scope_out_of_bounds` issue from `validateRule`, and a violation from
+`checkRuleAgainstLens`. A reachable ancestor that lacks the named key fails the comparison
+like any absent field.
+
+`toSql()` keeps `path: '$.x'` as a same-row column comparison. Every other scope ref — a
+`$$.` path or any prefixed `field` — is check-only; both compilers throw.
 
 ## Rule Introspection
 
@@ -525,6 +546,7 @@ Not every backend supports every rule shape.
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
 | Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
+| `$$.` scope refs and `$`-prefixed `field` | Yes | No | No |
 
 ### NULL Semantics
 
@@ -580,7 +602,7 @@ positive operator, ask for them:
 
 - `matches` and `notMatches` are not supported by Prisma output
 - `dayIn` and `dayNotIn` are not supported by Prisma output
-- `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`
+- `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`; no scope ref (`$$.` path, prefixed `field`) compiles
 - count-based and aggregate relation operators require `{ map, model }`
 - aggregate rules with `notBetween` are not supported by Prisma output
 - aggregate rules on JSON/native stored arrays are not supported by Prisma — use `toSql()` or `check()` for those

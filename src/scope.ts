@@ -14,21 +14,33 @@ export const parseScopeRef = (ref: string): ScopeRef | null => {
 export const scopeOutOfBounds = (ref: string, depth: number, available: number): string =>
   `Scope ref '${ref}' needs depth ${depth} but only ${available} ${available === 1 ? 'scope is' : 'scopes are'} in reach`;
 
-const readScoped = (ref: string, parsed: ScopeRef, scopes: Scopes): unknown => {
+export type ScopedRef<S> = { scope: S; path: string };
+export type ScopeOutOfBounds = { outOfBounds: string };
+
+// Resolves a ref against a stack of scopes (innermost last): a bare ref is the innermost
+// scope, `$.` the innermost, `$$.` the one above it, … A ref deeper than the stack is
+// out of bounds and carries its message.
+export const resolveScopeRef = <S>(
+  ref: string,
+  scopes: readonly S[],
+): ScopedRef<S> | ScopeOutOfBounds => {
+  const parsed = parseScopeRef(ref);
+  if (!parsed) return { scope: scopes[scopes.length - 1], path: ref };
   if (parsed.depth > scopes.length)
-    throw new Error(scopeOutOfBounds(ref, parsed.depth, scopes.length));
-  return get(scopes[scopes.length - parsed.depth], parsed.path);
+    return { outOfBounds: scopeOutOfBounds(ref, parsed.depth, scopes.length) };
+  return { scope: scopes[scopes.length - parsed.depth], path: parsed.path };
 };
 
-export const readField = (ref: string, scopes: Scopes): unknown => {
-  const parsed = parseScopeRef(ref);
-  return parsed ? readScoped(ref, parsed, scopes) : get(scopes[scopes.length - 1], ref);
+const readScoped = (ref: string, scopes: Scopes): unknown => {
+  const target = resolveScopeRef(ref, scopes);
+  if ('outOfBounds' in target) throw new Error(target.outOfBounds);
+  return get(target.scope, target.path);
 };
 
-export const readPath = (ref: string, scopes: Scopes, context: unknown): unknown => {
-  const parsed = parseScopeRef(ref);
-  return parsed ? readScoped(ref, parsed, scopes) : get(context, ref);
-};
+export const readField = (ref: string, scopes: Scopes): unknown => readScoped(ref, scopes);
+
+export const readPath = (ref: string, scopes: Scopes, context: unknown): unknown =>
+  parseScopeRef(ref) ? readScoped(ref, scopes) : get(context, ref);
 
 export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): string =>
   `Scope ref '${ref}' is not supported by ${rail}(); evaluate with check()`;

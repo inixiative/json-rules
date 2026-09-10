@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.23.0 — Scope refs: `$$.` reaches the enclosing array element
+
+- **`$$.`, `$$$.`, …** on `path` count scopes up the array-operator stack — `$.` is the
+  current element, `$$.` the element of the enclosing array operator, and so on to the
+  root row. Logical combinators add no level; array and aggregate rules (their `condition`
+  and windowing `filter`) each add one. A bare `path` is still the root context.
+- **`field` takes the same prefix.** A bare `field` is still the current element;
+  `field: '$$.maxQty'` reads the enclosing element, so two ancestors compare directly
+  (`field: '$$.a', path: '$$$.b'`). Array and aggregate rules accept it too — the ancestor's
+  collection is iterated.
+- **Out of bounds is an error on every rail.** `check()` throws naming the ref and the
+  reachable depth; `validateRule` reports `scope_out_of_bounds` at the leaf (`.field` /
+  `.path`, both when both overreach); `checkRuleAgainstLens` reports a violation.
+- **Lens gate walks from the named scope.** A `$$.` ref is gated at the enclosing visit, a
+  prefixed `field` on an array rule descends into the ancestor's relation, and a `$$.` ref
+  from inside an open Json scope is gated at the declared ancestor it points back to.
+- **Every lens walker carries the scope stack.** `applyLens` injects an ancestor relation's
+  `where` into a prefixed array rule and re-roots to-one hop grants under the same prefix
+  (`$$.customer.tenantId`), so narrowing cannot be sidestepped through a scope ref; a grant
+  authored with a scope ref cannot be re-rooted and fails closed. `describeRule` resolves the
+  ref, reports out-of-bounds as a violation, and drops the compile targets a scope ref
+  cannot reach. `stampCoercions` stamps a prefixed field from the ancestor model.
+  `ruleSourceValues` records a prefixed field's values at the ancestor source.
+- **Compilers stay honest.** `toSql()` keeps `path: '$.x'` as a same-row column comparison;
+  a `$$.` path or any prefixed `field` throws on both `toSql()` and `toPrisma()`
+  (`validateRule` flags them as `unsupported_sql_field` / `unsupported_prisma_field` /
+  `unsupported_prisma_path`). Prefix parsing lives in one place (`src/scope.ts`).
+
 ## 2.22.0 — `bindOptional`: a bind the caller may leave unsupplied
 
 - **`bindOptional: true`** on a `{ bind }` leaf (`Rule`, `DateRule`, `AggregateRule` types). An

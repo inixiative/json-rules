@@ -26,7 +26,8 @@
 - **Compilers stay honest.** `toSql()` keeps `path: '$.x'` as a same-row column comparison;
   a `$$.` path or any prefixed `field` throws on both `toSql()` and `toPrisma()`
   (`validateRule` flags them as `unsupported_sql_field` / `unsupported_prisma_field` /
-  `unsupported_prisma_path`). Prefix parsing lives in one place (`src/scope.ts`).
+  `unsupported_prisma_path`). Prefix parsing lives in one place (`src/scope.ts`); `parseScopeRef`
+  and `resolveScopeRef` are exported for consumers that draw a scope picker (the rule builder).
 
 ## 2.22.0 — `bindOptional`: a bind the caller may leave unsupplied
 

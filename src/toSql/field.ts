@@ -181,6 +181,7 @@ const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
   }
 
   if (rule.bind !== undefined) {
+    if (rule.bindOptional === true) return { type: 'value', value: null };
     throw new Error(
       `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to SQL.`,
     );

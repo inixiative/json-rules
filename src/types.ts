@@ -66,9 +66,9 @@ export type DateConfig = {
 };
 
 type ValueSource<TValue> =
-  | { value: TValue; path?: never; bind?: never }
-  | { path: string; value?: never; bind?: never }
-  | { bind: string; value?: never; path?: never };
+  | { value: TValue; path?: never; bind?: never; bindOptional?: never }
+  | { path: string; value?: never; bind?: never; bindOptional?: never }
+  | { bind: string; bindOptional?: boolean; value?: never; path?: never };
 type NoValueSource = { value?: never; path?: never };
 type RuleBase<TOperator extends Operator> = {
   field: string;
@@ -241,6 +241,7 @@ export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = 
   value?: number | [number, number];
   path?: string;
   bind?: string;
+  bindOptional?: boolean;
   error?: string;
 };
 
@@ -250,6 +251,9 @@ export type Rule<TValue = RuleValue> = {
   value?: TValue;
   path?: string;
   bind?: string;
+  // An unsupplied binding is a caller bug unless the rule says otherwise: with
+  // `bindOptional` an absent name evaluates and compiles as `null`, never throws.
+  bindOptional?: boolean;
   error?: string;
   caseInsensitive?: boolean;
   fuzzy?: boolean | FuzzyConfig;
@@ -272,6 +276,7 @@ export type DateRule<TValue = DateRuleValue> = {
   value?: TValue;
   path?: string;
   bind?: string;
+  bindOptional?: boolean;
   error?: string;
 };
 

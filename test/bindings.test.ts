@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   ArrayOperator,
+  bindingNames,
   type Condition,
   Operator,
   requiredBindings,
@@ -96,5 +97,44 @@ describe('the walk covers every grammar slot', () => {
     const trap: Condition = { field: 'a', operator: Operator.equals, bind: 'toString' } as never;
     expect(resolveBindings(trap, {})).toEqual(trap);
     expect(requiredBindings(resolveBindings(trap, {}))).toEqual(new Set(['toString']));
+  });
+});
+
+describe('bindOptional — an unsupplied optional bind is null, never a missing binding', () => {
+  const rule: Condition = {
+    all: [
+      { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' },
+      { field: 'region', operator: Operator.equals, bind: 'region', bindOptional: true },
+    ],
+  };
+
+  test('requiredBindings leaves optional names out; bindingNames keeps every name', () => {
+    expect(requiredBindings(rule)).toEqual(new Set(['brandUuid']));
+    expect(bindingNames(rule)).toEqual(new Set(['brandUuid', 'region']));
+  });
+
+  test('a name optional at one leaf and required at another is required', () => {
+    const mixed: Condition = {
+      all: [
+        { field: 'a', operator: Operator.equals, bind: 'tenant', bindOptional: true },
+        { field: 'b', operator: Operator.equals, bind: 'tenant' },
+      ],
+    };
+    expect(requiredBindings(mixed)).toEqual(new Set(['tenant']));
+  });
+
+  test('resolveBindings drops the flag with the token it resolves, leaves an unsupplied optional token in place', () => {
+    expect(resolveBindings(rule, { region: 'eu' })).toEqual({
+      all: [
+        { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' },
+        { field: 'region', operator: Operator.equals, value: 'eu' },
+      ],
+    });
+    expect(resolveBindings(rule, { brandUuid: 'acme' })).toEqual({
+      all: [
+        { field: 'brandUuid', operator: Operator.equals, value: 'acme' },
+        { field: 'region', operator: Operator.equals, bind: 'region', bindOptional: true },
+      ],
+    });
   });
 });

@@ -194,8 +194,10 @@ const getValue = <TData extends Record<string, unknown>>(
     // Key presence is the contract: an unsupplied binding is a caller bug (a
     // forgotten scope must never silently run). A supplied-but-nullish binding is
     // a value — normalize undefined → null (a legit fail-closed filter).
-    if (!bindings || !(condition.bind in bindings))
+    if (!bindings || !Object.hasOwn(bindings, condition.bind)) {
+      if (condition.bindOptional === true) return null;
       throw new Error(`Missing binding for "${condition.bind}"`);
+    }
     const bound = bindings[condition.bind];
     return bound === undefined ? null : bound;
   }

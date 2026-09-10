@@ -107,3 +107,42 @@ describe('bind-name discipline — unique names + parent:', () => {
     expect(() => validateNarrowing(b)).toThrow(/no ancestor declares/);
   });
 });
+
+describe('bindOptional through a lens', () => {
+  const optionalRegion: Condition = {
+    field: 'region',
+    operator: Operator.equals,
+    bind: 'region',
+    bindOptional: true,
+  };
+
+  test('lensRequiredBindings leaves an optional name out', () => {
+    const a: LensNarrowing = {
+      parent: lens,
+      root: { where: { all: [brandBind, optionalRegion] } },
+    };
+    expect(lensRequiredBindings(a)).toEqual(new Set(['brandUuid']));
+  });
+
+  test('an optional name still collides with an ancestor declaration', () => {
+    const a: LensNarrowing = { parent: lens, root: { where: brandBind } };
+    const b: LensNarrowing = {
+      parent: a,
+      root: {
+        where: {
+          field: 'region',
+          operator: Operator.equals,
+          bind: 'brandUuid',
+          bindOptional: true,
+        },
+      },
+    };
+    expect(() => validateNarrowing(b)).toThrow(/already declared by an ancestor/);
+  });
+
+  test('an unsupplied optional token survives resolution and applies as null', () => {
+    const a: LensNarrowing = { parent: lens, root: { where: optionalRegion } };
+    const resolved = resolveLensBindings(a, {});
+    expect(applyLens(rule, resolved)).toEqual({ all: [optionalRegion, rule] });
+  });
+});

@@ -3,6 +3,7 @@ import { check, Operator, resolveBindings } from '../index';
 import { toPrisma } from '../src/toPrisma';
 import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
+import { getWhere } from './fixtures/helpers';
 
 const rule = { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' };
 
@@ -62,5 +63,57 @@ describe('compilers reject an unresolved bind', () => {
     expect(() => toSql(bindRule, { map, model: 'FanUser', alias: 't0' })).toThrow(
       /Unresolved binding 'x'/,
     );
+  });
+});
+
+describe('bindOptional — absence resolves to null at the seam where absence is final', () => {
+  const optional = {
+    field: 'region',
+    operator: Operator.equals,
+    bind: 'region',
+    bindOptional: true,
+  };
+  const map: FieldMap = {
+    models: { FanUser: { fields: { region: { kind: 'scalar', type: 'String' } } } },
+  };
+
+  test('check: an unsupplied optional bind compares against null instead of throwing', () => {
+    expect(check(optional, { region: null }, { bindings: {} })).toBe(true);
+    expect(check(optional, { region: null })).toBe(true);
+    expect(check(optional, { region: 'eu' }, { bindings: {} })).toBe('region must equal null');
+  });
+
+  test('check: a supplied optional bind is an ordinary value', () => {
+    expect(check(optional, { region: 'eu' }, { bindings: { region: 'eu' } })).toBe(true);
+  });
+
+  test('toPrisma compiles a surviving optional token as null', () => {
+    expect(
+      getWhere(
+        toPrisma(optional, { map: { maps: { prisma: map } }, mapName: 'prisma', model: 'FanUser' }),
+      ),
+    ).toEqual({ region: { equals: null } });
+  });
+
+  test('toSql compiles a surviving optional token as null', () => {
+    const out = toSql(optional, { map, model: 'FanUser', alias: 't0' });
+    expect(out.sql).toMatch(/IS NULL/i);
+  });
+
+  test('a required token still throws everywhere', () => {
+    expect(() => check(rule, { brandUuid: 'x' }, { bindings: {} })).toThrow('brandUuid');
+    expect(() =>
+      toPrisma(rule, {
+        map: {
+          maps: {
+            prisma: {
+              models: { FanUser: { fields: { brandUuid: { kind: 'scalar', type: 'String' } } } },
+            },
+          },
+        },
+        mapName: 'prisma',
+        model: 'FanUser',
+      }),
+    ).toThrow(/Unresolved binding 'brandUuid'/);
   });
 });

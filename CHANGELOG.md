@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.22.0 — `bindOptional`: a bind the caller may leave unsupplied
+
+- **`bindOptional: true`** on a `{ bind }` leaf (`Rule`, `DateRule`, `AggregateRule` types). An
+  unsupplied required bind stays a caller bug — `check()` throws `Missing binding`, `toPrisma` /
+  `toSql` refuse a surviving token. An unsupplied optional bind resolves to `null` at the seam
+  where absence is final: `check()` compares against `null`, both compilers compile the token as
+  `null`. The leaf is evaluated as written and never pruned.
+- **`requiredBindings(rule)`** now excludes names that are optional at every leaf (a name optional
+  at one leaf and required at another is required); **`lensRequiredBindings`** follows. New
+  **`bindingNames(rule)`** keeps every name, optional or not — `validateBindNames` uses it, so an
+  optional bind still cannot collide with an ancestor's name and a `parent:` reference to one
+  still has to resolve.
+- `resolveBindings` drops the flag with the token it resolves; an unsupplied optional token stays
+  in place (partial resolution is unchanged).
+- `check()` bind lookup uses `Object.hasOwn`, matching `resolveBindings` — a bind named after an
+  `Object.prototype` key no longer reads the prototype.
+
 ## 2.21.0 — `getAggregateOperators(target)`: the threshold list a target can compile
 
 - **`getAggregateOperators(target?)`** — the aggregate threshold comparisons a target

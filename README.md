@@ -356,8 +356,16 @@ format grows a node type, and it goes blind silently.
 
 | Function | Purpose |
 | --- | --- |
-| `requiredBindings(rule)` | Names of every `{ bind }` token in the tree — the set a bindings map must cover. |
+| `requiredBindings(rule)` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`. A name optional at one leaf and required at another is required. |
+| `bindingNames(rule)` | Every `{ bind }` name in the tree, optional or not — what a lens declares. |
 | `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
+
+A leaf may mark its bind optional: `{ field, operator, bind: 'region', bindOptional: true }`. An
+unsupplied required bind is a caller bug — `check()` throws, and both compilers refuse a
+surviving token. An unsupplied *optional* bind is `null` wherever absence is final: `check()`
+compares against `null`, `toPrisma` / `toSql` compile the token as `null`. The rule is evaluated
+as written — the leaf is never pruned, so `in {{bind}}` with nothing bound matches nothing rather
+than everything.
 
 
 ## Runtime Validation

@@ -1,4 +1,5 @@
 import {
+  bindingNames as conditionBindingNames,
   requiredBindings as conditionRequiredBindings,
   resolveBindings as resolveConditionBindings,
 } from '../bindings.ts';
@@ -47,12 +48,13 @@ const layerConditions = (nrw: LensNarrowing): Condition[] => {
 const declaredNames = (nrw: LensNarrowing): Set<string> => {
   const names = new Set<string>();
   for (const cond of layerConditions(nrw))
-    for (const name of conditionRequiredBindings(cond)) if (!isParentRef(name)) names.add(name);
+    for (const name of conditionBindingNames(cond)) if (!isParentRef(name)) names.add(name);
   return names;
 };
 
 /**
- * Every bind name a lens (its whole narrowing chain) needs supplied to execute.
+ * Every bind name a lens (its whole narrowing chain) needs supplied to execute —
+ * `bindOptional` tokens are not required (unsupplied, they resolve to null).
  * `parent:` references collapse to their base name — the caller supplies one value
  * per name and an inherited reference draws the same one. This is the "what does
  * this lens require" answer; pass `narrowing.parent` to see the names a child must
@@ -159,8 +161,7 @@ export const validateBindNames = (narrowing: LensNarrowing): string[] => {
 
   const refs = new Set<string>();
   for (const cond of layerConditions(narrowing))
-    for (const name of conditionRequiredBindings(cond))
-      if (isParentRef(name)) refs.add(baseName(name));
+    for (const name of conditionBindingNames(cond)) if (isParentRef(name)) refs.add(baseName(name));
   for (const r of refs)
     if (!occupied.has(r))
       errors.push(`bind 'parent:${r}' references an inherited binding no ancestor declares`);

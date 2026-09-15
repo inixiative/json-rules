@@ -16,9 +16,10 @@ type Row = Record<string, unknown>;
  * compile always joins every hop the path names, so every hop must carry its guard
  * whether or not the narrowing declares it.
  *
- * `strict` (groupBy axes): an unresolvable hop is fail-closed — throw.
- * Lenient (where-clause field paths): stop at the first non-relation segment (a
- * plain column, or a Json column with a sub-path tail) — no join past it exists.
+ * `strict` (a materialization path — a groupBy axis or a dotted label; its value
+ * names which): an unresolvable hop is fail-closed — throw.
+ * Lenient (`null`, where-clause field paths): stop at the first non-relation segment
+ * (a plain column, or a Json column with a sub-path tail) — no join past it exists.
  * `seen` dedups hops shared across paths: one guard fold per traversed node.
  */
 const foldPathGuards = (
@@ -27,7 +28,7 @@ const foldPathGuards = (
   modelName: string,
   baseRelPath: readonly string[],
   dotted: string,
-  strict: boolean,
+  strict: 'groupBy' | 'label' | null,
   seen: Set<string>,
   out: Condition[],
 ): void => {
@@ -42,7 +43,7 @@ const foldPathGuards = (
     if (!target) {
       if (strict) {
         throw new Error(
-          `groupBy '${dotted}': hop '${segments[i]}' is not a resolvable relation on '${curModel}' — cannot guard its join`,
+          `${strict} '${dotted}': hop '${segments[i]}' is not a resolvable relation on '${curModel}' — cannot guard its join`,
         );
       }
       return; // plain column / Json sub-path — nothing joins past here
@@ -73,10 +74,11 @@ const collectFieldPaths = (condition: Condition, out: string[] = []): string[] =
 };
 
 /**
- * The composed traversal guards for one source: guards for every groupBy axis
- * (strict) and for every relation path its `where` clauses reference (lenient) —
- * the where ships those joins just as surely as the group select does. Hops are
- * folded once each across all paths.
+ * The composed traversal guards for one source: guards for every groupBy axis and
+ * for a dotted label path (both strict — they name joins the select ships), and for
+ * every relation path its `where` clauses reference (lenient) — the where ships
+ * those joins just as surely as the group select does. Hops are folded once each
+ * across all paths, so a label sharing a prefix with an axis costs no extra guard.
  */
 export const traversalGuards = (
   policy: Policy,
@@ -85,21 +87,25 @@ export const traversalGuards = (
   baseRelPath: readonly string[],
   axes: readonly string[],
   whereClauses: readonly Condition[],
+  label?: string,
 ): Condition[] => {
   const out: Condition[] = [];
   const seen = new Set<string>();
   for (const axis of axes)
-    foldPathGuards(policy, mapName, modelName, baseRelPath, axis, true, seen, out);
+    foldPathGuards(policy, mapName, modelName, baseRelPath, axis, 'groupBy', seen, out);
+  if (label?.includes('.'))
+    foldPathGuards(policy, mapName, modelName, baseRelPath, label, 'label', seen, out);
   for (const clause of whereClauses) {
     for (const path of collectFieldPaths(clause)) {
       if (path.includes('.'))
-        foldPathGuards(policy, mapName, modelName, baseRelPath, path, false, seen, out);
+        foldPathGuards(policy, mapName, modelName, baseRelPath, path, null, seen, out);
     }
   }
   return out;
 };
 
-/** Walk a dotted to-one path through nested row objects; undefined when unreachable. */
+/** Walk a dotted to-one path through nested row objects; undefined when unreachable.
+ * Serves both materialization paths a source declares: a groupBy axis and a dotted label. */
 export const groupAtPath = (row: Row, path: string): string | undefined => {
   let cur: unknown = row;
   for (const segment of path.split('.')) {

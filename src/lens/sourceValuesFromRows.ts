@@ -3,7 +3,13 @@ import type { SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
 import { projectByPath, type SourceValues } from './projectByPath.ts';
-import { accumulateOption, groupsAtPaths, sortOptions, traversalGuards } from './sourceOptions.ts';
+import {
+  accumulateOption,
+  groupAtPath,
+  groupsAtPaths,
+  sortOptions,
+  traversalGuards,
+} from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 type Row = Record<string, unknown>;
@@ -36,7 +42,8 @@ const composeEligibility = (sourceClauses: Condition[]): Condition => {
  * the collection fetched UNDER the lens (relations inline), so they are already
  * lens-scoped: eligibility here is the field's source `where` only, evaluated via
  * `check()` (`options` feeds `{bind}` clauses). Scalar-list fields contribute one
- * option per element, labels take the first non-null sibling, and sorting is
+ * option per element, labels take the first non-null value of the label column
+ * (a sibling, or a dotted to-one path read through the nested rows), and sorting is
  * numeric-aware in a fixed locale. Feed the result to `exposedSurface` /
  * `projectByPath` as `{ sourceValues }`.
  */
@@ -64,6 +71,7 @@ export const sourceValuesFromRows = (
         relPath,
         groupBy ?? [],
         sourceClauses,
+        label,
       );
       const where = composeEligibility([...sourceClauses, ...guards]);
 
@@ -72,7 +80,13 @@ export const sourceValuesFromRows = (
         if (check(where, row, options) !== true) continue;
         const rawValue = row[field];
         const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-        const rawLabel = label === undefined ? undefined : row[label];
+        // A dotted label reads through the same nested rows a groupBy axis does.
+        const rawLabel =
+          label === undefined
+            ? undefined
+            : label.includes('.')
+              ? groupAtPath(row, label)
+              : row[label];
         const rowLabel = rawLabel == null ? undefined : String(rawLabel);
         // Any unreachable axis (null hop) → the option stays ungrouped, never partial.
         const groups = groupBy === undefined ? undefined : groupsAtPaths(row, groupBy);

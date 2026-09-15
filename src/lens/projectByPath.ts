@@ -11,7 +11,8 @@ export type ProjectedVisit = {
   whereClauses: Condition[];
   /** Per-field source eligibility wheres, composed across layers (general + path). */
   sources: Record<string, Condition[]>;
-  /** Per-field display-label column for a sourced field (from a SourceSpec's `label`). */
+  /** Per-field display label for a sourced field (from a SourceSpec's `label`): a sibling
+   * column or a dotted to-one path. */
   sourceLabels: Record<string, string>;
   /** Per-field option-partition axes for a sourced field (from a SourceSpec's `groupBy`). */
   sourceGroupBys: Record<string, string[]>;

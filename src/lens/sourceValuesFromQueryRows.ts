@@ -1,6 +1,6 @@
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { SourceValues } from './projectByPath.ts';
-import { accumulateOption, groupsAtPaths, sortOptions } from './sourceOptions.ts';
+import { accumulateOption, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';
 import type { SourceQuery } from './sourceQuery.ts';
 
 type Row = Record<string, unknown>;
@@ -12,9 +12,9 @@ export type SourceRowShape = 'prisma' | 'sql';
  * Materialize one compiled `SourceQuery`'s fetched rows into its `SourceValues` —
  * the executor-side counterpart of `sourceQueries`, so apps never hand-map rows.
  * `rowShape` names the wire format: prisma rows (default) nest each `groupBy` axis
- * as related objects; sql rows carry them flat under the statement's `__group_i`
- * aliases. Grouped queries fetch without DISTINCT, so dedup per (groups, value)
- * happens here.
+ * (and a dotted `label`) as related objects; sql rows carry them flat under the
+ * statement's `__group_i` / `__label` aliases. Grouped queries fetch without
+ * DISTINCT, so dedup per (groups, value) happens here.
  */
 export const sourceValuesFromQueryRows = (
   query: SourceQuery,
@@ -26,7 +26,16 @@ export const sourceValuesFromQueryRows = (
   for (const row of rows) {
     const rawValue = row[query.field];
     const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-    const rawLabel = query.label === undefined ? undefined : row[query.label];
+    // A dotted label rides the same two wire formats the axes do: nested in prisma
+    // rows, flat under the statement's `__label` alias in sql rows.
+    const rawLabel =
+      query.label === undefined
+        ? undefined
+        : query.label.includes('.')
+          ? rowShape === 'sql'
+            ? row.__label
+            : groupAtPath(row, query.label)
+          : row[query.label];
     const label = rawLabel == null ? undefined : String(rawLabel);
     const groups =
       query.groupBy === undefined

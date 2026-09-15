@@ -17,7 +17,8 @@ export type VisitEffect = {
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
   sources: Map<string, Condition[]>;
-  /** Per-field display-label column (from a SourceSpec's `label`); a later layer wins. */
+  /** Per-field display label (from a SourceSpec's `label`): a sibling column or a dotted
+   * to-one path; a later layer wins. */
   sourceLabels: Map<string, string>;
   /** Per-field option-partition axes (from a SourceSpec's `groupBy`, normalized); a later layer wins. */
   sourceGroupBys: Map<string, string[]>;

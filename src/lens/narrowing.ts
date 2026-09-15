@@ -75,6 +75,32 @@ const validateSourceTargetVisibility = (
       .map((layer) => layer.mapDefaults?.[map]?.models?.[model])
       .filter((x): x is ModelDefaultNarrowing => x !== undefined);
 
+  // Descend a dotted materialization path, checking each segment against the removals
+  // in force at the node it is read from — the same walk for a groupBy axis and a label.
+  const checkPathVisibility = (path: string, kind: 'groupBy' | 'label', field: string): void => {
+    const segments = path.split('.');
+    let nodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[] = ancestorChain;
+    let curMap = mapName;
+    let curModel = modelName;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const removed = ancestorRemoval(seg, [...nodes, ...defaultsFor(curMap, curModel)]);
+      if (removed) {
+        errors.push(`${position}.sources.${field}: ${kind} segment '${seg}' ${removed}`);
+        break;
+      }
+      if (i === segments.length - 1) break;
+      const fieldEntry = own(maps[curMap]?.models[curModel]?.fields, seg);
+      const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
+      if (!target) break; // path resolvability is validated by toOnePathError
+      nodes = nodes
+        .map((n) => ('relations' in n ? n.relations?.[seg] : undefined))
+        .filter((x): x is ModelNarrowing => x !== undefined);
+      curMap = target.mapName;
+      curModel = target.modelName;
+    }
+  };
+
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     const spec = normalizeSource(entry);
 
@@ -87,12 +113,16 @@ const validateSourceTargetVisibility = (
       .map(normalizeSource);
 
     if (spec.label !== undefined && !ancestorSpecs.some((s) => s.label === spec.label)) {
-      const removed = ancestorRemoval(spec.label, [
-        ...ancestorChain,
-        ...defaultsFor(mapName, modelName),
-      ]);
-      if (removed)
-        errors.push(`${position}.sources.${field}: label column '${spec.label}' ${removed}`);
+      if (spec.label.includes('.')) {
+        checkPathVisibility(spec.label, 'label', field);
+      } else {
+        const removed = ancestorRemoval(spec.label, [
+          ...ancestorChain,
+          ...defaultsFor(mapName, modelName),
+        ]);
+        if (removed)
+          errors.push(`${position}.sources.${field}: label column '${spec.label}' ${removed}`);
+      }
     }
 
     const axes = normalizeGroupBy(spec.groupBy);
@@ -101,56 +131,36 @@ const validateSourceTargetVisibility = (
     if (ancestorSpecs.some((s) => JSON.stringify(normalizeGroupBy(s.groupBy)) === axesKey)) {
       continue;
     }
-    for (const axis of axes) {
-      const segments = axis.split('.');
-      let nodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[] = ancestorChain;
-      let curMap = mapName;
-      let curModel = modelName;
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const removed = ancestorRemoval(seg, [...nodes, ...defaultsFor(curMap, curModel)]);
-        if (removed) {
-          errors.push(`${position}.sources.${field}: groupBy segment '${seg}' ${removed}`);
-          break;
-        }
-        if (i === segments.length - 1) break;
-        const fieldEntry = own(maps[curMap]?.models[curModel]?.fields, seg);
-        const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
-        if (!target) break; // path resolvability is validated by groupByPathError
-        nodes = nodes
-          .map((n) => ('relations' in n ? n.relations?.[seg] : undefined))
-          .filter((x): x is ModelNarrowing => x !== undefined);
-        curMap = target.mapName;
-        curModel = target.modelName;
-      }
-    }
+    for (const axis of axes) checkPathVisibility(axis, 'groupBy', field);
   }
 };
 
-// A groupBy path descends to-one relations only and must land on a scalar/enum column.
-const groupByPathError = (
-  groupBy: string,
+// A materialization path — a groupBy axis or a dotted label — descends to-one relations
+// only and must land on a scalar/enum column. `kind` names it in the error.
+const toOnePathError = (
+  path: string,
   maps: Record<string, FieldMap>,
   mapName: string,
   modelName: string,
+  kind: 'groupBy' | 'label',
 ): string | null => {
-  const segments = groupBy.split('.');
+  const segments = path.split('.');
   let curMap = mapName;
   let curModel = modelName;
   for (let i = 0; i < segments.length; i++) {
     const entry = own(maps[curMap]?.models[curModel]?.fields, segments[i]);
-    if (!entry) return `groupBy segment '${segments[i]}' not on model '${curModel}'`;
+    if (!entry) return `${kind} segment '${segments[i]}' not on model '${curModel}'`;
     const isLast = i === segments.length - 1;
     if (entry.kind === 'object' || entry.kind === 'bridge') {
-      if (isLast) return `groupBy must end on a scalar column, '${segments[i]}' is a relation`;
-      if (entry.isList) return `groupBy cannot traverse to-many relation '${segments[i]}'`;
+      if (isLast) return `${kind} must end on a scalar column, '${segments[i]}' is a relation`;
+      if (entry.isList) return `${kind} cannot traverse to-many relation '${segments[i]}'`;
       const target = resolveRelationTarget(entry, curMap);
-      if (!target) return `groupBy relation '${segments[i]}' has no resolvable target`;
+      if (!target) return `${kind} relation '${segments[i]}' has no resolvable target`;
       curMap = target.mapName;
       curModel = target.modelName;
       continue;
     }
-    if (!isLast) return `groupBy segment '${segments[i]}' is not a relation`;
+    if (!isLast) return `${kind} segment '${segments[i]}' is not a relation`;
   }
   return null;
 };
@@ -274,22 +284,30 @@ const validateModelNode = (
       continue;
     }
     const spec = normalizeSource(entry);
-    if (spec.label !== undefined && !modelFields[spec.label]) {
-      errors.push(`${position}.sources.${field}: label column '${spec.label}' not on model`);
+    const dottedLabel = spec.label?.includes('.') ? spec.label : undefined;
+    if (spec.label !== undefined) {
+      if (dottedLabel) {
+        const err = toOnePathError(dottedLabel, maps, mapName, modelName, 'label');
+        if (err) errors.push(`${position}.sources.${field}: ${err}`);
+      } else if (!modelFields[spec.label]) {
+        errors.push(`${position}.sources.${field}: label column '${spec.label}' not on model`);
+      }
     }
     const axes = normalizeGroupBy(spec.groupBy);
-    if (axes !== undefined) {
-      for (const axis of axes) {
-        const err = groupByPathError(axis, maps, mapName, modelName);
-        if (err) errors.push(`${position}.sources.${field}: ${err}`);
-      }
-      // The sql compile aliases each axis column '__group_i' — a grouped source
-      // selecting a real column of that shape would clobber it in flat rows.
-      const reserved = /^__group(_\d+)?$/;
+    // The sql compile aliases each axis column '__group_i' and a dotted label '__label' —
+    // a source selecting a real column of that shape would clobber it in flat rows.
+    if (axes !== undefined || dottedLabel !== undefined) {
+      const reserved = /^__(group(_\d+)?|label)$/;
       if (reserved.test(field) || (spec.label !== undefined && reserved.test(spec.label))) {
         errors.push(
-          `${position}.sources.${field}: '__group*' names are reserved on grouped sources (sql group aliases)`,
+          `${position}.sources.${field}: '__group*' / '__label' names are reserved on grouped or path-labeled sources (sql column aliases)`,
         );
+      }
+    }
+    if (axes !== undefined) {
+      for (const axis of axes) {
+        const err = toOnePathError(axis, maps, mapName, modelName, 'groupBy');
+        if (err) errors.push(`${position}.sources.${field}: ${err}`);
       }
       // where/sources compose AND-only across layers; divergent axes would
       // silently re-partition an ancestor's option namespace — fail loud instead.

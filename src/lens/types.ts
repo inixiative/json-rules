@@ -31,21 +31,22 @@ export type ModelDefaultNarrowing = {
    * Per-field eligibility over THIS model — decorates a field's option picker.
    * A bare `Condition` is the eligibility `where`: the field's selectable values =
    * DISTINCT(field) over this model filtered by `where` (plus the model's own
-   * narrowing). A `SourceSpec` adds an optional `label` — a sibling column on this
-   * same model co-selected as each value's display label. Referenced-model option
-   * sets need no special form: declare the source at a relation-traversed narrowing
-   * node and it compiles over whatever model that path resolves to. The `where`
-   * composes AND-only across layers (general via `mapDefaults`, path-specific via
-   * `root`/`relations`); a later layer's `label` wins.
+   * narrowing). A `SourceSpec` adds an optional `label` — a sibling column, or a
+   * dotted to-one path ending on a scalar (like `groupBy`), co-selected as each
+   * value's display label. Referenced-model option sets need no special form: declare
+   * the source at a relation-traversed narrowing node and it compiles over whatever
+   * model that path resolves to. The `where` composes AND-only across layers (general
+   * via `mapDefaults`, path-specific via `root`/`relations`); a later layer's `label` wins.
    */
   sources?: Record<string, SourceValue>; // fieldName → eligibility where | SourceSpec
 };
 
 /**
- * A sourced field's eligibility `where` plus an optional sibling display-label column
- * and an optional `groupBy` — a dotted path (to-one hops only, ending on a scalar)
- * whose value partitions the option set. Grouped options carry `group`; the classic
- * flat set is the ungrouped case. At least one key is required — `{}` is not a
+ * A sourced field's eligibility `where` plus an optional display-label column — a
+ * sibling, or a dotted to-one path ending on a scalar, resolved exactly like a
+ * `groupBy` axis — and an optional `groupBy`: a dotted path (to-one hops only, ending
+ * on a scalar) whose value partitions the option set. Grouped options carry `group`;
+ * the classic flat set is the ungrouped case. At least one key is required — `{}` is not a
  * Condition; the unconstrained spelling is `true`.
  */
 export type SourceSpec =

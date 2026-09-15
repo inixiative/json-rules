@@ -34,7 +34,9 @@ export type SourceQuery = {
   mapName: string;
   model: string;
   field: string;
-  /** Sibling column co-selected as each value's display label (from a SourceSpec's `label`). */
+  /** Co-selected as each value's display label (from a SourceSpec's `label`): a sibling
+   * column, or a dotted to-one path like a groupBy axis — then selected nested in prisma
+   * and aliased `__label` in sql. */
   label?: string;
   /** Option-partition axes (from a SourceSpec's `groupBy`, normalized); each axis
    * column is selected nested in prisma and aliased `__group_i` in sql. */
@@ -83,10 +85,14 @@ const compileOne = (
   const last = plan.steps[plan.steps.length - 1];
   const prismaWhere = (last && 'where' in last ? last.where : {}) as PrismaWhere;
   const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
+  // A dotted label materializes exactly like a groupBy axis — same nested select
+  // (merged with any axis sharing its prefix), same joined SQL column.
+  const labelPath = label?.includes('.') ? label : undefined;
+  const nestedPaths = [...(groupBy ?? []), ...(labelPath ? [labelPath] : [])];
   const select: SourceSelect = {
     [field]: true,
-    ...(label ? { [label]: true } : {}),
-    ...(groupBy ? nestedSelects(groupBy) : {}),
+    ...(label && !labelPath ? { [label]: true } : {}),
+    ...(nestedPaths.length ? nestedSelects(nestedPaths) : {}),
   };
   const prisma: SourcePrismaQuery = {
     model,
@@ -102,8 +108,11 @@ const compileOne = (
     let params: unknown[];
     let joins: string[];
     let groupCols: string[] | undefined;
-    if (groupBy) {
-      // Build the where and the group columns against one state so the axis
+    let labelCol: string | undefined;
+    // Any materialization path — a groupBy axis or a dotted label — needs the state
+    // the where is built against, so its column resolves through the same joins.
+    if (groupBy || labelPath) {
+      // Build the where and the materialized columns against one state so the
       // paths reuse (and extend) the where's join registry.
       const state: BuilderState = {
         params: [],
@@ -116,7 +125,8 @@ const compileOne = (
         joinRegistry: new Map(),
       };
       sql = buildCondition(where, state);
-      groupCols = groupBy.map((axis) => resolveFieldSql(axis, state));
+      if (labelPath) labelCol = resolveFieldSql(labelPath, state);
+      groupCols = groupBy?.map((axis) => resolveFieldSql(axis, state));
       params = state.params;
       joins = state.joins ?? [];
     } else {
@@ -126,7 +136,7 @@ const compileOne = (
     const whereSql = sql?.trim() ? ` WHERE ${sql}` : '';
     const cols = [
       `${q('t0')}.${q(field)}`,
-      ...(label ? [`${q('t0')}.${q(label)}`] : []),
+      ...(labelCol ? [`${labelCol} AS ${q('__label')}`] : label ? [`${q('t0')}.${q(label)}`] : []),
       ...(groupCols ? groupCols.map((col, i) => `${col} AS ${q(`__group_${i}`)}`) : []),
     ].join(', ');
     const statement = `SELECT DISTINCT ${cols} FROM ${q(model)} AS ${q('t0')}${joinSql}${whereSql}`;
@@ -161,6 +171,7 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
         relPath,
         groupBy ?? [],
         sourceClauses,
+        label,
       );
       const composedWhere = compose(visit.whereClauses, [...sourceClauses, ...guards]);
       const { prisma, sql } = compileOne(

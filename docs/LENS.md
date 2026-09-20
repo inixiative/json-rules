@@ -665,6 +665,28 @@ projection), `resolveVisit(policy, mapName, modelName, relPath)` returns the
 same composition for a single visit. `checkRuleAgainstLens` uses it
 internally — it's the path-aware authority for "is this rule field allowed."
 
+### `resolveLensPath(lens, path)` — one path, verified hop by hop
+
+```ts
+import { resolveLensPath } from '@inixiative/json-rules';
+
+const walk = resolveLensPath(narrowing, 'posts.author.name');
+// { outcome: 'resolved', hops: [...], terminal: LensPathHop, jsonSubPath: [] }
+// { outcome: 'hidden' | 'missing' | 'pastScalar', index: number, hops: [...] }
+```
+
+The per-path counterpart of `projectByPath`: the walk `checkRuleAgainstLens`
+gates a rule's `field` with, exposed for consumers that resolve paths of their
+own — template tokens, loop bindings, presence guards. It verifies as it walks:
+every hop is checked against the narrowing at that visit, so `hidden` is a
+column the model has but the narrowing does not expose there, `missing` a
+column (or model) the map does not have, `pastScalar` a segment after a scalar.
+A path that continues below a Json column resolves at the column with the
+remainder in `jsonSubPath`, the same boundary `check`/`toPrisma`/`toSql`
+resolve at evaluation time. Each hop carries its `FieldMapEntry`, so a consumer
+reads kind, list-ness and requiredness off the walk instead of re-walking the
+map.
+
 ### `exposedSurface(lens)` — the leak-safe surface, as a Lens
 
 `projectByPath` returns a path-keyed *view* — the graph is flattened away. When

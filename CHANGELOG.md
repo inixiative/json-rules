@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.25.0 — `resolveLensPath`: one path through the lens, verified hop by hop
+
+- **`resolveLensPath(lens, path)`** resolves a dotted path hop by hop and returns where it lands:
+  `resolved` (with the hops, the terminal `FieldMapEntry` and a Json remainder), `hidden` (the
+  model has the column, the narrowing does not expose it at that visit), `missing` (the map does
+  not have it) or `pastScalar` — each failure with its segment index. It is the walk
+  `checkRuleAgainstLens` gates a rule's `field` with, now exported for consumers that resolve
+  paths of their own (template tokens, loop bindings, presence guards) so nobody rebuilds lens
+  reachability beside the lens. The gate's internal walk delegates to it.
+
+## 2.24.0 — `source.label` accepts a dotted to-one path
+
+- A `SourceSpec.label` may name a dotted to-one path, like `groupBy`.
+
 ## 2.23.0 — Scope refs: `$$.` reaches the enclosing array element
 
 - **`$$.`, `$$$.`, …** on `path` count scopes up the array-operator stack — `$.` is the

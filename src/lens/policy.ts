@@ -236,6 +236,74 @@ export const allowedEnumValues = (
   fieldName: string,
 ): readonly string[] | null => effect.enumValuesByField.get(fieldName) ?? null;
 
+export type LensPathHop = {
+  field: string;
+  entry: import('../toPrisma/types.ts').FieldMapEntry;
+  mapName: string;
+  modelName: string;
+  /** The relation path from the lens anchor to the model this hop reads. */
+  relPath: string[];
+};
+
+/**
+ * Where a dotted path lands through the lens, hop by hop. `hidden` is a field the model has but
+ * the narrowing does not expose at this visit; `missing` is a field the model does not have (or a
+ * model the map does not have); `pastScalar` is a segment after a scalar. A path that continues
+ * below a Json column resolves at the column with the remainder in `jsonSubPath`.
+ */
+export type LensPathResolution =
+  | { outcome: 'resolved'; hops: LensPathHop[]; terminal: LensPathHop; jsonSubPath: string[] }
+  | { outcome: 'hidden' | 'missing' | 'pastScalar'; index: number; hops: LensPathHop[] };
+
+export const resolvePolicyPath = (
+  policy: Policy,
+  startMap: string,
+  startModel: string,
+  startPath: readonly string[],
+  path: string,
+): { resolution: LensPathResolution; effects: VisitEffect[] } => {
+  const parts = path.split('.');
+  let mapName = startMap;
+  let modelName = startModel;
+  let relPath = [...startPath];
+  const hops: LensPathHop[] = [];
+  const effects: VisitEffect[] = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    const model = policy.lens.maps[mapName]?.models[modelName];
+    if (!model) return { resolution: { outcome: 'missing', index: i, hops }, effects };
+    const effect = resolveVisit(policy, mapName, modelName, relPath);
+    const fieldName = parts[i];
+    const entry = own(model.fields, fieldName);
+    if (!entry) return { resolution: { outcome: 'missing', index: i, hops }, effects };
+    if (!isFieldVisible(effect, fieldName))
+      return { resolution: { outcome: 'hidden', index: i, hops }, effects };
+    const hop: LensPathHop = { field: fieldName, entry, mapName, modelName, relPath: [...relPath] };
+    hops.push(hop);
+    effects.push(effect);
+    const last = i === parts.length - 1;
+    // A Json column declares no sub-fields; the evaluators resolve the remainder against the
+    // value, so the path resolves at the column and carries the remainder.
+    if (last || isJsonEntry(entry)) {
+      return {
+        resolution: {
+          outcome: 'resolved',
+          hops,
+          terminal: hop,
+          jsonSubPath: last ? [] : parts.slice(i + 1),
+        },
+        effects,
+      };
+    }
+    const target = resolveRelationTarget(entry, mapName);
+    if (!target) return { resolution: { outcome: 'pastScalar', index: i, hops }, effects };
+    relPath = [...relPath, fieldName];
+    mapName = target.mapName;
+    modelName = target.modelName;
+  }
+  return { resolution: { outcome: 'missing', index: parts.length, hops }, effects };
+};
+
 export const walkLensPath = (
   policy: Policy,
   startMap: string,
@@ -253,54 +321,23 @@ export const walkLensPath = (
   /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
   jsonSubPath: string[];
 } | null => {
-  const parts = fieldPath.split('.');
-  let mapName = startMap;
-  let modelName = startModel;
-  let relPath = [...startPath];
-  const hopEffects: VisitEffect[] = [];
-
-  for (let i = 0; i < parts.length; i++) {
-    const fieldMap = policy.lens.maps[mapName];
-    const model = fieldMap?.models[modelName];
-    if (!model) return null;
-    const effect = resolveVisit(policy, mapName, modelName, relPath);
-    const fieldName = parts[i];
-    if (!isFieldVisible(effect, fieldName)) return null;
-    const entry = own(model.fields, fieldName);
-    if (!entry) return null;
-    // A Json column has no declared sub-fields; a dotted sub-path into it is resolved
-    // by the evaluators/compilers (check/toPrisma/toSql), so the field resolves to the
-    // visible Json column — stop here and treat it as the terminal.
-    if (isJsonEntry(entry) && i < parts.length - 1) {
-      return {
-        mapName,
-        modelName,
-        relPath,
-        entry,
-        hopEffects,
-        terminalEffect: effect,
-        terminalFieldName: fieldName,
-        jsonSubPath: parts.slice(i + 1),
-      };
-    }
-    if (i === parts.length - 1) {
-      return {
-        mapName,
-        modelName,
-        relPath,
-        entry,
-        hopEffects,
-        terminalEffect: effect,
-        terminalFieldName: fieldName,
-        jsonSubPath: [],
-      };
-    }
-    hopEffects.push(effect);
-    const target = resolveRelationTarget(entry, mapName);
-    if (!target) return null;
-    relPath = [...relPath, fieldName];
-    mapName = target.mapName;
-    modelName = target.modelName;
-  }
-  return null;
+  const { resolution, effects } = resolvePolicyPath(
+    policy,
+    startMap,
+    startModel,
+    startPath,
+    fieldPath,
+  );
+  if (resolution.outcome !== 'resolved') return null;
+  const { terminal, jsonSubPath } = resolution;
+  return {
+    mapName: terminal.mapName,
+    modelName: terminal.modelName,
+    relPath: terminal.relPath,
+    entry: terminal.entry,
+    hopEffects: effects.slice(0, -1),
+    terminalEffect: effects[effects.length - 1],
+    terminalFieldName: terminal.field,
+    jsonSubPath,
+  };
 };

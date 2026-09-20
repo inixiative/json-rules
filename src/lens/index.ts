@@ -10,6 +10,8 @@ export { exposedSurface } from './exposedSurface';
 export { validateNarrowing } from './narrowing';
 export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectByPath';
 export { projectByPath } from './projectByPath';
+export type { LensPathHop, LensPathResolution } from './resolveLensPath';
+export { resolveLensPath } from './resolveLensPath';
 export type { RuleSourceValues } from './ruleSourceValues';
 export { ruleSourceValues } from './ruleSourceValues';
 export type { SourcePrismaQuery, SourceQuery, SourceSqlQuery } from './sourceQuery';

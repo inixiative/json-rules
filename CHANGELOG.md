@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
+
+**Stricter validation.** A rule that passed the lens gate before can fail it now, but
+only a rule that cannot evaluate: the compiled Prisma filter throws, Postgres rejects it,
+or `check()` cannot iterate it. The gate reads the field kind from the resolved
+`FieldMapEntry` (or the rule's `coerceType`) and the operator's catalog `kinds`, the data
+the builder's operator picker already uses.
+
+- **Operator ⇄ field kind.** A field or date operator whose catalog `kinds` exclude the
+  field's kind is a violation:
+  `operator 'contains' does not apply to DateTime field 'createdAt' (applies to: String)`.
+  Date operators (`before`, `within`, `dayIn`, …) now fail on a non-DateTime column.
+- **Value ⇄ field kind.** A literal operand that does not fit is a violation:
+  `value 123 does not fit String field 'name' (expected a string)`. For `in`, `notIn`,
+  `between` and `notBetween`, each element is checked.
+  - String and enum columns take a string.
+  - Int and BigInt take an integer.
+  - Float and Decimal take a finite number.
+  - Boolean takes a boolean.
+  - DateTime takes anything that parses as a date. That includes day-only strings, ISO
+    strings with or without a zone, epoch-ms numbers and `Date`.
+  - `null`, `path` refs, `bind` tokens and regex patterns are not checked.
+  - A `coerceType` that overrides the column's kind is checked after `check()`'s own
+    coercion, so `"5"` passes on a String column coerced to `Int`. A `coerceType` equal to
+    the column's kind (a `stampCoercions` stamp) does not coerce. The compilers pass
+    literals through as written, so the raw value has to fit.
+  - The violation reads `value 'abc' does not fit field 'name' coerced to Int (expected an integer)`.
+- **arrayOperator ⇄ cardinality.** An array operator on a field that is not a list is a
+  violation, and its `condition` / `filter` are not walked:
+  `arrayOperator 'any' needs a list, but 'account' is a to-one relation`. The same applies
+  to `… is a single String value` for a scalar. These count as lists: a to-many relation,
+  a `oneToMany` bridge, a scalar list and a Json column. An object relation with no
+  `isList` is treated as to-one.
+- **Not gated:**
+  - Json columns and Json sub-paths
+  - fields inside an open scope
+  - scalar lists (for field operators)
+  - relation terminals (`exists` on a relation)
+  - scalar types outside `FieldKind`
+  - aggregate thresholds
+
 ## 2.25.0 — `resolveLensPath`: one path through the lens, verified hop by hop
 
 - **`resolveLensPath(lens, path)`** resolves a dotted path hop by hop and returns where it lands:

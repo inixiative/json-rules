@@ -58,7 +58,7 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   }
 };
 
-const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => {
+export const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => {
   if (kind === undefined) return value;
   if (Array.isArray(value)) return value.map((item) => coerceScalar(item, kind));
   return coerceScalar(value, kind);

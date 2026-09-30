@@ -1,5 +1,7 @@
 import { parseScopeRef, resolveScopeRef } from '../scope';
+import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
+import { arrayFitViolation, entryKind, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
 import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -20,21 +22,6 @@ type VisitScope = {
   modelName: string;
   relPath: readonly string[];
   open: boolean;
-};
-
-// Extracts the leaf "value" from a rule for enum-value validation. Handles
-// scalar value, array value (for in/notIn), and value via path-ref (skipped —
-// we can't validate at compile time without context).
-const extractEnumLiterals = (cond: {
-  value?: unknown;
-  path?: unknown;
-  operator?: unknown;
-}): readonly unknown[] | null => {
-  if (cond.path !== undefined) return null; // runtime value — skip
-  const v = cond.value;
-  if (v === undefined) return null;
-  if (Array.isArray(v)) return v;
-  return [v];
 };
 
 const lensRoot = (policy: Policy): VisitScope => ({
@@ -86,6 +73,7 @@ const visit = (
   let terminalIsEnum = false;
   let terminalEnumType: string | null = null;
   let terminalAllowedValues: readonly string[] | null = null;
+  let terminalEntry: FieldMapEntry | null = null;
 
   if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
     const target = scopeFor(cond.field);
@@ -105,6 +93,7 @@ const visit = (
         fieldOk = false;
       } else {
         terminalFieldName = walked.terminalFieldName;
+        terminalEntry = walked.entry;
         terminalIsEnum = walked.entry.kind === 'enum';
         terminalEnumType = walked.entry.type;
         // Below a Json boundary the value is undeclared, so the column's own allowed set
@@ -152,6 +141,24 @@ const visit = (
 
   if (!fieldOk) return;
 
+  // An array operator iterates its field. On a non-list the node cannot evaluate, and its
+  // `condition`/`filter` have no element scope to resolve against — report it and stop.
+  if ('arrayOperator' in cond && typeof cond.field === 'string' && terminalEntry) {
+    const misfit = arrayFitViolation(cond.field, cond.arrayOperator, terminalEntry);
+    if (misfit) {
+      violations.push(misfit);
+      return;
+    }
+  }
+
+  // Operator and literal against the field's kind (an aggregate's operator compares the
+  // aggregate, not the field).
+  if (!('aggregate' in cond) && ('operator' in cond || 'dateOperator' in cond)) {
+    violations.push(
+      ...leafFitViolations(cond, terminalEntry ? entryKind(terminalEntry) : undefined),
+    );
+  }
+
   const below = [...scopes, next];
 
   // Gate the window's `filter` (a full Condition over the array elements) and `orderBy`
@@ -183,9 +190,7 @@ const visit = (
   // allowed set — an enum (registry/narrowed) or any other kind with explicit
   // `values`.
   if (terminalAllowedValues && 'operator' in cond && terminalFieldName) {
-    const literals = extractEnumLiterals(
-      cond as { value?: unknown; path?: unknown; operator?: unknown },
-    );
+    const literals = ruleLiterals(cond as { value?: unknown; path?: unknown });
     if (literals) {
       const allowed = new Set(terminalAllowedValues);
       const scope = terminalIsEnum ? `enum '${terminalEnumType}'` : `field '${terminalFieldName}'`;

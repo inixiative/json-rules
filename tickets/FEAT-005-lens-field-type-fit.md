@@ -1,10 +1,9 @@
 # FEAT-005: Lens gate checks operator, value and array-operator fit against the field type
 
-**Status**: 🟡 Implemented, not yet released (uncommitted)
+**Status**: 🟡 In review — PR #16
 **Priority**: High
 **Created**: 2026-09-30
 **Target**: **2.26.0** — stricter validation, no new public API
-**Plan**: `docs/plans/2026-09-30-lens-field-type-compat.md`
 
 ---
 

@@ -2,9 +2,10 @@
 
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 
-**Stricter validation.** A rule that passed the lens gate before can fail it now, but
-only a rule that cannot evaluate: the compiled Prisma filter throws, Postgres rejects it,
-or `check()` cannot iterate it. The gate reads the field kind from the resolved
+**Stricter validation.** A rule that passed the lens gate before can fail it now: one that
+cannot evaluate (the compiled Prisma filter throws, Postgres rejects it, or `check()` cannot
+iterate it), or one whose literal is not a JSON value of the column's kind — a numeric string
+on a Decimal column, which Prisma would accept but `check()` compares as a string. The gate reads the field kind from the resolved
 `FieldMapEntry` (or the rule's `coerceType`) and the operator's catalog `kinds`, the data
 the builder's operator picker already uses.
 
@@ -16,16 +17,18 @@ the builder's operator picker already uses.
   `value 123 does not fit String field 'name' (expected a string)`. For `in`, `notIn`,
   `between` and `notBetween`, each element is checked.
   - String and enum columns take a string.
-  - Int and BigInt take an integer.
-  - Float and Decimal take a finite number.
+  - Int and BigInt take a safe integer. A `bigint` is not JSON and is rejected.
+  - Float and Decimal take a finite number. Decimal compares as a float; `'1.50'` is
+    rejected.
   - Boolean takes a boolean.
-  - DateTime takes anything that parses as a date. That includes day-only strings, ISO
-    strings with or without a zone, epoch-ms numbers and `Date`.
+  - DateTime takes what `check()`'s DateTime coercion turns into an instant: day-only
+    strings, ISO strings with or without a zone, epoch-ms numbers or digit strings, and
+    `Date`.
   - `null`, `path` refs, `bind` tokens and regex patterns are not checked.
   - A `coerceType` that overrides the column's kind is checked after `check()`'s own
     coercion, so `"5"` passes on a String column coerced to `Int`. A `coerceType` equal to
-    the column's kind (a `stampCoercions` stamp) does not coerce. The compilers pass
-    literals through as written, so the raw value has to fit.
+    the column's kind (a `stampCoercions` stamp) does not coerce, so the raw value has to
+    fit. `toPrisma` / `toSql` refuse an override at compile time (below).
   - The violation reads `value 'abc' does not fit field 'name' coerced to Int (expected an integer)`.
 - **arrayOperator ⇄ cardinality.** An array operator on a field that is not a list is a
   violation, and its `condition` / `filter` are not walked:
@@ -40,6 +43,25 @@ the builder's operator picker already uses.
   - relation terminals (`exists` on a relation)
   - scalar types outside `FieldKind`
   - aggregate thresholds
+
+**`toPrisma` / `toSql`: DateTime field-operator literals compile to Dates.** A field operator
+(`equals`, `lessThan`, `in`, `between`, …) on a DateTime column used to pass its literal
+through as written. Prisma accepts only a `Date` or a zoned ISO-8601 instant, so
+`createdAt gt '2026-09-01'`, a zoneless ISO string and an epoch-ms number all threw at query
+time ("Expected ISO-8601 DateTime"); Postgres cast a bare string in the session's zone
+while `check()` anchors it in UTC. Both compilers now run the literal — and a context
+`path` value — through `check()`'s own DateTime coercion and emit a `Date`, element-wise for
+lists, `null` kept. The column is DateTime per the field map, or per a stamped
+`coerceType: 'DateTime'` when no map is passed. An unparseable literal throws at compile
+time: `Invalid date value for DateTime field 'createdAt': not-a-date`.
+
+**`toPrisma` / `toSql`: a `coerceType` that overrides the column's kind throws.** The
+compiled query compares the column as stored; neither compiler can cast it, so the override
+used to be ignored silently and the query compared the raw literal against the column. Now:
+`coerceType 'Int' overrides String field 'name', but toPrisma compares the column as stored —
+evaluate it in memory with check(), or drop the override.` A stamp equal to the column's kind,
+a column the map does not type (Json, Json sub-paths, scalar lists) and an unmapped field
+compile as before.
 
 ## 2.25.0 — `resolveLensPath`: one path through the lens, verified hop by hop
 

@@ -1,4 +1,3 @@
-import { isDateInputValue, parseDateValue } from '../date';
 import { applyCoercion } from '../field';
 import {
   type CatalogEntry,
@@ -7,19 +6,11 @@ import {
   FieldKind,
 } from '../operatorCatalog';
 import { own } from '../own';
+import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';
 import type { RuleLensViolation } from './checkRule.ts';
 import { isJsonEntry } from './walk.ts';
-
-/** The kind a declared field compares as — undefined where the map does not pin one down:
- *  relations, Json (open-ended), scalar lists, and scalar types outside FieldKind. */
-export const entryKind = (entry: FieldMapEntry): FieldKind | undefined => {
-  if (entry.isList) return undefined;
-  if (entry.kind === 'enum') return FieldKind.Enum;
-  if (entry.kind !== 'scalar' || entry.type === FieldKind.Json) return undefined;
-  return Object.hasOwn(FieldKind, entry.type) ? (entry.type as FieldKind) : undefined;
-};
 
 /** A leaf's literal operands — the elements for in/notIn/between. Null when the comparison
  *  value is a `path` ref or a `bind` token: a runtime value, unknown at gate time. */
@@ -34,15 +25,18 @@ export const ruleLiterals = (cond: {
   return [v];
 };
 
-const isDate = (v: unknown): boolean => isDateInputValue(v) && parseDateValue(v, 'UTC').isValid();
+// A date the compilers can turn into an instant — through check()'s own DateTime coercion,
+// the seam compileFieldLiteral emits from, so the gate accepts exactly what compiles.
+const isDate = (v: unknown): boolean => Number.isFinite(applyCoercion(v, FieldKind.DateTime));
 
-// What a literal must be to compare against a column of each kind — the values every rail
-// accepts. Json and Bytes carry no value-taking operator the catalog allows, so any passes.
+// What a literal must be to compare against a column of each kind — JSON values only, the
+// ones every rail accepts. Decimal compares as a float. Json and Bytes carry no value-taking
+// operator the catalog allows, so any passes.
 const LITERAL_FIT: Record<FieldKind, { expected: string; fits: (v: unknown) => boolean }> = {
   String: { expected: 'a string', fits: (v) => typeof v === 'string' },
   Enum: { expected: 'a string', fits: (v) => typeof v === 'string' },
-  Int: { expected: 'an integer', fits: Number.isInteger },
-  BigInt: { expected: 'an integer', fits: (v) => Number.isInteger(v) || typeof v === 'bigint' },
+  Int: { expected: 'an integer', fits: Number.isSafeInteger },
+  BigInt: { expected: 'an integer', fits: Number.isSafeInteger },
   Float: { expected: 'a number', fits: Number.isFinite },
   Decimal: { expected: 'a number', fits: Number.isFinite },
   Boolean: { expected: 'a boolean', fits: (v) => typeof v === 'boolean' },
@@ -52,7 +46,11 @@ const LITERAL_FIT: Record<FieldKind, { expected: string; fits: (v: unknown) => b
 };
 
 const show = (v: unknown): string =>
-  typeof v === 'string' ? `'${v}'` : typeof v === 'bigint' ? `${v}n` : JSON.stringify(v);
+  typeof v === 'string'
+    ? `'${v}'`
+    : typeof v === 'object' && v !== null
+      ? JSON.stringify(v)
+      : String(v);
 
 /**
  * Operator ⇄ kind, then literal ⇄ kind, for a field or date leaf. The kind is the rule's

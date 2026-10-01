@@ -2,7 +2,7 @@ import { get } from 'lodash-es';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { Operator } from '../operator';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
-import { walkFieldPath } from '../toPrisma/mapWalk';
+import { compileFieldLiteral, walkFieldPath } from '../toPrisma/mapWalk';
 import type { FieldMap } from '../toPrisma/types';
 import type { Rule } from '../types';
 import { escapeIdentifier } from './escape';
@@ -15,12 +15,16 @@ import type { BuilderState } from './types';
 // Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
 // ported). Field map is the authority, a stamped coerceType the fallback; with
 // neither, the legacy two-branch shape stays so an untyped String field keeps it.
-const acceptsEmptyString = (rule: Rule, state: BuilderState): boolean => {
+const directEntry = (rule: Pick<Rule, 'field'>, state: BuilderState) => {
   const walk =
     state.map && state.currentModel
       ? walkFieldPath(rule.field, state.map as FieldMap, state.currentModel)
       : undefined;
-  const entry = walk?.kind === 'direct' ? walk.entry : undefined;
+  return walk?.kind === 'direct' ? walk.entry : undefined;
+};
+
+const acceptsEmptyString = (rule: Rule, state: BuilderState): boolean => {
+  const entry = directEntry(rule, state);
   if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
   return (
     rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
@@ -159,6 +163,15 @@ const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
  * - neither set           → { type: 'value', value: undefined } for no-value operators
  */
 const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
+  const rhs = resolveRawComparison(rule, state);
+  if (rhs.type === 'column') return rhs;
+  return {
+    type: 'value',
+    value: compileFieldLiteral(rule, rhs.value, directEntry(rule, state), 'toSql'),
+  };
+};
+
+const resolveRawComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
   if (rule.value !== undefined) {
     return { type: 'value', value: rule.value };
   }

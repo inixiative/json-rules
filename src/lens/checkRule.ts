@@ -1,7 +1,8 @@
 import { parseScopeRef, resolveScopeRef } from '../scope';
+import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
-import { arrayFitViolation, entryKind, leafFitViolations, ruleLiterals } from './fieldFit.ts';
+import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
 import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';

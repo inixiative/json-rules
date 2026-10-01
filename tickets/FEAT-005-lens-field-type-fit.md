@@ -34,12 +34,13 @@ The rails disagree, and no rail can actually evaluate the rule.
 - [x] `arrayOperator` only on a list (to-many relation or bridge, scalar list, Json)
 - [x] Every "must not start failing" case in the plan covered by an acceptance test
 - [x] PGlite differential: accepted rules execute and agree with `check()`; rejected rules Postgres refuses are shown to throw
+- [x] Literals are JSON values only: no `bigint`, Decimal compares as a float, safe integers for Int / BigInt
+- [x] `toPrisma` / `toSql` compile DateTime field-operator literals to Dates through `check()`'s coercion (Prisma 6.19 rejected day-only, zoneless and epoch-ms literals)
+- [x] `toPrisma` / `toSql` throw on a `coerceType` that overrides the column's kind
 - [x] CHANGELOG entry names the new violation reasons
 - [ ] Released on the train
 
 ## Follow-ups (not in scope)
 
 - `aggregate.field` must be numeric for `sum` / `avg`.
-- `toPrisma` ignores `coerceType`, so a String column coerced to Int still compiles the raw
-  literal against the text column.
 - `toPrisma` compiles field operators on scalar lists without `has` / `hasSome`.

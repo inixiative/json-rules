@@ -161,8 +161,30 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
 
   test('bigint literal built in code against a String field is reported, not thrown', () => {
     expect(reasons({ field: 'name', operator: Operator.equals, value: 10n })).toEqual([
-      "value 10n does not fit String field 'name' (expected a string)",
+      "value 10 does not fit String field 'name' (expected a string)",
     ]);
+  });
+
+  test('a bigint is not JSON: rejected even on a BigInt field', () => {
+    expect(reasons({ field: 'big', operator: Operator.greaterThan, value: 10n })).toEqual([
+      "value 10 does not fit BigInt field 'big' (expected an integer)",
+    ]);
+  });
+
+  test('an integer past the safe range against an Int or BigInt field', () => {
+    expect(run({ field: 'big', operator: Operator.equals, value: 2 ** 53 }).ok).toBe(false);
+  });
+
+  test('a numeric string against a Decimal field — Decimal compares as a float', () => {
+    expect(reasons({ field: 'amount', operator: Operator.equals, value: '1.50' })).toEqual([
+      "value '1.50' does not fit Decimal field 'amount' (expected a number)",
+    ]);
+  });
+
+  test('an invalid Date against a DateTime field', () => {
+    expect(run({ field: 'createdAt', operator: Operator.equals, value: new Date('x') }).ok).toBe(
+      false,
+    );
   });
 
   test('fraction against an Int or BigInt field', () => {
@@ -309,6 +331,13 @@ describe('checkRuleAgainstLens — rules that must stay valid', () => {
     'epoch-ms number on a DateTime field': [
       { field: 'createdAt', operator: Operator.lessThan, value: 1_790_000_000_000 },
     ],
+    'Date instance and epoch-ms string on a DateTime field': [
+      {
+        field: 'createdAt',
+        operator: Operator.between,
+        value: [new Date('2026-09-01T00:00:00Z'), '1790000000000'],
+      },
+    ],
     'relative date: ago': [
       { field: 'createdAt', dateOperator: DateOperator.after, value: { ago: { hours: 1 } } },
     ],
@@ -374,9 +403,6 @@ describe('checkRuleAgainstLens — rules that must stay valid', () => {
       },
     ],
     'Boolean literal': [{ field: 'active', operator: Operator.notEquals, value: false }],
-    'bigint literal built in code on a BigInt field': [
-      { field: 'big', operator: Operator.greaterThan, value: 10n },
-    ],
     'String operators on a String field': [
       {
         any: [

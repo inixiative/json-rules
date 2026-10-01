@@ -167,12 +167,18 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
 
   test('a bigint is not JSON: rejected even on a BigInt field', () => {
     expect(reasons({ field: 'big', operator: Operator.greaterThan, value: 10n })).toEqual([
-      "value 10 does not fit BigInt field 'big' (expected an integer)",
+      "value 10 does not fit BigInt field 'big' (expected an integer or a digit string)",
     ]);
   });
 
   test('an integer past the safe range against an Int or BigInt field', () => {
+    expect(run({ field: 'count', operator: Operator.equals, value: 2 ** 53 }).ok).toBe(false);
     expect(run({ field: 'big', operator: Operator.equals, value: 2 ** 53 }).ok).toBe(false);
+  });
+
+  test('a non-digit string against a BigInt field', () => {
+    expect(run({ field: 'big', operator: Operator.equals, value: '12a' }).ok).toBe(false);
+    expect(run({ field: 'big', operator: Operator.equals, value: '1.5' }).ok).toBe(false);
   });
 
   test('a numeric string against a Decimal field — Decimal compares as a float', () => {
@@ -403,6 +409,9 @@ describe('checkRuleAgainstLens — rules that must stay valid', () => {
       },
     ],
     'Boolean literal': [{ field: 'active', operator: Operator.notEquals, value: false }],
+    'digit strings on a BigInt field — the lossless JSON spelling': [
+      { field: 'big', operator: Operator.in, value: ['9007199254740993', '-1', '42'] },
+    ],
     'String operators on a String field': [
       {
         any: [

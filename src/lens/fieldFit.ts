@@ -36,7 +36,12 @@ const LITERAL_FIT: Record<FieldKind, { expected: string; fits: (v: unknown) => b
   String: { expected: 'a string', fits: (v) => typeof v === 'string' },
   Enum: { expected: 'a string', fits: (v) => typeof v === 'string' },
   Int: { expected: 'an integer', fits: Number.isSafeInteger },
-  BigInt: { expected: 'an integer', fits: Number.isSafeInteger },
+  // A digit string is the lossless JSON spelling of a BigInt (past 2^53, and what a serializer
+  // emits for one); Prisma, Postgres and check()'s coercion all take it.
+  BigInt: {
+    expected: 'an integer or a digit string',
+    fits: (v) => Number.isSafeInteger(v) || (typeof v === 'string' && /^-?\d+$/.test(v)),
+  },
   Float: { expected: 'a number', fits: Number.isFinite },
   Decimal: { expected: 'a number', fits: Number.isFinite },
   Boolean: { expected: 'a boolean', fits: (v) => typeof v === 'boolean' },

@@ -17,7 +17,9 @@ the builder's operator picker already uses.
   `value 123 does not fit String field 'name' (expected a string)`. For `in`, `notIn`,
   `between` and `notBetween`, each element is checked.
   - String and enum columns take a string.
-  - Int and BigInt take a safe integer. A `bigint` is not JSON and is rejected.
+  - Int takes a safe integer. BigInt takes a safe integer or a digit string (`'9007199254740993'`),
+    the lossless JSON spelling of a BigInt; Prisma, Postgres and `check()` all accept it.
+    A `bigint` is not JSON and is rejected.
   - Float and Decimal take a finite number. Decimal compares as a float; `'1.50'` is
     rejected.
   - Boolean takes a boolean.

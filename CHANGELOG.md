@@ -34,7 +34,7 @@ the builder's operator picker already uses.
   - The violation reads `value 'abc' does not fit field 'name' coerced to Int (expected an integer)`.
 - **arrayOperator ⇄ cardinality.** An array operator on a field that is not a list is a
   violation, and its `condition` / `filter` are not walked:
-  `arrayOperator 'any' needs a list, but 'account' is a to-one relation`. The same applies
+  `arrayOperator 'any' needs a list, but 'account' is a to-one relation — a single related record; address its fields directly (e.g. 'account.<field>')`. The same applies
   to `… is a single String value` for a scalar. These count as lists: a to-many relation,
   a `oneToMany` bridge, a scalar list and a Json column. An object relation with no
   `isList` is treated as to-one.

@@ -294,7 +294,8 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
       violations: [
         {
           path: 'account',
-          reason: "arrayOperator 'any' needs a list, but 'account' is a to-one relation",
+          reason:
+            "arrayOperator 'any' needs a list, but 'account' is a to-one relation — a single related record; address its fields directly (e.g. 'account.<field>')",
         },
       ],
     });
@@ -312,7 +313,7 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
 
   test('notEmpty on a to-one bridge', () => {
     expect(reasons({ field: 'crm:Contact', arrayOperator: ArrayOperator.notEmpty })).toEqual([
-      "arrayOperator 'notEmpty' needs a list, but 'crm:Contact' is a to-one relation",
+      "arrayOperator 'notEmpty' needs a list, but 'crm:Contact' is a to-one relation — a single related record; address its fields directly (e.g. 'crm:Contact.<field>')",
     ]);
   });
 

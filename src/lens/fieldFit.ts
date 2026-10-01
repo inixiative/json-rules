@@ -137,12 +137,9 @@ export const arrayFitViolation = (
   entry: FieldMapEntry,
 ): RuleLensViolation | null => {
   if (entry.isList === true || isJsonEntry(entry)) return null;
-  const single =
+  const reason =
     entry.kind === 'object' || entry.kind === 'bridge'
-      ? 'a to-one relation'
-      : `a single ${entryKind(entry) ?? entry.type} value`;
-  return {
-    path: field,
-    reason: `arrayOperator '${arrayOperator}' needs a list, but '${field}' is ${single}`,
-  };
+      ? `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a to-one relation — a single related record; address its fields directly (e.g. '${field}.<field>')`
+      : `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a single ${entryKind(entry) ?? entry.type} value`;
+  return { path: field, reason };
 };

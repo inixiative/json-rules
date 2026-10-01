@@ -6,7 +6,7 @@ import {
   FieldKind,
 } from '../operatorCatalog';
 import { own } from '../own';
-import { entryKind } from '../toPrisma/mapWalk';
+import { entryKind, instantMs } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';
 import type { RuleLensViolation } from './checkRule.ts';
@@ -25,12 +25,14 @@ export const ruleLiterals = (cond: {
   return [v];
 };
 
-// A date the compilers can turn into an instant — through check()'s own DateTime coercion,
-// the seam compileFieldLiteral emits from, so the gate accepts exactly what compiles.
-const isDate = (v: unknown): boolean => Number.isFinite(applyCoercion(v, FieldKind.DateTime));
+// A date the compilers can turn into an instant — the seam compileFieldLiteral emits from, so the
+// gate accepts exactly what compiles.
+const isDate = (v: unknown): boolean => instantMs(v) !== undefined;
+
+const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
 
 // What a literal must be to compare against a column of each kind — JSON values only, the
-// ones every rail accepts. Decimal compares as a float. Json and Bytes carry no value-taking
+// ones every rail accepts. Json and Bytes carry no value-taking
 // operator the catalog allows, so any passes.
 const LITERAL_FIT: Record<FieldKind, { expected: string; fits: (v: unknown) => boolean }> = {
   String: { expected: 'a string', fits: (v) => typeof v === 'string' },
@@ -43,7 +45,12 @@ const LITERAL_FIT: Record<FieldKind, { expected: string; fits: (v: unknown) => b
     fits: (v) => Number.isSafeInteger(v) || (typeof v === 'string' && /^-?\d+$/.test(v)),
   },
   Float: { expected: 'a number', fits: Number.isFinite },
-  Decimal: { expected: 'a number', fits: Number.isFinite },
+  // A numeric string is the lossless JSON spelling of a Decimal (what a builder keeps, since
+  // Number() would round it); Prisma and Postgres take it as written.
+  Decimal: {
+    expected: 'a number or a numeric string',
+    fits: (v) => Number.isFinite(v) || (typeof v === 'string' && NUMERIC_STRING.test(v)),
+  },
   Boolean: { expected: 'a boolean', fits: (v) => typeof v === 'boolean' },
   DateTime: { expected: 'a date', fits: isDate },
   Json: { expected: 'a value', fits: () => true },
@@ -57,12 +64,14 @@ const show = (v: unknown): string =>
       ? JSON.stringify(v)
       : String(v);
 
+// Operators that compare one value: a list literal is a value no rail can compare.
+const SINGLE_VALUE_SHAPES: ReadonlySet<string> = new Set(['scalar', 'ordered', 'string']);
+
 /**
  * Operator ⇄ kind, then literal ⇄ kind, for a field or date leaf. The kind is the rule's
- * `coerceType` when set, else the declared entry's; unknown means nothing to gate. A literal
- * is coerced first (check()'s own coercion) only when `coerceType` OVERRIDES the declared kind:
- * a stamp equal to the column's kind adds no information, and the compilers do not coerce
- * literals, so the raw literal must already fit.
+ * `coerceType` when set, else the declared entry's; unknown means nothing to gate. With a
+ * `coerceType` the literal fits as written or after check()'s own coercion — the coercion
+ * compileFieldLiteral applies too, so every rail compares the same value.
  */
 export const leafFitViolations = (
   cond: Rule | DateRule,
@@ -96,9 +105,20 @@ export const leafFitViolations = (
   if ('dateOperator' in cond || entry.valueShape === 'none' || entry.valueShape === 'pattern')
     return [];
 
+  if (SINGLE_VALUE_SHAPES.has(entry.valueShape) && Array.isArray(cond.value)) {
+    return [
+      {
+        path: cond.field,
+        reason: `operator '${op}' compares one value, but ${label} was given a list`,
+      },
+    ];
+  }
+
   const { expected, fits } = LITERAL_FIT[kind];
+  const fitsAsCompiled = (v: unknown): boolean =>
+    fits(v) || (coerceType !== undefined && fits(applyCoercion(v, kind)));
   return (ruleLiterals(cond) ?? [])
-    .filter((v) => v !== null && !fits(coerced ? applyCoercion(v, kind) : v))
+    .filter((v) => v !== null && !fitsAsCompiled(v))
     .map((v) => ({
       path: cond.field,
       reason: `value ${show(v)} does not fit ${label} (expected ${expected})`,

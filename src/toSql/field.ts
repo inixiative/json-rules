@@ -15,11 +15,13 @@ import type { BuilderState } from './types';
 // Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
 // ported). Field map is the authority, a stamped coerceType the fallback; with
 // neither, the legacy two-branch shape stays so an untyped String field keeps it.
+const fieldWalk = (rule: Pick<Rule, 'field'>, state: BuilderState) =>
+  state.map && state.currentModel
+    ? walkFieldPath(rule.field, state.map as FieldMap, state.currentModel)
+    : undefined;
+
 const directEntry = (rule: Pick<Rule, 'field'>, state: BuilderState) => {
-  const walk =
-    state.map && state.currentModel
-      ? walkFieldPath(rule.field, state.map as FieldMap, state.currentModel)
-      : undefined;
+  const walk = fieldWalk(rule, state);
   return walk?.kind === 'direct' ? walk.entry : undefined;
 };
 
@@ -167,7 +169,7 @@ const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
   if (rhs.type === 'column') return rhs;
   return {
     type: 'value',
-    value: compileFieldLiteral(rule, rhs.value, directEntry(rule, state), 'toSql'),
+    value: compileFieldLiteral(rule, rhs.value, fieldWalk(rule, state), 'toSql'),
   };
 };
 

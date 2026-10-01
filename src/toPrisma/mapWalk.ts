@@ -83,39 +83,66 @@ export const entryKind = (entry: FieldMapEntry): FieldKind | undefined => {
   return Object.hasOwn(FieldKind, entry.type) ? (entry.type as FieldKind) : undefined;
 };
 
-// A DateTime literal as the instant check() compares: the same coercion seam (Date, ISO with
-// or without a zone, day-only, epoch ms — zoneless anchors in UTC), emitted as a Date because
-// Prisma accepts nothing less than a zoned ISO-8601 instant and Postgres would read a bare
-// string in the session's zone.
+/** Epoch ms of a DateTime literal through check()'s own DateTime coercion (Date, ISO with or
+ *  without a zone, day-only, epoch ms or digits; zoneless anchors in UTC) — undefined when it
+ *  is not a representable instant. The gate and both compilers read dates through this seam. */
+export const instantMs = (value: unknown): number | undefined => {
+  const ms = applyCoercion(value, FieldKind.DateTime);
+  return typeof ms === 'number' && !Number.isNaN(new Date(ms).getTime()) ? ms : undefined;
+};
+
+// Prisma takes a Date. toSql takes the zoned ISO string: a pg driver serializes a Date param in
+// the HOST's zone, which a `timestamp` (no time zone) column — Prisma's Postgres default —
+// silently drops; a `...Z` string casts to the same instant on either column type.
 const toInstant =
-  (field: string) =>
+  (field: string, target: CompileTarget) =>
   (value: unknown): unknown => {
     if (value === null || value === undefined) return value;
-    const ms = applyCoercion(value, FieldKind.DateTime);
-    if (typeof ms !== 'number' || !Number.isFinite(ms))
+    const ms = instantMs(value);
+    if (ms === undefined)
       throw new Error(`Invalid date value for DateTime field '${field}': ${String(value)}`);
-    return new Date(ms);
+    return target === 'toPrisma' ? new Date(ms) : new Date(ms).toISOString();
   };
 
+type CompileTarget = 'toPrisma' | 'toSql';
+
+// Kinds whose stamped literal the compilers coerce exactly as check() does — Prisma rejects a
+// string on these. Decimal and BigInt keep their literal: Prisma and Postgres take the numeric
+// string losslessly, and coercing it to a JS number would not be.
+const COMPILE_COERCED: ReadonlySet<FieldKind> = new Set([
+  FieldKind.Int,
+  FieldKind.Float,
+  FieldKind.Boolean,
+  FieldKind.String,
+]);
+
 /**
- * A field rule's comparison value as a compiler must emit it for the column it targets
- * (`entry`, when the map declares one). The compiled query compares the column as stored, so
- * a `coerceType` that overrides the declared kind has no compiled equivalent and throws; a
- * stamp equal to the declared kind is a no-op. A DateTime column (declared, or a stamped
- * `coerceType` when no map is passed) gets its literals as Dates.
+ * A field rule's comparison value as a compiler must emit it for the column `walk` reached. The
+ * compiled query compares the column as stored, so a `coerceType` that overrides the declared
+ * kind has no compiled equivalent and throws; a stamp equal to it coerces the literal the way
+ * check() does. A DateTime column (declared, or a stamped `coerceType` when no map is passed)
+ * gets its literals as instants. A Json sub-path or a scalar list declares no kind: unchanged.
  */
 export const compileFieldLiteral = (
   rule: Pick<Rule, 'field' | 'coerceType'>,
   value: unknown,
-  entry: FieldMapEntry | undefined,
-  target: 'toPrisma' | 'toSql',
+  walk: MapWalkResult | undefined,
+  target: CompileTarget,
 ): unknown => {
+  if (value === null || value === undefined || walk?.kind === 'json-path') return value;
+  const entry = walk?.kind === 'direct' ? walk.entry : undefined;
+  if (entry?.isList) return value;
   const declared = entry ? entryKind(entry) : undefined;
   if (rule.coerceType !== undefined && declared !== undefined && rule.coerceType !== declared)
     throw new Error(
       `coerceType '${rule.coerceType}' overrides ${declared} field '${rule.field}', but ${target} compares the column as stored — evaluate it in memory with check(), or drop the override.`,
     );
-  if ((declared ?? rule.coerceType) !== FieldKind.DateTime) return value;
-  const instant = toInstant(rule.field);
-  return Array.isArray(value) ? value.map(instant) : instant(value);
+  const kind = declared ?? rule.coerceType;
+  if (kind === FieldKind.DateTime) {
+    const instant = toInstant(rule.field, target);
+    return Array.isArray(value) ? value.map(instant) : instant(value);
+  }
+  return rule.coerceType !== undefined && COMPILE_COERCED.has(rule.coerceType)
+    ? applyCoercion(value, rule.coerceType)
+    : value;
 };

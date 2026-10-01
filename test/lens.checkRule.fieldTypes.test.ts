@@ -21,6 +21,7 @@ const db: FieldMap = {
         meta: { kind: 'scalar', type: 'Json' },
         blob: { kind: 'scalar', type: 'Bytes' },
         tags: { kind: 'scalar', type: 'String', isList: true },
+        nums: { kind: 'scalar', type: 'Int', isList: true },
         legacy: { kind: 'scalar', type: 'Text' },
         crmId: { kind: 'scalar', type: 'String' },
         account: { kind: 'object', type: 'Account', isList: false },
@@ -181,9 +182,9 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
     expect(run({ field: 'big', operator: Operator.equals, value: '1.5' }).ok).toBe(false);
   });
 
-  test('a numeric string against a Decimal field — Decimal compares as a float', () => {
-    expect(reasons({ field: 'amount', operator: Operator.equals, value: '1.50' })).toEqual([
-      "value '1.50' does not fit Decimal field 'amount' (expected a number)",
+  test('a non-numeric string against a Decimal field', () => {
+    expect(reasons({ field: 'amount', operator: Operator.equals, value: '1.5x' })).toEqual([
+      "value '1.5x' does not fit Decimal field 'amount' (expected a number or a numeric string)",
     ]);
   });
 
@@ -243,14 +244,28 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
     ).toEqual(["value 'abc' does not fit field 'name' coerced to Int (expected an integer)"]);
   });
 
-  test('a coerceType equal to the declared kind is a stamp — the raw literal must fit', () => {
-    // stampCoercions() stamps every leaf; the compilers do not coerce literals, so a stamp
-    // must not launder a literal the column rejects.
-    expect(
-      reasons({ field: 'name', operator: Operator.equals, value: 123, coerceType: 'String' }),
-    ).toEqual(["value 123 does not fit String field 'name' (expected a string)"]);
+  test('a stamp coerces the literal the way check() and the compilers do', () => {
+    // stampCoercions() stamps every leaf; with the stamp, check(), toPrisma and toSql all coerce
+    // '5' to 5, so it fits. Without one, the compilers pass '5' raw and Prisma rejects it.
     expect(
       run({ field: 'count', operator: Operator.equals, value: '5', coerceType: 'Int' }).ok,
+    ).toBe(true);
+    expect(run({ field: 'count', operator: Operator.equals, value: '5' }).ok).toBe(false);
+    expect(
+      reasons({ field: 'count', operator: Operator.in, value: ['1', 'x'], coerceType: 'Int' }),
+    ).toEqual(["value 'x' does not fit Int field 'count' (expected an integer)"]);
+  });
+
+  test('a list literal on a single-value operator', () => {
+    expect(reasons({ field: 'name', operator: Operator.equals, value: ['a'] })).toEqual([
+      "operator 'equals' compares one value, but String field 'name' was given a list",
+    ]);
+  });
+
+  test('an epoch past the representable range against a DateTime field', () => {
+    expect(run({ field: 'createdAt', operator: Operator.equals, value: 1e20 }).ok).toBe(false);
+    expect(
+      run({ field: 'createdAt', operator: Operator.equals, value: '99999999999999999' }).ok,
     ).toBe(false);
   });
 });
@@ -409,6 +424,20 @@ describe('checkRuleAgainstLens — rules that must stay valid', () => {
       },
     ],
     'Boolean literal': [{ field: 'active', operator: Operator.notEquals, value: false }],
+    'numeric strings on a Decimal field — the lossless JSON spelling a builder keeps': [
+      {
+        field: 'amount',
+        operator: Operator.greaterThan,
+        value: '100.10',
+        coerceType: 'Decimal',
+      },
+    ],
+    'stamped Int literals from a text input': [
+      { field: 'count', operator: Operator.in, value: ['1', '2'], coerceType: 'Int' },
+    ],
+    'contains on a stamped Int scalar list — list operators are not field-kind gated': [
+      { field: 'nums', operator: Operator.contains, value: 3, coerceType: 'Int' },
+    ],
     'digit strings on a BigInt field — the lossless JSON spelling': [
       { field: 'big', operator: Operator.in, value: ['9007199254740993', '-1', '42'] },
     ],

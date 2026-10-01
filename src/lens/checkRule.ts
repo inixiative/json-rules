@@ -154,7 +154,12 @@ const visit = (
 
   // Operator and literal against the field's kind (an aggregate's operator compares the
   // aggregate, not the field).
-  if (!('aggregate' in cond) && ('operator' in cond || 'dateOperator' in cond)) {
+  // A scalar list's elements carry the kind (a stamp names it), but its operators test the list.
+  if (
+    !('aggregate' in cond) &&
+    !terminalEntry?.isList &&
+    ('operator' in cond || 'dateOperator' in cond)
+  ) {
     violations.push(
       ...leafFitViolations(cond, terminalEntry ? entryKind(terminalEntry) : undefined),
     );

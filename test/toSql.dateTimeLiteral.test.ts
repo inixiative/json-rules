@@ -22,13 +22,13 @@ const map: FieldMap = {
 };
 const opts = { map, model: 'events' };
 
-describe('toSql — DateTime field-operator literals compile to Dates', () => {
-  it('a day-only literal becomes a Date param', () => {
+describe('toSql — DateTime field-operator literals compile to instants', () => {
+  it('a day-only literal becomes a zoned ISO param — a Date would serialize in the host zone', () => {
     const { params } = toSql(
       { field: 'createdAt', operator: Operator.greaterThan, value: '2026-09-01' },
       opts,
     );
-    expect(params).toEqual([new Date('2026-09-01T00:00:00Z')]);
+    expect(params).toEqual(['2026-09-01T00:00:00.000Z']);
   });
 
   it('a coerceType that overrides the column kind throws', () => {
@@ -59,8 +59,15 @@ describe('toSql DateTime literals vs check() in a non-UTC session (PGlite)', () 
     db = new PGlite();
     await db.exec(`SET TIME ZONE 'America/New_York'`);
     await db.exec(`CREATE TABLE events (name TEXT, "createdAt" TIMESTAMPTZ)`);
-    for (const r of rows)
+    // Prisma's Postgres DateTime default: no time zone, the instant stored as its UTC wall time.
+    await db.exec(`CREATE TABLE events_naive (name TEXT, "createdAt" TIMESTAMP(3))`);
+    for (const r of rows) {
       await db.query(`INSERT INTO events VALUES ($1, $2)`, [r.name, r.createdAt]);
+      await db.query(`INSERT INTO events_naive VALUES ($1, ($2::timestamptz AT TIME ZONE 'UTC'))`, [
+        r.name,
+        r.createdAt,
+      ]);
+    }
   });
 
   afterAll(async () => {
@@ -88,20 +95,21 @@ describe('toSql DateTime literals vs check() in a non-UTC session (PGlite)', () 
     },
   };
 
-  for (const [label, rule] of Object.entries(cases)) {
-    it(`agrees with check(): ${label}`, async () => {
-      const { sql, params } = toSql(rule, opts);
-      const viaSql = (
-        await db.query<{ name: string }>(
-          `SELECT name FROM events AS "t0" WHERE ${sql} ORDER BY name`,
-          params,
-        )
-      ).rows.map((r) => r.name);
-      const inMemory = rows
-        .filter((r) => check(rule, r) === true)
-        .map((r) => r.name)
-        .sort();
-      expect(viaSql).toEqual(inMemory);
-    });
-  }
+  for (const [label, rule] of Object.entries(cases))
+    for (const table of ['events', 'events_naive']) {
+      it(`agrees with check() on ${table}: ${label}`, async () => {
+        const { sql, params } = toSql(rule, opts);
+        const viaSql = (
+          await db.query<{ name: string }>(
+            `SELECT name FROM ${table} AS "t0" WHERE ${sql} ORDER BY name`,
+            params,
+          )
+        ).rows.map((r) => r.name);
+        const inMemory = rows
+          .filter((r) => check(rule, r) === true)
+          .map((r) => r.name)
+          .sort();
+        expect(viaSql).toEqual(inMemory);
+      });
+    }
 });

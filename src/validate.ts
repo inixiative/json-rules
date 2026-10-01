@@ -1,4 +1,4 @@
-import { isRangeOperator, parseDateValue } from './date';
+import { isDateInputValue, isRangeOperator, parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
@@ -15,7 +15,7 @@ import {
   type ValueShape,
 } from './operatorCatalog';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
-import type { ArrayRule, Condition, DateExpr, DateInputValue, OrderedRuleValue } from './types';
+import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
 import { extremalRewrite } from './window';
 
 const PERIOD_UNITS = new Set([
@@ -801,9 +801,6 @@ const isNumericRange = (value: unknown): value is [number, number] =>
   value.length === 2 &&
   typeof value[0] === 'number' &&
   typeof value[1] === 'number';
-
-const isDateInputValue = (value: unknown): value is DateInputValue =>
-  typeof value === 'string' || typeof value === 'number' || value instanceof Date;
 
 const isDateRangeOrExprPair = (value: unknown): boolean =>
   Array.isArray(value) &&

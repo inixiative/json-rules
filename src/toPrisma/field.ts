@@ -8,7 +8,7 @@ import {
 import { Operator } from '../operator';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { Rule } from '../types';
-import { optionalToOneHops, walkFieldPath } from './mapWalk';
+import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -29,11 +29,13 @@ const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
   );
 };
 
+const fieldWalk = (rule: Pick<Rule, 'field'>, options?: BuildOptions) =>
+  options?.map && options?.model
+    ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
+    : undefined;
+
 const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
-  const walk =
-    options?.map && options?.model
-      ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
-      : undefined;
+  const walk = fieldWalk(rule, options);
   return walk?.kind === 'direct' ? walk.entry : undefined;
 };
 
@@ -150,7 +152,10 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
  * - rule.path starting with '$.' → throw: Prisma WHERE has no column-to-column comparison
  * - rule.path (context ref) → look up from options.context via lodash get
  */
-const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
+const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown =>
+  compileFieldLiteral(rule, resolveRawValue(rule, options), fieldWalk(rule, options), 'toPrisma');
+
+const resolveRawValue = (rule: Rule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
   if (rule.bind !== undefined) {
     if (rule.bindOptional === true) return null;

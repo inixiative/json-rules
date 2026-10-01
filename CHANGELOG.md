@@ -1,5 +1,79 @@
 # Changelog
 
+## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
+
+**Stricter validation.** A rule that passed the lens gate before can fail it now: one that
+cannot evaluate: the compiled Prisma filter throws, Postgres rejects it, or `check()` cannot
+iterate it. Literals are JSON values only. The gate reads the field kind from the resolved
+`FieldMapEntry` (or the rule's `coerceType`) and the operator's catalog `kinds`, the data
+the builder's operator picker already uses.
+
+- **Operator ⇄ field kind.** A field or date operator whose catalog `kinds` exclude the
+  field's kind is a violation:
+  `operator 'contains' does not apply to DateTime field 'createdAt' (applies to: String)`.
+  Date operators (`before`, `within`, `dayIn`, …) now fail on a non-DateTime column.
+- **Value ⇄ field kind.** A literal operand that does not fit is a violation:
+  `value 123 does not fit String field 'name' (expected a string)`. For `in`, `notIn`,
+  `between` and `notBetween`, each element is checked.
+  - String and enum columns take a string.
+  - Int takes a safe integer. BigInt takes a safe integer or a digit string (`'9007199254740993'`),
+    the lossless JSON spelling of a BigInt; Prisma, Postgres and `check()` all accept it.
+    A `bigint` is not JSON and is rejected.
+  - Float takes a finite number. Decimal takes a finite number or a numeric string
+    (`'100.10'`), the lossless spelling a rule builder keeps.
+  - An operator that compares one value (`equals`, `lessThan`, `contains`, …) rejects a list
+    literal: `operator 'equals' compares one value, but String field 'name' was given a list`.
+  - Boolean takes a boolean.
+  - DateTime takes what `check()`'s DateTime coercion turns into an instant: day-only
+    strings, ISO strings with or without a zone, epoch-ms numbers or digit strings, and
+    `Date`.
+  - `null`, `path` refs, `bind` tokens and regex patterns are not checked.
+  - With a `coerceType` (a `stampCoercions` stamp, or an override) the literal fits as
+    written or after `check()`'s own coercion, which the compilers now apply too (below), so
+    a stamped `'5'` passes on an Int column and an unstamped one does not. `toPrisma` /
+    `toSql` refuse an override at compile time (below).
+  - The violation reads `value 'abc' does not fit field 'name' coerced to Int (expected an integer)`.
+- **arrayOperator ⇄ cardinality.** An array operator on a field that is not a list is a
+  violation, and its `condition` / `filter` are not walked:
+  `arrayOperator 'any' needs a list, but 'account' is a to-one relation`. The same applies
+  to `… is a single String value` for a scalar. These count as lists: a to-many relation,
+  a `oneToMany` bridge, a scalar list and a Json column. An object relation with no
+  `isList` is treated as to-one.
+- **Not gated:**
+  - Json columns and Json sub-paths
+  - fields inside an open scope
+  - scalar lists (for field operators)
+  - relation terminals (`exists` on a relation)
+  - scalar types outside `FieldKind`
+  - aggregate thresholds
+
+**`toPrisma` / `toSql`: a stamped literal compiles the way `check()` coerces it.** With a
+`coerceType`, Int, Float, Boolean and String literals are coerced exactly as `check()` does —
+the rule builder's text inputs emit `'5'`, which Prisma rejects on an Int column. Decimal and
+BigInt literals are emitted as written: Prisma and Postgres take the numeric string
+losslessly. Json sub-paths and scalar lists declare no kind and compile as before.
+
+**`toPrisma` / `toSql`: DateTime field-operator literals compile to instants.** A field operator
+(`equals`, `lessThan`, `in`, `between`, …) on a DateTime column used to pass its literal
+through as written. Prisma accepts only a `Date` or a zoned ISO-8601 instant, so
+`createdAt gt '2026-09-01'`, a zoneless ISO string and an epoch-ms number all threw at query
+time ("Expected ISO-8601 DateTime"); Postgres cast a bare string in the session's zone
+while `check()` anchors it in UTC. Both compilers now run the literal — and a context
+`path` value — through `check()`'s own DateTime coercion, element-wise for lists, `null`
+kept. `toPrisma` emits a `Date`; `toSql` emits the zoned ISO string, because a pg driver
+serializes a `Date` param in the host's zone, which a `timestamp` (no time zone) column drops. The column is DateTime per the field map, or per a stamped
+`coerceType: 'DateTime'` when no map is passed. An unparseable literal throws at compile
+time: `Invalid date value for DateTime field 'createdAt': not-a-date`.
+
+**`toPrisma` / `toSql`: a `coerceType` that overrides the column's kind throws.** The
+compiled query compares the column as stored; neither compiler can cast it, so the override
+used to be ignored silently and the query compared the raw literal against the column. Now:
+`coerceType 'Int' overrides String field 'name', but toPrisma compares the column as stored —
+evaluate it in memory with check(), or drop the override.` Only a compared literal is
+refused: `exists`, `isEmpty`, `notEmpty`, `notExists` and `equals null` compile as before, as
+do a stamp equal to the column's kind, a column the map does not type (Json, Json sub-paths,
+scalar lists) and an unmapped field.
+
 ## 2.25.0 — `resolveLensPath`: one path through the lens, verified hop by hop
 
 - **`resolveLensPath(lens, path)`** resolves a dotted path hop by hop and returns where it lands:

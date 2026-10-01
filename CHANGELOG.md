@@ -16,9 +16,8 @@ the builder's operator picker already uses.
   `value 123 does not fit String field 'name' (expected a string)`. For `in`, `notIn`,
   `between` and `notBetween`, each element is checked.
   - String and enum columns take a string.
-  - Int takes a safe integer. BigInt takes a safe integer or a digit string (`'9007199254740993'`),
-    the lossless JSON spelling of a BigInt; Prisma, Postgres and `check()` all accept it.
-    A `bigint` is not JSON and is rejected.
+  - Int and BigInt take a safe integer (BigInt compares as Int, below). A `bigint` is not JSON
+    and is rejected.
   - Float takes a finite number. Decimal takes a finite number or a numeric string
     (`'100.10'`), the lossless spelling a rule builder keeps.
   - An operator that compares one value (`equals`, `lessThan`, `contains`, …) rejects a list
@@ -35,7 +34,7 @@ the builder's operator picker already uses.
   - The violation reads `value 'abc' does not fit field 'name' coerced to Int (expected an integer)`.
 - **arrayOperator ⇄ cardinality.** An array operator on a field that is not a list is a
   violation, and its `condition` / `filter` are not walked:
-  `arrayOperator 'any' needs a list, but 'account' is a to-one relation`. The same applies
+  `arrayOperator 'any' needs a list, but 'account' is a to-one relation — a single related record; address its fields directly (e.g. 'account.<field>')`. The same applies
   to `… is a single String value` for a scalar. These count as lists: a to-many relation,
   a `oneToMany` bridge, a scalar list and a Json column. An object relation with no
   `isList` is treated as to-one.
@@ -47,11 +46,19 @@ the builder's operator picker already uses.
   - scalar types outside `FieldKind`
   - aggregate thresholds
 
+**BigInt compares as Int, on every rail.** Prisma returns a BigInt column as a JS `bigint`,
+and `check()` failed every comparison against one: `5n === 5` is false and a `bigint` was not
+orderable, so an in-memory rule over Prisma rows never matched a BigInt column. `check()` now
+turns a `bigint` (row value, literal, binding, path ref, list element) into a number; a stamped
+BigInt digit string coerces like an Int literal, in `check()` and both compilers. The gate
+holds BigInt to Int's fit: a safe integer, or a stamped digit string. A BigInt past ±2^53
+cannot be held exactly by a number, so it throws (`RangeError: BigInt … is outside the safe
+integer range`) rather than compare wrong; the gate reports it as a misfit.
+
 **`toPrisma` / `toSql`: a stamped literal compiles the way `check()` coerces it.** With a
-`coerceType`, Int, Float, Boolean and String literals are coerced exactly as `check()` does —
-the rule builder's text inputs emit `'5'`, which Prisma rejects on an Int column. Decimal and
-BigInt literals are emitted as written: Prisma and Postgres take the numeric string
-losslessly. Json sub-paths and scalar lists declare no kind and compile as before.
+`coerceType`, Int, BigInt, Float, Boolean and String literals are coerced exactly as `check()`
+does — the rule builder's text inputs emit `'5'`, which Prisma rejects on an Int column. Decimal
+literals are emitted as written: Prisma and Postgres take the numeric string losslessly. Json sub-paths and scalar lists declare no kind and compile as before.
 
 **`toPrisma` / `toSql`: DateTime field-operator literals compile to instants.** A field operator
 (`equals`, `lessThan`, `in`, `between`, …) on a DateTime column used to pass its literal

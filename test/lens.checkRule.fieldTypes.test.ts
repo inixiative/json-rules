@@ -168,13 +168,24 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
 
   test('a bigint is not JSON: rejected even on a BigInt field', () => {
     expect(reasons({ field: 'big', operator: Operator.greaterThan, value: 10n })).toEqual([
-      "value 10 does not fit BigInt field 'big' (expected an integer or a digit string)",
+      "value 10 does not fit BigInt field 'big' (expected an integer)",
     ]);
   });
 
   test('an integer past the safe range against an Int or BigInt field', () => {
     expect(run({ field: 'count', operator: Operator.equals, value: 2 ** 53 }).ok).toBe(false);
     expect(run({ field: 'big', operator: Operator.equals, value: 2 ** 53 }).ok).toBe(false);
+  });
+
+  test('a stamped BigInt digit string past ±2^53 is reported, not thrown', () => {
+    expect(
+      reasons({
+        field: 'big',
+        operator: Operator.equals,
+        value: '9007199254740993',
+        coerceType: 'BigInt',
+      }),
+    ).toEqual(["value '9007199254740993' does not fit BigInt field 'big' (expected an integer)"]);
   });
 
   test('a non-digit string against a BigInt field', () => {
@@ -283,7 +294,8 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
       violations: [
         {
           path: 'account',
-          reason: "arrayOperator 'any' needs a list, but 'account' is a to-one relation",
+          reason:
+            "arrayOperator 'any' needs a list, but 'account' is a to-one relation — a single related record; address its fields directly (e.g. 'account.<field>')",
         },
       ],
     });
@@ -301,7 +313,7 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
 
   test('notEmpty on a to-one bridge', () => {
     expect(reasons({ field: 'crm:Contact', arrayOperator: ArrayOperator.notEmpty })).toEqual([
-      "arrayOperator 'notEmpty' needs a list, but 'crm:Contact' is a to-one relation",
+      "arrayOperator 'notEmpty' needs a list, but 'crm:Contact' is a to-one relation — a single related record; address its fields directly (e.g. 'crm:Contact.<field>')",
     ]);
   });
 
@@ -438,8 +450,8 @@ describe('checkRuleAgainstLens — rules that must stay valid', () => {
     'contains on a stamped Int scalar list — list operators are not field-kind gated': [
       { field: 'nums', operator: Operator.contains, value: 3, coerceType: 'Int' },
     ],
-    'digit strings on a BigInt field — the lossless JSON spelling': [
-      { field: 'big', operator: Operator.in, value: ['9007199254740993', '-1', '42'] },
+    'stamped digit strings on a BigInt field — BigInt compares as Int': [
+      { field: 'big', operator: Operator.in, value: ['42', '-1'], coerceType: 'BigInt' },
     ],
     'String operators on a String field': [
       {

@@ -57,7 +57,7 @@ describe('a stamped literal compiles the way check() coerces it', () => {
     ).toEqual(['5']);
   });
 
-  test('Decimal and BigInt strings stay strings — lossless, and Prisma takes them', () => {
+  test('Decimal strings stay strings — lossless, and Prisma takes them', () => {
     expect(
       prismaWhere({
         field: 'amount',
@@ -66,14 +66,15 @@ describe('a stamped literal compiles the way check() coerces it', () => {
         coerceType: 'Decimal',
       }),
     ).toEqual({ amount: { gt: '12345678901234567890.5' } });
+  });
+
+  test('a stamped BigInt literal compiles as an Int', () => {
     expect(
-      sqlParams({
-        field: 'big',
-        operator: Operator.equals,
-        value: '9007199254740993',
-        coerceType: 'BigInt',
-      }),
-    ).toEqual(['9007199254740993']);
+      sqlParams({ field: 'big', operator: Operator.equals, value: '42', coerceType: 'BigInt' }),
+    ).toEqual([42]);
+    expect(
+      prismaWhere({ field: 'big', operator: Operator.in, value: ['1', 2], coerceType: 'BigInt' }),
+    ).toEqual({ big: { in: [1, 2] } });
   });
 
   test('an unstamped literal passes through as written', () => {
@@ -146,5 +147,18 @@ describe('an epoch past the representable range', () => {
     };
     expect(() => toPrisma(rule)).toThrow("Invalid date value for DateTime field 'createdAt'");
     expect(() => toSql(rule)).toThrow("Invalid date value for DateTime field 'createdAt'");
+  });
+});
+
+describe('a stamped BigInt literal past ±2^53', () => {
+  test('throws at compile time instead of rounding', () => {
+    const rule: Rule = {
+      field: 'big',
+      operator: Operator.equals,
+      value: '9007199254740993',
+      coerceType: 'BigInt',
+    };
+    expect(() => toPrisma(rule, opts)).toThrow('outside the safe integer range');
+    expect(() => toSql(rule, opts)).toThrow('outside the safe integer range');
   });
 });

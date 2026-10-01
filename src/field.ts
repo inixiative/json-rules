@@ -21,11 +21,34 @@ const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'D
 // A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
 const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
+// BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
+// number on every side of a comparison, so 5n matches 5. Past ±2^53 a number cannot hold it
+// exactly and every comparison would be silently wrong, so that throws instead.
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
+export const bigIntToNumber = (value: bigint): number => {
+  if (value > MAX_SAFE || value < -MAX_SAFE)
+    throw new RangeError(
+      `BigInt ${value} is outside the safe integer range (±2^53); json-rules compares BigInt as Int.`,
+    );
+  return Number(value);
+};
+
+const fromBigInt = (value: unknown): unknown => {
+  if (typeof value === 'bigint') return bigIntToNumber(value);
+  return Array.isArray(value) && value.some((v) => typeof v === 'bigint')
+    ? value.map((v) => (typeof v === 'bigint' ? bigIntToNumber(v) : v))
+    : value;
+};
+
 const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   if (value === null || value === undefined) return value;
 
   if (NUMERIC_COERCE_KINDS.includes(kind)) {
     if (typeof value !== 'string' || value.trim() === '') return value;
+    // A BigInt digit string past the safe range would round: refuse it, as for a bigint.
+    if (kind === 'BigInt' && /^-?\d+$/.test(value.trim()))
+      return bigIntToNumber(BigInt(value.trim()));
     const num = Number(value);
     return Number.isFinite(num) ? num : value;
   }
@@ -70,7 +93,10 @@ export const checkField = (
   context: unknown,
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
-  const fieldValue = applyCoercion(readField(condition.field, scopes), condition.coerceType);
+  const fieldValue = applyCoercion(
+    fromBigInt(readField(condition.field, scopes)),
+    condition.coerceType,
+  );
 
   // Operators that don't need a value
   const noValueOps: Operator[] = [
@@ -81,7 +107,10 @@ export const checkField = (
   ];
   const needsValue = !noValueOps.includes(condition.operator);
   const value = needsValue
-    ? applyCoercion(getValue(condition, scopes, context, bindings), condition.coerceType)
+    ? applyCoercion(
+        fromBigInt(getValue(condition, scopes, context, bindings)),
+        condition.coerceType,
+      )
     : undefined;
 
   const getError = (op: string) =>

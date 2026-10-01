@@ -38,12 +38,8 @@ const LITERAL_FIT: Record<FieldKind, { expected: string; fits: (v: unknown) => b
   String: { expected: 'a string', fits: (v) => typeof v === 'string' },
   Enum: { expected: 'a string', fits: (v) => typeof v === 'string' },
   Int: { expected: 'an integer', fits: Number.isSafeInteger },
-  // A digit string is the lossless JSON spelling of a BigInt (past 2^53, and what a serializer
-  // emits for one); Prisma, Postgres and check()'s coercion all take it.
-  BigInt: {
-    expected: 'an integer or a digit string',
-    fits: (v) => Number.isSafeInteger(v) || (typeof v === 'string' && /^-?\d+$/.test(v)),
-  },
+  // BigInt compares as Int; a stamped digit string fits after coercion, like any Int literal.
+  BigInt: { expected: 'an integer', fits: Number.isSafeInteger },
   Float: { expected: 'a number', fits: Number.isFinite },
   // A numeric string is the lossless JSON spelling of a Decimal (what a builder keeps, since
   // Number() would round it); Prisma and Postgres take it as written.
@@ -115,8 +111,16 @@ export const leafFitViolations = (
   }
 
   const { expected, fits } = LITERAL_FIT[kind];
+  // A coercion that refuses its input (a BigInt past ±2^53) is a misfit, reported — never thrown.
+  const coercedFits = (v: unknown): boolean => {
+    try {
+      return fits(applyCoercion(v, kind));
+    } catch {
+      return false;
+    }
+  };
   const fitsAsCompiled = (v: unknown): boolean =>
-    fits(v) || (coerceType !== undefined && fits(applyCoercion(v, kind)));
+    fits(v) || (coerceType !== undefined && coercedFits(v));
   return (ruleLiterals(cond) ?? [])
     .filter((v) => v !== null && !fitsAsCompiled(v))
     .map((v) => ({

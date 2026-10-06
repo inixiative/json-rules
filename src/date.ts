@@ -35,13 +35,30 @@ export const RANGE_DATE_OPERATORS: readonly DateOperator[] = [
 export const isRangeOperator = (operator: string): boolean =>
   (RANGE_DATE_OPERATORS as readonly string[]).includes(operator);
 
+/**
+ * A `bind` token is the comparison value supplied at evaluation time — a date, or a date
+ * expression such as `{ ago: { seconds: 300 } }`. Same key-presence contract as a field
+ * rule's bind: an unsupplied binding throws unless `bindOptional`, and a nullish one is null.
+ */
+const withBoundValue = (condition: DateRule, bindings?: Record<string, RuleValue>): DateRule => {
+  if (condition.bind === undefined) return condition;
+  const { bind, bindOptional, ...rest } = condition;
+  if (!bindings || !Object.hasOwn(bindings, bind)) {
+    if (bindOptional === true) return { ...rest, value: null as unknown as DateRule['value'] };
+    throw new Error(`Missing binding for "${bind}"`);
+  }
+  const bound = bindings[bind];
+  return { ...rest, value: (bound === undefined ? null : bound) as DateRule['value'] };
+};
+
 export const checkDate = (
-  condition: DateRule,
+  rule: DateRule,
   scopes: Scopes,
   context: unknown,
   config: DateConfig = {},
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
+  const condition = withBoundValue(rule, bindings);
   const fieldValue = readField(condition.field, scopes);
 
   // Null: non-match for positive operators, match for negated ones (2.19.0 negation

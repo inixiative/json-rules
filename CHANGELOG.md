@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.27.0 — date rules honor `bind` in `check()`
+
+A date rule's `bind` token now resolves on the `check()` rail, as a field rule's always has.
+Before, `check()` threw `No value or path specified for date comparison` for any date rule
+with a `bind`, while `toPrisma` / `toSql` compiled the same rule after `resolveBindings` — the
+rails disagreed.
+
+- The bound value is the rule's comparison value: a date, a date expression
+  (`{ ago: { seconds: 300 } }`, resolved against `now`), or a `[from, to]` pair for
+  `between` / `notBetween`.
+- Same key-presence contract as a field rule: an unsupplied binding throws
+  `Missing binding for "<name>"` unless `bindOptional`; a supplied `undefined` is `null`.
+- **First consumer:** Zealot platform alerts. An incident's auto-resolve guard reads
+  `lastBreachedAt before { bind: 'quietWindow' }`, where each rule binds its own
+  `{ ago: { seconds: autoResolveAfterSeconds } }`. The same declaration feeds `check()` for
+  one incident and `toPrisma` (after `resolveBindings`) for the set query.
+
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 
 **Stricter validation.** A rule that passed the lens gate before can fail it now: one that

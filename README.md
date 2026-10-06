@@ -369,6 +369,50 @@ like any absent field.
 `toSql()` keeps `path: '$.x'` as a same-row column comparison. Every other scope ref — a
 `$$.` path or any prefixed `field` — is check-only; both compilers throw.
 
+### Offsets and Path Magnitudes
+
+A `path` or `bind` comparison value can be shifted by an `offset` — a literal is written
+already shifted, so `value` + `offset` is a validation error. A field rule's offset is a signed
+number; a date rule's is the rolling shape, anchored on the comparison value instead of `now`:
+
+```ts
+// score at least 10 above the account average
+{ field: 'score', operator: Operator.greaterThanEquals, path: '$.accountAverage', offset: 10 }
+
+// completed within 30 days before the created date
+{ field: 'completedAt', dateOperator: DateOperator.onOrAfter, path: '$.createdDate',
+  offset: { ago: { days: 30 } } }
+
+// a bound anchor, shifted
+{ field: 'ts', dateOperator: DateOperator.before, bind: 'anchor', offset: { ago: { days: 7 } } }
+```
+
+Any amount — a numeric offset, or a relative-date unit in an `offset` or a `value` expression —
+can itself be a `{ path }`, read from the row (`$.`) or from context. A relative window can take
+its size from the row it judges:
+
+```ts
+// quiet for longer than this incident's rule allows
+{ field: 'lastBreachedAt', dateOperator: DateOperator.before,
+  value: { ago: { seconds: { path: '$.platformAlertRule.autoResolveAfterSeconds' } } } }
+```
+
+Offsets apply to the comparison operators (`equals` … `greaterThanEquals`, `before` …
+`notAfter`) and to both ends of `between` / `notBetween`. Units apply in Postgres interval order
+— months (years, quarters, months), then days (weeks, days), then time — so every rail lands on
+the same instant at a month end. A null comparison value, offset or magnitude matches nothing
+(SQL's NULL arithmetic); a negation keeps null fields only.
+
+| | `check()` | `toSql()` | `toPrisma()` |
+| --- | --- | --- | --- |
+| literal or context amount | yes | resolved to a parameter | resolved to a value |
+| `$.` amount | yes | `col ± make_interval(…)` / `col + n` | throws |
+| `$$.` amount | yes | throws | throws |
+
+`checkRuleAgainstLens` gates offset and magnitude refs like `path` (they must resolve through
+the lens and read a number), and an offset must fit the field's kind: a number on a numeric
+field, a rolling shift on a DateTime.
+
 ## Rule Introspection
 
 Reading a stored rule's own content — which values it names, which bindings it needs — is
@@ -546,6 +590,8 @@ Not every backend supports every rule shape.
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
 | Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
+| `offset` and `{ path }` amounts — literal or context | Yes | Yes | Yes |
+| `offset` and `{ path }` amounts — `$.` row refs | Yes | No | Yes |
 | `$$.` scope refs and `$`-prefixed `field` | Yes | No | No |
 
 ### NULL Semantics

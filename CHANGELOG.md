@@ -1,21 +1,47 @@
 # Changelog
 
-## 2.27.0 — date rules honor `bind` in `check()`
+## 2.27.0 — one value-source reader; `offset` on path and bind; path-valued magnitudes
 
-A date rule's `bind` token now resolves on the `check()` rail, as a field rule's always has.
-Before, `check()` threw `No value or path specified for date comparison` for any date rule
-with a `bind`, while `toPrisma` / `toSql` compiled the same rule after `resolveBindings` — the
-rails disagreed.
+**First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident
+lifecycle is a `@inixiative/transitions` map, and its auto-resolve guard reads its window off
+the incident's own rule — self-contained, no caller-supplied bind:
 
-- The bound value is the rule's comparison value: a date, a date expression
-  (`{ ago: { seconds: 300 } }`, resolved against `now`), or a `[from, to]` pair for
-  `between` / `notBetween`.
-- Same key-presence contract as a field rule: an unsupplied binding throws
-  `Missing binding for "<name>"` unless `bindOptional`; a supplied `undefined` is `null`.
-- **First consumer:** Zealot platform alerts. An incident's auto-resolve guard reads
-  `lastBreachedAt before { bind: 'quietWindow' }`, where each rule binds its own
-  `{ ago: { seconds: autoResolveAfterSeconds } }`. The same declaration feeds `check()` for
-  one incident and `toPrisma` (after `resolveBindings`) for the set query.
+```ts
+{ field: 'lastBreachedAt', dateOperator: 'before',
+  value: { ago: { seconds: { path: '$.platformAlertRule.autoResolveAfterSeconds' } } } }
+```
+
+Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
+
+- **One reader.** `check()` resolves `value` / `bind` / `path` in one place for field, date and
+  aggregate rules (`readValueSource`, over the new `readBinding`). Date and aggregate rules
+  with a `bind` threw on `check()` while they compiled after `resolveBindings`; they now
+  resolve with the field rule's key-presence contract (`Missing binding for "<name>"` unless
+  `bindOptional`; a supplied `undefined` is `null`). A bound date value can be a date, a date
+  expression (resolved against `now`) or a `[from, to]` pair.
+- **`offset`** on a `path` or `bind` comparison value. A field rule's is a signed number or
+  `{ path }`; a date rule's is `{ ago }` / `{ ahead }`, anchored on the comparison value. It
+  shifts the comparison operators and both ends of `between` / `notBetween`.
+- **`{ path }` magnitudes.** Every `RelativeUnits` amount (in a `value` expression or an
+  `offset`) and a numeric offset take `{ path }` — `$.` from the row, bare from context.
+- **Rails.** `toSql` compiles a `$.` amount to `col ± make_interval(…)` / `col + n` and
+  resolves a context amount; `toPrisma` resolves a context amount and throws on a `$.` one.
+  Both compilers now refuse an unresolved required date bind, as they already did for fields.
+- **Validation and lens.** `validateRule` accepts `bind` as a value source (it rejected every
+  bind-only rule with `missing_value_source`), and gates offsets (`unexpected_offset`,
+  `unsupported_offset_operator`, `invalid_offset`) and amount refs per target like `path`.
+  `checkRuleAgainstLens` gates offset and magnitude refs through the lens, requires them to
+  read a number, and requires an offset to fit the field's kind; `describeRule` and
+  `applyLens` treat them as `path` refs.
+
+**Behavior changes.**
+
+- A date `path` that reads null (or nothing) fails closed. It used to compare against the
+  current time (`parseDateValue(undefined)` is `dayjs()`), so `check()` matched rows SQL
+  rejected. A null bind, offset or magnitude fails closed too; a negation keeps null fields.
+- Relative units apply in Postgres interval order — months (years, quarters, months), then days
+  (weeks, days), then time — instead of key order, so `check()` and `toSql` agree at month ends.
+- A date `path` that reads a date expression now evaluates it instead of ignoring it.
 
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 

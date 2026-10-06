@@ -8,10 +8,13 @@ import {
   resolveDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
+  rollingShift,
+  shiftByUnits,
 } from './dateExpr';
 import { DateOperator } from './operator';
 import { readField, readPath, type Scopes } from './scope';
-import type { DateConfig, DateInputValue, DateRule, RuleValue } from './types';
+import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
+import { type ReadRef, readValueSource, resolveExpr, resolveUnits } from './valueSource';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -35,30 +38,13 @@ export const RANGE_DATE_OPERATORS: readonly DateOperator[] = [
 export const isRangeOperator = (operator: string): boolean =>
   (RANGE_DATE_OPERATORS as readonly string[]).includes(operator);
 
-/**
- * A `bind` token is the comparison value supplied at evaluation time — a date, or a date
- * expression such as `{ ago: { seconds: 300 } }`. Same key-presence contract as a field
- * rule's bind: an unsupplied binding throws unless `bindOptional`, and a nullish one is null.
- */
-const withBoundValue = (condition: DateRule, bindings?: Record<string, RuleValue>): DateRule => {
-  if (condition.bind === undefined) return condition;
-  const { bind, bindOptional, ...rest } = condition;
-  if (!bindings || !Object.hasOwn(bindings, bind)) {
-    if (bindOptional === true) return { ...rest, value: null as unknown as DateRule['value'] };
-    throw new Error(`Missing binding for "${bind}"`);
-  }
-  const bound = bindings[bind];
-  return { ...rest, value: (bound === undefined ? null : bound) as DateRule['value'] };
-};
-
 export const checkDate = (
-  rule: DateRule,
+  condition: DateRule,
   scopes: Scopes,
   context: unknown,
   config: DateConfig = {},
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
-  const condition = withBoundValue(rule, bindings);
   const fieldValue = readField(condition.field, scopes);
 
   // Null: non-match for positive operators, match for negated ones (2.19.0 negation
@@ -88,7 +74,10 @@ export const checkDate = (
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
-  const dates = parseCompareDates(condition, scopes, context, exprConfig, tz);
+  const dates = parseCompareDates(condition, scopes, context, exprConfig, tz, bindings);
+  // Nothing to compare against — a null path, bind or magnitude: no operator matches, as SQL's
+  // comparison with NULL never does. A null field was already decided above.
+  if (dates === null) return condition.error || `${condition.field} has no comparison value`;
   const compareDate = dates[0];
   const endDate = dates[1];
 
@@ -184,73 +173,67 @@ const parseCompareDates = (
   context: unknown,
   config: DateConfig,
   tz: string,
-): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
-  if (isRangeOperator(condition.dateOperator)) {
-    if (!isDateExpr(condition.value))
-      throw new Error(`${condition.dateOperator} operator requires a range date expression`);
-    return resolveDateExprRange(condition.value, config);
+  bindings?: Record<string, RuleValue>,
+): [dayjs.Dayjs, dayjs.Dayjs | undefined] | null => {
+  const operator = condition.dateOperator;
+  if (operator === DateOperator.dayIn || operator === DateOperator.dayNotIn)
+    return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+
+  const read: ReadRef = (ref) => readPath(ref, scopes, context);
+  const raw = readValueSource(condition, scopes, context, bindings);
+  if (raw === null || raw === undefined) return null;
+
+  if (isRangeOperator(operator)) {
+    if (!isDateExpr(raw)) throw new Error(`${operator} operator requires a range date expression`);
+    const expr = resolveExpr(raw, read);
+    return expr && resolveDateExprRange(expr, config);
   }
 
-  const requiresTwoDates: DateOperator[] = [DateOperator.between, DateOperator.notBetween];
-
-  if (requiresTwoDates.includes(condition.dateOperator)) {
-    // `path` resolves here exactly as the one-date branch resolves it below — a rule
-    // validateRule accepts and toSql executes must not throw on the per-row rail.
-    let raw: unknown = condition.value;
-    if (raw === undefined && condition.path) raw = readPath(condition.path, scopes, context);
-    if (!Array.isArray(raw) || raw.length !== 2)
-      throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const [rawDate1, rawDate2] = raw as [unknown, unknown];
-    const date1 = isDateExpr(rawDate1)
-      ? resolveDateExpr(rawDate1, config)
-      : parseDateValue(rawDate1 as DateInputValue, tz);
-    const date2 = isDateExpr(rawDate2)
-      ? resolveDateExpr(rawDate2, config)
-      : parseDateValue(rawDate2 as DateInputValue, tz);
-    if (!date1.isValid()) throw new Error(`Invalid start date: ${String(rawDate1)}`);
-    if (!date2.isValid()) throw new Error(`Invalid end date: ${String(rawDate2)}`);
-    // Auto-sort: ensure startDate <= endDate
-    const [startDate, endDate] =
-      date1.isBefore(date2) || date1.isSame(date2) ? [date1, date2] : [date2, date1];
-    return [startDate, endDate];
-  }
-
-  const requiresOneDate: DateOperator[] = [
-    DateOperator.before,
-    DateOperator.after,
-    DateOperator.onOrBefore,
-    DateOperator.onOrAfter,
-    DateOperator.notBefore,
-    DateOperator.notAfter,
-  ];
-
-  if (requiresOneDate.includes(condition.dateOperator)) {
-    let value: DateInputValue | undefined;
-    if (condition.value !== undefined) {
-      if (isDateExpr(condition.value)) {
-        // Bare period + before/after ⇒ implied edge (before→start, after→end); the one
-        // anchoring rule all three rails share.
-        return [
-          resolvePointForOperator(condition.value, condition.dateOperator, config),
-          undefined,
-        ];
-      }
-      if (Array.isArray(condition.value)) {
-        throw new Error(`${condition.dateOperator} operator requires a single date value`);
-      }
-      value = condition.value as DateInputValue;
-    } else if (condition.path) {
-      const pathValue = readPath(condition.path, scopes, context);
-      value = isDateInputValue(pathValue) ? pathValue : undefined;
-    } else {
-      throw new Error('No value or path specified for date comparison');
+  const toPoint = (value: unknown, label: string): dayjs.Dayjs | null => {
+    if (value === null || value === undefined) return null;
+    if (isDateExpr(value)) {
+      const expr = resolveExpr(value, read);
+      return expr && resolveDateExpr(expr, config);
     }
-    const date = parseDateValue(value, tz);
-    if (!date.isValid()) throw new Error(`Invalid comparison date: ${value}`);
-    return [date, undefined];
+    const date = parseDateValue(value as DateInputValue, tz);
+    if (!date.isValid()) throw new Error(`Invalid ${label}: ${String(value)}`);
+    return date;
+  };
+
+  if (operator === DateOperator.between || operator === DateOperator.notBetween) {
+    if (!Array.isArray(raw) || raw.length !== 2)
+      throw new Error(`${operator} operator requires an array of two dates`);
+    const date1 = toPoint(raw[0], 'start date');
+    const date2 = toPoint(raw[1], 'end date');
+    if (!date1 || !date2) return null;
+    // Auto-sort: ensure startDate <= endDate
+    const [start, end] = date1.isAfter(date2) ? [date2, date1] : [date1, date2];
+    const shiftedStart = shift(start, condition, read);
+    const shiftedEnd = shift(end, condition, read);
+    return shiftedStart && shiftedEnd ? [shiftedStart, shiftedEnd] : null;
   }
 
-  return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+  if (Array.isArray(raw)) throw new Error(`${operator} operator requires a single date value`);
+  // Bare period + before/after ⇒ implied edge (before→start, after→end); the one anchoring
+  // rule all three rails share.
+  const pointOf = (expr: DateExpr): dayjs.Dayjs | null => {
+    const resolved = resolveExpr(expr, read);
+    return resolved && resolvePointForOperator(resolved, operator, config);
+  };
+  const point = isDateExpr(raw) ? pointOf(raw) : toPoint(raw, 'comparison date');
+  if (!point) return null;
+  const shifted = shift(point, condition, read);
+  return shifted && [shifted, undefined];
+};
+
+/** A comparison point moved by the rule's offset; null when an offset magnitude reads nothing. */
+const shift = (point: dayjs.Dayjs, condition: DateRule, read: ReadRef): dayjs.Dayjs | null => {
+  const { offset } = condition;
+  if (offset === undefined) return point;
+  const rolling = rollingShift(offset);
+  if (!rolling) throw new Error('a date offset is { ago } or { ahead }');
+  const units = resolveUnits(rolling[0], read);
+  return units && shiftByUnits(point, units, rolling[1]);
 };
 
 /**

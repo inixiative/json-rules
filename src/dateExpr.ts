@@ -18,19 +18,6 @@ dayjs.extend(timezone);
 dayjs.extend(quarterOfYear);
 dayjs.extend(isoWeek);
 
-type ManipulateUnit = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second';
-
-const UNIT_FOR: Record<keyof RelativeUnits, ManipulateUnit> = {
-  years: 'year',
-  quarters: 'quarter',
-  months: 'month',
-  weeks: 'week',
-  days: 'day',
-  hours: 'hour',
-  minutes: 'minute',
-  seconds: 'second',
-};
-
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
 
@@ -48,7 +35,7 @@ export const isDateExpr = (value: unknown): value is DateExpr => {
   );
 };
 
-const requireNow = (config: DateConfig): dayjs.Dayjs => {
+export const requireNow = (config: DateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
     throw new Error('date expressions require `now` to be supplied to the evaluator');
   // Only a literal zone string anchors `now` here; the bind form is resolved upstream (in
@@ -60,18 +47,51 @@ const requireNow = (config: DateConfig): dayjs.Dayjs => {
   return base;
 };
 
-const applyUnits = (base: dayjs.Dayjs, units: RelativeUnits, direction: 1 | -1): dayjs.Dayjs => {
-  let result = base;
-  for (const key of Object.keys(units) as (keyof RelativeUnits)[]) {
+// Units apply as Postgres applies an interval: the month part (years, quarters, months), then
+// the day part (weeks, days), then time — so a shift lands on the same instant in check() and
+// in toSql at a month end (2024-02-29 + 1 year 1 month is 2025-03-29, not 2025-03-28).
+const MONTHS: Partial<Record<keyof RelativeUnits, number>> = { years: 12, quarters: 3, months: 1 };
+const DAYS: Partial<Record<keyof RelativeUnits, number>> = { weeks: 7, days: 1 };
+const SECONDS: Partial<Record<keyof RelativeUnits, number>> = {
+  hours: 3600,
+  minutes: 60,
+  seconds: 1,
+};
+
+const sumUnits = (units: RelativeUnits, scale: Partial<Record<keyof RelativeUnits, number>>) => {
+  let total = 0;
+  for (const [key, factor] of Object.entries(scale) as [keyof RelativeUnits, number][]) {
     const magnitude = units[key];
     if (magnitude === undefined) continue;
+    if (typeof magnitude !== 'number')
+      throw new Error(`unresolved magnitude path '${magnitude.path}' for ${key}`);
     if (magnitude < 0) throw new Error(`relative magnitudes must be positive: ${key}=${magnitude}`);
-    result = result.add(direction * magnitude, UNIT_FOR[key] as dayjs.QUnitType);
+    total += magnitude * factor;
   }
+  return total;
+};
+
+/** Move `base` by `units` — forward for `ahead` (1), back for `ago` (-1). */
+export const shiftByUnits = (
+  base: dayjs.Dayjs,
+  units: RelativeUnits,
+  direction: 1 | -1,
+): dayjs.Dayjs => {
+  const months = sumUnits(units, MONTHS);
+  const days = sumUnits(units, DAYS);
+  const seconds = sumUnits(units, SECONDS);
+  let result = base;
+  if (months) result = result.add(direction * months, 'month');
+  if (days) result = result.add(direction * days, 'day');
+  if (seconds) result = result.add(direction * seconds * 1000, 'millisecond');
   return result;
 };
 
 export const isRollingExpr = (e: DateExpr): e is RollingExpr => 'ago' in e || 'ahead' in e;
+/** A rolling expression's units and direction: `ago` moves back (-1), `ahead` forward (1). */
+export const rollingShift = (expr: DateExpr): [RelativeUnits, 1 | -1] | null =>
+  isRollingExpr(expr) ? ('ago' in expr ? [expr.ago, -1] : [expr.ahead, 1]) : null;
+
 export const isPeriodExpr = (e: DateExpr): e is PeriodExpr =>
   'this' in e || 'last' in e || 'next' in e;
 export const isEdgeExpr = (e: DateExpr): e is EdgeExpr => 'start' in e || 'end' in e;
@@ -106,7 +126,7 @@ export const resolvePeriodRange = (
 export const resolveDateExpr = (expr: DateExpr, config: DateConfig): dayjs.Dayjs => {
   if (isRollingExpr(expr)) {
     const base = requireNow(config);
-    return 'ago' in expr ? applyUnits(base, expr.ago, -1) : applyUnits(base, expr.ahead, 1);
+    return 'ago' in expr ? shiftByUnits(base, expr.ago, -1) : shiftByUnits(base, expr.ahead, 1);
   }
   if (isEdgeExpr(expr)) {
     const period = 'start' in expr ? expr.start : expr.end;
@@ -150,8 +170,8 @@ export const resolveDateExprRange = (
   if (isRollingExpr(expr)) {
     const now = requireNow(config);
     return 'ago' in expr
-      ? [applyUnits(now, expr.ago, -1), now]
-      : [now, applyUnits(now, expr.ahead, 1)];
+      ? [shiftByUnits(now, expr.ago, -1), now]
+      : [now, shiftByUnits(now, expr.ahead, 1)];
   }
   throw new Error('`within` requires a range expression (period or rolling), not an edge point');
 };

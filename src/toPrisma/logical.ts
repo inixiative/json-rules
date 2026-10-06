@@ -100,7 +100,7 @@ const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolea
  * are positional, so nothing may be rebuilt or renumbered.
  */
 const matchAll = (): PrismaWhere => ({});
-const matchNothing = (): PrismaWhere => ({ OR: [] });
+export const matchNothing = (): PrismaWhere => ({ OR: [] });
 const isMatchAll = (where: PrismaWhere): boolean => Object.keys(where).length === 0;
 const isMatchNothing = (where: PrismaWhere): boolean => {
   const keys = Object.keys(where);

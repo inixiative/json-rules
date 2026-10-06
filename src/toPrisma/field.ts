@@ -1,4 +1,3 @@
-import { get } from 'lodash-es';
 import {
   engineGlobals,
   type PrismaProvider,
@@ -6,11 +5,13 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { Operator } from '../operator';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { Rule } from '../types';
+import { addOffset, resolveMagnitude } from '../valueSource';
+import { matchNothing } from './logical';
 import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
+import { amountReader, readPathValue } from './valueSource';
 
 /**
  * Whether the emptiness operators may compare this column against `''`. Only a
@@ -134,6 +135,14 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return orWith(notInList, arms);
   }
 
+  // An offset moved nothing: no row matches, as SQL's NULL arithmetic; a negation keeps the
+  // absent rows only.
+  if (rule.offset !== undefined && resolveRuleValue(rule, options) === null) {
+    const negated = rule.operator === Operator.notEquals || rule.operator === Operator.notBetween;
+    if (!negated || !arms.length) return matchNothing();
+    return arms.length === 1 ? arms[0] : { OR: arms };
+  }
+
   if (RANGE_COMPLEMENT.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
     return orWith({ NOT: at(buildLeafFilter(rule, options)) }, arms);
@@ -152,8 +161,17 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
  * - rule.path starting with '$.' → throw: Prisma WHERE has no column-to-column comparison
  * - rule.path (context ref) → look up from options.context via lodash get
  */
-const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown =>
-  compileFieldLiteral(rule, resolveRawValue(rule, options), fieldWalk(rule, options), 'toPrisma');
+const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
+  const value = compileFieldLiteral(
+    rule,
+    resolveRawValue(rule, options),
+    fieldWalk(rule, options),
+    'toPrisma',
+  );
+  if (rule.offset === undefined) return value;
+  const amount = resolveMagnitude(rule.offset, amountReader(options));
+  return amount === null ? null : addOffset(value, amount);
+};
 
 const resolveRawValue = (rule: Rule, options?: BuildOptions): unknown => {
   if (rule.value !== undefined) return rule.value;
@@ -163,23 +181,7 @@ const resolveRawValue = (rule: Rule, options?: BuildOptions): unknown => {
       `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
     );
   }
-  if (rule.path) {
-    const scoped = parseScopeRef(rule.path);
-    if (scoped) {
-      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toPrisma'));
-      throw new Error(
-        `Prisma WHERE has no column-to-column comparison for path '${rule.path}'. ` +
-          `Use prisma.$queryRaw for field-to-field filtering.`,
-      );
-    }
-    if (!options?.context) {
-      throw new Error(
-        `options.context is required to resolve path '${rule.path}'. ` +
-          `Pass context when calling toPrisma().`,
-      );
-    }
-    return get(options.context, rule.path);
-  }
+  if (rule.path) return readPathValue(rule.path, options);
   throw new Error(`Rule for field '${rule.field}' has neither value nor path set`);
 };
 

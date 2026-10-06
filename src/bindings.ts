@@ -31,6 +31,24 @@ export const requiredBindings = (condition: Condition): Set<string> => {
 };
 
 /**
+ * The value of one `{ bind }` token at evaluation. Key presence is the contract: an
+ * unsupplied binding is a caller bug (a forgotten scope must never silently run) unless the
+ * rule marks it `bindOptional`, which reads as null. A supplied-but-undefined binding is null.
+ */
+export const readBinding = (
+  name: string,
+  optional: boolean | undefined,
+  bindings: Record<string, RuleValue> | undefined,
+): RuleValue => {
+  if (!bindings || !Object.hasOwn(bindings, name)) {
+    if (optional === true) return null;
+    throw new Error(`Missing binding for "${name}"`);
+  }
+  const bound = bindings[name];
+  return bound === undefined ? null : bound;
+};
+
+/**
  * Substitute covered binds with their values; uncovered tokens stay in place (partial
  * resolution). A supplied-but-undefined binding becomes null to stay serializable.
  * Non-mutating.

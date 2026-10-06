@@ -1,15 +1,13 @@
-import { get } from 'lodash-es';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { Operator } from '../operator';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import { compileFieldLiteral, walkFieldPath } from '../toPrisma/mapWalk';
 import type { FieldMap } from '../toPrisma/types';
-import type { Rule } from '../types';
-import { escapeIdentifier } from './escape';
+import type { NumberOffset, Rule } from '../types';
 import { resolveFieldSql } from './join';
 import { nextParam } from './params';
-import { escapeLikePattern, quoteField } from './quoting';
+import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
+import { type ResolvedRhs, resolveRef, shiftNumber } from './valueSource';
 
 // The ''-branch of isEmpty/notEmpty belongs to String (and Json) columns only —
 // Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
@@ -39,6 +37,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
   const lc = (expr: string): string =>
     resolveCaseInsensitive(rule.caseInsensitive) ? `LOWER(${expr})` : expr;
+  if (rule.offset !== undefined) return buildOffsetComparison(rule, field, state);
   const rhs = resolveComparison(rule, state);
 
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case
@@ -148,8 +147,6 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   }
 };
 
-type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
-
 const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
   if (!Array.isArray(list)) return { values: [], hasNull: false };
   const values = list.filter((v) => v !== null);
@@ -178,25 +175,7 @@ const resolveRawComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
     return { type: 'value', value: rule.value };
   }
 
-  if (rule.path) {
-    const scoped = parseScopeRef(rule.path);
-    if (scoped) {
-      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toSql'));
-      const refField = scoped.path;
-      const sql = state.currentAlias
-        ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(refField)}`
-        : quoteField(refField);
-      return { type: 'column', sql };
-    }
-
-    if (!state.context) {
-      throw new Error(
-        `BuilderState.context is required to resolve path '${rule.path}'. ` +
-          `Pass context in options when calling toSql().`,
-      );
-    }
-    return { type: 'value', value: get(state.context, rule.path) };
-  }
+  if (rule.path) return resolveRef(rule.path, state);
 
   if (rule.bind !== undefined) {
     if (rule.bindOptional === true) return { type: 'value', value: null };
@@ -207,4 +186,54 @@ const resolveRawComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
 
   // No value, no path — valid for no-value operators (isEmpty, notEmpty, exists, notExists)
   return { type: 'value', value: undefined };
+};
+
+const COMPARATORS: Partial<Record<Operator, string>> = {
+  [Operator.equals]: '=',
+  [Operator.notEquals]: '<>',
+  [Operator.lessThan]: '<',
+  [Operator.lessThanEquals]: '<=',
+  [Operator.greaterThan]: '>',
+  [Operator.greaterThanEquals]: '>=',
+};
+
+// An offset compares against arithmetic, so NULL is never the is-null sentinel here: a null
+// base or offset makes the comparison NULL — no match — and a negation keeps NULL fields only.
+const buildOffsetComparison = (rule: Rule, field: string, state: BuilderState): string => {
+  const offset = rule.offset as NumberOffset;
+  const raw = resolveRawComparison(rule, state);
+  const base: ResolvedRhs =
+    raw.type === 'column'
+      ? raw
+      : {
+          type: 'value',
+          value: compileFieldLiteral(rule, raw.value, fieldWalk(rule, state), 'toSql'),
+        };
+  const operand = (rhs: ResolvedRhs): string =>
+    rhs.type === 'column' ? rhs.sql : nextParam(state, rhs.value);
+  const orNull = (expr: string): string => `(${expr} OR ${field} IS NULL)`;
+
+  if (rule.operator === Operator.between || rule.operator === Operator.notBetween) {
+    const range = base.type === 'value' ? base.value : undefined;
+    const ends =
+      range === null
+        ? [null, null]
+        : Array.isArray(range) && range.length === 2
+          ? (range[0] as number) <= (range[1] as number)
+            ? range
+            : [range[1], range[0]]
+          : undefined;
+    if (!ends) throw new Error(`${rule.operator} operator requires an array of two values`);
+    const [min, max] = ends.map((end) =>
+      operand(shiftNumber({ type: 'value', value: end }, offset, state)),
+    );
+    return rule.operator === Operator.between
+      ? `${field} BETWEEN ${min} AND ${max}`
+      : orNull(`${field} NOT BETWEEN ${min} AND ${max}`);
+  }
+
+  const comparator = COMPARATORS[rule.operator];
+  if (!comparator) throw new Error(`offset does not apply to operator '${rule.operator}'`);
+  const comparison = `${field} ${comparator} ${operand(shiftNumber(base, offset, state))}`;
+  return rule.operator === Operator.notEquals ? orNull(comparison) : comparison;
 };

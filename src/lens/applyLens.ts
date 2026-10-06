@@ -2,6 +2,7 @@ import { ArrayOperator } from '../operator.ts';
 import { own } from '../own';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import type { Condition, WindowFields } from '../types.ts';
+import { valueRefs } from '../valueSource';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, resolveVisit } from './policy.ts';
@@ -45,9 +46,10 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
     };
   }
   if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
-    if ('path' in cond && cond.path !== undefined) {
+    const refs = valueRefs(cond as Record<string, unknown>);
+    if (refs.length) {
       throw new Error(
-        `applyLens: cannot re-root a relation grant with a path reference ('${String(cond.path)}') ` +
+        `applyLens: cannot re-root a relation grant with a path reference ('${refs[0]}') ` +
           `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
       );
     }

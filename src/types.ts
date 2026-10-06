@@ -15,17 +15,24 @@ export type OrderedRuleValue = string | number | Date;
 
 export type DateInputValue = string | number | Date;
 
+// A value read at evaluation: `$.`-prefixed from the row (or an enclosing scope), bare from
+// context — the same ref a `path` value source takes.
+export type PathRef = { path: string };
+
+// An amount that is a literal or read from a path.
+export type Magnitude = number | PathRef;
+
 // --- Relative & calendar date expressions (v2.6.0) ---
 // Positive magnitudes only; direction lives in the keyword. Units are dayjs words.
 export type RelativeUnits = {
-  years?: number;
-  quarters?: number;
-  months?: number;
-  weeks?: number;
-  days?: number;
-  hours?: number;
-  minutes?: number;
-  seconds?: number;
+  years?: Magnitude;
+  quarters?: Magnitude;
+  months?: Magnitude;
+  weeks?: Magnitude;
+  days?: Magnitude;
+  hours?: Magnitude;
+  minutes?: Magnitude;
+  seconds?: Magnitude;
 };
 export type PeriodUnit =
   | 'year'
@@ -65,10 +72,16 @@ export type DateConfig = {
   weekStart?: WeekStart;
 };
 
-type ValueSource<TValue> =
-  | { value: TValue; path?: never; bind?: never; bindOptional?: never }
-  | { path: string; value?: never; bind?: never; bindOptional?: never }
-  | { bind: string; bindOptional?: boolean; value?: never; path?: never };
+// `offset` shifts a path or bound comparison value; a literal is written already shifted.
+type ValueSource<TValue, TOffset = never> =
+  | { value: TValue; path?: never; bind?: never; bindOptional?: never; offset?: never }
+  | { path: string; value?: never; bind?: never; bindOptional?: never; offset?: TOffset }
+  | { bind: string; bindOptional?: boolean; value?: never; path?: never; offset?: TOffset };
+
+// A field rule's offset is added to the comparison value; a date rule's is the rolling shape
+// anchored on the comparison value instead of now.
+export type NumberOffset = Magnitude;
+export type DateOffset = RollingExpr;
 type NoValueSource = { value?: never; path?: never };
 type RuleBase<TOperator extends Operator> = {
   field: string;
@@ -84,14 +97,14 @@ type DateRuleBase<TOperator extends DateOperator> = {
 };
 
 export type StrictEqualityRule<TValue = RuleValue> =
-  | (RuleBase<OperatorValues['equals']> & ValueSource<TValue>)
-  | (RuleBase<OperatorValues['notEquals']> & ValueSource<TValue>);
+  | (RuleBase<OperatorValues['equals']> & ValueSource<TValue, NumberOffset>)
+  | (RuleBase<OperatorValues['notEquals']> & ValueSource<TValue, NumberOffset>);
 
 export type StrictOrderedComparisonRule =
-  | (RuleBase<OperatorValues['lessThan']> & ValueSource<OrderedRuleValue>)
-  | (RuleBase<OperatorValues['lessThanEquals']> & ValueSource<OrderedRuleValue>)
-  | (RuleBase<OperatorValues['greaterThan']> & ValueSource<OrderedRuleValue>)
-  | (RuleBase<OperatorValues['greaterThanEquals']> & ValueSource<OrderedRuleValue>);
+  | (RuleBase<OperatorValues['lessThan']> & ValueSource<OrderedRuleValue, NumberOffset>)
+  | (RuleBase<OperatorValues['lessThanEquals']> & ValueSource<OrderedRuleValue, NumberOffset>)
+  | (RuleBase<OperatorValues['greaterThan']> & ValueSource<OrderedRuleValue, NumberOffset>)
+  | (RuleBase<OperatorValues['greaterThanEquals']> & ValueSource<OrderedRuleValue, NumberOffset>);
 
 export type StrictMembershipRule<TValue = RuleValue> =
   | (RuleBase<OperatorValues['in']> & ValueSource<TValue[]>)
@@ -110,8 +123,10 @@ export type StrictStringBoundaryRule =
   | (RuleBase<OperatorValues['endsWith']> & ValueSource<string>);
 
 export type StrictRangeRule =
-  | (RuleBase<OperatorValues['between']> & ValueSource<[OrderedRuleValue, OrderedRuleValue]>)
-  | (RuleBase<OperatorValues['notBetween']> & ValueSource<[OrderedRuleValue, OrderedRuleValue]>);
+  | (RuleBase<OperatorValues['between']> &
+      ValueSource<[OrderedRuleValue, OrderedRuleValue], NumberOffset>)
+  | (RuleBase<OperatorValues['notBetween']> &
+      ValueSource<[OrderedRuleValue, OrderedRuleValue], NumberOffset>);
 
 export type StrictPresenceRule =
   | (RuleBase<OperatorValues['isEmpty']> & NoValueSource)
@@ -179,17 +194,18 @@ export type StrictArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
   | StrictArrayPresenceRule;
 
 export type StrictDateComparisonRule =
-  | (DateRuleBase<DateOperatorValues['before']> & ValueSource<DateInputValue>)
-  | (DateRuleBase<DateOperatorValues['after']> & ValueSource<DateInputValue>)
-  | (DateRuleBase<DateOperatorValues['onOrBefore']> & ValueSource<DateInputValue>)
-  | (DateRuleBase<DateOperatorValues['onOrAfter']> & ValueSource<DateInputValue>)
-  | (DateRuleBase<DateOperatorValues['notBefore']> & ValueSource<DateInputValue>)
-  | (DateRuleBase<DateOperatorValues['notAfter']> & ValueSource<DateInputValue>);
+  | (DateRuleBase<DateOperatorValues['before']> & ValueSource<DateInputValue, DateOffset>)
+  | (DateRuleBase<DateOperatorValues['after']> & ValueSource<DateInputValue, DateOffset>)
+  | (DateRuleBase<DateOperatorValues['onOrBefore']> & ValueSource<DateInputValue, DateOffset>)
+  | (DateRuleBase<DateOperatorValues['onOrAfter']> & ValueSource<DateInputValue, DateOffset>)
+  | (DateRuleBase<DateOperatorValues['notBefore']> & ValueSource<DateInputValue, DateOffset>)
+  | (DateRuleBase<DateOperatorValues['notAfter']> & ValueSource<DateInputValue, DateOffset>);
 
 export type StrictDateRangeRule =
-  | (DateRuleBase<DateOperatorValues['between']> & ValueSource<[DateInputValue, DateInputValue]>)
+  | (DateRuleBase<DateOperatorValues['between']> &
+      ValueSource<[DateInputValue, DateInputValue], DateOffset>)
   | (DateRuleBase<DateOperatorValues['notBetween']> &
-      ValueSource<[DateInputValue, DateInputValue]>);
+      ValueSource<[DateInputValue, DateInputValue], DateOffset>);
 
 export type StrictDateDayRule =
   | (DateRuleBase<DateOperatorValues['dayIn']> & { value: string[]; path?: never })
@@ -254,6 +270,7 @@ export type Rule<TValue = RuleValue> = {
   // An unsupplied binding is a caller bug unless the rule says otherwise: with
   // `bindOptional` an absent name evaluates and compiles as `null`, never throws.
   bindOptional?: boolean;
+  offset?: NumberOffset;
   error?: string;
   caseInsensitive?: boolean;
   fuzzy?: boolean | FuzzyConfig;
@@ -277,6 +294,7 @@ export type DateRule<TValue = DateRuleValue> = {
   path?: string;
   bind?: string;
   bindOptional?: boolean;
+  offset?: DateOffset;
   error?: string;
 };
 

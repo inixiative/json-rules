@@ -1,4 +1,4 @@
-import { applyCoercion } from '../field';
+import { applyCoercion, NUMERIC_COERCE_KINDS } from '../field';
 import {
   type CatalogEntry,
   DATE_OPERATOR_CATALOG,
@@ -94,6 +94,14 @@ export const leafFitViolations = (
         reason: `operator '${op}' does not apply to ${label} (applies to: ${entry.kinds.join(', ')})`,
       },
     ];
+  }
+
+  // An offset is arithmetic on the field's kind: a number on a numeric field, a rolling shift
+  // on a DateTime.
+  if (cond.offset !== undefined) {
+    const shiftable =
+      'dateOperator' in cond ? kind === FieldKind.DateTime : NUMERIC_COERCE_KINDS.includes(kind);
+    if (!shiftable) return [{ path: cond.field, reason: `an offset does not apply to ${label}` }];
   }
 
   // Date-rule values are validateRule's (grammar-level, kind-independent); a regex pattern is

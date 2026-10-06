@@ -1,7 +1,9 @@
+import { NUMERIC_COERCE_KINDS } from '../field';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
+import { magnitudeRefs, valueRefs } from '../valueSource';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
 import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
@@ -120,23 +122,34 @@ const visit = (
     }
   }
 
-  // Gate the RHS `path` ref the same way the LHS `field` is gated — otherwise a rule
-  // can reference outside the lens through its comparison value. Prefixed paths resolve
-  // at the scope they name; bare paths are root/context refs (resolve at the lens anchor).
-  // Inside an open scope a prefixed ref points into the JSON value, so there is nothing to
-  // resolve — a root ref is still gated.
-  if ('path' in cond && typeof cond.path === 'string' && cond.path !== '') {
-    const target = parseScopeRef(cond.path)
-      ? scopeFor(cond.path)
-      : { scope: lensRoot(policy), field: cond.path };
-    if (target && !target.scope.open) {
-      const { mapName, modelName, relPath } = target.scope;
-      if (!walkLensPath(policy, mapName, modelName, relPath, target.field)) {
-        violations.push({
-          path: cond.path,
-          reason: 'path (comparison ref) does not resolve through the narrowed lens',
-        });
-      }
+  // Gate every value-side ref — the RHS `path`, an offset `{ path }`, each magnitude `{ path }` —
+  // the same way the LHS `field` is gated; otherwise a rule can reference outside the lens
+  // through its comparison value. Prefixed refs resolve at the scope they name; bare refs are
+  // root/context refs (resolve at the lens anchor). Inside an open scope a prefixed ref points
+  // into the JSON value, so there is nothing to resolve — a root ref is still gated. An amount
+  // must read a number.
+  const amounts = new Set(magnitudeRefs(cond as Record<string, unknown>));
+  for (const ref of valueRefs(cond as Record<string, unknown>)) {
+    const target = parseScopeRef(ref) ? scopeFor(ref) : { scope: lensRoot(policy), field: ref };
+    if (!target || target.scope.open) continue;
+    const { mapName, modelName, relPath } = target.scope;
+    const walked = walkLensPath(policy, mapName, modelName, relPath, target.field);
+    const isAmount = amounts.has(ref);
+    if (!walked) {
+      violations.push({
+        path: ref,
+        reason: isAmount
+          ? 'offset or magnitude ref does not resolve through the narrowed lens'
+          : 'path (comparison ref) does not resolve through the narrowed lens',
+      });
+      continue;
+    }
+    const kind = entryKind(walked.entry);
+    if (isAmount && kind !== undefined && !NUMERIC_COERCE_KINDS.includes(kind)) {
+      violations.push({
+        path: ref,
+        reason: `offset or magnitude ref must read a number, not ${kind}`,
+      });
     }
   }
 

@@ -1,6 +1,7 @@
 import { isOperatorSupportedForTarget, type RuleTarget } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import type { ArrayRule, Condition, WindowFields } from '../types';
+import { valueRefs } from '../valueSource';
 import { extremalRewrite, hasWindow } from '../window';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, walkLensPath } from './policy.ts';
@@ -39,14 +40,15 @@ const restrictByWindow = (acc: Acc, cond: Record<string, unknown>): void => {
   }
 };
 
-// Scope refs compile nowhere but `path: '$.x'` on toSql (a same-row column comparison).
+// Scope refs compile nowhere but `$.x` value refs on toSql (same-row column arithmetic).
 const restrictByScopeRefs = (acc: Acc, cond: Record<string, unknown>): void => {
   if (typeof cond.field === 'string' && parseScopeRef(cond.field)) {
     acc.targets.delete('toSql');
     acc.targets.delete('toPrisma');
   }
-  const pathRef = typeof cond.path === 'string' ? parseScopeRef(cond.path) : null;
-  if (pathRef) {
+  for (const ref of valueRefs(cond)) {
+    const pathRef = parseScopeRef(ref);
+    if (!pathRef) continue;
     acc.targets.delete('toPrisma');
     if (pathRef.depth > 1) acc.targets.delete('toSql');
   }
@@ -86,9 +88,10 @@ const visit = (cond: Condition, acc: Acc, scopes: readonly VisitScope[]): void =
   restrictByWindow(acc, record);
   restrictByScopeRefs(acc, record);
 
-  if (typeof record.path === 'string' && parseScopeRef(record.path)) {
-    const ref = resolveScopeRef(record.path, scopes);
-    if ('outOfBounds' in ref) acc.violations.push(record.path);
+  for (const ref of valueRefs(record)) {
+    if (!parseScopeRef(ref)) continue;
+    const target = resolveScopeRef(ref, scopes);
+    if ('outOfBounds' in target) acc.violations.push(ref);
   }
 
   let next: VisitScope = here;

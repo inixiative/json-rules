@@ -4,6 +4,7 @@ import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
 import { readField, readPath, type Scopes } from './scope';
 import type { Rule, RuleValue } from './types';
+import { addOffset, bigIntToNumber, readValueSource, resolveMagnitude } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
 // SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
@@ -16,23 +17,10 @@ const isEmptyValue = (value: unknown): boolean =>
 // (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
 // kinds pass through, and an uncoercible value returns unchanged so the comparison
 // fails with the rule's normal error instead of throwing on one dirty row.
-const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
+export const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
 
 // A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
 const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
-
-// BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
-// number on every side of a comparison, so 5n matches 5. Past ±2^53 a number cannot hold it
-// exactly and every comparison would be silently wrong, so that throws instead.
-const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
-
-export const bigIntToNumber = (value: bigint): number => {
-  if (value > MAX_SAFE || value < -MAX_SAFE)
-    throw new RangeError(
-      `BigInt ${value} is outside the safe integer range (±2^53); json-rules compares BigInt as Int.`,
-    );
-  return Number(value);
-};
 
 const fromBigInt = (value: unknown): unknown => {
   if (typeof value === 'bigint') return bigIntToNumber(value);
@@ -107,11 +95,25 @@ export const checkField = (
   ];
   const needsValue = !noValueOps.includes(condition.operator);
   const value = needsValue
-    ? applyCoercion(
-        fromBigInt(getValue(condition, scopes, context, bindings)),
-        condition.coerceType,
+    ? shift(
+        applyCoercion(
+          fromBigInt(readValueSource(condition, scopes, context, bindings)),
+          condition.coerceType,
+        ),
+        condition,
+        scopes,
+        context,
       )
     : undefined;
+
+  // An offset moved nothing: the comparison fails closed, as SQL's NULL arithmetic does. A
+  // negation still keeps a null field (the 2.19.0 ruling).
+  if (condition.offset !== undefined && (value === null || value === undefined)) {
+    const negated =
+      condition.operator === Operator.notEquals || condition.operator === Operator.notBetween;
+    if (negated && (fieldValue === null || fieldValue === undefined)) return true;
+    return condition.error || `${condition.field} has no comparison value`;
+  }
 
   const getError = (op: string) =>
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
@@ -211,26 +213,10 @@ export const checkField = (
   }
 };
 
-const getValue = (
-  condition: Rule,
-  scopes: Scopes,
-  context: unknown,
-  bindings?: Record<string, RuleValue>,
-): unknown => {
-  if (condition.value !== undefined) return condition.value;
-  if (condition.bind !== undefined) {
-    // Key presence is the contract: an unsupplied binding is a caller bug (a
-    // forgotten scope must never silently run). A supplied-but-nullish binding is
-    // a value — normalize undefined → null (a legit fail-closed filter).
-    if (!bindings || !Object.hasOwn(bindings, condition.bind)) {
-      if (condition.bindOptional === true) return null;
-      throw new Error(`Missing binding for "${condition.bind}"`);
-    }
-    const bound = bindings[condition.bind];
-    return bound === undefined ? null : bound;
-  }
-  if (condition.path) return readPath(condition.path, scopes, context);
-  throw new Error('No value or path specified');
+const shift = (value: unknown, condition: Rule, scopes: Scopes, context: unknown): unknown => {
+  if (condition.offset === undefined) return value;
+  const offset = resolveMagnitude(condition.offset, (ref) => readPath(ref, scopes, context));
+  return offset === null ? null : addOffset(value, offset);
 };
 
 type OrderedValue = string | number | Date;

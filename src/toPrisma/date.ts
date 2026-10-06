@@ -79,7 +79,9 @@ const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
       `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
     );
   }
-  return undefined;
+  if (rule.dateOperator === DateOperator.dayIn || rule.dateOperator === DateOperator.dayNotIn)
+    return undefined;
+  throw new Error('No value or path specified for date comparison');
 };
 
 const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown => {
@@ -92,7 +94,9 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
     if (!shift) throw new Error('a date offset is { ago } or { ahead }');
     const [raw, direction] = shift;
     const units = resolveUnits(raw, read);
-    return units && shiftByUnits(dayjs(instant), units, direction).toDate();
+    return (
+      units && shiftByUnits(dayjs(instant), units, direction, resolveTimeZone(config)).toDate()
+    );
   };
   const instantOf = (value: unknown, operator: string): Date | null => {
     if (value === null || value === undefined) return null;

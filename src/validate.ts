@@ -16,7 +16,7 @@ import {
 } from './operatorCatalog';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
-import { isPathRef, magnitudeRefs, OFFSET_OPERATORS } from './valueSource';
+import { isCalendarUnit, isPathRef, magnitudeRefs, OFFSET_OPERATORS } from './valueSource';
 import { extremalRewrite } from './window';
 
 const PERIOD_UNITS = new Set([
@@ -763,7 +763,12 @@ const validateRelativeUnits = (units: unknown, path: string, context: Validation
       continue;
     }
     if (isPathRef(magnitude)) continue;
-    if (typeof magnitude !== 'number' || !Number.isFinite(magnitude) || magnitude < 0) {
+    if (
+      typeof magnitude !== 'number' ||
+      !Number.isFinite(magnitude) ||
+      magnitude < 0 ||
+      (isCalendarUnit(key) && !Number.isInteger(magnitude))
+    ) {
       pushIssue(
         context,
         `${path}.${key}`,

@@ -1,14 +1,17 @@
 import { NUMERIC_COERCE_KINDS } from '../field';
+import { FieldKind } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types';
-import { magnitudeRefs, valueRefs } from '../valueSource';
+import { valueRefRoles } from '../valueSource';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
 import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { isJsonEntry } from './walk.ts';
+
+const WHOLE_KINDS: readonly FieldKind[] = [FieldKind.Int, FieldKind.BigInt];
 
 export type RuleLensViolation = {
   path: string;
@@ -127,30 +130,31 @@ const visit = (
   // through its comparison value. Prefixed refs resolve at the scope they name; bare refs are
   // root/context refs (resolve at the lens anchor). Inside an open scope a prefixed ref points
   // into the JSON value, so there is nothing to resolve — a root ref is still gated. An amount
-  // must read a number.
-  const amounts = new Set(magnitudeRefs(cond as Record<string, unknown>));
-  for (const ref of valueRefs(cond as Record<string, unknown>)) {
+  // reads a number, and a calendar unit's amount a whole number.
+  for (const { ref, role } of valueRefRoles(cond as Record<string, unknown>)) {
     const target = parseScopeRef(ref) ? scopeFor(ref) : { scope: lensRoot(policy), field: ref };
     if (!target || target.scope.open) continue;
     const { mapName, modelName, relPath } = target.scope;
     const walked = walkLensPath(policy, mapName, modelName, relPath, target.field);
-    const isAmount = amounts.has(ref);
     if (!walked) {
       violations.push({
         path: ref,
-        reason: isAmount
-          ? 'offset or magnitude ref does not resolve through the narrowed lens'
-          : 'path (comparison ref) does not resolve through the narrowed lens',
+        reason:
+          role === 'value'
+            ? 'path (comparison ref) does not resolve through the narrowed lens'
+            : 'offset or magnitude ref does not resolve through the narrowed lens',
       });
       continue;
     }
     const kind = entryKind(walked.entry);
-    if (isAmount && kind !== undefined && !NUMERIC_COERCE_KINDS.includes(kind)) {
+    if (role === 'value' || kind === undefined) continue;
+    const fits =
+      role === 'whole' ? WHOLE_KINDS.includes(kind) : NUMERIC_COERCE_KINDS.includes(kind);
+    if (!fits)
       violations.push({
         path: ref,
-        reason: `offset or magnitude ref must read a number, not ${kind}`,
+        reason: `${role === 'whole' ? 'a calendar unit reads a whole number' : 'an offset or magnitude reads a number'}, not ${kind}`,
       });
-    }
   }
 
   if (!fieldOk) return;

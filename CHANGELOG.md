@@ -42,6 +42,11 @@ Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
 - Relative units apply in Postgres interval order — months (years, quarters, months), then days
   (weeks, days), then time — instead of key order, so `check()` and `toSql` agree at month ends.
 - A date `path` that reads a date expression now evaluates it instead of ignoring it.
+- Relative shifts (`{ ago }` / `{ ahead }`, offsets) move on the wall clock of the evaluation's
+  `timeZone` — UTC when none is set, never the host's zone — as Postgres moves a timestamp by an
+  interval `AT TIME ZONE`: a day is 23 hours on a spring-forward day.
+- Calendar units (years, quarters, months, weeks, days) are whole numbers: a fractional literal
+  is an `invalid_relative_magnitude` and throws at evaluation (dayjs rounded it before).
 
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 

@@ -39,25 +39,17 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
     case DateOperator.notAfter:
       return `(${field} <= ${operand(resolvePoint(rule, state))} OR ${field} IS NULL)`;
 
-    case DateOperator.within: {
-      const [start, end] = resolveWindow(rule, state);
-      return `${field} BETWEEN ${operand(start)} AND ${operand(end)}`;
-    }
+    case DateOperator.within:
+      return rangeSql(field, resolveWindow(rule, state), false, operand);
 
-    case DateOperator.notWithin: {
-      const [start, end] = resolveWindow(rule, state);
-      return `(${field} NOT BETWEEN ${operand(start)} AND ${operand(end)} OR ${field} IS NULL)`;
-    }
+    case DateOperator.notWithin:
+      return rangeSql(field, resolveWindow(rule, state), true, operand);
 
-    case DateOperator.between: {
-      const [start, end] = resolveRange(rule, state);
-      return `${field} BETWEEN ${operand(start)} AND ${operand(end)}`;
-    }
+    case DateOperator.between:
+      return rangeSql(field, resolveRange(rule, state), false, operand);
 
-    case DateOperator.notBetween: {
-      const [start, end] = resolveRange(rule, state);
-      return `(${field} NOT BETWEEN ${operand(start)} AND ${operand(end)} OR ${field} IS NULL)`;
-    }
+    case DateOperator.notBetween:
+      return rangeSql(field, resolveRange(rule, state), true, operand);
 
     case DateOperator.dayIn: {
       if (!Array.isArray(rule.value)) {
@@ -78,6 +70,24 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
     default:
       throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
   }
+};
+
+// A range whose ends are parameters keeps the plain BETWEEN (the ends were sorted when
+// resolved). An end computed per row can't be sorted ahead of time and may read NULL, so it
+// compiles SYMMETRIC, and its complement requires both ends — a missing end matches nothing,
+// as in check(), and only NULL fields keep the negation.
+const rangeSql = (
+  field: string,
+  [start, end]: [ResolvedRhs, ResolvedRhs],
+  negated: boolean,
+  operand: (rhs: ResolvedRhs) => string,
+): string => {
+  const a = operand(start);
+  const b = operand(end);
+  const perRow = start.type === 'column' || end.type === 'column';
+  if (!negated) return `${field} BETWEEN ${perRow ? 'SYMMETRIC ' : ''}${a} AND ${b}`;
+  if (!perRow) return `(${field} NOT BETWEEN ${a} AND ${b} OR ${field} IS NULL)`;
+  return `((${field} NOT BETWEEN SYMMETRIC ${a} AND ${b} AND ${a} IS NOT NULL AND ${b} IS NOT NULL) OR ${field} IS NULL)`;
 };
 
 const zonedDay = (field: string, state: BuilderState): string =>
@@ -198,13 +208,21 @@ const resolveRange = (rule: DateRule, state: BuilderState): [ResolvedRhs, Resolv
   if (!Array.isArray(raw) || raw.length !== 2) {
     throw new Error(`${rule.dateOperator} date operator requires an array of two values`);
   }
+  const missing: [ResolvedRhs, ResolvedRhs] = [
+    { type: 'value', value: null },
+    { type: 'value', value: null },
+  ];
+  const isMissing = (end: ResolvedRhs) =>
+    end.type === 'value' && (end.value === null || end.value === undefined);
   const [first, second] = raw.map((el) => toPoint(el, rule.dateOperator, state));
+  if (isMissing(first) || isMissing(second)) return missing;
   const ordered =
-    first.type === 'value' && second.type === 'value' && first.value != null && second.value != null
+    first.type === 'value' && second.type === 'value'
       ? (normalizeDateRange([first.value, second.value]).map((value) => ({
           type: 'value',
           value,
         })) as [ResolvedRhs, ResolvedRhs])
       : ([first, second] as [ResolvedRhs, ResolvedRhs]);
-  return [applyOffset(ordered[0], rule, state), applyOffset(ordered[1], rule, state)];
+  const shifted = ordered.map((end) => applyOffset(end, rule, state));
+  return shifted.some(isMissing) ? missing : (shifted as [ResolvedRhs, ResolvedRhs]);
 };

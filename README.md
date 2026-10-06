@@ -398,10 +398,14 @@ its size from the row it judges:
 ```
 
 Offsets apply to the comparison operators (`equals` … `greaterThanEquals`, `before` …
-`notAfter`) and to both ends of `between` / `notBetween`. Units apply in Postgres interval order
-— months (years, quarters, months), then days (weeks, days), then time — so every rail lands on
-the same instant at a month end. A null comparison value, offset or magnitude matches nothing
-(SQL's NULL arithmetic); a negation keeps null fields only.
+`notAfter`) and to both ends of `between` / `notBetween`. Units apply as Postgres applies an
+interval to a wall-clock time in the evaluation's `timeZone` (UTC by default): months (years,
+quarters, months), then days (weeks, days), then time — so every rail lands on the same instant
+at a month end and across a DST change. Calendar units (years … days) are whole numbers and every
+unit is non-negative: a literal that isn't fails validation, and a value read from data that
+isn't reads as null. A null comparison value, offset or magnitude, or a range missing an end,
+matches nothing (SQL's NULL arithmetic); a negation keeps null fields only. Numeric offsets add
+in double precision on every rail.
 
 | | `check()` | `toSql()` | `toPrisma()` |
 | --- | --- | --- | --- |

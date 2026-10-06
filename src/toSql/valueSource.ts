@@ -1,9 +1,16 @@
 import dayjs from 'dayjs';
 import { get } from 'lodash-es';
+import { resolveTimeZone } from '../date';
 import { shiftByUnits } from '../dateExpr';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { Magnitude, NumberOffset, RelativeUnits } from '../types';
-import { addOffset, isPathRef, resolveMagnitude, resolveUnits } from '../valueSource';
+import {
+  addOffset,
+  isCalendarUnit,
+  isPathRef,
+  resolveMagnitude,
+  resolveUnits,
+} from '../valueSource';
 import { escapeIdentifier } from './escape';
 import { nextParam } from './params';
 import { quoteField } from './quoting';
@@ -50,31 +57,41 @@ export const readContext =
   };
 
 // One SQL term per magnitude: a parameter for a literal or context value, the column for a row
-// ref. Context values are checked as check() checks them.
-const magnitudeSql = (magnitude: Magnitude, state: BuilderState, cast: string): string => {
-  if (isRowRef(magnitude)) {
-    const column = resolveRef((magnitude as { path: string }).path, state);
-    return `(${(column as { sql: string }).sql})::${cast}`;
+// ref. A unit's amount must be non-negative, and whole for a calendar unit; a row value that
+// isn't reads NULL, as check() reads it — the comparison then fails closed.
+const magnitudeSql = (
+  magnitude: Magnitude,
+  state: BuilderState,
+  unit?: keyof RelativeUnits,
+): string => {
+  const whole = unit !== undefined && isCalendarUnit(unit);
+  const cast = whole ? 'int' : 'double precision';
+  if (!isRowRef(magnitude)) {
+    const amount = resolveMagnitude(magnitude, readContext(state), unit);
+    return `${nextParam(state, amount)}::${cast}`;
   }
-  return `${nextParam(state, resolveMagnitude(magnitude, readContext(state)))}::${cast}`;
+  const column = resolveRef((magnitude as { path: string }).path, state) as { sql: string };
+  const c = column.sql;
+  if (unit === undefined) return `(${c})::${cast}`;
+  const usable = whole ? `${c} >= 0 AND ${c} = trunc(${c})` : `${c} >= 0`;
+  return `(CASE WHEN ${usable} THEN ${c} END)::${cast}`;
 };
 
 // Postgres applies an interval month part, then day part, then time — the order check()
 // shifts in (see shiftByUnits).
-const GROUPS: { arg: string; cast: string; scale: Partial<Record<keyof RelativeUnits, number>> }[] =
-  [
-    { arg: 'months', cast: 'int', scale: { years: 12, quarters: 3, months: 1 } },
-    { arg: 'days', cast: 'int', scale: { weeks: 7, days: 1 } },
-    { arg: 'secs', cast: 'double precision', scale: { hours: 3600, minutes: 60, seconds: 1 } },
-  ];
+const GROUPS: { arg: string; scale: Partial<Record<keyof RelativeUnits, number>> }[] = [
+  { arg: 'months', scale: { years: 12, quarters: 3, months: 1 } },
+  { arg: 'days', scale: { weeks: 7, days: 1 } },
+  { arg: 'secs', scale: { hours: 3600, minutes: 60, seconds: 1 } },
+];
 
 /** `units` as a Postgres interval; NULL when a magnitude reads NULL. */
 export const intervalSql = (units: RelativeUnits, state: BuilderState): string => {
-  const args = GROUPS.flatMap(({ arg, cast, scale }) => {
+  const args = GROUPS.flatMap(({ arg, scale }) => {
     const terms = (Object.entries(scale) as [keyof RelativeUnits, number][])
       .filter(([unit]) => units[unit] !== undefined)
       .map(([unit, factor]) => {
-        const term = magnitudeSql(units[unit] as Magnitude, state, cast);
+        const term = magnitudeSql(units[unit] as Magnitude, state, unit);
         return factor === 1 ? term : `${factor} * ${term}`;
       });
     return terms.length ? [`${arg} => ${terms.join(' + ')}`] : [];
@@ -82,31 +99,38 @@ export const intervalSql = (units: RelativeUnits, state: BuilderState): string =
   return `make_interval(${args.join(', ')})`;
 };
 
-/** A date operand moved by `units`; SQL when either side is read per row. */
+/**
+ * A date operand moved by `units` on the wall clock of the evaluation's zone, as check() moves
+ * it; SQL (`AT TIME ZONE` both ways) when either side is read per row.
+ */
 export const shiftDate = (
   rhs: ResolvedRhs,
   units: RelativeUnits,
   direction: 1 | -1,
   state: BuilderState,
 ): ResolvedRhs => {
+  const zone = resolveTimeZone(state.dateConfig ?? {});
   if (rhs.type === 'value' && !readsRow(units)) {
     const resolved = resolveUnits(units, readContext(state));
     if (rhs.value === null || rhs.value === undefined || resolved === null)
       return { type: 'value', value: null };
     return {
       type: 'value',
-      value: shiftByUnits(dayjs(rhs.value as Date), resolved, direction).toDate(),
+      value: shiftByUnits(dayjs(rhs.value as Date), resolved, direction, zone).toDate(),
     };
   }
   const base =
     rhs.type === 'column' ? rhs.sql : `${nextParam(state, rhs.value ?? null)}::timestamptz`;
+  const z = nextParam(state, zone);
+  const sign = direction === 1 ? '+' : '-';
   return {
     type: 'column',
-    sql: `(${base} ${direction === 1 ? '+' : '-'} ${intervalSql(units, state)})`,
+    sql: `(((${base} AT TIME ZONE ${z}) ${sign} ${intervalSql(units, state)}) AT TIME ZONE ${z})`,
   };
 };
 
-/** A numeric operand moved by `offset`; SQL when either side is read per row. */
+/** A numeric operand moved by `offset`, in double precision as check() adds; SQL when either
+ *  side is read per row. */
 export const shiftNumber = (
   rhs: ResolvedRhs,
   offset: NumberOffset,
@@ -116,6 +140,7 @@ export const shiftNumber = (
     const amount = resolveMagnitude(offset, readContext(state));
     return { type: 'value', value: amount === null ? null : addOffset(rhs.value, amount) };
   }
-  const base = rhs.type === 'column' ? rhs.sql : `${nextParam(state, rhs.value ?? null)}::numeric`;
-  return { type: 'column', sql: `(${base} + ${magnitudeSql(offset, state, 'numeric')})` };
+  const base =
+    rhs.type === 'column' ? rhs.sql : `${nextParam(state, rhs.value ?? null)}::double precision`;
+  return { type: 'column', sql: `(${base} + ${magnitudeSql(offset, state)})` };
 };

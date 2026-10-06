@@ -208,8 +208,8 @@ const parseCompareDates = (
     if (!date1 || !date2) return null;
     // Auto-sort: ensure startDate <= endDate
     const [start, end] = date1.isAfter(date2) ? [date2, date1] : [date1, date2];
-    const shiftedStart = shift(start, condition, read);
-    const shiftedEnd = shift(end, condition, read);
+    const shiftedStart = shift(start, condition, read, tz);
+    const shiftedEnd = shift(end, condition, read, tz);
     return shiftedStart && shiftedEnd ? [shiftedStart, shiftedEnd] : null;
   }
 
@@ -222,18 +222,23 @@ const parseCompareDates = (
   };
   const point = isDateExpr(raw) ? pointOf(raw) : toPoint(raw, 'comparison date');
   if (!point) return null;
-  const shifted = shift(point, condition, read);
+  const shifted = shift(point, condition, read, tz);
   return shifted && [shifted, undefined];
 };
 
 /** A comparison point moved by the rule's offset; null when an offset magnitude reads nothing. */
-const shift = (point: dayjs.Dayjs, condition: DateRule, read: ReadRef): dayjs.Dayjs | null => {
+const shift = (
+  point: dayjs.Dayjs,
+  condition: DateRule,
+  read: ReadRef,
+  zone: string,
+): dayjs.Dayjs | null => {
   const { offset } = condition;
   if (offset === undefined) return point;
   const rolling = rollingShift(offset);
   if (!rolling) throw new Error('a date offset is { ago } or { ahead }');
   const units = resolveUnits(rolling[0], read);
-  return units && shiftByUnits(point, units, rolling[1]);
+  return units && shiftByUnits(point, units, rolling[1], zone);
 };
 
 /**

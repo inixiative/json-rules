@@ -1,11 +1,18 @@
 import { resolveExpr } from '../amount';
 import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
-import { ruleShape } from '../fieldMap/shape';
+import { isRelationEntry } from '../fieldMap/entry';
+import { entryKind, ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
+import { fieldEntry } from '../fieldMap/walk';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
-import { comparatorOf, NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
+import {
+  comparatorOf,
+  FieldKind,
+  NEGATED_OPERATORS,
+  NEGATED_RANGE_OPERATORS,
+} from '../operatorCatalog';
 import type { DateRule } from '../types';
 import { absentArms, buildMapAwareFilter } from './field';
 import { notLeaf, orWhere } from './logical';
@@ -17,15 +24,18 @@ import { dateConfigOf, prismaRead, readSource } from './valueSource';
 // complement is a WHERE-level NOT: a field-level `not` over `{ gte, lte }` distributes over both
 // keys and matches nothing.
 export const buildDateRule = (rule: DateRule, options?: PrismaBuildOptions): PrismaWhere => {
-  // A date in Json is text, which Prisma's Json filters compare as text, not as an instant.
-  const shape = ruleShape(
-    { field: rule.field },
-    options?.map as FieldMap | undefined,
-    options?.model,
-  );
+  // Prisma filters a date only on a DateTime column: Json and String compare text, a number a
+  // number.
+  const map = options?.map as FieldMap | undefined;
+  const shape = ruleShape({ field: rule.field }, map, options?.model);
   if (shape === 'json' || shape === 'json-path')
     throw new Error(
       `A date rule on the Json value '${rule.field}' has no Prisma form (Prisma compares Json text); use toSql() or check().`,
+    );
+  const entry = fieldEntry(rule.field, map, options?.model);
+  if (entry && !isRelationEntry(entry) && entryKind(entry) !== FieldKind.DateTime)
+    throw new Error(
+      `A date rule on the ${entry.type} field '${rule.field}' has no Prisma form (Prisma compares it as ${entry.type}, not as an instant); use toSql() or check().`,
     );
   const arms = NEGATED_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
   const filter = buildDateLeafFilter(rule, options);

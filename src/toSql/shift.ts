@@ -31,7 +31,7 @@ const isRowRef = (magnitude: Magnitude | undefined): boolean =>
 /**
  * A date read from the row as an instant, whatever the session zone. A DateTime column goes
  * through its epoch, which a `timestamp` column (UTC wall time, as Prisma writes it) and a
- * `timestamptz` share. Text — a JSON path — reads as check() reads it: digits are epoch
+ * `timestamptz` share. Text — a JSON path — reads as check() reads it: a number is epoch
  * milliseconds, a string with a zone is that instant, and a zoneless one is wall time in the
  * evaluation's zone.
  */
@@ -42,7 +42,7 @@ export const asInstant = (
   if (shape !== 'json-path' && shape !== 'text') return `to_timestamp(EXTRACT(EPOCH FROM ${sql}))`;
   const zone = nextParam(state, dateConfigOf(state).timeZone);
   return (
-    `(CASE WHEN ${sql} ~ '^-?[0-9]+$' THEN to_timestamp((${sql})::numeric / 1000)` +
+    `(CASE WHEN ${sql} ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN to_timestamp((${sql})::numeric / 1000)` +
     ` WHEN ${sql} ~* '[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?\\s*(z|[+-][0-9]{2}(:?[0-9]{2})?)\\s*$'` +
     ` OR ${sql} ~* '\\m(gmt|utc)\\M' THEN (${sql})::timestamptz` +
     ` ELSE (${sql})::timestamp AT TIME ZONE ${zone} END)`

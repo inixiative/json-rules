@@ -127,3 +127,12 @@ describe('a pattern matches on Postgres what it matches on RE2', () => {
     expect(result.sql).toEqual(expect.stringContaining('has no Postgres form'));
   });
 });
+
+test('a date rule on a String column has no Prisma form', async () => {
+  const result = await rails.run({
+    field: 'name',
+    dateOperator: 'before',
+    value: '2026-10-03',
+  } as Condition);
+  expect(result.prisma).toEqual(expect.stringContaining('the String field'));
+});

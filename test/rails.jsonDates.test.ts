@@ -2,15 +2,17 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
 import { openRails } from './rails/harness';
 
-// A date in Json is text: check() and SQL read it alike — digits are epoch milliseconds, a zone
+// A date in Json is text: check() and SQL read it alike — a number is epoch milliseconds, a zone
 // names the instant, a zoneless string is wall time in the evaluation's zone — whatever the
-// database session's zone. Prisma compares Json as text and refuses. Users 10–13 hold meta.d.
+// database session's zone. Prisma compares Json as text and refuses. Users 10–14 hold meta.d
+// (14 a fractional epoch).
 const SEED = `
 INSERT INTO users (id, name, meta, tags) VALUES
   (10, 'Jo', '{"d":"2026-10-05T10:00:00Z"}', '{}'),
   (11, 'Kai', '{"d":"2026-10-07"}', '{}'),
   (12, 'Lu', '{"d":"2026-10-05T23:00:00-05:00"}', '{}'),
-  (13, 'Mo', '{"d":"1759700000000"}', '{}');
+  (13, 'Mo', '{"d":"1759700000000"}', '{}'),
+  (14, 'Ny', '{"d":1759700000000.5}', '{}');
 `;
 
 let rails: Awaited<ReturnType<typeof openRails>>;
@@ -32,7 +34,7 @@ describe('dates in Json read as check() reads them, whatever the session zone', 
     [
       'before an instant',
       { field: 'meta.d', dateOperator: 'before', value: '2026-10-06T02:00:00Z' },
-      [10, 13],
+      [10, 13, 14],
     ],
     [
       'between, zoneless in New York',

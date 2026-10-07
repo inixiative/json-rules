@@ -662,7 +662,7 @@ import { projectLens } from '@inixiative/json-rules';
 const projection = projectLens(narrowing);
 // Record<dottedPath, ProjectedVisit> — a plain object
 //   key:   dotted path from the lens anchor, e.g. "Post", "Post.author", "Post.editor"
-//   value: { mapName, modelName, fields, whereClauses, sources, sourceLabels, sourceGroupBys }
+//   value: { mapName, model, fields, whereClauses, sources, sourceLabels, sourceGroupBys }
 ```
 
 Pass `{ sourceValues }` (from `materializeSources` / `materializeSourceQuery`) to attach

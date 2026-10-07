@@ -48,11 +48,11 @@ describe('projectPaths — path-keyed projection (v2.4)', () => {
     expect(Object.keys(projection).sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
 
     const author = at(projection, 'Post.author');
-    expect(author.modelName).toBe('User');
+    expect(author.model).toBe('User');
     expect(Object.keys(author.fields).sort()).toEqual(['name']);
 
     const editor = at(projection, 'Post.editor');
-    expect(editor.modelName).toBe('User');
+    expect(editor.model).toBe('User');
     expect(Object.keys(editor.fields).sort()).toEqual(['id']);
   });
 

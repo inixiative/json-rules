@@ -141,7 +141,7 @@ export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQu
     const { prisma, sql } = compileOne(
       lens,
       visit.mapName,
-      visit.modelName,
+      visit.model,
       field,
       label,
       groupBy,
@@ -150,7 +150,7 @@ export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQu
     return {
       path,
       mapName: visit.mapName,
-      model: visit.modelName,
+      model: visit.model,
       field,
       ...(label !== undefined ? { label } : {}),
       ...(groupBy !== undefined ? { groupBy } : {}),

@@ -272,7 +272,7 @@ export type LensPathHop = {
   field: string;
   entry: FieldMapEntry;
   mapName: string;
-  modelName: string;
+  model: string;
   /** The relation path from the lens anchor to the model this hop reads. */
   relPath: string[];
 };
@@ -311,7 +311,7 @@ export const resolvePolicyPath = (
       field: fieldName,
       entry,
       mapName: at.mapName,
-      modelName: at.modelName,
+      model: at.modelName,
       relPath: [...at.relPath],
     };
     hops.push(hop);
@@ -389,7 +389,7 @@ export const lensPathEnd = (
   const { terminal, jsonSubPath } = resolution;
   return {
     mapName: terminal.mapName,
-    modelName: terminal.modelName,
+    modelName: terminal.model,
     relPath: terminal.relPath,
     entry: terminal.entry,
     hopEffects: effects.slice(0, -1),

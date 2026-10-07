@@ -67,7 +67,7 @@ describe('walkLensPath — one dotted path through the lens, verified hop by hop
     const scalar = walkLensPath(bare, 'posts.title');
     expect(scalar.outcome).toBe('resolved');
     if (scalar.outcome !== 'resolved') return;
-    expect(scalar.hops.map((hop) => [hop.field, hop.modelName, hop.relPath])).toEqual([
+    expect(scalar.hops.map((hop) => [hop.field, hop.model, hop.relPath])).toEqual([
       ['posts', 'User', []],
       ['title', 'Post', ['posts']],
     ]);

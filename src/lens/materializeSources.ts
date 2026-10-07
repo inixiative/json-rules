@@ -64,7 +64,7 @@ export const materializeSources = (
     return {
       path,
       mapName: visit.mapName,
-      model: visit.modelName,
+      model: visit.model,
       field,
       options: sortOptions(byKey),
     };

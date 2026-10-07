@@ -255,7 +255,7 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
       const guards = traversalGuards(
         policy,
         visit.mapName,
-        visit.modelName,
+        visit.model,
         relPath,
         groupBy ?? [],
         sourceClauses,

@@ -70,7 +70,7 @@ describe('projectPaths — bridges', () => {
     const proj = projectPaths(n);
     const contact = at(proj, 'FanUser.salesforce:Contact');
     expect(contact.mapName).toBe('salesforce');
-    expect(contact.modelName).toBe('Contact');
+    expect(contact.model).toBe('Contact');
     expect(contact.fields.industry).toBeUndefined();
     expect(contact.fields.id).toBeDefined();
   });
@@ -93,7 +93,7 @@ describe('projectPaths — bridges', () => {
     ]);
     const account = at(proj, 'FanUser.salesforce:Contact.account');
     expect(account.mapName).toBe('salesforce');
-    expect(account.modelName).toBe('Account');
+    expect(account.model).toBe('Account');
     expect(Object.keys(account.fields).sort()).toEqual(['name']);
   });
 

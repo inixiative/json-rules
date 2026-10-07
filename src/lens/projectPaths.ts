@@ -13,7 +13,7 @@ import type { Lens, LensNarrowing } from './types.ts';
 
 export type ProjectedVisit = {
   mapName: string;
-  modelName: string;
+  model: string;
   fields: Record<string, FieldMapEntry>;
   whereClauses: Condition[];
   /** Per-field source eligibility wheres, composed across layers (general + path). */
@@ -131,7 +131,7 @@ export const projectPaths = (
 
     out[dottedPath] = {
       mapName,
-      modelName,
+      model: modelName,
       fields,
       whereClauses: effect.whereClauses,
       sources,

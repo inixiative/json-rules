@@ -101,7 +101,7 @@ describe('projectPaths', () => {
     expect(root.fields.email).toBeDefined();
     expect(root.fields.fanMissions).toBeDefined();
     const nested = at(out, 'FanUser.fanMissions');
-    expect(nested.modelName).toBe('FanMission');
+    expect(nested.model).toBe('FanMission');
     expect(nested.fields.missionUuid).toBeDefined();
     expect(nested.fields.status).toBeUndefined();
     expect(nested.fields.id).toBeUndefined();
@@ -118,7 +118,7 @@ describe('projectPaths', () => {
     const out = projectPaths(n);
     const bridged = at(out, 'FanUser.salesforce:Contact');
     expect(bridged.mapName).toBe('salesforce');
-    expect(bridged.modelName).toBe('Contact');
+    expect(bridged.model).toBe('Contact');
     expect(bridged.fields.industry).toBeDefined();
     expect(bridged.fields.id).toBeUndefined();
   });

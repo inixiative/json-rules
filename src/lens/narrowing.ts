@@ -543,7 +543,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
       // visit plus each path the parent declares for it, so its where must resolve at all.
       const whereVisits: WhereVisit[] = [{ mapName, modelName, relPath: OFF_PATH }];
       for (const [path, visit] of Object.entries(parentVisits)) {
-        if (visit.mapName === mapName && visit.modelName === modelName) {
+        if (visit.mapName === mapName && visit.model === modelName) {
           whereVisits.push({ mapName, modelName, relPath: path.split('.').slice(1) });
         }
       }

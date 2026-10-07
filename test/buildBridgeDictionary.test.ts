@@ -136,6 +136,25 @@ describe('indexBridges', () => {
 });
 
 describe('indexBridges reads own properties only', () => {
+  test('a join column named after an Object.prototype member groups by its own value', () => {
+    const set = {
+      maps: {},
+      bridges: [
+        {
+          endpoints: [
+            { fieldMap: 'app', model: 'Post', on: 'id' },
+            { fieldMap: 'crm', model: 'Event', on: 'constructor' },
+          ],
+          cardinality: 'oneToMany' as const,
+        },
+      ],
+    };
+    const dict = indexBridges(set as never, {
+      'crm:Event': [{ constructor: 'p1' }, { constructor: 'p1' }, { other: 1 }],
+    });
+    expect(Object.keys(dict.crm.Event.constructor)).toEqual(['p1']);
+  });
+
   test('a key Object.prototype names is an ordinary key', () => {
     const set = {
       maps: {},

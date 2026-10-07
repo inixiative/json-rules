@@ -1,4 +1,3 @@
-import { groupBy } from 'lodash-es';
 import { own, ownEntry } from '../own';
 import type { Row } from '../types';
 import { endpointKey } from './endpointKey.ts';
@@ -20,7 +19,7 @@ const keyByUnique = (
 ): Record<string, Row> => {
   const out: Record<string, Row> = {};
   for (const row of rows) {
-    const k = row[on] as string | number | undefined;
+    const k = own(row, on) as string | number | undefined;
     if (k === undefined || k === null) continue;
     const key = String(k);
     if (Object.hasOwn(out, key)) {
@@ -33,6 +32,17 @@ const keyByUnique = (
       );
     }
     out[key] = row;
+  }
+  return out;
+};
+
+/** Rows grouped by their own `on` value; a row whose value is null joins nothing. */
+const groupByKey = (rows: Row[], on: string): Record<string, Row[]> => {
+  const out: Record<string, Row[]> = {};
+  for (const row of rows) {
+    const k = own(row, on);
+    if (k === null || k === undefined) continue;
+    ownEntry(out, String(k), () => []).push(row);
   }
   return out;
 };
@@ -61,11 +71,7 @@ export const indexBridges = (
     const bRows = own(rawData, bKey);
     if (bRows) {
       if (bridge.cardinality === 'oneToMany') {
-        // Filter null/undefined `on` values — lodash groupBy would otherwise stringify
-        // them into 'null'/'undefined' keys, causing spurious joins when looking up
-        // rows whose own join field is null.
-        const valid = bRows.filter((row) => row[b.on] !== null && row[b.on] !== undefined);
-        endpoint(b.fieldMap, b.model)[b.on] = groupBy(valid, b.on);
+        endpoint(b.fieldMap, b.model)[b.on] = groupByKey(bRows, b.on);
       } else {
         endpoint(b.fieldMap, b.model)[b.on] = keyByUnique(bRows, b.on, bKey, 'oneToOne');
       }

@@ -64,6 +64,11 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
     owners: ['src/fieldMap/entry.ts'],
   },
   {
+    verb: 'read a row by key (own-property; lodash reads keys through the prototype)',
+    pattern: /import\s*\{[^}]*\b(groupBy|keyBy|property|get|has)\b[^}]*\}\s*from\s*'lodash-es'/,
+    owners: ['src/engineGlobals.ts'],
+  },
+  {
     verb: 'name a bridge endpoint (map:Model)',
     pattern: /\$\{[\w.]*fieldMap\}:\$\{|split\(':'\)/,
     owners: ['src/fieldMap/endpointKey.ts'],

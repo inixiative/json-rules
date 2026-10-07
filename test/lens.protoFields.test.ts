@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { checkRuleAgainstLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
-import { walkPath } from '../src/lens/walk';
 import { Operator } from '../src/operator';
+import { walkFieldPath } from '../src/toPrisma/mapWalk';
 import type { FieldMap } from '../src/toPrisma/types';
 
 // Field maps are plain object literals, so a bare `fields[name]` resolves every
@@ -41,11 +41,8 @@ describe('prototype-named fields never resolve', () => {
     }
   });
 
-  test('walkPath returns null for them', () => {
-    const set = { maps: { prisma: map }, bridges: [] } as never;
-    expect(walkPath(set, 'prisma', 'User', 'email')).not.toBeNull();
-    for (const name of PROTO_NAMES) {
-      expect(walkPath(set, 'prisma', 'User', name)).toBeNull();
-    }
+  test('the field-path walker does not resolve them', () => {
+    expect(walkFieldPath('email', map, 'User').kind).toBe('direct');
+    for (const name of PROTO_NAMES) expect(walkFieldPath(name, map, 'User').kind).toBe('fallback');
   });
 });

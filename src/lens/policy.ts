@@ -1,4 +1,5 @@
 import { own } from '../own';
+import { resolveScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import type {
@@ -340,4 +341,45 @@ export const walkLensPath = (
     terminalFieldName: terminal.field,
     jsonSubPath,
   };
+};
+
+/** Where a rule visit stands: a model reached through the lens, or open inside a Json value. */
+export type VisitScope = {
+  mapName: string;
+  modelName: string;
+  relPath: readonly string[];
+  open: boolean;
+};
+
+export const lensRootScope = (policy: Policy): VisitScope => ({
+  mapName: policy.lens.mapName,
+  modelName: policy.lens.model,
+  relPath: [],
+  open: false,
+});
+
+export type LensWalk = NonNullable<ReturnType<typeof walkLensPath>>;
+
+/**
+ * The scope a node's `field` leads into — where its `condition` / `filter` resolve — with the
+ * scope the walk started from and the walk that reached it (none inside an open Json scope), or why it doesn't resolve. A `$`-prefixed
+ * field counts scopes up the stack as check() does.
+ */
+export const stepIntoField = (
+  policy: Policy,
+  scopes: readonly VisitScope[],
+  field: string,
+): { from: VisitScope; next: VisitScope; walked: LensWalk | null } | { violation: string } => {
+  const target = resolveScopeRef(field, scopes);
+  if ('outOfBounds' in target) return { violation: target.outOfBounds };
+  if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
+  const { mapName, modelName, relPath } = target.scope;
+  const walked = walkLensPath(policy, mapName, modelName, relPath, target.path);
+  if (!walked) return { violation: 'path does not resolve through the narrowed lens' };
+  const open = isJsonEntry(walked.entry);
+  const relation = resolveRelationTarget(walked.entry, walked.mapName);
+  const next = relation
+    ? { ...relation, relPath: [...walked.relPath, walked.terminalFieldName], open }
+    : { ...target.scope, open };
+  return { from: target.scope, next, walked };
 };

@@ -1,7 +1,8 @@
 import { applyCoercion } from '../field';
 import { COMPILE_COERCED_KINDS, FieldKind } from '../operatorCatalog';
 import { own } from '../own';
-import type { Rule } from '../types';
+import { someCondition } from '../traverse';
+import type { Condition, Rule } from '../types';
 import type { FieldMap, FieldMapEntry } from './types';
 
 export type MapWalkResult =
@@ -136,3 +137,35 @@ export const compileFieldLiteral = (
     ? applyCoercion(value, rule.coerceType)
     : value;
 };
+
+/** The model a path of relations leads to; null when a segment isn't a declared relation. */
+export const relationTarget = (field: string, map: FieldMap, model: string): string | null => {
+  const walk = walkFieldPath(field, map, model);
+  return walk.kind === 'direct' && walk.entry?.kind === 'object' ? walk.entry.type : null;
+};
+
+/** Whether a field path crosses a bridge. */
+export const hitsBridge = (field: string, map: FieldMap, model: string): boolean =>
+  walkFieldPath(field, map, model).kind === 'bridge';
+
+/**
+ * Whether a bridge appears anywhere in a condition, a relation node's `condition` / `filter`
+ * read at its target model. Bridge predicates compile to an over-fetch sentinel (`TRUE` / `{}`),
+ * which is safe under AND / OR but not under the `NOT(if) OR then` of an implication — so an
+ * implication that touches one over-fetches whole.
+ */
+export const conditionTouchesBridge = (
+  condition: Condition,
+  map: FieldMap | undefined,
+  model: string | undefined,
+): boolean =>
+  !!map &&
+  !!model &&
+  someCondition<string>(
+    condition,
+    (node, at) =>
+      typeof node.field === 'string' && node.field !== '' && hitsBridge(node.field, map, at),
+    (node, at) =>
+      (typeof node.field === 'string' ? relationTarget(node.field, map, at) : at) ?? false,
+    model,
+  );

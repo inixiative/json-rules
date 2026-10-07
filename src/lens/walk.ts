@@ -1,6 +1,5 @@
-import type { FieldMapSet } from '../fieldMap/types.ts';
 import { own } from '../own';
-import type { FieldMapEntry, ModelEntry } from '../toPrisma/types.ts';
+import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 export const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
@@ -45,29 +44,6 @@ export const resolveRelationTarget = (
   if (entry.kind === 'bridge') {
     const [m, n] = entry.type.includes(':') ? entry.type.split(':') : [currentMap, entry.type];
     return { mapName: m, modelName: n };
-  }
-  return null;
-};
-
-export const walkPath = (
-  set: FieldMapSet,
-  startMap: string,
-  startModel: string,
-  path: string,
-): { entry: FieldMapEntry; mapName: string; modelName: string } | null => {
-  const parts = path.split('.');
-  let mapName = startMap;
-  let modelName = startModel;
-  for (let i = 0; i < parts.length; i++) {
-    const model: ModelEntry | undefined = set.maps[mapName]?.models[modelName];
-    if (!model) return null;
-    const entry = own(model.fields, parts[i]);
-    if (!entry) return null;
-    if (i === parts.length - 1) return { entry, mapName, modelName };
-    const target = resolveRelationTarget(entry, mapName);
-    if (!target) return null;
-    mapName = target.mapName;
-    modelName = target.modelName;
   }
   return null;
 };

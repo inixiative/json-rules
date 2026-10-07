@@ -1,29 +1,12 @@
 import { rejectScopedField } from '../scope';
+import { hitsBridge } from '../toPrisma/mapWalk';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
 import { buildAll, buildAny, buildIfThenElse, setConditionBuilder } from './logical';
-import type { BuilderState, FieldMap } from './types';
-
-const pathHitsBridge = (field: string, map: FieldMap, model: string): boolean => {
-  const parts = field.split('.');
-  let cur = model;
-  for (let i = 0; i < parts.length; i++) {
-    const me = map.models[cur];
-    if (!me) return false;
-    const fe = me.fields[parts[i]];
-    if (!fe) return false;
-    if (fe.kind === 'bridge') return true;
-    if (fe.kind === 'object') {
-      cur = fe.type;
-      continue;
-    }
-    return false;
-  }
-  return false;
-};
+import type { BuilderState } from './types';
 
 export const buildCondition = (condition: Condition, state: BuilderState): string => {
   if (typeof condition === 'boolean') {
@@ -36,7 +19,7 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
     typeof condition.field === 'string' &&
     state.map &&
     state.currentModel &&
-    pathHitsBridge(condition.field, state.map, state.currentModel)
+    hitsBridge(condition.field, state.map, state.currentModel)
   ) {
     return 'TRUE';
   }

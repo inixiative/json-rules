@@ -1,5 +1,5 @@
 import type { All, Any, Condition, IfThenElse } from '../types';
-import { walkFieldPath } from './mapWalk';
+import { conditionTouchesBridge } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 
 // Forward declaration - provided by condition.ts to avoid circular import
@@ -12,71 +12,6 @@ let buildCondition: BuildConditionFn;
 
 export const setConditionBuilder = (fn: BuildConditionFn) => {
   buildCondition = fn;
-};
-
-/**
- * Walks a relation field path and returns the target model name (for descending
- * into arrayRule/aggregate sub-conditions). Returns null if the path isn't a
- * chain of object relations (e.g. terminates in a scalar or hits a bridge).
- */
-const resolveRelationTargetModel = (
-  field: string,
-  map: FieldMap,
-  rootModel: string,
-): string | null => {
-  const parts = field.split('.');
-  let cur = rootModel;
-  for (const part of parts) {
-    const entry = map.models[cur]?.fields[part];
-    if (!entry || entry.kind !== 'object') return null;
-    cur = entry.type;
-  }
-  return cur;
-};
-
-/**
- * Does this condition (recursively) hit a bridge field?
- *
- * Bridge predicates compile to `{}` in toPrisma (the over-fetch sentinel).
- * Under AND the fold drops it (no-op); under OR the fold absorbs the whole
- * disjunction into `{}` (over-fetch, safe). But in `if/then`, the implication is
- * encoded as `NOT(if) OR then`, and NOT of the sentinel is where the two meanings of
- * `{}` part ways: NOT(true) is match-nothing, while NOT(unknown) must stay unknown.
- * Folding would under-fetch, so a bridge anywhere in the implication over-fetches
- * the whole expression instead.
- *
- * Recurses into arrayRule.condition and aggregate.condition, flipping the
- * model context to the relation target so nested fields resolve correctly.
- * A bridge anywhere in the if-clause subtree triggers over-fetch.
- */
-const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolean => {
-  if (typeof cond === 'boolean') return false;
-  if (!options?.map || !options?.model) return false;
-
-  if ('all' in cond) return cond.all.some((c) => conditionTouchesBridge(c, options));
-  if ('any' in cond) return cond.any.some((c) => conditionTouchesBridge(c, options));
-  if ('if' in cond) {
-    return (
-      conditionTouchesBridge(cond.if, options) ||
-      conditionTouchesBridge(cond.then, options) ||
-      (cond.else !== undefined && conditionTouchesBridge(cond.else, options))
-    );
-  }
-
-  // Field-bearing leaves: arrayRule, aggregate, dateRule, field
-  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
-    const result = walkFieldPath(cond.field, options.map as FieldMap, options.model);
-    if (result.kind === 'bridge') return true;
-
-    // arrayRule/aggregate may carry a nested condition rooted on the relation target.
-    if ('condition' in cond && cond.condition !== undefined) {
-      const target = resolveRelationTargetModel(cond.field, options.map as FieldMap, options.model);
-      if (target) {
-        if (conditionTouchesBridge(cond.condition, { ...options, model: target })) return true;
-      }
-    }
-  }
-  return false;
 };
 
 /**
@@ -147,9 +82,7 @@ export const buildIfThenElse = (
   // other branch present drops that branch. Over-fetch the whole expression and let the
   // caller's check() filter against hydrated cross-source data.
   if (
-    conditionTouchesBridge(cond.if, options) ||
-    conditionTouchesBridge(cond.then, options) ||
-    (cond.else !== undefined && conditionTouchesBridge(cond.else, options))
+    conditionTouchesBridge(cond as Condition, options?.map as FieldMap | undefined, options?.model)
   ) {
     return {};
   }

@@ -2,13 +2,21 @@ import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
-import { valueRefRoles } from '../traverse';
+import { isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { Condition } from '../types';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
-import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
+import {
+  allowedEnumValues,
+  type LensWalk,
+  lensRootScope,
+  resolvePolicy,
+  resolveVisit,
+  stepIntoField,
+  type VisitScope,
+  walkLensPath,
+} from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { isJsonEntry } from './walk.ts';
 
 export type RuleLensViolation = {
   path: string;
@@ -20,233 +28,179 @@ export type RuleLensCheck = {
   violations: RuleLensViolation[];
 };
 
-type VisitScope = {
-  mapName: string;
-  modelName: string;
-  relPath: readonly string[];
-  open: boolean;
-};
-
-const lensRoot = (policy: Policy): VisitScope => ({
-  mapName: policy.lens.mapName,
-  modelName: policy.lens.model,
-  relPath: [],
-  open: false,
-});
-
 const visit = (
-  cond: Condition,
+  rule: Condition,
   policy: Policy,
-  scopes: readonly VisitScope[],
+  root: VisitScope,
   violations: RuleLensViolation[],
-): void => {
-  if (typeof cond === 'boolean') return;
+): void =>
+  visitCondition<readonly VisitScope[]>(
+    rule,
+    (node, scopes) => {
+      if (isLogicalNode(node)) return;
+      const cond = node as unknown as Exclude<Condition, boolean>;
 
-  if ('all' in cond) {
-    for (const c of cond.all) visit(c, policy, scopes, violations);
-    return;
-  }
-  if ('any' in cond) {
-    for (const c of cond.any) visit(c, policy, scopes, violations);
-    return;
-  }
-  if ('if' in cond) {
-    visit(cond.if, policy, scopes, violations);
-    visit(cond.then, policy, scopes, violations);
-    if (cond.else !== undefined) visit(cond.else, policy, scopes, violations);
-    return;
-  }
+      // A bare ref resolves at the current visit; `$`-prefixed refs count scopes up the stack.
+      const scopeFor = (ref: string): { scope: VisitScope; field: string } | null => {
+        const target = resolveScopeRef(ref, scopes);
+        if ('outOfBounds' in target) {
+          violations.push({ path: ref, reason: target.outOfBounds });
+          return null;
+        }
+        return { scope: target.scope, field: target.path };
+      };
 
-  const here = scopes[scopes.length - 1];
-
-  // A bare ref resolves at the current visit; `$`-prefixed refs count scopes up the stack
-  // (`$.` = current element, `$$.` = its enclosing element, …) exactly as check() does.
-  const scopeFor = (ref: string): { scope: VisitScope; field: string } | null => {
-    const target = resolveScopeRef(ref, scopes);
-    if ('outOfBounds' in target) {
-      violations.push({ path: ref, reason: target.outOfBounds });
-      return null;
-    }
-    return { scope: target.scope, field: target.path };
-  };
-
-  let next: VisitScope = here;
-  let fieldOk = true;
-  let terminalFieldName: string | null = null;
-  let terminalIsEnum = false;
-  let terminalEnumType: string | null = null;
-  let terminalAllowedValues: readonly string[] | null = null;
-  let terminalEntry: FieldMapEntry | null = null;
-
-  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
-    const target = scopeFor(cond.field);
-    if (!target) {
-      fieldOk = false;
-    } else if (target.scope.open) {
-      // A Json column's elements/members are undeclared — nothing to gate, stay open.
-      next = target.scope;
-    } else {
-      const { mapName, modelName, relPath } = target.scope;
-      const walked = walkLensPath(policy, mapName, modelName, relPath, target.field);
-      if (!walked) {
-        violations.push({
-          path: cond.field,
-          reason: 'path does not resolve through the narrowed lens',
-        });
-        fieldOk = false;
-      } else {
-        terminalFieldName = walked.terminalFieldName;
-        terminalEntry = walked.entry;
-        terminalIsEnum = walked.entry.kind === 'enum';
-        terminalEnumType = walked.entry.type;
-        // Below a Json boundary the value is undeclared, so the column's own allowed set
-        // says nothing about it — only gate a path that ends ON the declared entry.
-        terminalAllowedValues =
-          walked.jsonSubPath.length > 0
-            ? null
-            : allowedEnumValues(walked.terminalEffect, terminalFieldName);
-        const open = isJsonEntry(walked.entry);
-        if (walked.entry.kind === 'object' || walked.entry.kind === 'bridge') {
-          const relation =
-            walked.entry.kind === 'object'
-              ? { mapName: walked.mapName, modelName: walked.entry.type }
-              : {
-                  mapName: walked.entry.type.split(':')[0] ?? walked.mapName,
-                  modelName: walked.entry.type.split(':')[1] ?? walked.entry.type,
-                };
-          next = { ...relation, relPath: [...walked.relPath, terminalFieldName], open };
+      let next: VisitScope = scopes[scopes.length - 1];
+      let fieldOk = true;
+      let walked: LensWalk | null = null;
+      if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
+        const step = stepIntoField(policy, scopes, cond.field);
+        if ('violation' in step) {
+          violations.push({ path: cond.field, reason: step.violation });
+          fieldOk = false;
         } else {
-          next = { ...target.scope, open };
+          ({ next, walked } = step);
         }
       }
-    }
-  }
+      const terminalEntry: FieldMapEntry | null = walked?.entry ?? null;
+      const terminalFieldName = walked?.terminalFieldName ?? null;
+      const terminalIsEnum = walked?.entry.kind === 'enum';
+      const terminalEnumType = walked?.entry.type ?? null;
+      // Below a Json boundary the value is undeclared, so the column's own allowed set says
+      // nothing about it — only gate a path that ends ON the declared entry.
+      const terminalAllowedValues =
+        walked && walked.jsonSubPath.length === 0
+          ? allowedEnumValues(walked.terminalEffect, walked.terminalFieldName)
+          : null;
 
-  // Gate every value-side ref — the RHS `path`, an offset `{ path }`, each magnitude `{ path }` —
-  // the same way the LHS `field` is gated; otherwise a rule can reference outside the lens
-  // through its comparison value. Prefixed refs resolve at the scope they name; bare refs are
-  // root/context refs (resolve at the lens anchor). Inside an open scope a prefixed ref points
-  // into the JSON value, so there is nothing to resolve — a root ref is still gated. An amount
-  // reads a number, and a calendar unit's amount a whole number.
-  for (const { ref, role } of valueRefRoles(cond as Record<string, unknown>)) {
-    const target = parseScopeRef(ref) ? scopeFor(ref) : { scope: lensRoot(policy), field: ref };
-    if (!target || target.scope.open) continue;
-    const { mapName, modelName, relPath } = target.scope;
-    const walked = walkLensPath(policy, mapName, modelName, relPath, target.field);
-    if (!walked) {
-      violations.push({
-        path: ref,
-        reason:
-          role === 'value'
-            ? 'path (comparison ref) does not resolve through the narrowed lens'
-            : 'offset or magnitude ref does not resolve through the narrowed lens',
-      });
-      continue;
-    }
-    const kind = entryKind(walked.entry);
-    if (role === 'value' || role === 'shift' || kind === undefined) continue;
-    const fits = role === 'whole' ? INTEGER_KINDS.includes(kind) : NUMERIC_KINDS.includes(kind);
-    if (!fits)
-      violations.push({
-        path: ref,
-        reason: `${role === 'whole' ? 'a calendar unit reads a whole number' : 'an offset or magnitude reads a number'}, not ${kind}`,
-      });
-  }
+      // Gate every value-side ref — the RHS `path`, an offset `{ path }`, each magnitude `{ path }` —
+      // the same way the LHS `field` is gated; otherwise a rule can reference outside the lens
+      // through its comparison value. Prefixed refs resolve at the scope they name; bare refs are
+      // root/context refs (resolve at the lens anchor). Inside an open scope a prefixed ref points
+      // into the JSON value, so there is nothing to resolve — a root ref is still gated. An amount
+      // reads a number, and a calendar unit's amount a whole number.
+      for (const { ref, role } of valueRefRoles(cond as Record<string, unknown>)) {
+        const target = parseScopeRef(ref)
+          ? scopeFor(ref)
+          : { scope: lensRootScope(policy), field: ref };
+        if (!target || target.scope.open) continue;
+        const { mapName, modelName, relPath } = target.scope;
+        const walked = walkLensPath(policy, mapName, modelName, relPath, target.field);
+        if (!walked) {
+          violations.push({
+            path: ref,
+            reason:
+              role === 'value'
+                ? 'path (comparison ref) does not resolve through the narrowed lens'
+                : 'offset or magnitude ref does not resolve through the narrowed lens',
+          });
+          continue;
+        }
+        const kind = entryKind(walked.entry);
+        if (role === 'value' || role === 'shift' || kind === undefined) continue;
+        const fits = role === 'whole' ? INTEGER_KINDS.includes(kind) : NUMERIC_KINDS.includes(kind);
+        if (!fits)
+          violations.push({
+            path: ref,
+            reason: `${role === 'whole' ? 'a calendar unit reads a whole number' : 'an offset or magnitude reads a number'}, not ${kind}`,
+          });
+      }
 
-  if (!fieldOk) return;
+      if (!fieldOk) return false;
 
-  // An array operator iterates its field. On a non-list the node cannot evaluate, and its
-  // `condition`/`filter` have no element scope to resolve against — report it and stop.
-  if ('arrayOperator' in cond && typeof cond.field === 'string' && terminalEntry) {
-    const misfit = arrayFitViolation(cond.field, cond.arrayOperator, terminalEntry);
-    if (misfit) {
-      violations.push(misfit);
-      return;
-    }
-  }
+      // An array operator iterates its field. On a non-list the node cannot evaluate, and its
+      // `condition`/`filter` have no element scope to resolve against — report it and stop.
+      if ('arrayOperator' in cond && typeof cond.field === 'string' && terminalEntry) {
+        const misfit = arrayFitViolation(cond.field, cond.arrayOperator, terminalEntry);
+        if (misfit) {
+          violations.push(misfit);
+          return false;
+        }
+      }
 
-  // Operator and literal against the field's kind (an aggregate's operator compares the
-  // aggregate, not the field).
-  // A scalar list's elements carry the kind (a stamp names it), but its operators test the list.
-  if (
-    !('aggregate' in cond) &&
-    !terminalEntry?.isList &&
-    ('operator' in cond || 'dateOperator' in cond)
-  ) {
-    violations.push(
-      ...leafFitViolations(cond, terminalEntry ? entryKind(terminalEntry) : undefined),
-    );
-  }
+      // Operator and literal against the field's kind (an aggregate's operator compares the
+      // aggregate, not the field).
+      // A scalar list's elements carry the kind (a stamp names it), but its operators test the list.
+      if (
+        !('aggregate' in cond) &&
+        !terminalEntry?.isList &&
+        ('operator' in cond || 'dateOperator' in cond)
+      ) {
+        violations.push(
+          ...leafFitViolations(cond, terminalEntry ? entryKind(terminalEntry) : undefined),
+        );
+      }
 
-  const below = [...scopes, next];
+      if (!next.open && 'orderBy' in cond && Array.isArray(cond.orderBy)) {
+        for (const entry of cond.orderBy as { field?: unknown }[]) {
+          if (entry && typeof entry.field === 'string' && entry.field !== '') {
+            const walkedOrder = walkLensPath(
+              policy,
+              next.mapName,
+              next.modelName,
+              next.relPath,
+              entry.field,
+            );
+            if (!walkedOrder) {
+              violations.push({
+                path: entry.field,
+                reason: 'orderBy field does not resolve through the narrowed lens',
+              });
+            }
+          }
+        }
+      }
 
-  // Gate the window's `filter` (a full Condition over the array elements) and `orderBy`
-  // field refs — both are evaluated against the descended relation target.
-  if ('filter' in cond && cond.filter !== undefined) {
-    visit(cond.filter as Condition, policy, below, violations);
-  }
-  if (!next.open && 'orderBy' in cond && Array.isArray(cond.orderBy)) {
-    for (const entry of cond.orderBy as { field?: unknown }[]) {
-      if (entry && typeof entry.field === 'string' && entry.field !== '') {
-        const walkedOrder = walkLensPath(
+      // Value-set validation for leaf rules. Fires whenever the field carries an
+      // allowed set — an enum (registry/narrowed) or any other kind with explicit
+      // `values`.
+      if (terminalAllowedValues && 'operator' in cond && terminalFieldName) {
+        const literals = ruleLiterals(cond as { value?: unknown; path?: unknown });
+        if (literals) {
+          const allowed = new Set(terminalAllowedValues);
+          const scope = terminalIsEnum
+            ? `enum '${terminalEnumType}'`
+            : `field '${terminalFieldName}'`;
+          for (const v of literals) {
+            if (typeof v === 'string' && !allowed.has(v)) {
+              violations.push({
+                path: terminalFieldName,
+                reason: `value '${v}' is not in the allowed set for ${scope} (allowed: ${[...allowed].join(', ')})`,
+              });
+            }
+          }
+        }
+      }
+
+      // Aggregate sub-field
+      if (
+        !next.open &&
+        'aggregate' in cond &&
+        typeof cond.aggregate === 'object' &&
+        cond.aggregate !== null &&
+        typeof cond.aggregate.field === 'string' &&
+        cond.aggregate.field !== ''
+      ) {
+        const aggField = cond.aggregate.field;
+        const aggWalked = walkLensPath(
           policy,
           next.mapName,
           next.modelName,
           next.relPath,
-          entry.field,
+          aggField,
         );
-        if (!walkedOrder) {
+        if (!aggWalked) {
           violations.push({
-            path: entry.field,
-            reason: 'orderBy field does not resolve through the narrowed lens',
+            path: aggField,
+            reason: 'aggregate.field does not resolve through the narrowed lens',
           });
         }
       }
-    }
-  }
 
-  // Value-set validation for leaf rules. Fires whenever the field carries an
-  // allowed set — an enum (registry/narrowed) or any other kind with explicit
-  // `values`.
-  if (terminalAllowedValues && 'operator' in cond && terminalFieldName) {
-    const literals = ruleLiterals(cond as { value?: unknown; path?: unknown });
-    if (literals) {
-      const allowed = new Set(terminalAllowedValues);
-      const scope = terminalIsEnum ? `enum '${terminalEnumType}'` : `field '${terminalFieldName}'`;
-      for (const v of literals) {
-        if (typeof v === 'string' && !allowed.has(v)) {
-          violations.push({
-            path: terminalFieldName,
-            reason: `value '${v}' is not in the allowed set for ${scope} (allowed: ${[...allowed].join(', ')})`,
-          });
-        }
-      }
-    }
-  }
-
-  // Aggregate sub-field
-  if (
-    !next.open &&
-    'aggregate' in cond &&
-    typeof cond.aggregate === 'object' &&
-    cond.aggregate !== null &&
-    typeof cond.aggregate.field === 'string' &&
-    cond.aggregate.field !== ''
-  ) {
-    const aggField = cond.aggregate.field;
-    const aggWalked = walkLensPath(policy, next.mapName, next.modelName, next.relPath, aggField);
-    if (!aggWalked) {
-      violations.push({
-        path: aggField,
-        reason: 'aggregate.field does not resolve through the narrowed lens',
-      });
-    }
-  }
-
-  if ('condition' in cond && cond.condition !== undefined) {
-    visit(cond.condition, policy, below, violations);
-  }
-};
+      return [...scopes, next];
+    },
+    [root],
+  );
 
 /**
  * Gate a condition whose `field` refs are relative to the visit (mapName, modelName, relPath)
@@ -262,7 +216,7 @@ export const checkConditionAtVisit = (
   relPath: readonly string[],
 ): RuleLensViolation[] => {
   const violations: RuleLensViolation[] = [];
-  visit(cond, policy, [{ mapName, modelName, relPath, open: false }], violations);
+  visit(cond, policy, { mapName, modelName, relPath, open: false }, violations);
   return violations;
 };
 

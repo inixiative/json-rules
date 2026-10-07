@@ -1,12 +1,11 @@
 import { isOperatorSupportedForTarget, type RuleTarget } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
-import { valueRefRoles, valueRefs } from '../traverse';
+import { isLogicalNode, valueRefRoles, valueRefs, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import type { Policy } from './policy.ts';
-import { resolvePolicy, walkLensPath } from './policy.ts';
+import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { isJsonEntry } from './walk.ts';
 
 export type RuleDescription = {
   sources: string[];
@@ -56,89 +55,39 @@ const restrictByScopeRefs = (acc: Acc, cond: Record<string, unknown>): void => {
   }
 };
 
-type VisitScope = {
-  mapName: string;
-  modelName: string;
-  relPath: readonly string[];
-  open: boolean;
-};
+const visit = (rule: Condition, acc: Acc): void =>
+  visitCondition<readonly VisitScope[]>(
+    rule,
+    (node, scopes) => {
+      acc.sources.add(scopes[scopes.length - 1].mapName);
+      if (isLogicalNode(node)) return;
+      if (typeof node.operator === 'string') restrictByOperator(acc, node.operator);
+      if (typeof node.dateOperator === 'string') restrictByOperator(acc, node.dateOperator);
+      if (typeof node.arrayOperator === 'string') restrictByOperator(acc, node.arrayOperator);
+      restrictByWindow(acc, node);
+      restrictByScopeRefs(acc, node);
 
-const visit = (cond: Condition, acc: Acc, scopes: readonly VisitScope[]): void => {
-  if (typeof cond === 'boolean') return;
-  const here = scopes[scopes.length - 1];
-  acc.sources.add(here.mapName);
-
-  if ('all' in cond) {
-    for (const c of cond.all) visit(c, acc, scopes);
-    return;
-  }
-  if ('any' in cond) {
-    for (const c of cond.any) visit(c, acc, scopes);
-    return;
-  }
-  if ('if' in cond) {
-    visit(cond.if, acc, scopes);
-    visit(cond.then, acc, scopes);
-    if (cond.else !== undefined) visit(cond.else, acc, scopes);
-    return;
-  }
-
-  const record = cond as Record<string, unknown>;
-  if (typeof record.operator === 'string') restrictByOperator(acc, record.operator);
-  if (typeof record.dateOperator === 'string') restrictByOperator(acc, record.dateOperator);
-  if (typeof record.arrayOperator === 'string') restrictByOperator(acc, record.arrayOperator);
-  restrictByWindow(acc, record);
-  restrictByScopeRefs(acc, record);
-
-  for (const ref of valueRefs(record)) {
-    if (!parseScopeRef(ref)) continue;
-    const target = resolveScopeRef(ref, scopes);
-    if ('outOfBounds' in target) acc.violations.push(ref);
-  }
-
-  let next: VisitScope = here;
-
-  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
-    const target = resolveScopeRef(cond.field, scopes);
-    if ('outOfBounds' in target) {
-      acc.violations.push(cond.field);
-      return;
-    }
-    if (target.scope.open) {
-      next = target.scope;
-    } else {
-      const { mapName, modelName, relPath } = target.scope;
-      const walked = walkLensPath(acc.policy, mapName, modelName, relPath, target.path);
-      if (!walked) {
-        acc.violations.push(cond.field);
-        return;
+      for (const ref of valueRefs(node)) {
+        if (!parseScopeRef(ref)) continue;
+        if ('outOfBounds' in resolveScopeRef(ref, scopes)) acc.violations.push(ref);
       }
-      acc.sources.add(walked.mapName);
-      if (walked.mapName !== mapName) acc.bridgesCrossed = true;
-      // A Json column's members are undeclared — nested refs below it resolve at evaluation time.
-      const open = isJsonEntry(walked.entry);
 
-      if (walked.entry.kind === 'object' || walked.entry.kind === 'bridge') {
-        if (walked.entry.kind === 'bridge') acc.bridgesCrossed = true;
-        const relation =
-          walked.entry.kind === 'object'
-            ? { mapName: walked.mapName, modelName: walked.entry.type }
-            : {
-                mapName: walked.entry.type.split(':')[0] ?? walked.mapName,
-                modelName: walked.entry.type.split(':')[1] ?? walked.entry.type,
-              };
-        next = { ...relation, relPath: [...walked.relPath, walked.terminalFieldName], open };
-      } else {
-        next = { ...target.scope, open };
+      if (typeof node.field !== 'string' || node.field === '') return;
+      const step = stepIntoField(acc.policy, scopes, node.field);
+      if ('violation' in step) {
+        acc.violations.push(node.field);
+        return false;
       }
-    }
-  }
-
-  // `filter` and `condition` are both evaluated against the descended target.
-  const below = [...scopes, next];
-  if (record.filter !== undefined) visit(record.filter as Condition, acc, below);
-  if ('condition' in cond && cond.condition !== undefined) visit(cond.condition, acc, below);
-};
+      if (step.walked) {
+        acc.sources.add(step.walked.mapName);
+        if (step.walked.entry.kind === 'bridge' || step.walked.mapName !== step.from.mapName)
+          acc.bridgesCrossed = true;
+      }
+      // `filter` and `condition` are both evaluated against the descended target.
+      return [...scopes, step.next];
+    },
+    [lensRootScope(acc.policy)],
+  );
 
 export const describeRule = (
   rule: Condition,
@@ -152,9 +101,7 @@ export const describeRule = (
     targets: new Set(ALL_TARGETS),
     violations: [],
   };
-  visit(rule, acc, [
-    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [], open: false },
-  ]);
+  visit(rule, acc);
   if (acc.bridgesCrossed) {
     for (const t of [...acc.targets]) if (t !== 'check') acc.targets.delete(t);
   }

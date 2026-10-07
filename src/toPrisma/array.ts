@@ -2,6 +2,7 @@ import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
+import { relationTarget } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -60,25 +61,9 @@ export const buildArrayRule = (
   return buildNestedFilter(rule.field, filter);
 };
 
-/**
- * Walk a relation field path and return the target model name, so inner conditions
- * resolve against the right model (enables JSON-path and bridge detection inside
- * some/every/none). Returns null if the path isn't a chain of object relations.
- */
-const resolveRelationTarget = (field: string, map: FieldMap, rootModel: string): string | null => {
-  const parts = field.split('.');
-  let cur = rootModel;
-  for (const part of parts) {
-    const entry = map.models[cur]?.fields[part];
-    if (!entry || entry.kind !== 'object') return null;
-    cur = entry.type;
-  }
-  return cur;
-};
-
 const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions | undefined => {
   if (!options?.map || !options?.model || !rule.field) return options;
-  const target = resolveRelationTarget(rule.field, options.map as FieldMap, options.model);
+  const target = relationTarget(rule.field, options.map as FieldMap, options.model);
   return target ? { ...options, model: target } : options;
 };
 

@@ -1,5 +1,6 @@
-import { cloneDeep, cloneDeepWith, get, isPlainObject, merge, set } from 'lodash-es';
+import { cloneDeep, cloneDeepWith, isPlainObject, merge, set } from 'lodash-es';
 import type { FuzzyConfig } from './fuzzy';
+import { readOwnPath } from './scope';
 
 export type PrismaProvider =
   | 'postgresql'
@@ -57,7 +58,7 @@ export const engineGlobals = {
   set: (path: string, value: unknown): void => {
     set(store, path, copy(value));
   },
-  get: (path: string): unknown => get(store, path),
+  get: (path: string): unknown => readOwnPath(store, path),
   reset: (): void => {
     store = cloneDeep(DEFAULTS);
   },

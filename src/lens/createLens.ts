@@ -1,6 +1,5 @@
 import { stitchFieldMaps } from '../fieldMap/stitch.ts';
-import type { FieldMap } from '../fieldMap/types';
-import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
+import type { Bridge, FieldMap, FieldMapSet } from '../fieldMap/types';
 import type { Lens } from './types.ts';
 
 export type CreateLensInput = {

@@ -1,7 +1,6 @@
 import { endpointKey } from '../fieldMap/endpointKey.ts';
 import { isRelationEntry } from '../fieldMap/entry.ts';
-import type { FieldMap, FieldMapEntry, SourceOption } from '../fieldMap/types';
-import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
+import type { Bridge, FieldMap, FieldMapEntry, FieldMapSet, SourceOption } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';

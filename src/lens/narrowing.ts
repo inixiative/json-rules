@@ -1,5 +1,4 @@
-import { declaredEnumValues } from '../fieldMap/entry';
-import { isRelationEntry } from '../fieldMap/entry.ts';
+import { declaredEnumValues, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';

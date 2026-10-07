@@ -687,7 +687,7 @@ const validateDateRule = (
   rejectSqlRowRange(rule, operator, path, context);
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
-  // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
+  // Structured date expressions: ago/ahead, this/last/next, start/end.
   if (isDateExpr(rule.value)) {
     validateDateExpr(rule.value, operator, `${path}.value`, context, depth);
     return;
@@ -751,7 +751,7 @@ const validateDateRule = (
   }
 };
 
-// --- v2.6 date-expression validation ---
+// --- Date-expression validation ---
 const validateRelativeUnits = (
   units: unknown,
   path: string,

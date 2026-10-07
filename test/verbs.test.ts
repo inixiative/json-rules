@@ -49,24 +49,24 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
   {
     verb: 'read a path (own-property)',
     pattern: /import\s*\{[^}]*\bget\b[^}]*\}\s*from\s*'lodash-es'/,
-    owners: ['src/engineGlobals.ts'],
+    owners: [],
   },
   {
     verb: 'define an operator set',
     pattern:
-      /\[\s*(?:(?:Array|Date)?Operator\.\w+\s*,\s*){1,}|=== (?:Array|Date)?Operator\.\w+ \|\|[^|]*=== (?:Array|Date)?Operator\./,
+      /\[\s*(?:(?:Array|Date)?Operator\.\w+\s*,\s*){1,}|=== (?:Array|Date)?Operator\.\w+ \|\|[^|]*=== (?:Array|Date)?Operator\.|[oO]perator === '(?!string')\w+' \|\|/,
     owners: ['src/operatorCatalog.ts'],
   },
   {
     verb: 'classify a field-map entry (Json, relation)',
     pattern:
-      /kind === 'object' \|\| [\w.]*kind === 'bridge'|kind === 'scalar' && [\w.]*type === 'Json'/,
+      /kind === 'object' \|\| [\w.]*kind === 'bridge'|kind !== 'object' && [\w.]*kind !== 'bridge'|kind === 'scalar' && [\w.]*type === 'Json'/,
     owners: ['src/fieldMap/entry.ts'],
   },
   {
     verb: 'read a row by key (own-property; lodash reads keys through the prototype)',
     pattern: /import\s*\{[^}]*\b(groupBy|keyBy|property|get|has)\b[^}]*\}\s*from\s*'lodash-es'/,
-    owners: ['src/engineGlobals.ts'],
+    owners: [],
   },
   {
     verb: 'name a bridge endpoint (map:Model)',

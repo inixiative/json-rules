@@ -2,10 +2,8 @@ import type { SourceOption } from '../fieldMap/types';
 import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
-import { allOf } from '../traverse';
-import { visitCondition } from '../traverse.ts';
-import type { Row } from '../types';
-import type { Condition } from '../types.ts';
+import { allOf, visitCondition } from '../traverse';
+import type { Condition, Row } from '../types';
 import { prefixConditionFields } from './narrowRule.ts';
 import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectedVisit } from './projectPaths.ts';
@@ -68,7 +66,8 @@ const foldPathGuards = (
 /** Every dotted `field` a condition references. Relation nodes contribute their own
  * anchor `field`; their nested conditions are element-relative and compile inside the
  * relation filter, not as new joins from this model, so descent stops there. */
-const collectFieldPaths = (condition: Condition, out: string[] = []): string[] => {
+const collectFieldPaths = (condition: Condition): string[] => {
+  const out: string[] = [];
   visitCondition(condition, (node) => {
     if (typeof node.field === 'string') out.push(node.field);
     return false;

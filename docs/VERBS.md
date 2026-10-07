@@ -37,16 +37,20 @@ the catalog's constants.
 
 | Verb | Owner | Rule (`test/verbs.test.ts`) |
 | --- | --- | --- |
-| traverse a condition tree | `src/traverse.ts` (`visitCondition`, `someCondition`, `mapCondition`, `mapLeafSources`) | No `'all' in` / `.all.map(` descent elsewhere — except the evaluators and compilers, whose descent is their semantics. |
+| traverse a condition tree | `src/traverse.ts` (`visitCondition`, `someCondition`, `mapCondition`, `elementRefs`, `valueRefs`) | No `'all' in` / `.all.map(` descent elsewhere — except the evaluators and compilers, whose descent is their semantics. |
 | read a field-map record | `src/own.ts` (`own`, `modelOf`, `fieldOf`) | No `.models[` / `.fields[` / `.maps[` read elsewhere: own-property only. |
-| read a path | `src/scope.ts` (`readOwnPath`, `readPath`, `readContextRef`) | No lodash `get` (it reads `Object.prototype`). |
-| read a value source | `src/valueSource.ts` (`matchSource`), one reader per rail | — |
-| read a binding | `src/valueSource.ts` (`readBinding`, `compileBinding`) | `Object.hasOwn(bindings` only in the bind modules. |
-| walk a field path | `src/toPrisma/mapWalk.ts` (`walkFieldPath`); the lens's `src/lens/policy.ts` (`resolvePolicyPath`, `relationHops`) | No hand-split path walked against a map elsewhere. |
-| define an operator, kind or unit set | `src/operatorCatalog.ts` | No list of operators elsewhere. |
+| read a path, a row by key | `src/scope.ts` (`readOwnPath`, `readPath`) | No lodash `get` / `has` / `keyBy` / `groupBy` / `property` anywhere: they read `Object.prototype`. |
+| read a binding | `src/valueSource.ts`, `src/bindings.ts` | `Object.hasOwn(bindings` only there. |
+| walk a field path | `src/fieldMap/walk.ts` (`walkMaps`, under `walkFieldPath`, the lens's `resolvePolicyPath` and `relationHops`) | No hand-split path walked against a map elsewhere. |
+| classify a field-map entry | `src/fieldMap/entry.ts` (`isJsonEntry`, `isRelationEntry`, `declaredEnumValues`) | No `kind === 'object' \|\| … 'bridge'` (or its negation) elsewhere. |
+| name a bridge endpoint | `src/fieldMap/endpointKey.ts` | `map:Model` built nowhere else. |
+| define an operator, kind or unit set | `src/operatorCatalog.ts` | No list of operators (enum or string) elsewhere; the catalog tables read nowhere else. |
+| recurse into a child condition | `src/toSql/recurse.ts`, `src/toPrisma/recurse.ts` | One forward declaration per rail. |
+| build a Prisma logical constant | `src/toPrisma/logical.ts` | — |
 | default the time zone | `src/dateExpr.ts` (`DEFAULT_ZONE`) | `'UTC'` nowhere else. |
-| parse a date | `src/date.ts` (`parseDateValue`, `coerceDateLiteral`) | No `Date.parse` / `dayjs.tz` elsewhere. |
-| shape a rolling expression | `src/dateExpr.ts` (`rollingShift`, `rollingExpr`) | No `'ago' in` / `{ ago: … }` elsewhere. |
+| parse a date | `src/date.ts`, `src/dateExpr.ts` | No `Date.parse` / `dayjs.tz` elsewhere. |
+| shape a rolling expression | `src/dateExpr.ts` (`rollingShift`, `rollingExpr`), `src/types.ts` | No `'ago' in` / `{ ago: … }` elsewhere. |
+| re-export a module | — | No `export * from`: every public name is listed. |
 | compare (SQL) | `src/toSql/compare.ts` | — |
 | offset | `src/offset.ts`, one module per rail | — |
 

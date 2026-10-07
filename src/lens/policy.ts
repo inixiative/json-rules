@@ -1,5 +1,4 @@
-import { declaredEnumValues } from '../fieldMap/entry';
-import { isJsonEntry } from '../fieldMap/entry.ts';
+import { declaredEnumValues, isJsonEntry } from '../fieldMap/entry';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { modelOf, own } from '../own';

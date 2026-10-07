@@ -33,9 +33,10 @@ const rowsAtPath = (rows: readonly Row[], path: string): Row[] => {
  * Materialize each sourced field's option set from an already-fetched collection —
  * the in-memory executor of `sources` declarations, alongside `toSourceQueries`
  * (which compiles the same declarations to DISTINCT queries for a DB). Rows are
- * the collection fetched UNDER the lens (relations inline), so they are already
- * lens-scoped: eligibility here is the field's source `where` only, evaluated via
- * `check()` (`options` feeds `{bind}` clauses). Scalar-list fields contribute one
+ * the collection fetched under the lens (relations inline). Each row must meet the field's
+ * eligibility as `toSourceQueries` composes it — its source `where`, the grants above it, the
+ * guards of the relations it crosses and any allowed values — evaluated with `check()`
+ * (`options` feeds `{bind}` clauses). Scalar-list fields contribute one
  * option per element, labels take the first non-null value of the label column
  * (a sibling, or a dotted to-one path read through the nested rows), and sorting is
  * numeric-aware in a fixed locale. Feed the result to `projectLens` as `{ sourceValues }`.

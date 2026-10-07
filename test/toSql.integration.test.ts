@@ -57,7 +57,7 @@ describe('toSql integration', () => {
     options?: Parameters<typeof toSql>[1],
   ) => {
     const { sql, params } = toSql(rule, options);
-    const result = await db.query(`SELECT name FROM users WHERE ${sql} ORDER BY name`, params);
+    const result = await db.query(`SELECT name FROM users t0 WHERE ${sql} ORDER BY name`, params);
     return (result.rows as Array<{ name: string }>).map((row) => row.name);
   };
 

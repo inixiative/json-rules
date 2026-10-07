@@ -14,8 +14,8 @@ import {
   NO_VALUE_OPERATORS,
 } from '../operatorCatalog';
 import type { Rule } from '../types';
-import { matchNothing } from './logical';
-import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
+import { orWhere } from './logical';
+import { compileFieldLiteral, optionalToOneHops, pastScalarError, walkFieldPath } from './mapWalk';
 import { offsetNumber } from './offset';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
@@ -78,9 +78,6 @@ export const absentArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): P
   ...hopArms(rule, options),
 ];
 
-const orWith = (head: PrismaWhere, arms: PrismaWhere[]): PrismaWhere =>
-  arms.length ? { OR: [head, ...arms] } : head;
-
 /**
  * The complement of a BOUNDED range, which Prisma can only express at the WHERE level.
  *
@@ -110,7 +107,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return empties.length === 1 ? empties[0] : { OR: empties };
   }
   if (rule.operator === Operator.notExists && arms.length) {
-    return arms.length === 1 ? arms[0] : { OR: arms };
+    return orWhere(arms);
   }
   if (rule.operator === Operator.notEmpty) {
     const notNull = at({ not: null });
@@ -127,11 +124,11 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     const { values, hasNull } = splitNull(resolveRuleValue(rule, options));
     if (rule.operator === Operator.in) {
       const inList = at({ in: values });
-      return hasNull ? orWith(inList, arms) : inList;
+      return hasNull ? orWhere([inList, ...arms]) : inList;
     }
     const notInList = at({ notIn: values });
     if (hasNull) return nullable ? { AND: [notInList, at({ not: null })] } : notInList;
-    return orWith(notInList, arms);
+    return orWhere([notInList, ...arms]);
   }
 
   // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the
@@ -140,14 +137,12 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     !NO_VALUE_OPERATORS.includes(rule.operator) &&
     hasNoOperand(rule, resolveRuleValue(rule, options))
   ) {
-    if (!NEGATED_COMPARISON_OPERATORS.includes(rule.operator) || !arms.length)
-      return matchNothing();
-    return arms.length === 1 ? arms[0] : { OR: arms };
+    return orWhere(NEGATED_COMPARISON_OPERATORS.includes(rule.operator) ? arms : []);
   }
 
   if (NEGATED_RANGE_OPERATORS.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
-    return orWith({ NOT: at(buildLeafFilter(rule, options)) }, arms);
+    return orWhere([{ NOT: at(buildLeafFilter(rule, options)) }, ...arms]);
   }
 
   const filter = at(buildLeafFilter(rule, options));
@@ -155,7 +150,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     NEGATED_SINGLE_VALUE_OPERATORS.includes(rule.operator) &&
     resolveRuleValue(rule, options) !== null
   ) {
-    return orWith(filter, arms);
+    return orWhere([filter, ...arms]);
   }
   return filter;
 };
@@ -262,11 +257,12 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
 };
 
 /**
- * Build the Prisma WHERE using map-aware traversal when a map+model is available.
+ * Build the Prisma WHERE for a leaf filter on `field`, map-aware when a map+model is available —
+ * the one place every toPrisma leaf (field, date, array) nests its filter.
  * - JSON field mid-path → Prisma JSON path syntax: { metadata: { path: ['theme'], equals: 'dark' } }
  * - All other paths → standard nested relation filter
  */
-const buildMapAwareFilter = (
+export const buildMapAwareFilter = (
   field: string,
   filter: unknown,
   options?: BuildOptions,
@@ -285,6 +281,9 @@ const buildMapAwareFilter = (
 
     case 'bridge':
       return {};
+
+    case 'past-scalar':
+      throw pastScalarError(field, walkResult.column);
 
     case 'json-path': {
       // Merge the json path array into the leaf filter, then nest normally

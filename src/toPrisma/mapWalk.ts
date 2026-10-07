@@ -5,75 +5,78 @@ import { someCondition } from '../traverse';
 import type { Condition, Rule } from '../types';
 import type { FieldMap, FieldMapEntry } from './types';
 
-export type MapWalkResult =
-  | { kind: 'direct'; entry?: FieldMapEntry }
-  | { kind: 'json-path'; stopIndex: number; jsonPath: string[] }
-  | { kind: 'bridge' }
-  | { kind: 'fallback' };
+/** A relation the walk crossed on the way to the terminal segment. */
+export type MapHop = { field: string; prefix: string; entry: FieldMapEntry; from: string };
 
 /**
- * Walk a dot-notation field path through the FieldMap.
- *
- * Returns how to interpret the path:
- * - 'direct'    – all segments are relations/scalars, use standard nested filter;
- *                 `entry` is the terminal field's map entry
- * - 'json-path' – a Json scalar was found mid-path; stopIndex segments form the
- *                 Prisma nested key, the rest become the JSON path array
- * - 'fallback'  – a segment was not found in the map; use existing behavior
+ * A dot-notation field path walked through a FieldMap — the one walk both compilers use:
+ * - `direct`      the path ends on a declared field (`entry`), a column of `model` or a relation
+ * - `json-path`   it reaches a Json column (`column`) and continues as a JSON path
+ * - `bridge`      it crosses a bridge to another source
+ * - `past-scalar` it continues past a non-Json column, which has no sub-fields
+ * - `fallback`    a segment isn't declared; the compilers read the path as written
+ * `hops` are the relations crossed before the terminal segment, outermost first.
  */
-/**
- * The dotted prefixes of `field` that end on an OPTIONAL to-one relation (`kind: 'object'`,
- * not a list, `isRequired: false`), outermost first — every hop at which the path can be
- * absent as a whole. A required hop, a list hop, an unmapped segment, or the terminal
- * segment contributes nothing. Same licensing authority as isRequired on a column.
- */
-export const optionalToOneHops = (field: string, map: FieldMap, rootModel: string): string[] => {
-  const parts = field.split('.');
-  const hops: string[] = [];
-  let currentModel = rootModel;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const modelEntry = modelOf(map, currentModel);
-    if (!modelEntry) return hops;
-    const fieldEntry = own(modelEntry.fields, parts[i]);
-    if (fieldEntry?.kind !== 'object' || !modelOf(map, fieldEntry.type)) return hops;
-    if (!fieldEntry.isList && fieldEntry.isRequired === false)
-      hops.push(parts.slice(0, i + 1).join('.'));
-    currentModel = fieldEntry.type;
-  }
-  return hops;
-};
+export type MapWalkResult =
+  | { kind: 'direct'; hops: MapHop[]; entry: FieldMapEntry; model: string; column: string }
+  | {
+      kind: 'json-path';
+      hops: MapHop[];
+      entry: FieldMapEntry;
+      model: string;
+      column: string;
+      stopIndex: number;
+      jsonPath: string[];
+    }
+  | { kind: 'bridge'; hops: MapHop[] }
+  | { kind: 'past-scalar'; hops: MapHop[]; column: string }
+  | { kind: 'fallback'; hops: MapHop[] };
 
 export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): MapWalkResult => {
   const parts = field.split('.');
-  let currentModel = rootModel;
-
+  const hops: MapHop[] = [];
+  let model = rootModel;
   for (let i = 0; i < parts.length; i++) {
-    const modelEntry = modelOf(map, currentModel);
-    if (!modelEntry) return { kind: 'fallback' };
-
-    const fieldEntry = own(modelEntry.fields, parts[i]);
-    if (!fieldEntry) return { kind: 'fallback' };
-
-    if (fieldEntry.kind === 'bridge') return { kind: 'bridge' };
-
-    if (fieldEntry.kind === 'scalar' && fieldEntry.type === 'Json' && i < parts.length - 1) {
-      // This segment is a Json field and there are more segments → JSON path
-      return { kind: 'json-path', stopIndex: i + 1, jsonPath: parts.slice(i + 1) };
-    }
-
-    if (fieldEntry.kind === 'object') {
-      if (!modelOf(map, fieldEntry.type)) return { kind: 'fallback' };
-      if (i === parts.length - 1) return { kind: 'direct', entry: fieldEntry };
-      currentModel = fieldEntry.type;
+    const entry = own(modelOf(map, model)?.fields, parts[i]);
+    if (!entry) return { kind: 'fallback', hops };
+    if (entry.kind === 'bridge') return { kind: 'bridge', hops };
+    const last = i === parts.length - 1;
+    if (entry.kind === 'object') {
+      if (!modelOf(map, entry.type)) return { kind: 'fallback', hops };
+      if (last) return { kind: 'direct', hops, entry, model, column: parts[i] };
+      hops.push({ field: parts[i], prefix: parts.slice(0, i + 1).join('.'), entry, from: model });
+      model = entry.type;
       continue;
     }
-
-    // scalar or enum at a terminal position
-    return { kind: 'direct', entry: fieldEntry };
+    if (last) return { kind: 'direct', hops, entry, model, column: parts[i] };
+    if (entry.kind === 'scalar' && entry.type === 'Json')
+      return {
+        kind: 'json-path',
+        hops,
+        entry,
+        model,
+        column: parts[i],
+        stopIndex: i + 1,
+        jsonPath: parts.slice(i + 1),
+      };
+    return { kind: 'past-scalar', hops, column: parts[i] };
   }
-
-  return { kind: 'direct' };
+  return { kind: 'fallback', hops };
 };
+
+/**
+ * The dotted prefixes of `field` that end on an OPTIONAL to-one relation, outermost first —
+ * every hop at which the path can be absent as a whole. Same licensing authority as
+ * `isRequired` on a column.
+ */
+export const optionalToOneHops = (field: string, map: FieldMap, rootModel: string): string[] =>
+  walkFieldPath(field, map, rootModel)
+    .hops.filter((hop) => !hop.entry.isList && hop.entry.isRequired === false)
+    .map((hop) => hop.prefix);
+
+/** The error for a path that continues past a non-Json column. */
+export const pastScalarError = (field: string, column: string): Error =>
+  new Error(`'${field}' continues past '${column}', which is not a Json column`);
 
 /** The kind a declared field compares as — undefined where the map does not pin one down:
  *  relations, Json (open-ended), scalar lists, and scalar types outside FieldKind. */

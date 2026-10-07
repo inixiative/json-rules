@@ -1,8 +1,7 @@
 import { ArrayOperator } from '../operator';
-import { fieldOf } from '../own';
 import type { ArrayRule } from '../types';
 import { hasWindow } from '../window';
-import { quoteField } from './quoting';
+import { resolveFieldSql, terminalEntry } from './join';
 import type { BuilderState } from './types';
 
 const WINDOW_UNSUPPORTED =
@@ -13,9 +12,13 @@ export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => 
   if (!rule.field) {
     throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }
-  const field = quoteField(rule.field);
-  const fieldEntry = fieldOf(state.map, state.currentModel ?? '', rule.field);
+  const fieldEntry = terminalEntry(rule.field, state);
+  if (fieldEntry?.kind === 'object')
+    throw new Error(
+      `Field '${rule.field}' is a relation — relation arrays are not supported in SQL; use toPrisma().`,
+    );
   const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
+  const field = resolveFieldSql(rule.field, state, { jsonb: !isNative });
 
   // Different length functions for JSONB vs native PostgreSQL arrays
   const lengthFn = isNative

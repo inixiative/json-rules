@@ -2,9 +2,9 @@ import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
+import { buildMapAwareFilter } from './field';
 import { relationTarget } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
-import { buildNestedFilter } from './utils';
 
 const WINDOW_UNSUPPORTED =
   'Windowing (orderBy/take/skip) is not supported by toPrisma() for this rule; ' +
@@ -58,7 +58,7 @@ export const buildArrayRule = (
     throw new Error('toPrisma: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }
   const filter = buildArrayLeafFilter(rule, options, state);
-  return buildNestedFilter(rule.field, filter);
+  return buildMapAwareFilter(rule.field, filter, options);
 };
 
 const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions | undefined => {

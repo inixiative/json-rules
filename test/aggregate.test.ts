@@ -549,7 +549,7 @@ describe('toSql() aggregate rules', () => {
       { field: 'scores', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 200 },
       { map: orderMap, model: 'User' },
     );
-    expect(sql).toBe(`(SELECT COALESCE(SUM(elem), 0) FROM unnest("scores") AS elem) > $1`);
+    expect(sql).toBe(`(SELECT COALESCE(SUM(elem), 0) FROM unnest("t0"."scores") AS elem) > $1`);
     expect(params).toEqual([200]);
   });
 

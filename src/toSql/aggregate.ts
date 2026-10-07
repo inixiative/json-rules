@@ -1,11 +1,10 @@
 import { orderPair } from '../number';
 import { Operator } from '../operator';
-import { fieldOf } from '../own';
 import type { AggregateRule } from '../types';
 import { hasWindow } from '../window';
 import { compareSql, ORDERED_SQL } from './compare';
+import { resolveFieldSql, terminalEntry } from './join';
 import { nextParam } from './params';
-import { quoteField, quoteFieldAsJsonb } from './quoting';
 import type { BuilderState } from './types';
 import { resolveSource } from './valueSource';
 
@@ -26,12 +25,10 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
 };
 
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {
-  // Use JSONB-preserving field reference — aggregate functions need JSONB input, not text
-  const field = quoteFieldAsJsonb(rule.field);
   const { mode, field: itemField } = rule.aggregate;
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
 
-  const fieldEntry = fieldOf(state.map, state.currentModel ?? '', rule.field);
+  const fieldEntry = terminalEntry(rule.field, state);
 
   if (fieldEntry?.kind === 'object') {
     throw new Error(
@@ -46,6 +43,8 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
   }
 
   const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
+  // Aggregate functions read the array as JSONB (a native array as itself), never as text.
+  const field = resolveFieldSql(rule.field, state, { jsonb: !isNative });
 
   if (isNative) {
     if (itemField) {

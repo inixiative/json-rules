@@ -1,73 +1,60 @@
 import { modelOf, own } from '../own';
+import { type MapHop, pastScalarError, walkFieldPath } from '../toPrisma/mapWalk';
 import { findReverseRelation } from '../toPrisma/relationUtils';
 import type { FieldMapEntry } from '../toPrisma/types';
 import { escapeIdentifier } from './escape';
-import { quoteField, quoteQualifiedField } from './quoting';
+import { quoteField } from './quoting';
 import type { BuilderState, FieldMap } from './types';
 
 /**
- * Resolve a dot-notation field to a fully-qualified SQL expression,
- * generating LEFT JOINs for any relation traversals found in the map.
- *
- * Falls back to quoteField() when map/model/alias are not set or a
- * segment is not found in the map.
- *
- * Mutates state.joins, state.joinCounter, and state.joinRegistry.
+ * A dot-notation field as SQL. With a map, the path is walked once (walkFieldPath): each relation
+ * hop becomes a LEFT JOIN (reused across the query), and the terminal column is qualified by the
+ * last hop's alias, with a Json column's tail as a JSON path. Without a map, or for a path the
+ * map doesn't declare, the path reads as written. Mutates state.joins / joinCounter / joinRegistry.
  */
-export const resolveFieldSql = (field: string, state: BuilderState): string => {
-  if (!state.map || !state.currentModel || !state.currentAlias) {
-    return quoteField(field);
+export const resolveFieldSql = (
+  field: string,
+  state: BuilderState,
+  { jsonb = false }: { jsonb?: boolean } = {},
+): string => {
+  if (!state.map || !state.currentModel || !state.currentAlias)
+    return quoteField(field, undefined, jsonb);
+  const walk = walkFieldPath(field, state.map, state.currentModel);
+  if (walk.kind === 'past-scalar') throw pastScalarError(field, walk.column);
+  if (walk.kind === 'bridge')
+    throw new Error(`'${field}' crosses a bridge to another source; toSql() has no column for it`);
+  if (walk.kind === 'fallback' || walk.entry.kind === 'object')
+    return quoteField(field, undefined, jsonb);
+  let alias = state.currentAlias;
+  for (const hop of walk.hops) {
+    const joined = joinAlias(state, alias, hop);
+    if (!joined) return quoteField(field, undefined, jsonb);
+    alias = joined;
   }
+  const column = walk.kind === 'json-path' ? [walk.column, ...walk.jsonPath] : [walk.column];
+  return quoteField(column.join('.'), alias, jsonb);
+};
 
-  const parts = field.split('.');
-  let currentModel = state.currentModel;
-  let currentAlias = state.currentAlias;
+/** The declared entry a field path ends on, when the map declares it. */
+export const terminalEntry = (field: string, state: BuilderState): FieldMapEntry | undefined => {
+  if (!state.map || !state.currentModel) return undefined;
+  const walk = walkFieldPath(field, state.map, state.currentModel);
+  return walk.kind === 'direct' ? walk.entry : undefined;
+};
 
-  for (let i = 0; i < parts.length; i++) {
-    const modelEntry = modelOf(state.map, currentModel);
-    if (!modelEntry) return quoteField(field); // fallback
-
-    const fieldEntry = own(modelEntry.fields, parts[i]);
-    if (!fieldEntry) return quoteField(field); // fallback
-
-    if (fieldEntry.kind === 'object') {
-      // Traverse relation: generate (or reuse) a JOIN
-      const registryKey = `${currentAlias}.${parts[i]}`;
-      const existingAlias = state.joinRegistry?.get(registryKey);
-      let targetAlias: string;
-
-      if (existingAlias) {
-        targetAlias = existingAlias;
-      } else {
-        const joinCounter = state.joinCounter;
-        if (!joinCounter) return quoteField(field);
-
-        targetAlias = `t${++joinCounter.n}`;
-        const joinClause = buildJoinClause(
-          state.map,
-          currentModel,
-          currentAlias,
-          fieldEntry,
-          targetAlias,
-        );
-        if (!joinClause) return quoteField(field); // fallback: can't determine FK
-
-        state.joins?.push(joinClause);
-        state.joinRegistry?.set(registryKey, targetAlias);
-      }
-
-      currentModel = fieldEntry.type;
-      currentAlias = targetAlias;
-      continue;
-    }
-
-    // scalar or enum — remaining parts are either the column itself or JSON sub-path
-    const remaining = parts.slice(i);
-    return quoteQualifiedField(remaining.join('.'), currentAlias);
-  }
-
-  // Reached end after only traversing relations (field is the relation itself)
-  return quoteField(field);
+/** The alias a relation hop joins as — reused when the query already joined it. */
+const joinAlias = (state: BuilderState, fromAlias: string, hop: MapHop): string | null => {
+  const key = `${fromAlias}.${hop.field}`;
+  const existing = state.joinRegistry?.get(key);
+  if (existing) return existing;
+  if (!state.joinCounter || !state.map) return null;
+  const alias = `t${state.joinCounter.n + 1}`;
+  const clause = buildJoinClause(state.map, hop.from, fromAlias, hop.entry, alias);
+  if (!clause) return null;
+  state.joinCounter.n += 1;
+  state.joins?.push(clause);
+  state.joinRegistry?.set(key, alias);
+  return alias;
 };
 
 /**

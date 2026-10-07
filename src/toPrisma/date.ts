@@ -5,11 +5,10 @@ import { orderPair } from '../number';
 import { DateOperator } from '../operator';
 import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import type { DateRule } from '../types';
-import { absentArms } from './field';
-import { matchNothing } from './logical';
+import { absentArms, buildMapAwareFilter } from './field';
+import { orWhere } from './logical';
 import { offsetDate } from './offset';
 import type { BuildOptions, PrismaWhere } from './types';
-import { buildNestedFilter } from './utils';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
 // The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the
@@ -24,14 +23,10 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
   const filter = buildDateLeafFilter(rule, options);
   // Nothing to compare against — a null path, bind, offset or magnitude: no row matches, and a
   // negation keeps the absent rows only, as on the other rails.
-  if (filter === null) {
-    if (!arms.length) return matchNothing();
-    return arms.length === 1 ? arms[0] : { OR: arms };
-  }
-  const positive = buildNestedFilter(rule.field, filter);
+  if (filter === null) return orWhere(arms);
+  const positive = buildMapAwareFilter(rule.field, filter, options);
   const nested = NEGATED_RANGE_OPERATORS.includes(rule.dateOperator) ? { NOT: positive } : positive;
-  if (arms.length) return { OR: [nested, ...arms] };
-  return nested;
+  return orWhere([nested, ...arms]);
 };
 
 const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown => {

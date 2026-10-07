@@ -373,7 +373,7 @@ describe('toSql', () => {
           { field: 'tags', arrayOperator: ArrayOperator.empty },
           { map: nativeArrayMap, model: 'Test' },
         );
-        expect(sql).toBe('("tags" IS NULL OR array_length("tags", 1) IS NULL)');
+        expect(sql).toBe('("t0"."tags" IS NULL OR array_length("t0"."tags", 1) IS NULL)');
         expect(params).toEqual([]);
       });
 
@@ -382,7 +382,9 @@ describe('toSql', () => {
           { field: 'items', arrayOperator: ArrayOperator.notEmpty },
           { map: nativeArrayMap, model: 'Test' },
         );
-        expect(sql).toBe('("items" IS NOT NULL AND array_length("items", 1) IS NOT NULL)');
+        expect(sql).toBe(
+          '("t0"."items" IS NOT NULL AND array_length("t0"."items", 1) IS NOT NULL)',
+        );
         expect(params).toEqual([]);
       });
     });

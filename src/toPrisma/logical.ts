@@ -48,10 +48,12 @@ const andWhere = (arms: PrismaWhere[]): PrismaWhere => {
   return rest.length === 0 ? matchAll() : { AND: rest };
 };
 
-const orWhere = (arms: PrismaWhere[]): PrismaWhere => {
+/** OR of arms: match-all absorbs, match-nothing drops, one arm stands alone. */
+export const orWhere = (arms: PrismaWhere[]): PrismaWhere => {
   if (arms.some(isMatchAll)) return matchAll();
   const rest = arms.filter((arm) => !isMatchNothing(arm));
-  return rest.length === 0 ? matchNothing() : { OR: rest };
+  if (rest.length === 0) return matchNothing();
+  return rest.length === 1 ? rest[0] : { OR: rest };
 };
 
 const notWhere = (where: PrismaWhere): PrismaWhere => {

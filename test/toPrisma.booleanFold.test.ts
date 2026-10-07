@@ -60,7 +60,7 @@ describe('toPrisma folds boolean constants through OR', () => {
   });
 
   it('`false` arms drop out of an OR', () => {
-    expect(getWhere(toPrisma({ any: [mateo, false] }))).toEqual({ OR: [MATEO] });
+    expect(getWhere(toPrisma({ any: [mateo, false] }))).toEqual(MATEO);
     expect(getWhere(toPrisma({ any: [false, { any: [] }] }))).toEqual(NOTHING);
   });
 
@@ -83,27 +83,27 @@ describe('toPrisma folds boolean constants through AND', () => {
 
 describe('toPrisma folds boolean constants through the implication', () => {
   it('`if: true` never emits `NOT: {}`', () => {
-    expect(getWhere(toPrisma({ if: true, then: gold }))).toEqual({ OR: [GOLD] });
+    expect(getWhere(toPrisma({ if: true, then: gold }))).toEqual(GOLD);
     expect(getWhere(toPrisma({ if: true, then: gold, else: silver }))).toEqual({
-      AND: [{ OR: [GOLD] }],
+      AND: [GOLD],
     });
   });
 
   it('`if: false` is vacuous without else and selects else with it', () => {
     expect(getWhere(toPrisma({ if: false, then: gold }))).toEqual({});
     expect(getWhere(toPrisma({ if: false, then: gold, else: silver }))).toEqual({
-      AND: [{ OR: [SILVER] }],
+      AND: [SILVER],
     });
   });
 
   it('`then: true` is vacuous; `then: false` is the negated antecedent', () => {
     expect(getWhere(toPrisma({ if: mateo, then: true }))).toEqual({});
-    expect(getWhere(toPrisma({ if: mateo, then: false }))).toEqual({ OR: [{ NOT: MATEO }] });
+    expect(getWhere(toPrisma({ if: mateo, then: false }))).toEqual({ NOT: MATEO });
   });
 
   it('`else: false` keeps the deny branch without an id sentinel', () => {
     expect(getWhere(toPrisma({ if: mateo, then: gold, else: false }))).toEqual({
-      AND: [{ OR: [{ NOT: MATEO }, GOLD] }, { OR: [MATEO] }],
+      AND: [{ OR: [{ NOT: MATEO }, GOLD] }, MATEO],
     });
   });
 
@@ -245,7 +245,7 @@ describe('toPrisma folding keeps groupBy step state coherent', () => {
     expect(steps[0].args.having).toEqual({ authorId: { _count: { gte: 2 } } });
     expect(steps[1].args.having).toEqual({ authorId: { _count: { gte: 1 } } });
     expect(getWhere(plan)).toEqual({
-      AND: [{ OR: [{ id: { in: { __step: 0 } } }] }, { AND: [{ id: { in: { __step: 1 } } }] }],
+      AND: [{ id: { in: { __step: 0 } } }, { AND: [{ id: { in: { __step: 1 } } }] }],
     });
   });
 

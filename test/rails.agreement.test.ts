@@ -365,6 +365,28 @@ const MATRIX: Record<string, Case> = {
     ids: [2, 3, 4, 5],
     refuses: { sql: RELATION_AGGREGATES },
   },
+  'the top of a window is its largest value, NULLs last': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'any',
+      orderBy: [{ field: 'views', dir: 'desc' }],
+      take: 1,
+      condition: { field: 'views', operator: 'greaterThan', value: 6 },
+    },
+    ids: [1],
+    refuses: { sql: 'Windowing' },
+  },
+  'the bottom of a window is its smallest value, NULLs last': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'all',
+      orderBy: [{ field: 'views', dir: 'asc' }],
+      take: 1,
+      condition: { field: 'views', operator: 'greaterThanEquals', value: 5 },
+    },
+    ids: [1, 2, 4, 5],
+    refuses: { sql: 'Windowing' },
+  },
   'relation avg': {
     rule: {
       field: 'posts',

@@ -53,7 +53,7 @@ const compileArrayRule = (
   if (hasWindow(rule)) {
     const rewritten = extremalRewrite(rule);
     if (!rewritten) throw new Error(WINDOW_UNSUPPORTED);
-    return compileArrayRule(rewritten, options, state);
+    return buildCondition(rewritten, options, state);
   }
 
   // A condition that crosses a bridge is unknown here: unless a broader condition only widens the

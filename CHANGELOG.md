@@ -104,6 +104,9 @@ reads off the generated client.
 - **Empty is `null`, `''`, or `[]`** on every rail: a list or a Json array with no elements is
   empty, as `isEmpty` / `notEmpty` and the array operators read it.
 - **`caseInsensitive` applies to `in` / `notIn`** on every rail (all three ignored it).
+- **A window sorts NULLs last** in both directions: `orderBy views desc, take 1` is the largest
+  value, as "latest" reads (a NULL sorted first). The extremal `all` rewrite on Prisma is exact
+  under it: the array is empty, or some element has a value and none with one breaks the bound.
 - **A `Date` field value compares as DateTime** in `check()` without a `coerceType`, as the
   compilers read a DateTime column: `createdAt greaterThan '2026-10-05T00:00:00Z'` compared a
   `Date` with a string.

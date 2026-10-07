@@ -33,7 +33,8 @@ INSERT INTO users (id, name, age, score, "createdAt", meta, tags, "orgId") VALUE
 INSERT INTO posts (id, "authorId", views, title) VALUES
   (100, 1, 10, 'hello'),
   (101, 1, 5, NULL),
-  (102, 3, NULL, 'Hi');
+  (102, 3, NULL, 'Hi'),
+  (103, 1, NULL, 'later');
 `;
 
 /** Each rail's matching user ids, or the message it threw. */

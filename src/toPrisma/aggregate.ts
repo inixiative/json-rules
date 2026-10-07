@@ -3,7 +3,7 @@ import { Operator } from '../operator';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition } from '../types';
 import { hasWindow } from '../window';
-import { findReverseRelation } from './relationUtils';
+import { relationKeys } from './relationUtils';
 import type {
   BuildOptions,
   FieldMap,
@@ -151,34 +151,15 @@ const buildAggregateStep = (
     );
   }
 
-  let fkOnTarget: string;
-  let pkOnTerminal: string;
-
-  if (terminalEntry.fromFields && terminalEntry.fromFields.length > 0) {
-    if (terminalEntry.fromFields.length > 1) {
-      throw new Error(`Aggregate rules do not support composite FK relations.`);
-    }
-    fkOnTarget = terminalEntry.toFields?.[0] ?? 'id';
-    pkOnTerminal = terminalEntry.fromFields[0];
-  } else {
-    const reverseRelation = findReverseRelation(
-      map,
-      targetModel,
-      terminalModel,
-      terminalEntry.relationName,
+  const keys = relationKeys(map, terminalModel, terminalEntry);
+  if (!keys) {
+    throw new Error(
+      `Cannot determine FK relationship between '${terminalModel}' and '${targetModel}'. ` +
+        `Ensure the FieldMap contains both sides of the relation.`,
     );
-    if (!reverseRelation) {
-      throw new Error(
-        `Cannot determine FK relationship between '${terminalModel}' and '${targetModel}'. ` +
-          `Ensure the FieldMap contains both sides of the relation.`,
-      );
-    }
-    if ((reverseRelation.fromFields?.length ?? 0) > 1) {
-      throw new Error(`Aggregate rules do not support composite FK relations.`);
-    }
-    fkOnTarget = reverseRelation.fromFields?.[0] ?? '';
-    pkOnTerminal = reverseRelation.toFields?.[0] ?? '';
   }
+  if (keys.length > 1) throw new Error(`Aggregate rules do not support composite FK relations.`);
+  const { here: pkOnTerminal, there: fkOnTarget } = keys[0];
 
   // Build inner WHERE from condition (if present)
   const innerWhere = rule.condition

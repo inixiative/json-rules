@@ -1,7 +1,7 @@
 import { ArrayOperator } from '../operator';
 import { fieldOf, modelOf } from '../own';
 import type { ArrayRule, Condition } from '../types';
-import { findReverseRelation } from './relationUtils';
+import { relationKeys } from './relationUtils';
 import type {
   BuildOptions,
   FieldMap,
@@ -54,50 +54,28 @@ export const buildCountStep = (
 
   const targetModel = fieldEntry.type;
 
-  let fkOnTarget: string;
-  let pkOnCurrent: string;
-
-  if (fieldEntry.fromFields && fieldEntry.fromFields.length > 0) {
-    // Forward relation (current model has FK) — unusual for list relations but handle it
-    if (fieldEntry.fromFields.length > 1) {
-      throw new Error(
-        `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
-          `('${currentModel}.${rule.field}'). Use prisma.$queryRaw for composite FK count filtering.`,
-      );
-    }
-    fkOnTarget = fieldEntry.toFields?.[0] ?? 'id';
-    pkOnCurrent = fieldEntry.fromFields[0];
-  } else {
-    // Back-relation: FK is on the target model. Find the reverse relation.
-    const reverseRelation = findReverseRelation(
-      map,
-      targetModel,
-      currentModel,
-      fieldEntry.relationName,
+  const keys = relationKeys(map, currentModel, fieldEntry);
+  if (!keys) {
+    const targetFields = Object.values(modelOf(map, targetModel)?.fields ?? {});
+    const isImplicitM2M = targetFields.some(
+      (f) => f.kind === 'object' && f.type === currentModel && f.isList && !f.fromFields?.length,
     );
-    if (!reverseRelation) {
-      const targetFields = Object.values(modelOf(map, targetModel)?.fields ?? {});
-      const isImplicitM2M = targetFields.some(
-        (f) => f.kind === 'object' && f.type === currentModel && f.isList && !f.fromFields?.length,
-      );
-      throw new Error(
-        isImplicitM2M
-          ? `'${currentModel}.${rule.field}' is an implicit many-to-many relation. ` +
-              `Count operators require an explicit join model with a FK — convert to an explicit ` +
-              `@relation or use prisma.$queryRaw.`
-          : `Cannot determine FK relationship between '${currentModel}' and '${targetModel}'. ` +
-              `Ensure the FieldMap contains both sides of the relation.`,
-      );
-    }
-    if ((reverseRelation.fromFields?.length ?? 0) > 1) {
-      throw new Error(
-        `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
-          `('${currentModel}.${rule.field}'). Use prisma.$queryRaw for composite FK count filtering.`,
-      );
-    }
-    fkOnTarget = reverseRelation.fromFields?.[0] ?? '';
-    pkOnCurrent = reverseRelation.toFields?.[0] ?? '';
+    throw new Error(
+      isImplicitM2M
+        ? `'${currentModel}.${rule.field}' is an implicit many-to-many relation. ` +
+            `Count operators require an explicit join model with a FK — convert to an explicit ` +
+            `@relation or use prisma.$queryRaw.`
+        : `Cannot determine FK relationship between '${currentModel}' and '${targetModel}'. ` +
+            `Ensure the FieldMap contains both sides of the relation.`,
+    );
   }
+  if (keys.length > 1) {
+    throw new Error(
+      `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
+        `('${currentModel}.${rule.field}'). Use prisma.$queryRaw for composite FK count filtering.`,
+    );
+  }
+  const { here: pkOnCurrent, there: fkOnTarget } = keys[0];
 
   // Same contract as check(): a count operator without a condition or count is an
   // authoring error, not a default.

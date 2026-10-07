@@ -1,6 +1,6 @@
 import { modelOf, own } from '../own';
 import { type MapHop, pastScalarError, walkFieldPath } from '../toPrisma/mapWalk';
-import { findReverseRelation } from '../toPrisma/relationUtils';
+import { relationKeys } from '../toPrisma/relationUtils';
 import type { FieldMapEntry } from '../toPrisma/types';
 import { escapeIdentifier } from './escape';
 import { quoteField } from './quoting';
@@ -35,13 +35,6 @@ export const resolveFieldSql = (
   return quoteField(column.join('.'), alias, jsonb);
 };
 
-/** The declared entry a field path ends on, when the map declares it. */
-export const terminalEntry = (field: string, state: BuilderState): FieldMapEntry | undefined => {
-  if (!state.map || !state.currentModel) return undefined;
-  const walk = walkFieldPath(field, state.map, state.currentModel);
-  return walk.kind === 'direct' ? walk.entry : undefined;
-};
-
 /** The alias a relation hop joins as — reused when the query already joined it. */
 const joinAlias = (state: BuilderState, fromAlias: string, hop: MapHop): string | null => {
   const key = `${fromAlias}.${hop.field}`;
@@ -71,35 +64,15 @@ const buildJoinClause = (
   const targetModel = fieldEntry.type;
   const targetDbName = modelOf(map, targetModel)?.dbName ?? targetModel;
 
-  let onCondition: string;
-
-  if (
-    fieldEntry.fromFields &&
-    fieldEntry.fromFields.length > 0 &&
-    fieldEntry.toFields &&
-    fieldEntry.toFields.length > 0
-  ) {
-    // Forward relation: current model has FK (composite FK supported via multi-condition AND)
-    onCondition = fieldEntry.fromFields
-      .map(
-        (from, i) =>
-          `${escapeIdentifier(targetAlias)}.${escapeIdentifier(fieldEntry.toFields?.[i] ?? '')} = ` +
-          `${escapeIdentifier(currentAlias)}.${escapeIdentifier(from)}`,
-      )
-      .join(' AND ');
-  } else {
-    // Back-relation: FK is on the target model — find the reverse relation.
-    // Pass relationName so multiple relations between the same two models are disambiguated.
-    const reverse = findReverseRelation(map, targetModel, currentModel, fieldEntry.relationName);
-    if (!reverse) return null;
-    onCondition = (reverse.fromFields ?? [])
-      .map(
-        (from, i) =>
-          `${escapeIdentifier(targetAlias)}.${escapeIdentifier(from)} = ` +
-          `${escapeIdentifier(currentAlias)}.${escapeIdentifier(reverse.toFields?.[i] ?? '')}`,
-      )
-      .join(' AND ');
-  }
+  const keys = relationKeys(map, currentModel, fieldEntry);
+  if (!keys) return null;
+  const onCondition = keys
+    .map(
+      ({ here, there }) =>
+        `${escapeIdentifier(targetAlias)}.${escapeIdentifier(there)} = ` +
+        `${escapeIdentifier(currentAlias)}.${escapeIdentifier(here)}`,
+    )
+    .join(' AND ');
 
   return `LEFT JOIN ${escapeIdentifier(targetDbName as string)} AS ${escapeIdentifier(targetAlias)} ON ${onCondition}`;
 };

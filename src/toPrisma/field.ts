@@ -15,38 +15,19 @@ import {
 } from '../operatorCatalog';
 import type { Rule } from '../types';
 import { orWhere } from './logical';
-import { compileFieldLiteral, optionalToOneHops, pastScalarError, walkFieldPath } from './mapWalk';
+import {
+  acceptsEmptyString,
+  compileFieldLiteral,
+  fieldEntry,
+  optionalToOneHops,
+  pastScalarError,
+  walkFieldPath,
+  walkWith,
+} from './mapWalk';
 import { offsetNumber } from './offset';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 import { dateConfigOf, readSource } from './valueSource';
-
-/**
- * Whether the emptiness operators may compare this column against `''`. Only a
- * String column accepts it ('' is also a representable JSON value) — Prisma
- * rejects `equals: ''` on DateTime/Int/enum/… columns outright ("Expected
- * ISO-8601 DateTime"), turning an authored `isEmpty` into a runtime 500. The
- * field map is the authority; a stamped `coerceType` is the fallback; with
- * neither, keep the legacy two-branch shape — an untyped String field must not
- * lose its ''-branch.
- */
-const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
-  const entry = directEntry(rule, options);
-  if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
-  return (
-    rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
-  );
-};
-
-const fieldWalk = (rule: Pick<Rule, 'field'>, options?: BuildOptions) =>
-  options?.map && options?.model
-    ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
-    : undefined;
-
-const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
-  const walk = fieldWalk(rule, options);
-  return walk?.kind === 'direct' ? walk.entry : undefined;
-};
 
 /**
  * Known nullable per the field map. Unknown (no map, no `isRequired`) reads as
@@ -54,7 +35,8 @@ const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
  * error at runtime, so the map is the only authority that can license one.
  */
 const isNullableColumn = (rule: Pick<Rule, 'field'>, options?: BuildOptions): boolean =>
-  directEntry(rule, options)?.isRequired === false;
+  fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)?.isRequired ===
+  false;
 
 /**
  * The arms that make a negation match the rows where the path is ABSENT — what check()
@@ -103,7 +85,9 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     // isEmpty carries the leaf null arm unconditionally (it IS the operator); the optional hops
     // ride beside it, then the ''-arm on String/Json columns.
     const nulls = [at({ equals: null }), ...hopArms(rule, options)];
-    const empties = acceptsEmptyString(rule, options) ? [...nulls, at({ equals: '' })] : nulls;
+    const empties = acceptsEmptyString(rule, options?.map as FieldMap | undefined, options?.model)
+      ? [...nulls, at({ equals: '' })]
+      : nulls;
     return empties.length === 1 ? empties[0] : { OR: empties };
   }
   if (rule.operator === Operator.notExists && arms.length) {
@@ -111,7 +95,8 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   }
   if (rule.operator === Operator.notEmpty) {
     const notNull = at({ not: null });
-    if (!acceptsEmptyString(rule, options)) return notNull;
+    if (!acceptsEmptyString(rule, options?.map as FieldMap | undefined, options?.model))
+      return notNull;
     return { AND: [notNull, at({ not: '' })] };
   }
 
@@ -160,7 +145,7 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
   const value = compileFieldLiteral(
     rule,
     readSource(rule, options),
-    fieldWalk(rule, options),
+    walkWith(rule.field, options?.map as FieldMap | undefined, options?.model),
     'toPrisma',
     () => dateConfigOf(options).timeZone,
   );

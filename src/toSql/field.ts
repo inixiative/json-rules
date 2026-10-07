@@ -6,7 +6,7 @@ import {
   NO_VALUE_OPERATORS,
   RANGE_OPERATORS,
 } from '../operatorCatalog';
-import { compileFieldLiteral, walkFieldPath } from '../toPrisma/mapWalk';
+import { acceptsEmptyString, compileFieldLiteral, walkWith } from '../toPrisma/mapWalk';
 import type { FieldMap } from '../toPrisma/types';
 import type { Rule } from '../types';
 import { compareSql, noOperandSql, ORDERED_SQL, orNull as orNullSql, rangeSql } from './compare';
@@ -16,28 +16,6 @@ import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
 import { dateConfigOf, isMissing, type ResolvedRhs, resolveSource } from './valueSource';
-
-// The ''-branch of isEmpty/notEmpty belongs to String (and Json) columns only —
-// Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
-// ported). Field map is the authority, a stamped coerceType the fallback; with
-// neither, the legacy two-branch shape stays so an untyped String field keeps it.
-const fieldWalk = (rule: Pick<Rule, 'field'>, state: BuilderState) =>
-  state.map && state.currentModel
-    ? walkFieldPath(rule.field, state.map as FieldMap, state.currentModel)
-    : undefined;
-
-const directEntry = (rule: Pick<Rule, 'field'>, state: BuilderState) => {
-  const walk = fieldWalk(rule, state);
-  return walk?.kind === 'direct' ? walk.entry : undefined;
-};
-
-const acceptsEmptyString = (rule: Rule, state: BuilderState): boolean => {
-  const entry = directEntry(rule, state);
-  if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
-  return (
-    rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
-  );
-};
 
 export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   if (rule.fuzzy)
@@ -114,11 +92,11 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
       return orNull(`${field} !~ ${nextParam(state, rhsVal)}`);
 
     case Operator.isEmpty:
-      if (!acceptsEmptyString(rule, state)) return `${field} IS NULL`;
+      if (!acceptsEmptyString(rule, state.map, state.currentModel)) return `${field} IS NULL`;
       return `(${field} IS NULL OR ${field} = '')`;
 
     case Operator.notEmpty:
-      if (!acceptsEmptyString(rule, state)) return `${field} IS NOT NULL`;
+      if (!acceptsEmptyString(rule, state.map, state.currentModel)) return `${field} IS NOT NULL`;
       return `(${field} IS NOT NULL AND ${field} <> '')`;
 
     case Operator.exists:
@@ -147,7 +125,7 @@ const coerce = (rule: Rule, rhs: ResolvedRhs, state: BuilderState): ResolvedRhs 
         value: compileFieldLiteral(
           rule,
           rhs.value,
-          fieldWalk(rule, state),
+          walkWith(rule.field, state.map, state.currentModel),
           'toSql',
           () => dateConfigOf(state).timeZone,
         ),

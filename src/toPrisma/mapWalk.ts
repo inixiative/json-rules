@@ -64,6 +64,41 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
   return { kind: 'fallback', hops };
 };
 
+/** A field's walk, when a map and model are given. */
+export const walkWith = (
+  field: string,
+  map: FieldMap | undefined,
+  model: string | undefined,
+): MapWalkResult | undefined => (map && model ? walkFieldPath(field, map, model) : undefined);
+
+/** The declared entry a field path ends on, when the map declares it. */
+export const fieldEntry = (
+  field: string,
+  map: FieldMap | undefined,
+  model: string | undefined,
+): FieldMapEntry | undefined => {
+  const walk = walkWith(field, map, model);
+  return walk?.kind === 'direct' ? walk.entry : undefined;
+};
+
+/**
+ * Whether the emptiness operators may compare a field against `''`. Only a String (or Json)
+ * column takes it — Postgres rejects `''` on a timestamp or integer, Prisma rejects
+ * `equals: ''` on DateTime/Int/enum. The field map is the authority, a stamped `coerceType`
+ * the fallback; with neither, an untyped field keeps its `''` branch.
+ */
+export const acceptsEmptyString = (
+  rule: Pick<Rule, 'field' | 'coerceType'>,
+  map: FieldMap | undefined,
+  model: string | undefined,
+): boolean => {
+  const entry = fieldEntry(rule.field, map, model);
+  if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
+  return (
+    rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
+  );
+};
+
 /**
  * The dotted prefixes of `field` that end on an OPTIONAL to-one relation, outermost first —
  * every hop at which the path can be absent as a whole. Same licensing authority as

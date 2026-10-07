@@ -23,3 +23,23 @@ export const findReverseRelation = (
   }
   return null;
 };
+
+/**
+ * The column pairs that link a model to the target of one of its relations — `here` on the
+ * model, `there` on the target — from the relation's own FK (forward) or its reverse side
+ * (back-relation). Null when the map doesn't say. A composite FK has several pairs.
+ */
+export const relationKeys = (
+  map: FieldMap,
+  model: string,
+  entry: FieldMapEntry,
+): { here: string; there: string }[] | null => {
+  if (entry.fromFields?.length)
+    return entry.fromFields.map((from, i) => ({ here: from, there: entry.toFields?.[i] ?? 'id' }));
+  const reverse = findReverseRelation(map, entry.type, model, entry.relationName);
+  if (!reverse?.fromFields?.length) return null;
+  return reverse.fromFields.map((from, i) => ({
+    here: reverse.toFields?.[i] ?? 'id',
+    there: from,
+  }));
+};

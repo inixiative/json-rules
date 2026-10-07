@@ -34,6 +34,13 @@ export const readNumber = (raw: unknown, what: string): number | null => {
 export const orderPair = <T>([a, b]: readonly [T, T] | T[]): [T, T] =>
   (b as never) < (a as never) ? [b, a] : [a, b];
 
+/** A range operand: two ends, or an error naming the operator. */
+export const readPair = (value: unknown, operator: string): [unknown, unknown] => {
+  if (!Array.isArray(value) || value.length !== 2)
+    throw new Error(`${operator} operator requires an array of two values`);
+  return [value[0], value[1]];
+};
+
 /** A set operand: a list, or an error — a scalar is not a set. */
 export const readSet = (value: unknown): unknown[] => {
   if (!Array.isArray(value))

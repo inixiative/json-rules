@@ -1,7 +1,7 @@
 import { resolveExpr } from '../amount';
 import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
-import { orderPair } from '../number';
+import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
 import { comparatorOf, NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import type { DateRule } from '../types';
@@ -45,10 +45,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
   const range = (): [Date, Date] | null => {
     const v = source();
     if (v === null || v === undefined) return null;
-    if (!Array.isArray(v) || v.length !== 2) {
-      throw new Error(`${rule.dateOperator} date operator requires an array of two values`);
-    }
-    const ends = v.map(instantOf);
+    const ends = readPair(v, rule.dateOperator).map(instantOf);
     if (ends[0] === null || ends[1] === null) return null;
     const [start, end] = orderPair(ends as Date[]).map(shift);
     return start && end ? [start, end] : null;

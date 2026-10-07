@@ -7,7 +7,7 @@ import {
   resolvePointForOperator,
   rollingShift,
 } from '../dateExpr';
-import { orderPair } from '../number';
+import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
 import type { DateExpr, DateRule } from '../types';
 import { compareSql, noOperandSql, orderedSql, orNull, rangeSql } from './compare';
@@ -142,10 +142,9 @@ const resolveRange = (rule: DateRule, state: BuilderState): [ResolvedRhs, Resolv
   const source = resolveSource(rule, state);
   if (isMissing(source)) return null;
   const raw = source.type === 'value' ? source.value : undefined;
-  if (!Array.isArray(raw) || raw.length !== 2) {
-    throw new Error(`${rule.dateOperator} date operator requires an array of two values`);
-  }
-  const points = raw.map((el) => toPoint(el, rule.dateOperator, state));
+  const points = readPair(raw, rule.dateOperator).map((el) =>
+    toPoint(el, rule.dateOperator, state),
+  );
   if (points.some(isMissing)) return null;
   const [first, second] = points;
   const ends: ResolvedRhs[] =

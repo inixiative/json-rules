@@ -1,7 +1,7 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
 import { hasNoOperand, isExistenceTest, relationNotValue } from '../field';
-import { orderPair, splitNull } from '../number';
+import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS, NO_VALUE_OPERATORS, RANGE_OPERATORS } from '../operatorCatalog';
 import { readPattern } from '../pattern';
@@ -193,9 +193,7 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
   const rhs = coerce(rule, resolveSource(rule, state), state);
   const range = rhs.type === 'value' ? rhs.value : undefined;
   if (range === null || range === undefined) return null;
-  if (!Array.isArray(range) || range.length !== 2)
-    throw new Error(`${rule.operator} operator requires an array of two values`);
-  return orderPair(range).map((value) => {
+  return orderPair(readPair(range, rule.operator)).map((value) => {
     const end: ResolvedRhs = { type: 'value', value };
     return rule.offset === undefined ? end : offsetNumber(end, rule.offset, state);
   }) as [ResolvedRhs, ResolvedRhs];

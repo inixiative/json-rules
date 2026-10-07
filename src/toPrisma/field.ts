@@ -7,7 +7,7 @@ import {
 } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
 import { hasNoOperand, isExistenceTest, relationNotValue } from '../field';
-import { orderPair, splitNull } from '../number';
+import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
   comparatorOf,
@@ -305,11 +305,7 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
     // because a field filter cannot carry a two-sided negation.
     case Operator.between:
     case Operator.notBetween: {
-      const v = val();
-      if (!Array.isArray(v) || v.length !== 2) {
-        throw new Error(`${rule.operator} operator requires an array of two values`);
-      }
-      const [min, max] = orderPair(v);
+      const [min, max] = orderPair(readPair(val(), rule.operator));
       return { gte: min, lte: max };
     }
     default:

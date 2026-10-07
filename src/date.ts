@@ -13,7 +13,7 @@ import {
   resolvePointForOperator,
   shiftByUnits,
 } from './dateExpr';
-import { isOrderedValue, orderPair } from './number';
+import { isOrderedValue, orderPair, readPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
 import {
@@ -196,10 +196,9 @@ const parseCompareDates = (
   };
 
   if (DATE_RANGE_OPERATORS.includes(operator)) {
-    if (!Array.isArray(raw) || raw.length !== 2)
-      throw new Error(`${operator} operator requires an array of two dates`);
-    const date1 = toPoint(raw[0], 'start date');
-    const date2 = toPoint(raw[1], 'end date');
+    const [first, second] = readPair(raw, operator);
+    const date1 = toPoint(first, 'start date');
+    const date2 = toPoint(second, 'end date');
     if (!date1 || !date2) return null;
     const [start, end] = orderPair([date1, date2]);
     const shiftedStart = shift(start);

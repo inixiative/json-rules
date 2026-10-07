@@ -30,6 +30,14 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     resolved.shape === 'json-path' && isNumeric(operand)
       ? `CASE WHEN jsonb_typeof(${resolveFieldSql(rule.field, state, { jsonb: true })}) = 'number' THEN (${resolved.sql})::numeric END`
       : resolved.sql;
+  // A to-one relation as a field exists or not: its key is not a value to compare.
+  if (resolved.shape === 'relation' && !NO_VALUE_OPERATORS.includes(rule.operator)) {
+    const rhs = resolveSource(rule, state);
+    if (!(rhs.type === 'value' && rhs.value === null && EQUALITY.includes(rule.operator)))
+      throw new Error(
+        `'${rule.field}' is a relation: it exists or not; compare its fields with '${rule.field}.<field>'.`,
+      );
+  }
   // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
   const nullable = lhs === undefined;
   if (RANGE_OPERATORS.includes(rule.operator)) {
@@ -60,11 +68,6 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const lowered = (values: unknown[]): unknown[] =>
     lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
 
-  if (resolved.shape === 'relation' && !NO_VALUE_OPERATORS.includes(rule.operator))
-    if (!(rhs.type === 'value' && rhs.value === null && EQUALITY.includes(rule.operator)))
-      throw new Error(
-        `'${rule.field}' is a relation: it exists or not; compare its fields with '${rule.field}.<field>'.`,
-      );
   // A Json value as jsonb, where JSON null, "" and [] are told apart.
   const json = (): string | undefined =>
     resolved.shape === 'json' || resolved.shape === 'json-path'

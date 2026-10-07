@@ -27,7 +27,10 @@ export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
-    return { type: 'column', ...resolveField(scoped.path, state) };
+    const column = resolveField(scoped.path, state);
+    if (column.shape === 'relation')
+      throw new Error(`'${ref}' is a relation; a value ref reads a column`);
+    return { type: 'column', ...column };
   }
   return { type: 'value', value: readContextRef(ref, state.context, 'toSql') };
 };

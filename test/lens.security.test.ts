@@ -6,6 +6,7 @@ import {
   narrowRule,
   projectLens,
   toSourceQueries,
+  toSql,
   validateRuleInLens,
 } from '../index';
 
@@ -211,5 +212,47 @@ describe('the gate refuses a node that is both logical and a leaf', () => {
     expect(validateRuleInLens(r, granted).errors.map((e) => e.code)).toContain(
       'ambiguous_condition',
     );
+  });
+});
+
+describe('a relation is never read as a value', () => {
+  const hidden: LensNarrowing = {
+    parent: lens,
+    root: { omits: ['authorId'], relations: { author: { omits: ['salary'] } } },
+  };
+  const rejects = (r: object) => expect(validateRuleInLens(rule(r), hidden).ok).toBe(false);
+
+  test('a value ref ending on a relation is rejected', () => {
+    rejects({ field: 'title', operator: 'equals', path: '$.author' });
+    rejects({ field: 'title', operator: 'equals', path: '$.comments' });
+    rejects({
+      field: 'score',
+      operator: 'greaterThan',
+      value: 1,
+      offset: { path: '$.author' },
+    });
+  });
+
+  test('a relation as a field only exists or not', () => {
+    rejects({ field: 'author', operator: 'greaterThan', value: 'm' });
+    rejects({ field: 'author', operator: 'between', value: ['a', 'z'] });
+    rejects({ field: 'author', operator: 'equals', value: 'u1' });
+    expect(validateRuleInLens(rule({ field: 'author', operator: 'exists' }), hidden).ok).toBe(true);
+  });
+
+  test('toSql refuses to compare a relation key', () => {
+    const opts = { map, model: 'Article' };
+    expect(() =>
+      toSql(rule({ field: 'author', operator: 'greaterThan', value: 'm' }), opts),
+    ).toThrow('is a relation');
+    expect(() =>
+      toSql(rule({ field: 'title', operator: 'equals', path: '$.author' }), opts),
+    ).toThrow('is a relation');
+  });
+
+  test("check()'s error text never prints an object operand", () => {
+    const row = { title: 'x', author: { id: 'u1', salary: 424242 } };
+    const result = check(rule({ field: 'title', operator: 'equals', path: '$.author' }), row);
+    expect(result).toBe('title must equal an object');
   });
 });

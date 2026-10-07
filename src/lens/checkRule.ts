@@ -1,4 +1,5 @@
-import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
+import { Operator } from '../operator';
+import { INTEGER_KINDS, NO_VALUE_OPERATORS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
@@ -101,6 +102,16 @@ const visit = (
           });
           continue;
         }
+        // A ref reads a column; a relation is rows, which the grant and the field's picks don't
+        // scope.
+        if (walked.entry.kind === 'object') {
+          violations.push({
+            path: ref,
+            code: 'not_in_lens',
+            message: 'a value ref reads a column, not a relation',
+          });
+          continue;
+        }
         const kind = entryKind(walked.entry);
         if (role === 'value' || role === 'shift' || kind === undefined) continue;
         const fits = role === 'whole' ? INTEGER_KINDS.includes(kind) : NUMERIC_KINDS.includes(kind);
@@ -122,6 +133,22 @@ const visit = (
           violations.push(misfit);
           return false;
         }
+      }
+
+      // A to-one relation as a field exists or doesn't; nothing else compares against it.
+      if (
+        terminalEntry?.kind === 'object' &&
+        !terminalEntry.isList &&
+        ('operator' in cond || 'dateOperator' in cond) &&
+        !('aggregate' in cond) &&
+        !isExistenceTest(cond as Record<string, unknown>)
+      ) {
+        violations.push({
+          path: cond.field as string,
+          code: 'operator_kind_mismatch',
+          message: `'${cond.field}' is a relation: it takes exists / notExists / isEmpty / notEmpty, or equals / notEquals null`,
+        });
+        return false;
       }
 
       // Operator and literal against the field's kind (an aggregate's operator compares the
@@ -233,4 +260,12 @@ export const validateRuleInLens = (
   return validationResult(
     checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),
   );
+};
+
+/** A leaf that only asks whether its field is there. */
+const isExistenceTest = (cond: Record<string, unknown>): boolean => {
+  if (NO_VALUE_OPERATORS.includes(cond.operator as string)) return true;
+  const nullLiteral =
+    'value' in cond && cond.value === null && cond.path === undefined && cond.bind === undefined;
+  return (cond.operator === Operator.equals || cond.operator === Operator.notEquals) && nullLiteral;
 };

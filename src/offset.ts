@@ -1,5 +1,6 @@
 import { isDateExpr, rollingShift } from './dateExpr';
 import { readNumber, toNumber } from './number';
+import { showValue } from './showValue';
 import type { RelativeUnits } from './types';
 
 // An offset moves a leaf's comparison value. It reads its own value source: a number on a field
@@ -28,7 +29,6 @@ export const offsetAmount = (raw: unknown): number | null => readNumber(raw, 'an
 export const offsetShift = (raw: unknown): [RelativeUnits, 1 | -1] | null => {
   if (raw === null || raw === undefined) return null;
   const rolling = isDateExpr(raw) ? rollingShift(raw) : null;
-  if (!rolling)
-    throw new Error(`a date offset reads { ago } or { ahead } (got ${JSON.stringify(raw)})`);
+  if (!rolling) throw new Error(`a date offset reads { ago } or { ahead } (got ${showValue(raw)})`);
   return rolling;
 };

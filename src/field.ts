@@ -14,6 +14,7 @@ import {
   RANGE_OPERATORS,
 } from './operatorCatalog';
 import { readField, type Scopes } from './scope';
+import { showValue } from './showValue';
 import type { DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
@@ -145,7 +146,7 @@ export const checkField = (
   }
 
   const getError = (op: string) =>
-    condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
+    condition.error || `${condition.field} ${op}${needsValue ? ` ${showValue(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
   const lower = (v: unknown): unknown => (ci && typeof v === 'string' ? v.toLowerCase() : v);

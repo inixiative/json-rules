@@ -250,6 +250,11 @@ On the SQL rail:
   read per row, a set or a pattern read per row, and a date rule on (or read from) a number or
   boolean column are refused with a clear error rather than a raw Postgres one. A padded epoch
   string in Json reads as `check()` reads it.
+- **Clear refusals, never raw database errors:** a date rule reads only a DateTime, text or Json
+  path (an enum, a list or a whole Json column is refused); a list `contains` a member read per
+  row only when the member is text and the list holds strings; a string operator on a non-text
+  column, an offset against text, a range end that doesn't order and a quantified anchor in a
+  pattern are refused on SQL.
 - **A date rule on a non-DateTime column** (String, a number) is refused on Prisma, which sent it
   a `Date`; a Json epoch with a fraction reads on SQL.
 - **An unknown aggregate mode** throws on every rail; `toSql` computed it as AVG, and `check()`

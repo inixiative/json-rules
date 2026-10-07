@@ -1,4 +1,4 @@
-import { modelOf, own } from '../own';
+import { fieldOf, modelOf, own } from '../own';
 import { resolveScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
@@ -382,4 +382,47 @@ export const stepIntoField = (
     ? { ...relation, relPath: [...walked.relPath, walked.terminalFieldName], open }
     : { ...target.scope, open };
   return { from: target.scope, next, walked };
+};
+
+/** A relation a path crosses: the visit it reaches, its dotted prefix, and whether it's to-many. */
+export type RelationHop = {
+  map: string;
+  model: string;
+  relPath: string[];
+  prefix: string;
+  isList: boolean;
+};
+
+/**
+ * The relations a path crosses from a visit, read from the lens maps — grants apply to a relation
+ * whether or not it is visible, so this walk does not gate. It stops at the first segment that
+ * isn't a relation; `end` is the visit the last segment reaches when every segment is one.
+ * `prefix` is prepended to each hop's dotted prefix (a `$`-scope ref).
+ */
+export const relationHops = (
+  policy: Policy,
+  from: { mapName: string; modelName: string; relPath: readonly string[] },
+  path: string,
+  prefix = '',
+): {
+  hops: RelationHop[];
+  end: { mapName: string; modelName: string; relPath: string[] } | null;
+} => {
+  const parts = path.split('.');
+  let at = { ...from, relPath: [...from.relPath] };
+  const hops: RelationHop[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const entry = fieldOf(own(policy.lens.maps, at.mapName), at.modelName, parts[i]);
+    const relation = entry && resolveRelationTarget(entry, at.mapName);
+    if (!entry || !relation) break;
+    at = { ...relation, relPath: [...at.relPath, parts[i]] };
+    hops.push({
+      map: at.mapName,
+      model: at.modelName,
+      relPath: [...at.relPath],
+      prefix: `${prefix}${parts.slice(0, i + 1).join('.')}`,
+      isList: entry.isList === true,
+    });
+  }
+  return { hops, end: hops.length === parts.length ? at : null };
 };

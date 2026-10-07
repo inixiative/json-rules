@@ -5,7 +5,7 @@ import { isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../trave
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
-import { resolvePolicy, resolveVisit } from './policy.ts';
+import { type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
@@ -68,14 +68,6 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
 
 type Visit = { mapName: string; modelName: string; relPath: readonly string[] };
 
-type RelationHop = {
-  map: string;
-  model: string;
-  relPath: string[];
-  prefix: string;
-  isList: boolean;
-};
-
 // Gathers the (re-rooted) wheres for each traversed relation hop so they can be AND-ed
 // with the rule at the current anchor. To-many hops have no scalar path to AND against —
 // their grant must be row-scoped via an arrayOperator condition — so reaching one here
@@ -110,23 +102,8 @@ const anchorOf = (
   const target = resolveScopeRef(node.field, scopes);
   if ('outOfBounds' in target) throw new Error(`applyLens: ${target.outOfBounds}`);
   const scopePrefix = node.field.slice(0, node.field.length - target.path.length);
-  const parts = target.path.split('.');
-  let at: Visit = target.scope;
-  const hops: RelationHop[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const entry = fieldOf(own(policy.lens.maps, at.mapName), at.modelName, parts[i]);
-    const relation = entry && resolveRelationTarget(entry, at.mapName);
-    if (!entry || !relation) break;
-    at = { ...relation, relPath: [...at.relPath, parts[i]] };
-    hops.push({
-      map: at.mapName,
-      model: at.modelName,
-      relPath: [...at.relPath],
-      prefix: `${scopePrefix}${parts.slice(0, i + 1).join('.')}`,
-      isList: entry.isList === true,
-    });
-  }
-  return { hops, below: hops.length === parts.length ? at : null };
+  const { hops, end } = relationHops(policy, target.scope, target.path, scopePrefix);
+  return { hops, below: end };
 };
 
 const allOf = (conditions: Condition[]): Condition =>

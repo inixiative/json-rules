@@ -1,10 +1,8 @@
-import { fieldOf, own } from '../own';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
 import { prefixConditionFields } from './applyLens.ts';
-import { type Policy, resolveVisit } from './policy.ts';
-import { resolveRelationTarget } from './walk.ts';
+import { type Policy, relationHops, resolveVisit } from './policy.ts';
 
 type Row = Record<string, unknown>;
 
@@ -33,30 +31,22 @@ const foldPathGuards = (
   out: Condition[],
 ): void => {
   const segments = dotted.split('.');
-  let curMap = mapName;
-  let curModel = modelName;
-  const relPath = [...baseRelPath];
   // The last segment is the column; guards live on the traversed models.
-  for (let i = 0; i < segments.length - 1; i++) {
-    const entry = fieldOf(own(policy.lens.maps, curMap), curModel, segments[i]);
-    const target = entry ? resolveRelationTarget(entry, curMap) : null;
-    if (!target) {
-      if (strict) {
-        throw new Error(
-          `${strict} '${dotted}': hop '${segments[i]}' is not a resolvable relation on '${curModel}' — cannot guard its join`,
-        );
-      }
-      return; // plain column / Json sub-path — nothing joins past here
-    }
-    relPath.push(segments[i]);
-    curMap = target.mapName;
-    curModel = target.modelName;
-    const hopKey = relPath.join('.');
+  const { hops } = relationHops(policy, { mapName, modelName, relPath: baseRelPath }, dotted);
+  const crossed = hops.filter((_, i) => i < segments.length - 1);
+  if (strict && crossed.length < segments.length - 1) {
+    const hop = segments[crossed.length];
+    const on = crossed.at(-1)?.model ?? modelName;
+    throw new Error(
+      `${strict} '${dotted}': hop '${hop}' is not a resolvable relation on '${on}' — cannot guard its join`,
+    );
+  }
+  for (const hop of crossed) {
+    const hopKey = hop.relPath.join('.');
     if (seen.has(hopKey)) continue;
     seen.add(hopKey);
-    const effect = resolveVisit(policy, curMap, curModel, relPath);
-    const prefix = segments.slice(0, i + 1).join('.');
-    for (const where of effect.whereClauses) out.push(prefixConditionFields(where, prefix));
+    const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
+    for (const where of effect.whereClauses) out.push(prefixConditionFields(where, hop.prefix));
   }
 };
 

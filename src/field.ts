@@ -205,14 +205,14 @@ export const checkField = (
       return !containsMatch() || getError(`must not contain`);
     case Operator.matches:
       return (
-        (hasMatch(fieldValue) && isPattern(value) && readPattern(value).test(fieldValue)) ||
+        (hasMatch(fieldValue) && isPattern(value) && readPattern(value).re.test(fieldValue)) ||
         getError(`must match pattern`)
       );
     case Operator.notMatches:
       return (
         !hasMatch(fieldValue) ||
         !isPattern(value) ||
-        !readPattern(value).test(fieldValue) ||
+        !readPattern(value).re.test(fieldValue) ||
         getError(`must not match pattern`)
       );
     case Operator.between: {

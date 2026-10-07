@@ -337,6 +337,11 @@ const MATRIX: Record<string, Case> = {
     ids: [2, 3, 4, 5],
     refuses: { prisma: 'has no Prisma form' },
   },
+  'matches, case-insensitive': {
+    rule: { field: 'name', operator: 'matches', value: /^d/i },
+    ids: [4],
+    refuses: { prisma: 'no Prisma equivalent' },
+  },
   'a list isEmpty': { rule: { field: 'tags', operator: 'isEmpty' }, ids: [2, 3, 5] },
   'a list notEmpty': { rule: { field: 'tags', operator: 'notEmpty' }, ids: [1, 4] },
   'a relation exists': { rule: { field: 'org', operator: 'exists' }, ids: [1, 2, 3] },

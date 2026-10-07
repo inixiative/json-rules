@@ -1,50 +1,43 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toSql, validateRule } from '../index';
-import { unsafePattern } from '../src/pattern';
 
-// A repeated group whose body can match more than one way backtracks exponentially on a
-// near-miss; a rule from an untrusted author must not stall the process or the database.
+// Patterns run on RE2, in time linear in the input: a pattern that backtracks exponentially or
+// polynomially elsewhere can't stall check(). What RE2 can't run is refused on every rail.
 
-describe('unsafePattern', () => {
+const matches = (value: unknown) => ({ field: 'title', operator: 'matches', value }) as never;
+
+describe('patterns run in linear time', () => {
   test.each([
     '^(a+)+$',
-    '(a*)*b',
+    '.*.*.*.*.*.*.*.*!',
+    'a*a*a*a*a*a*a*a*b',
+    '^(a?a?)*$',
     '(a|aa)*$',
-    '((ab)+)+',
-    '(\\d+){2,}',
-    '(?:x+|y)+',
-  ])('refuses %s', (pattern) => expect(unsafePattern(pattern)).not.toBeNull());
-  test.each([
-    '^a+$',
-    '(ab)+',
-    '[a+]+',
-    '^\\(a+\\)+$',
-    '(foo|bar)',
-    '^\\d{3}-\\d{4}$',
-    '(a)(b+)',
-  ])('accepts %s', (pattern) => expect(unsafePattern(pattern)).toBeNull());
+  ])('%s', (pattern) => {
+    const started = performance.now();
+    expect(check(matches(pattern), { title: `${'a'.repeat(5000)}!` })).toBeDefined();
+    expect(performance.now() - started).toBeLessThan(200);
+  });
 });
 
-describe('every rail refuses an unsafe pattern', () => {
-  const rule = { field: 'title', operator: 'matches', value: '^(a+)+$' } as never;
-
-  test('check() throws before running it', () => {
-    const started = performance.now();
-    expect(() => check(rule, { title: `${'a'.repeat(40)}!` })).toThrow('Refused pattern');
-    expect(performance.now() - started).toBeLessThan(50);
+describe('what RE2 cannot run is refused on every rail', () => {
+  test.each(['(a)\\1', 'a(?=b)', 'a(?<!b)'])('%s', (pattern) => {
+    expect(() => check(matches(pattern), { title: 'a' })).toThrow('Refused pattern');
+    expect(() => toSql(matches(pattern))).toThrow('Refused pattern');
+    expect(validateRule(matches(pattern)).errors[0].code).toBe('unsupported_pattern');
   });
 
-  test('toSql throws', () => {
-    expect(() => toSql(rule)).toThrow('Refused pattern');
+  test('flags other than i', () => {
+    expect(() => check(matches(/a/g), { title: 'a' })).toThrow("only the 'i' flag");
   });
+});
 
-  test('validateRule reports it', () => {
-    expect(validateRule(rule).errors.map((e) => e.code)).toContain('unsafe_pattern');
-  });
-
-  test('a safe pattern still matches', () => {
-    expect(
-      check({ field: 'title', operator: 'matches', value: '^a+$' } as never, { title: 'aaa' }),
-    ).toBe(true);
+describe('case-insensitive patterns', () => {
+  test('check and SQL both read the i flag', () => {
+    expect(check(matches(/^AD/i), { title: 'admin' })).toBe(true);
+    expect(toSql(matches(/^AD/i)).sql).toBe('"title" ~* $1');
+    expect(toSql({ field: 'title', operator: 'notMatches', value: /x/i } as never).sql).toBe(
+      '("title" !~* $1 OR "title" IS NULL)',
+    );
   });
 });

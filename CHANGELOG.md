@@ -86,8 +86,10 @@ on Json, and every negation on a Json path (which keeps absent paths).
   carry offers nothing.
 - **The lens gate refuses a node of two kinds** (`operator` and `dateOperator`, `arrayOperator`
   and `aggregate`, logical and leaf), as `validateRule` does — one shape detector serves both.
-- **`matches` refuses patterns that backtrack exponentially** (`(a+)+`, `(a|aa)*`) on every rail;
-  `validateRule` reports `unsafe_pattern`.
+- **Patterns run on RE2** (`re2js`, a runtime dependency), in time linear in the input: no pattern
+  can stall `check()` (`.*.*.*.*!` and `(a+)+` took seconds on short text). What RE2 can't run — a
+  backreference, a lookaround, a flag other than `i` — is refused on every rail; `validateRule`
+  reports `unsupported_pattern`. A RegExp's `i` flag compiles to `~*` / `!~*`.
 
 ### Breaking: the rails agree
 

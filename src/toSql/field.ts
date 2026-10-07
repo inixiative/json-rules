@@ -151,10 +151,10 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
       );
 
     case Operator.matches:
-      return `${field} ~ ${nextParam(state, sqlPattern(rhsVal))}`;
+      return sqlMatch(field, rhsVal, false, state);
 
     case Operator.notMatches:
-      return orNull(`${field} !~ ${nextParam(state, sqlPattern(rhsVal))}`);
+      return orNull(sqlMatch(field, rhsVal, true, state));
 
     case Operator.isEmpty:
     case Operator.notEmpty:
@@ -209,11 +209,12 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
   }) as [ResolvedRhs, ResolvedRhs];
 };
 
-/** A pattern's source for Postgres `~`, refused when it can backtrack exponentially. */
-const sqlPattern = (value: unknown): string => {
+/** A pattern as Postgres reads it: its source, and `~*` / `!~*` when case-insensitive. */
+const sqlMatch = (field: string, value: unknown, negated: boolean, state: BuilderState): string => {
   if (typeof value !== 'string' && !(value instanceof RegExp))
     throw new Error('matches requires a string or RegExp pattern');
-  return readPattern(value).source;
+  const { source, caseInsensitive } = readPattern(value);
+  return `${field} ${negated ? '!' : ''}~${caseInsensitive ? '*' : ''} ${nextParam(state, source)}`;
 };
 
 const NOT_KNOWN = Symbol('not known');

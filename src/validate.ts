@@ -30,7 +30,7 @@ import {
   type ValueShape,
   WINDOW_OPERATORS,
 } from './operatorCatalog';
-import { unsafePattern } from './pattern';
+import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { conditionShape } from './traverse';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue, WindowFields } from './types';
@@ -434,8 +434,8 @@ const validateValueShape = (
         );
         return;
       }
-      const unsafe = unsafePattern(value instanceof RegExp ? value.source : value);
-      if (unsafe) pushIssue(context, path, 'unsafe_pattern', `Refused pattern: ${unsafe}`);
+      const problem = patternProblem(value);
+      if (problem) pushIssue(context, path, 'unsupported_pattern', problem);
       return;
     }
     case 'range':

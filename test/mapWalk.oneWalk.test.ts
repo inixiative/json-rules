@@ -57,7 +57,9 @@ describe('toSql array and aggregate rules walk their field', () => {
       }),
       opts,
     );
-    expect(sql).toContain(`jsonb_array_elements_text("t1"."meta"->'scores')`);
+    expect(sql).toContain(
+      `jsonb_array_elements_text((CASE WHEN jsonb_typeof("t1"."meta"->'scores') = 'array' THEN "t1"."meta"->'scores' END))`,
+    );
   });
 });
 

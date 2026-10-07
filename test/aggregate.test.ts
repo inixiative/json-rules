@@ -526,7 +526,7 @@ describe('toSql() aggregate rules', () => {
       value: 100,
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text("tags") AS elem) > $1`,
+      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("tags") = 'array' THEN "tags" END)) AS elem) > $1`,
     );
     expect(params).toEqual([100]);
   });
@@ -539,7 +539,7 @@ describe('toSql() aggregate rules', () => {
       value: 80,
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(AVG(elem::numeric), 0) FROM jsonb_array_elements_text("scores") AS elem) >= $1`,
+      `(SELECT COALESCE(AVG(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) >= $1`,
     );
     expect(params).toEqual([80]);
   });
@@ -561,7 +561,7 @@ describe('toSql() aggregate rules', () => {
       value: 1000,
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements("orders") AS elem) > $1`,
+      `(SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements((CASE WHEN jsonb_typeof("orders") = 'array' THEN "orders" END)) AS elem) > $1`,
     );
     expect(params).toEqual([1000]);
   });
@@ -574,7 +574,7 @@ describe('toSql() aggregate rules', () => {
       value: [100, 300],
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text("scores") AS elem) BETWEEN $1 AND $2`,
+      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) BETWEEN $1 AND $2`,
     );
     expect(params).toEqual([100, 300]);
   });
@@ -587,7 +587,7 @@ describe('toSql() aggregate rules', () => {
       value: [100, 300],
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text("scores") AS elem) NOT BETWEEN $1 AND $2`,
+      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) NOT BETWEEN $1 AND $2`,
     );
     expect(params).toEqual([100, 300]);
   });

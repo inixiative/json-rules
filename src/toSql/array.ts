@@ -6,11 +6,11 @@ import { emptinessSql } from './field';
 import { resolveField } from './join';
 import type { BuilderState } from './types';
 
-const WINDOW_UNSUPPORTED =
+export const SQL_WINDOW_UNSUPPORTED =
   'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().';
 
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
-  if (hasWindow(rule)) throw new Error(WINDOW_UNSUPPORTED);
+  if (hasWindow(rule)) throw new Error(SQL_WINDOW_UNSUPPORTED);
   if (!rule.field) {
     throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }

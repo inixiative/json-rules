@@ -64,11 +64,9 @@ const foldPathGuards = (
  * anchor `field`; their nested conditions are element-relative and compile inside the
  * relation filter, not as new joins from this model, so descent stops there. */
 const collectFieldPaths = (condition: Condition, out: string[] = []): string[] => {
-  visitCondition(condition, {
-    enter: (node) => {
-      if (typeof node.field === 'string') out.push(node.field);
-    },
-    descend: () => false,
+  visitCondition(condition, (node) => {
+    if (typeof node.field === 'string') out.push(node.field);
+    return false;
   });
   return out;
 };

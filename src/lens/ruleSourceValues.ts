@@ -6,7 +6,7 @@ import {
 } from '../operatorCatalog';
 import { own } from '../own';
 import { resolveScopeRef } from '../scope';
-import { type ConditionNode, isRelationNode, visitCondition } from '../traverse.ts';
+import { type ConditionNode, isLogicalNode, isRelationNode, visitCondition } from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { resolvePolicy, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -132,33 +132,24 @@ export const ruleSourceValues = (
     }
   };
 
-  // `prefixes` is the stack of absolute anchors, innermost last; a `$`-prefixed field
-  // anchors at the scope it names. An out-of-bounds ref anchors nowhere and is silent.
-  const walk = (condition: Condition, prefixes: readonly string[][]): void => {
-    const anchorOf = (field: string): string[] | undefined => {
-      const target = resolveScopeRef(field, prefixes);
-      if ('outOfBounds' in target) return undefined;
-      return [...target.scope, ...target.path.split('.')];
-    };
-    visitCondition(condition, {
-      enter: (node) => {
-        if (isRelationNode(node)) return;
-        if (typeof node.field !== 'string') return;
-        const anchor = anchorOf(node.field);
-        if (anchor) record(anchor, node);
-      },
-      descend: (node) => {
-        const anchor =
-          typeof node.field === 'string' ? anchorOf(node.field) : prefixes[prefixes.length - 1];
-        if (!anchor) return false;
-        const below = [...prefixes, anchor];
-        if (node.condition !== undefined) walk(node.condition as Condition, below);
-        if (node.filter !== undefined) walk(node.filter as Condition, below);
-        return false;
-      },
-    });
+  // The scope is the stack of absolute anchors, innermost last; a `$`-prefixed field anchors at
+  // the scope it names. An out-of-bounds ref anchors nowhere and is silent.
+  const anchorOf = (field: string, prefixes: readonly string[][]): string[] | undefined => {
+    const target = resolveScopeRef(field, prefixes);
+    if ('outOfBounds' in target) return undefined;
+    return [...target.scope, ...target.path.split('.')];
   };
-
-  walk(rule, [[]]);
+  visitCondition<readonly string[][]>(
+    rule,
+    (node, prefixes) => {
+      if (isLogicalNode(node)) return;
+      const anchor =
+        typeof node.field === 'string' ? anchorOf(node.field, prefixes) : prefixes.at(-1);
+      if (!anchor) return false;
+      if (!isRelationNode(node) && typeof node.field === 'string') record(anchor, node);
+      return [...prefixes, anchor];
+    },
+    [[]],
+  );
   return [...out.values()];
 };

@@ -16,31 +16,24 @@ const bindTokens = (node: ConditionNode): BindSource[] =>
     typeof source.bind === 'string' ? [source as BindSource] : [],
   );
 
-/** Names of every `{ bind }` token in the tree, optional or not — what a lens declares. */
-export const bindingNames = (condition: Condition): Set<string> => {
+const bindNames = (condition: Condition, keep: (token: BindSource) => boolean): Set<string> => {
   const names = new Set<string>();
-  visitCondition(condition, {
-    enter: (node) => {
-      for (const token of bindTokens(node)) names.add(token.bind);
-    },
+  visitCondition(condition, (node) => {
+    for (const token of bindTokens(node)) if (keep(token)) names.add(token.bind);
   });
   return names;
 };
+
+/** Names of every `{ bind }` token in the tree, optional or not — what a lens declares. */
+export const bindingNames = (condition: Condition): Set<string> => bindNames(condition, () => true);
 
 /**
  * Names a bindings map must cover: every `{ bind }` token not marked `bindOptional`. A
  * name that is optional at one leaf and required at another is required. An optional
  * name left unsupplied evaluates and compiles as `null`.
  */
-export const requiredBindings = (condition: Condition): Set<string> => {
-  const names = new Set<string>();
-  visitCondition(condition, {
-    enter: (node) => {
-      for (const token of bindTokens(node)) if (token.bindOptional !== true) names.add(token.bind);
-    },
-  });
-  return names;
-};
+export const requiredBindings = (condition: Condition): Set<string> =>
+  bindNames(condition, (token) => token.bindOptional !== true);
 
 /**
  * Substitute covered binds with their values; uncovered tokens stay in place (partial

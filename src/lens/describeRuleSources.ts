@@ -100,7 +100,11 @@ export const describeRuleSources = (
 
   const record = (segments: string[], node: ConditionNode): void => {
     if (segments.length === 0) return;
-    const resolved = lensPathEnd(policy, policy.lens.mapName, root, [], segments.join('.'));
+    const resolved = lensPathEnd(
+      policy,
+      { mapName: policy.lens.mapName, modelName: root, relPath: [] },
+      segments.join('.'),
+    );
     if (!resolved || resolved.jsonSubPath.length > 0) return;
     const { mapName, modelName, relPath, terminalEffect, terminalFieldName } = resolved;
     if (!terminalEffect.sources.has(terminalFieldName)) return;

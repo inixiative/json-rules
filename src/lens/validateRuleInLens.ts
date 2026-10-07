@@ -94,8 +94,7 @@ const visit = (
           ? scopeFor(ref)
           : { scope: lensRootScope(policy), field: ref };
         if (!target || target.scope.open) continue;
-        const { mapName, modelName, relPath } = target.scope;
-        const walked = lensPathEnd(policy, mapName, modelName, relPath, target.field);
+        const walked = lensPathEnd(policy, target.scope, target.field);
         if (!walked) {
           issues.push({
             path: ref,
@@ -173,7 +172,7 @@ const visit = (
       // The fields a relation node orders or aggregates by read its elements.
       if (!next.open)
         for (const ref of elementRefs(cond as Record<string, unknown>)) {
-          if (ref !== '' && !lensPathEnd(policy, next.mapName, next.modelName, next.relPath, ref))
+          if (ref !== '' && !lensPathEnd(policy, next, ref))
             issues.push({
               path: ref,
               code: 'not_in_lens',

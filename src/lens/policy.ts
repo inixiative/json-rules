@@ -1,6 +1,6 @@
 import { declaredEnumValues, isJsonEntry } from '../fieldMap/entry';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
-import { relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
+import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { Condition } from '../types.ts';
@@ -289,15 +289,12 @@ export type LensPathResolution =
 
 export const resolvePolicyPath = (
   policy: Policy,
-  startMap: string,
-  startModel: string,
-  startPath: readonly string[],
+  from: MapVisit,
   path: string,
 ): { resolution: LensPathResolution; effects: VisitEffect[] } => {
   const parts = path.split('.');
   const hops: LensPathHop[] = [];
   const effects: VisitEffect[] = [];
-  const from = { mapName: startMap, modelName: startModel, relPath: startPath };
   for (const { index: i, field: fieldName, at, entry, next } of walkMaps(
     policy.lens.maps,
     from,
@@ -345,7 +342,7 @@ export const resolvePolicyPath = (
 export const sourceReadsVisible = (
   policy: Policy,
   effect: VisitEffect,
-  at: { mapName: string; modelName: string; relPath: readonly string[] },
+  at: MapVisit,
   field: string,
   kind: 'label' | 'groupBy',
 ): boolean => {
@@ -355,36 +352,25 @@ export const sourceReadsVisible = (
   const from = effect.sourceDeclaredAt.get(declaredKey(field, kind, value)) ?? -1;
   const others = { lens: policy.lens, chain: policy.chain.filter((_, i) => i !== from) };
   return (typeof value === 'string' ? [value] : value).every(
-    (path) =>
-      resolvePolicyPath(others, at.mapName, at.modelName, at.relPath, path).resolution.outcome !==
-      'hidden',
+    (path) => resolvePolicyPath(others, at, path).resolution.outcome !== 'hidden',
   );
 };
 
 export const lensPathEnd = (
   policy: Policy,
-  startMap: string,
-  startModel: string,
-  startPath: readonly string[],
+  from: MapVisit,
   fieldPath: string,
 ): {
   mapName: string;
   modelName: string;
   relPath: string[];
   entry: FieldMapEntry;
-  hopEffects: VisitEffect[];
   terminalEffect: VisitEffect;
   terminalFieldName: string;
   /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
   jsonSubPath: string[];
 } | null => {
-  const { resolution, effects } = resolvePolicyPath(
-    policy,
-    startMap,
-    startModel,
-    startPath,
-    fieldPath,
-  );
+  const { resolution, effects } = resolvePolicyPath(policy, from, fieldPath);
   if (resolution.outcome !== 'resolved') return null;
   const { terminal, jsonSubPath } = resolution;
   return {
@@ -392,7 +378,6 @@ export const lensPathEnd = (
     modelName: terminal.model,
     relPath: terminal.relPath,
     entry: terminal.entry,
-    hopEffects: effects.slice(0, -1),
     terminalEffect: effects[effects.length - 1],
     terminalFieldName: terminal.field,
     jsonSubPath,
@@ -400,12 +385,7 @@ export const lensPathEnd = (
 };
 
 /** Where a rule visit stands: a model reached through the lens, or open inside a Json value. */
-export type VisitScope = {
-  mapName: string;
-  modelName: string;
-  relPath: readonly string[];
-  open: boolean;
-};
+export type VisitScope = MapVisit & { open: boolean };
 
 export const lensRootScope = (policy: Policy): VisitScope => ({
   mapName: policy.lens.mapName,
@@ -432,8 +412,7 @@ export const stepIntoField = (
   if ('outOfBounds' in target)
     return { issue: { code: 'scope_out_of_bounds', message: target.outOfBounds } };
   if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
-  const { mapName, modelName, relPath } = target.scope;
-  const walked = lensPathEnd(policy, mapName, modelName, relPath, target.path);
+  const walked = lensPathEnd(policy, target.scope, target.path);
   if (!walked)
     return {
       issue: { code: 'not_in_lens', message: 'path does not resolve through the narrowed lens' },
@@ -463,16 +442,16 @@ export type RelationHop = {
  */
 export const relationHops = (
   maps: Record<string, FieldMap>,
-  from: { mapName: string; modelName: string; relPath: readonly string[] },
+  from: MapVisit,
   path: string,
   prefix = '',
 ): {
   hops: RelationHop[];
-  end: { mapName: string; modelName: string; relPath: string[] } | null;
+  end: MapVisit | null;
 } => {
   const parts = path.split('.');
   const hops: RelationHop[] = [];
-  let end: { mapName: string; modelName: string; relPath: string[] } | null = null;
+  let end: MapVisit | null = null;
   for (const { index: i, field, at, entry, next } of walkMaps(maps, from, path)) {
     if (!entry || !next) break;
     const relPath = [...at.relPath, field];

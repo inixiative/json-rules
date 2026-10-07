@@ -1,4 +1,9 @@
-import { type LensPathResolution, resolvePolicy, resolvePolicyPath } from './policy.ts';
+import {
+  type LensPathResolution,
+  lensRootScope,
+  resolvePolicy,
+  resolvePolicyPath,
+} from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 export type { LensPathHop, LensPathResolution } from './policy.ts';
@@ -15,5 +20,5 @@ export const walkLensPath = (
   path: string,
 ): LensPathResolution => {
   const policy = resolvePolicy(lensOrNarrowing);
-  return resolvePolicyPath(policy, policy.lens.mapName, policy.lens.model, [], path).resolution;
+  return resolvePolicyPath(policy, lensRootScope(policy), path).resolution;
 };

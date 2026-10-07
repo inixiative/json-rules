@@ -36,8 +36,13 @@ const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition =>
 // one check() can't settle without options) keeps the plain AND, which only narrows.
 const holdsWhenAbsent = (node: Condition): boolean => {
   if (valueRefs(node as Record<string, unknown>).length) return false;
+  // A `$`-scoped field reads the same way at its own scope.
+  const field = (node as { field?: unknown }).field;
+  const scoped = typeof field === 'string' ? parseScopeRef(field) : null;
   try {
-    return check(node, {}) === true;
+    return (
+      check(scoped ? ({ ...(node as object), field: scoped.path } as Condition) : node, {}) === true
+    );
   } catch {
     return false;
   }

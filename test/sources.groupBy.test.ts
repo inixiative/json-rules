@@ -830,6 +830,17 @@ describe('re-declaring an ancestor label or axis never revives what a layer betw
       expect(q.groupBy).toBeUndefined();
       expect(q.sql?.sql ?? '').not.toContain('"id"');
     });
+
+  test('a hidden axis drops from the projected fields too, by path and by model', () => {
+    const declares = withParent(base, { root: { sources: { tier: { groupBy: 'id' } } } });
+    const hides = withParent(declares, { root: { omits: ['id'] } });
+    const [visit] = Object.values(projectLens(hides));
+    expect(visit.sourceGroupBys.tier).toBeUndefined();
+    expect(visit.fields.tier.groupBy).toBeUndefined();
+    expect(
+      projectLens(hides, { by: 'model' }).maps.app.models.User.fields.tier.groupBy,
+    ).toBeUndefined();
+  });
 });
 
 test('a sourced field named after an Object.prototype key plans without inherited label or axes', () => {

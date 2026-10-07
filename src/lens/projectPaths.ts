@@ -1,9 +1,10 @@
 import type { FieldMapEntry, ModelEntry, SourceOption } from '../fieldMap/types';
-import { relationTargetOf } from '../fieldMap/walk.ts';
+import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
 import { own } from '../own';
 import type { Condition } from '../types.ts';
 import {
   isFieldVisible,
+  type Policy,
   resolvePolicy,
   resolveVisit,
   sourceReadsVisible,
@@ -50,7 +51,9 @@ export type ProjectLensOptions = { sourceValues?: readonly SourceValues[] };
  * Both projections build their fields through it.
  */
 export const projectFields = (
+  policy: Policy,
   effect: VisitEffect,
+  at: MapVisit,
   model: ModelEntry,
   fetched: (field: string) => readonly SourceOption[] | undefined,
 ): Record<string, FieldMapEntry> => {
@@ -62,7 +65,10 @@ export const projectFields = (
     const options = fetched(fieldName)?.filter(
       (o) => values === undefined || values.includes(o.value),
     );
-    const groupBy = effect.sourceGroupBys.get(fieldName);
+    // Axes a layer hides drop, as they do from the visit's sourceGroupBys.
+    const groupBy = sourceReadsVisible(policy, effect, at, fieldName, 'groupBy')
+      ? effect.sourceGroupBys.get(fieldName)
+      : undefined;
     fields[fieldName] = {
       ...entry,
       ...(values !== undefined && { values }),
@@ -99,7 +105,8 @@ export const projectPaths = (
 
     // A sourced field's fetched pairs win; otherwise a value-gated field surfaces its resolved
     // allowed-set as options, so every selectable field exposes `options`.
-    const fields = projectFields(effect, model, (field) => {
+    const at = { mapName, modelName, relPath };
+    const fields = projectFields(policy, effect, at, model, (field) => {
       const fetched = fetchedByPathField.get(`${dottedPath}|${field}`);
       const values = effect.enumValuesByField.get(field);
       return fetched ?? values?.map((value) => ({ value, label: value }));
@@ -110,7 +117,6 @@ export const projectPaths = (
       if (isFieldVisible(effect, fieldName)) sources[fieldName] = clauses;
     }
 
-    const at = { mapName, modelName, relPath };
     const sourceLabels: Record<string, string> = {};
     for (const [fieldName, label] of effect.sourceLabels) {
       if (

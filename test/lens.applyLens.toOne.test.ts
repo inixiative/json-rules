@@ -154,4 +154,20 @@ describe('narrowRule — a missing related row is not a hidden one', () => {
       'granted',
     ]);
   });
+
+  test('a $-scoped ref inside an array rule reads a missing relation the same way', () => {
+    const rule = {
+      field: 'comments',
+      arrayOperator: ArrayOperator.any,
+      condition: { field: '$$.author', operator: Operator.notExists },
+    } as Condition;
+    const narrowed = narrowRule(rule, n);
+    expect(check(narrowed, { author: null, comments: [{ body: 'x' }] })).toBe(true);
+    expect(check(narrowed, { author: { tenantId: 't1' }, comments: [{ body: 'x' }] })).not.toBe(
+      true,
+    );
+    expect(check(narrowed, { author: { tenantId: 't2' }, comments: [{ body: 'x' }] })).not.toBe(
+      true,
+    );
+  });
 });

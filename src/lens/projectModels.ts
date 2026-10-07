@@ -93,7 +93,8 @@ export const projectModels = (
       surface.set(key, acc);
     }
 
-    const fields = projectFields(effect, model, (field) => {
+    const at = { mapName, modelName, relPath: declared ? relPath : OFF_PATH };
+    const fields = projectFields(policy, effect, at, model, (field) => {
       const fetched = fetchedByModelField.get(`${mapName}::${modelName}::${field}`);
       return fetched && [...fetched.values()];
     });

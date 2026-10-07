@@ -1,20 +1,14 @@
 import { resolveCaseInsensitive } from './engineGlobals';
+import { declaredEnumValues } from './fieldMap/entry';
 import type { FieldMap, FieldMapEntry } from './fieldMap/types';
 import { splitNull } from './number';
 import { EQUALITY_OPERATORS, EXACT_OPERATORS, NEGATED_OPERATORS } from './operatorCatalog';
-import { own } from './own';
 import type { Rule } from './types';
 
 // An enum column compares exactly: a case-insensitive equality or membership compiles to the
 // declared values that match ignoring case (Prisma has no case-insensitive mode on an enum), as
 // does one naming a value the enum doesn't declare.
 // String, pattern and ordered operators don't apply to an enum, as the catalog says.
-
-/** An enum field's declared values: the entry's own, else the map's for its type. */
-const enumValues = (
-  entry: FieldMapEntry,
-  map: FieldMap | undefined,
-): readonly string[] | undefined => entry.values ?? own(map?.enums, entry.type);
 
 /**
  * The declared values a case-insensitive equality or membership on an enum matches, and whether
@@ -31,7 +25,7 @@ export const enumMatches = (
       `'${rule.operator}' does not apply to the enum '${rule.field}'; compare its values with equals / in.`,
     );
   const ci = resolveCaseInsensitive(rule.caseInsensitive);
-  const declared = enumValues(entry, map);
+  const declared = declaredEnumValues(entry, map?.enums);
   const { values, hasNull } = splitNull(
     EQUALITY_OPERATORS.includes(rule.operator) ? [value] : value,
   );

@@ -1,3 +1,4 @@
+import { declaredEnumValues } from '../fieldMap/entry';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
@@ -259,7 +260,7 @@ const validateModelNode = (
       });
       return;
     }
-    const registry = fieldEntry.values ?? own(enumRegistry, fieldEntry.type);
+    const registry = declaredEnumValues(fieldEntry, enumRegistry);
     for (const v of values) {
       if (registry && !registry.includes(v)) {
         errors.push({

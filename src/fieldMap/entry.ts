@@ -1,3 +1,4 @@
+import { own } from '../own';
 import type { FieldMapEntry } from './types';
 
 /**
@@ -11,3 +12,9 @@ export const isJsonEntry = (entry: FieldMapEntry): boolean =>
 /** A relation to another model, in this source or across a bridge. */
 export const isRelationEntry = (entry: FieldMapEntry): boolean =>
   entry.kind === 'object' || entry.kind === 'bridge';
+
+/** An enum field's declared values: the entry's own, else the registry's for its type. */
+export const declaredEnumValues = (
+  entry: FieldMapEntry,
+  enums: Record<string, readonly string[]> | undefined,
+): readonly string[] | undefined => entry.values ?? own(enums, entry.type);

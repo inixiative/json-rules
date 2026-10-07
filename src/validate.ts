@@ -1,4 +1,5 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
+import { unitAmountProblem } from './amount';
 import { parseDateValue } from './date';
 import {
   DEFAULT_ZONE,
@@ -8,7 +9,7 @@ import {
   namedPeriod,
   rollingShift,
 } from './dateExpr';
-import { unknownAggregateMode, windowUnsupported } from './errors';
+import { ambiguousCondition, unknownAggregateMode, windowUnsupported } from './errors';
 import { isOrderedValue } from './number';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
@@ -18,7 +19,6 @@ import {
   DAY_NAMES,
   FieldKind,
   getValueShape,
-  isCalendarUnit,
   isDayName,
   isFieldKind,
   isOperatorSupportedForTarget,
@@ -110,12 +110,7 @@ const validateCondition = (
 
   const shape = conditionShape(condition);
   if (!shape) {
-    pushIssue(
-      context,
-      path,
-      'ambiguous_condition',
-      'Condition must be exactly one of: field rule, array rule, date rule, all, any, or if/then[/else]',
-    );
+    pushIssue(context, path, 'ambiguous_condition', ambiguousCondition().message);
     return;
   }
 
@@ -804,19 +799,8 @@ const validateRelativeUnits = (
       : 'literal';
     if (form === null || form === 'path' || form === 'bind') continue;
     const amount = form === 'value' ? (magnitude as Record<string, unknown>).value : magnitude;
-    if (
-      typeof amount !== 'number' ||
-      !Number.isFinite(amount) ||
-      amount < 0 ||
-      (isCalendarUnit(key) && !Number.isInteger(amount))
-    ) {
-      pushIssue(
-        context,
-        `${path}.${key}`,
-        'invalid_relative_magnitude',
-        `Relative magnitudes must be positive numbers (got ${String(amount)})`,
-      );
-    }
+    const problem = unitAmountProblem(amount, key);
+    if (problem) pushIssue(context, `${path}.${key}`, 'invalid_relative_magnitude', problem);
   }
 };
 

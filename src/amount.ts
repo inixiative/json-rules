@@ -6,8 +6,15 @@ import { hasPath, type ReadSource } from './valueSource';
 
 // A unit amount in a date expression: a literal number or a value source that reads one.
 
-const fitsUnit = (amount: number, unit: string): boolean =>
-  amount >= 0 && (!isCalendarUnit(unit) || Number.isInteger(amount));
+/** Why a unit can't take `amount` — it reads a non-negative number, a calendar unit a whole
+ *  one — or null. */
+export const unitAmountProblem = (amount: unknown, unit: string): string | null =>
+  typeof amount === 'number' &&
+  Number.isFinite(amount) &&
+  amount >= 0 &&
+  (!isCalendarUnit(unit) || Number.isInteger(amount))
+    ? null
+    : `${unit} must be a non-negative${isCalendarUnit(unit) ? ' whole' : ''} number (got ${String(amount)})`;
 
 /**
  * A unit amount's number. A supplied amount — literal, `{ value }` or `{ bind }` — that the unit
@@ -24,11 +31,10 @@ export const resolveMagnitude = (
     typeof magnitude === 'number'
       ? magnitude
       : readNumber(read(magnitude), magnitude.path ? `'${magnitude.path}' (${unit})` : unit);
-  if (amount === null || fitsUnit(amount, unit)) return amount;
+  const problem = amount === null ? null : unitAmountProblem(amount, unit);
+  if (problem === null) return amount;
   if (typeof magnitude !== 'number' && hasPath(magnitude)) return null;
-  throw new Error(
-    `${unit} must be a non-negative${isCalendarUnit(unit) ? ' whole' : ''} number (got ${amount})`,
-  );
+  throw new Error(problem);
 };
 
 /** Units with every amount read, or null when one reads nothing usable. */

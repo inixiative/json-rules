@@ -1,3 +1,4 @@
+import { declaredEnumValues } from '../fieldMap/entry';
 import { isJsonEntry } from '../fieldMap/entry.ts';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
@@ -238,7 +239,7 @@ export const resolveVisit = (
     // test/lens.sourceOptionsGating.test.ts).
     const optionValues = entry.options?.map((o) => o.value);
     const baseValues =
-      optionValues ?? (isEnum ? (entry.values ?? own(fieldMap?.enums, entry.type)) : entry.values);
+      optionValues ?? (isEnum ? declaredEnumValues(entry, fieldMap?.enums) : entry.values);
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;
     if (isEnum) {

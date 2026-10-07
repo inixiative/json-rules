@@ -556,6 +556,28 @@ const where = await executePrismaPlan(plan, { order: prisma.order });
 await prisma.user.findMany({ where }); // users whose orders sum to more than 1000
 ```
 
+A user with no orders sums to 0, as in `check()`: a comparison that holds at 0 selects the
+parents outside the groups where it fails, so childless parents stay in.
+
+### Json fields need `Prisma.AnyNull`
+
+A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent — `check()`
+reads all three as null, and Prisma matches them together only with its `AnyNull` instance.
+Hand it to the engine once, beside your client:
+
+```ts
+import { engineGlobals } from '@inixiative/json-rules';
+import { Prisma } from './generated/client';
+
+engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
+```
+
+`toPrisma()` throws when a rule needs it and it is not set: null checks, emptiness and
+existence on Json, and negations on a Json path. Prisma filters follow the column kind the map
+declares: on Json, `contains` / `startsWith` / `endsWith` become `string_contains` / … and `in`
+becomes one `equals` per value; on a scalar list, `contains` becomes `has` and emptiness
+`isEmpty`; `caseInsensitive` adds `mode: 'insensitive'` on text only.
+
 ## PostgreSQL SQL Generation
 
 `toSql()` converts a rule into a parameterized PostgreSQL `WHERE` clause.
@@ -632,7 +654,8 @@ and `{ rel: { col: { equals: null } } }` only matches when the relation exists. 
 also carries `{ rel: { is: null } }` for each optional to-one hop on the path (licensed by the
 relation entry's `isRequired: false`) — `profile.bio notEquals 'x'` compiles to
 `{ OR: [{ profile: { bio: { not: 'x' } } }, { profile: { bio: { equals: null } } }, { profile: { is: null } }] }`,
-matching check() (a missing hop reads as `undefined`) and toSql (LEFT JOIN + `IS NULL`).
+matching check() (a missing hop reads as NULL) and toSql (LEFT JOIN + `IS NULL`). `equals null`
+and `in [null, …]` carry the same hop arms: a user with no profile has a NULL `profile.bio`.
 
 `toPrisma()` can only add the null arm when it knows the column is nullable —
 an `equals: null` on a NOT NULL column is a Prisma validation error. Nullability
@@ -667,8 +690,9 @@ positive operator, ask for them:
 - `dayIn` and `dayNotIn` are not supported by Prisma output
 - `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`; no scope ref (`$$.` path, prefixed `field`) compiles
 - count-based and aggregate relation operators require `{ map, model }`
-- aggregate rules with `notBetween` are not supported by Prisma output
 - aggregate rules on JSON/native stored arrays are not supported by Prisma — use `toSql()` or `check()` for those
+- element conditions (`all` / `any` / `none` / counts) over a scalar list or a Json array are not supported by Prisma; test a list's membership with `contains`
+- a field path through a to-many relation (`posts.title`) is an error on both compilers — compare its rows with an array rule on `posts`
 
 ### SQL Limitations
 

@@ -83,6 +83,24 @@ export const absentArms = (
   ];
 };
 
+/** An equality filter. Prisma compiles an insensitive one to ILIKE and passes %, _ and backslash
+ *  through: escape them, so the value matches only itself. On Json it matches the JSON text, which
+ *  doubles any escape, so a %, _ or backslash there has no Prisma form. */
+const equalityFilter = (
+  key: 'equals' | 'not',
+  value: unknown,
+  mode: { mode?: 'insensitive' },
+  shape: FieldShape,
+): PrismaWhere => {
+  if (!mode.mode || typeof value !== 'string') return { [key]: value, ...mode };
+  if (!isJson(shape)) return { [key]: escapeLikePattern(value), ...mode };
+  if (/[%_\\]/.test(value))
+    throw new Error(
+      `A case-insensitive equality on Json against '${value}' has no Prisma form (Prisma matches %, _ and backslash as LIKE syntax); use toSql() or check().`,
+    );
+  return { [key]: value, ...mode };
+};
+
 /**
  * `mode: 'insensitive'` when the rule is case-insensitive and compares text: a String column, or a
  * string (or strings) against Json or an undeclared field — and only where the connector accepts
@@ -222,8 +240,8 @@ export const buildFieldRule = (rule: Rule, options?: PrismaBuildOptions): Prisma
     const ci = queryMode(rule, options, shape, values);
     const listed = isJson(shape)
       ? rule.operator === Operator.in
-        ? orWhere(values.map((v) => at({ equals: v, ...ci })))
-        : andWhere(values.map((v) => at({ not: v, ...ci })))
+        ? orWhere(values.map((v) => at(equalityFilter('equals', v, ci, shape))))
+        : andWhere(values.map((v) => at(equalityFilter('not', v, ci, shape))))
       : at({ [rule.operator]: values, ...ci });
     if (rule.operator === Operator.in) return hasNull ? orWhere([listed, ...arms()]) : listed;
     return hasNull ? andWhere([listed, at({ not: nullOf(shape) })]) : orWhere([listed, ...arms()]);
@@ -312,11 +330,11 @@ export const comparisonFilter = (rule: Rule, options?: PrismaBuildOptions): unkn
   switch (rule.operator) {
     case Operator.equals: {
       const value = val() ?? nullOf(shape);
-      return { equals: value, ...ci(value) };
+      return equalityFilter('equals', value, ci(value), shape);
     }
     case Operator.notEquals: {
       const value = val() ?? nullOf(shape);
-      return { not: value, ...ci(value) };
+      return equalityFilter('not', value, ci(value), shape);
     }
     // A field's set membership is built by buildFieldRule; an aggregate's `having` takes it here.
     case Operator.in:

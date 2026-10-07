@@ -1,6 +1,13 @@
 import { ArrayOperator } from '../operator.ts';
 import { parseScopeRef, readScopeRef } from '../scope';
-import { allOf, isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../traverse';
+import {
+  allOf,
+  elementRefs,
+  isLogicalNode,
+  isRelationNode,
+  mapCondition,
+  valueRefs,
+} from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
@@ -121,19 +128,6 @@ const anchorOf = (
   const { hops, end } = relationHops(policy.lens.maps, target.scope, target.path, scopePrefix);
   return { hops, below: end };
 };
-
-// The element fields a relation node orders or aggregates by — read per element, under the
-// element's grants.
-const elementRefs = (node: Record<string, unknown>): string[] => [
-  ...(Array.isArray(node.orderBy)
-    ? (node.orderBy as { field?: unknown }[]).flatMap((o) =>
-        typeof o?.field === 'string' ? [o.field] : [],
-      )
-    : []),
-  ...(typeof (node.aggregate as { field?: unknown })?.field === 'string'
-    ? [(node.aggregate as { field: string }).field]
-    : []),
-];
 
 // Injects each grant at its anchor. A relation node (array or aggregate) whose field ends on a
 // relation gets that relation's grants row-scoped: AND-ed into its `condition`, or — for `all`, a

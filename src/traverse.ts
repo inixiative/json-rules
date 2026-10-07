@@ -195,6 +195,19 @@ export const valueRefRoles = (node: Record<string, unknown>): ValueRef[] =>
 export const valueRefs = (node: Record<string, unknown>): string[] =>
   valueRefRoles(node).map((r) => r.ref);
 
+// The element fields a relation node orders or aggregates by — read per element, under the
+// element's grants.
+export const elementRefs = (node: Record<string, unknown>): string[] => [
+  ...(Array.isArray(node.orderBy)
+    ? (node.orderBy as { field?: unknown }[]).flatMap((o) =>
+        typeof o?.field === 'string' ? [o.field] : [],
+      )
+    : []),
+  ...(typeof (node.aggregate as { field?: unknown })?.field === 'string'
+    ? [(node.aggregate as { field: string }).field]
+    : []),
+];
+
 export type ConditionShape = 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
 
 /** What a condition node is — exactly one of the grammar's node kinds — or null when its keys

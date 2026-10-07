@@ -1,10 +1,17 @@
+import { ambiguousCondition, relationNotValue, relationsNotValue } from '../errors';
 import { isExistenceTest } from '../field';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import { entryKind } from '../fieldMap/shape';
 import type { FieldMapEntry } from '../fieldMap/types';
 import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
-import { conditionShape, isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
+import {
+  conditionShape,
+  elementRefs,
+  isLogicalNode,
+  valueRefRoles,
+  visitCondition,
+} from '../traverse';
 import type { Condition, DateRule, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
@@ -31,12 +38,12 @@ const visit = (
     (node, scopes) => {
       // A node of two kinds evaluates as one or the other depending on the rail; the gate
       // refuses it rather than vouch for half of it.
-      if (conditionShape(node as Record<string, unknown>) === null) {
+      const kind = conditionShape(node as Record<string, unknown>);
+      if (kind === null) {
         issues.push({
           path: typeof node.field === 'string' ? node.field : '',
           code: 'ambiguous_condition',
-          message:
-            'a condition is exactly one of: a field, date, array or aggregate rule, all, any, or if',
+          message: ambiguousCondition().message,
         });
         return false;
       }
@@ -102,7 +109,7 @@ const visit = (
         }
         // A ref reads a column; a relation is rows, which the grant and the field's picks don't
         // scope.
-        if (walked.entry.kind === 'object') {
+        if (isRelationEntry(walked.entry)) {
           issues.push({
             path: ref,
             code: 'not_in_lens',
@@ -135,7 +142,6 @@ const visit = (
 
       // A relation is rows, not a value: a to-many one takes an array operator, a to-one one
       // exists or doesn't.
-      const kind = conditionShape(cond as Record<string, unknown>);
       if (
         terminalEntry &&
         isRelationEntry(terminalEntry) &&
@@ -146,9 +152,8 @@ const visit = (
         issues.push({
           path: field,
           code: 'operator_kind_mismatch',
-          message: terminalEntry.isList
-            ? `'${field}' is a list of rows: compare it with an arrayOperator (any / all / none / empty / atLeast …)`
-            : `'${field}' is a relation: it takes exists / notExists / isEmpty / notEmpty, or equals / notEquals null`,
+          message: (terminalEntry.isList ? relationsNotValue(field) : relationNotValue(field))
+            .message,
         });
         return false;
       }
@@ -156,8 +161,7 @@ const visit = (
       // Operator and literal against the field's kind (an aggregate's operator compares the
       // aggregate, not the field).
       // A scalar list's elements carry the kind (a stamp names it), but its operators test the list.
-      const leafShape = conditionShape(cond as Record<string, unknown>);
-      if (!terminalEntry?.isList && (leafShape === 'field' || leafShape === 'date')) {
+      if (!terminalEntry?.isList && (kind === 'field' || kind === 'date')) {
         issues.push(
           ...leafFitViolations(
             cond as Rule | DateRule,
@@ -166,26 +170,16 @@ const visit = (
         );
       }
 
-      if (!next.open && 'orderBy' in cond && Array.isArray(cond.orderBy)) {
-        for (const entry of cond.orderBy as { field?: unknown }[]) {
-          if (entry && typeof entry.field === 'string' && entry.field !== '') {
-            const walkedOrder = lensPathEnd(
-              policy,
-              next.mapName,
-              next.modelName,
-              next.relPath,
-              entry.field,
-            );
-            if (!walkedOrder) {
-              issues.push({
-                path: entry.field,
-                code: 'not_in_lens',
-                message: 'orderBy field does not resolve through the narrowed lens',
-              });
-            }
-          }
+      // The fields a relation node orders or aggregates by read its elements.
+      if (!next.open)
+        for (const ref of elementRefs(cond as Record<string, unknown>)) {
+          if (ref !== '' && !lensPathEnd(policy, next.mapName, next.modelName, next.relPath, ref))
+            issues.push({
+              path: ref,
+              code: 'not_in_lens',
+              message: 'an orderBy or aggregate field does not resolve through the narrowed lens',
+            });
         }
-      }
 
       // Value-set validation for leaf rules. Fires whenever the field carries an
       // allowed set — an enum (registry/narrowed) or any other kind with explicit
@@ -206,26 +200,6 @@ const visit = (
               });
             }
           }
-        }
-      }
-
-      // Aggregate sub-field
-      if (
-        !next.open &&
-        'aggregate' in cond &&
-        typeof cond.aggregate === 'object' &&
-        cond.aggregate !== null &&
-        typeof cond.aggregate.field === 'string' &&
-        cond.aggregate.field !== ''
-      ) {
-        const aggField = cond.aggregate.field;
-        const aggWalked = lensPathEnd(policy, next.mapName, next.modelName, next.relPath, aggField);
-        if (!aggWalked) {
-          issues.push({
-            path: aggField,
-            code: 'not_in_lens',
-            message: 'aggregate.field does not resolve through the narrowed lens',
-          });
         }
       }
 

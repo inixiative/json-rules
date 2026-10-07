@@ -133,21 +133,27 @@ const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] =>
 // A scope is a visit the walk reached, or null inside a Json value (undeclared: nothing to grant).
 type Scope = Visit | null;
 
-// The relation hops a ref crosses and the prefix its grants re-root under. A `$`-prefixed ref
-// names an ancestor scope (`$.` is the node's own, so its grants need no prefix). A bare ref is a
-// root-row path — the lens gate resolves it at the lens model, and check() reads it from the row
-// when no context is given — so its grants re-root at the root.
-const refHops = (ref: string, policy: Policy, scopes: readonly Scope[]): RelationHop[] => {
-  if (!parseScopeRef(ref)) {
-    const prefix = scopes.length === 1 ? '' : `${'$'.repeat(scopes.length)}.`;
-    return scopes[0] ? relationHops(policy.lens.maps, scopes[0], ref, prefix).hops : [];
-  }
+// The relation hops a ref crosses from the scope it names, and the visit it ends on. Grants
+// re-root under the ref's own scope prefix (`$.` is the node's own scope, so none).
+const hopsAt = (
+  ref: string,
+  policy: Policy,
+  scopes: readonly Scope[],
+): { hops: RelationHop[]; end: Visit | null } => {
   const target = readScopeRef(ref, scopes);
   if ('outOfBounds' in target) throw new Error(`narrowRule: ${target.outOfBounds}`);
-  if (!target.scope) return [];
+  if (!target.scope) return { hops: [], end: null };
   const prefix = ref.slice(0, ref.length - target.path.length);
-  return relationHops(policy.lens.maps, target.scope, target.path, prefix === '$.' ? '' : prefix)
-    .hops;
+  return relationHops(policy.lens.maps, target.scope, target.path, prefix === '$.' ? '' : prefix);
+};
+
+// A value ref's hops. A bare one is a root-row path — the lens gate resolves it at the lens
+// model, and check() reads it from the row when no context is given — so its grants re-root at
+// the root.
+const refHops = (ref: string, policy: Policy, scopes: readonly Scope[]): RelationHop[] => {
+  if (parseScopeRef(ref)) return hopsAt(ref, policy, scopes).hops;
+  const prefix = scopes.length === 1 ? '' : `${'$'.repeat(scopes.length)}.`;
+  return scopes[0] ? relationHops(policy.lens.maps, scopes[0], ref, prefix).hops : [];
 };
 
 // Where a node's field leads: every relation hop it crosses (each may carry a grant), and the
@@ -159,11 +165,7 @@ const anchorOf = (
   scopes: readonly Scope[],
 ): { hops: RelationHop[]; below: Visit | null } | null => {
   if (isLogicalNode(node) || typeof node.field !== 'string' || node.field === '') return null;
-  const target = readScopeRef(node.field, scopes);
-  if ('outOfBounds' in target) throw new Error(`narrowRule: ${target.outOfBounds}`);
-  if (!target.scope) return { hops: [], below: null };
-  const scopePrefix = node.field.slice(0, node.field.length - target.path.length);
-  const { hops, end } = relationHops(policy.lens.maps, target.scope, target.path, scopePrefix);
+  const { hops, end } = hopsAt(node.field, policy, scopes);
   return { hops, below: end };
 };
 

@@ -24,7 +24,12 @@ const map: FieldMap = {
         meta: { kind: 'scalar', type: 'Json' },
         authorId: { kind: 'scalar', type: 'String' },
         author: { kind: 'object', type: 'User', fromFields: ['authorId'], toFields: ['id'] },
-        comments: { kind: 'object', type: 'Comment', isList: true },
+        comments: {
+          kind: 'object',
+          type: 'Comment',
+          isList: true,
+          relationName: 'ArticleComments',
+        },
       },
     },
     User: {
@@ -41,7 +46,13 @@ const map: FieldMap = {
         votes: { kind: 'scalar', type: 'Int' },
         deleted: { kind: 'scalar', type: 'Boolean' },
         articleId: { kind: 'scalar', type: 'String' },
-        article: { kind: 'object', type: 'Article', fromFields: ['articleId'], toFields: ['id'] },
+        article: {
+          kind: 'object',
+          type: 'Article',
+          fromFields: ['articleId'],
+          toFields: ['id'],
+          relationName: 'ArticleComments',
+        },
         authorId: { kind: 'scalar', type: 'String' },
         author: { kind: 'object', type: 'User', fromFields: ['authorId'], toFields: ['id'] },
       },

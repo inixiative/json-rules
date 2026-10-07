@@ -104,6 +104,8 @@ export const describeRuleSources = (
   const policy = resolvePolicy(lensOrNarrowing);
   const root = policy.lens.model;
   const out = new Map<string, RuleSourceValues>();
+  // Each entry's literal keys, so a large `in` list dedupes in linear time.
+  const seenKeys = new Map<string, Set<string>>();
 
   const record = (segments: string[], node: ConditionNode): void => {
     if (segments.length === 0) return;
@@ -128,10 +130,13 @@ export const describeRuleSources = (
     }
     const found = contribution(node);
     if (found.dynamic) entry.dynamic = true;
+    const seen = seenKeys.get(key) ?? new Set<string>();
+    seenKeys.set(key, seen);
     for (const literal of found.values) {
-      if (!entry.values.some((seen) => dedupeKey(seen) === dedupeKey(literal))) {
-        entry.values.push(literal);
-      }
+      const literalKey = dedupeKey(literal);
+      if (seen.has(literalKey)) continue;
+      seen.add(literalKey);
+      entry.values.push(literal);
     }
   };
 

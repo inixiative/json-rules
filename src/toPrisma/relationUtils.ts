@@ -53,6 +53,9 @@ export const inverseRelation = (
   field: string,
   entry: FieldMapEntry,
 ): { field: string; entry: FieldMapEntry } | null => {
+  // Without a relation name the other side can't be told apart from another relation between the
+  // same models: none, rather than a guess (a grant carried through it would scope wrong rows).
+  if (entry.relationName === undefined) return null;
   const candidates = Object.entries(modelOf(map, entry.type)?.fields ?? {}).filter(
     ([name, other]) =>
       other.kind === 'object' &&

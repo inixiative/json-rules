@@ -13,7 +13,7 @@ import {
   resolvePointForOperator,
   shiftByUnits,
 } from './dateExpr';
-import { orderPair } from './number';
+import { isOrderedValue, orderPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
 import { DAY_NAMES, NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
@@ -49,7 +49,7 @@ export const checkDate = (
     if (NEGATED_OPERATORS.includes(condition.dateOperator)) return true;
     return condition.error || `${condition.field} has no value`;
   }
-  if (!isDateInputValue(fieldValue))
+  if (!isOrderedValue(fieldValue))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
   // A naive field string is anchored in the resolved zone (default UTC); an absolute
@@ -258,14 +258,11 @@ export const parseDateValue = (value: DateInputValue | undefined, tz: string): d
   return dayjs(value);
 };
 
-export const isDateInputValue = (value: unknown): value is DateInputValue =>
-  typeof value === 'string' || typeof value === 'number' || value instanceof Date;
-
 // Literal and context date values compile to concrete Dates through the same parse-and-anchor
 // seam check() uses (naive strings → midnight in the zone; instants as-is): a raw 'YYYY-MM-DD'
 // is rejected by Prisma and would carry different zone semantics than check().
 export const coerceDateLiteral = (value: unknown, zone: string): Date => {
-  const parsed = isDateInputValue(value) ? parseDateValue(value, zone) : dayjs(Number.NaN);
+  const parsed = isOrderedValue(value) ? parseDateValue(value, zone) : dayjs(Number.NaN);
   if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
   return parsed.toDate();
 };

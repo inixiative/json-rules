@@ -3,6 +3,7 @@ import { checkDate } from './date';
 import { checkField } from './field';
 import { orderPair } from './number';
 import { ArrayOperator, Operator } from './operator';
+import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
 import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
 import { readValueSource } from './valueSource';
@@ -220,41 +221,21 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 
-  const requiresCondition: ArrayOperator[] = [
-    ArrayOperator.all,
-    ArrayOperator.any,
-    ArrayOperator.none,
-    ArrayOperator.atLeast,
-    ArrayOperator.atMost,
-    ArrayOperator.exactly,
-  ];
-
-  const requiresCount: ArrayOperator[] = [
-    ArrayOperator.atLeast,
-    ArrayOperator.atMost,
-    ArrayOperator.exactly,
-  ];
-
   const itemCondition = condition.condition;
-  if (requiresCondition.includes(condition.arrayOperator) && itemCondition === undefined)
+  const elementwise = ARRAY_CONDITION_OPERATORS.includes(condition.arrayOperator);
+  if (elementwise && itemCondition === undefined)
     throw new Error(
       `${condition.arrayOperator} requires a condition to check against array elements`,
     );
 
-  const count = condition.count;
-  if (requiresCount.includes(condition.arrayOperator) && count === undefined)
+  const count = condition.count ?? 0;
+  if (ARRAY_COUNT_OPERATORS.includes(condition.arrayOperator) && condition.count === undefined)
     throw new Error(`${condition.arrayOperator} requires a count`);
 
   let matches = 0;
   let failures = 0;
 
-  if (requiresCondition.includes(condition.arrayOperator)) {
-    if (itemCondition === undefined) {
-      throw new Error(
-        `${condition.arrayOperator} requires a condition to check against array elements`,
-      );
-    }
-
+  if (elementwise && itemCondition !== undefined) {
     if (arrayValue.length > 0 && !some(arrayValue, isObject))
       return getError(
         `contains only primitive values; use 'in' or 'contains' instead of array operators on primitive arrays`,
@@ -286,19 +267,16 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
       return !matches || getError(`no elements should match (${matches} matched)`);
 
     case ArrayOperator.atLeast:
-      if (count === undefined) throw new Error(`${condition.arrayOperator} requires a count`);
       return (
         matches >= count || getError(`at least ${count} elements must match (${matches} matched)`)
       );
 
     case ArrayOperator.atMost:
-      if (count === undefined) throw new Error(`${condition.arrayOperator} requires a count`);
       return (
         matches <= count || getError(`at most ${count} elements must match (${matches} matched)`)
       );
 
     case ArrayOperator.exactly:
-      if (count === undefined) throw new Error(`${condition.arrayOperator} requires a count`);
       return (
         matches === count || getError(`exactly ${count} elements must match (${matches} matched)`)
       );

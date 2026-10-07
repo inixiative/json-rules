@@ -94,6 +94,10 @@ export const isPeriodExpr = <A>(e: DateExpr<A>): e is PeriodExpr =>
   'this' in e || 'last' in e || 'next' in e;
 export const isEdgeExpr = <A>(e: DateExpr<A>): e is EdgeExpr => 'start' in e || 'end' in e;
 
+/** A period expression's unit, whichever of this / last / next names it. */
+export const periodUnit = (expr: PeriodExpr): PeriodUnit =>
+  'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
+
 // `week` is governed by weekStart (default monday → isoWeek). `isoWeek` is always Monday.
 const effectivePeriodUnit = (unit: PeriodUnit, config: ResolvedDateConfig): dayjs.OpUnitType => {
   if (unit === 'week')
@@ -107,7 +111,7 @@ export const resolvePeriodRange = (
   config: ResolvedDateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs] => {
   const now = requireNow(config);
-  const unit = 'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
+  const unit = periodUnit(expr);
   // Step whole periods first, then snap — robust to month-length clamping.
   const stepUnit = (unit === 'isoWeek' ? 'week' : unit) as dayjs.QUnitType;
   let base = now;

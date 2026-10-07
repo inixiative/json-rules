@@ -349,6 +349,15 @@ export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
 /** Operators with a point to move: the comparisons and both ends of a pair. */
 export const OFFSET_OPERATORS = withShape('scalar', 'ordered', 'range', 'dateValue', 'dateRange');
 
+const arrayWithShape = (...shapes: ValueShape[]): readonly string[] =>
+  Object.entries(ARRAY_OPERATOR_CATALOG).flatMap(([operator, entry]) =>
+    shapes.includes(entry.valueShape) ? [operator] : [],
+  );
+/** Array operators that count matching elements. */
+export const ARRAY_COUNT_OPERATORS = arrayWithShape('count');
+/** Array operators that test each element against a condition. */
+export const ARRAY_CONDITION_OPERATORS = arrayWithShape('predicate', 'count');
+
 /** The negations: each is the complement of its positive form and keeps NULL fields
  *  (the 2.19.0 ruling). */
 export const NEGATED_OPERATORS: readonly string[] = [

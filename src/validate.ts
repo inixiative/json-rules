@@ -1,6 +1,14 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
-import { isDateInputValue, parseDateValue } from './date';
-import { DEFAULT_ZONE, isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
+import { parseDateValue } from './date';
+import {
+  DEFAULT_ZONE,
+  isDateExpr,
+  isEdgeExpr,
+  isPeriodExpr,
+  isRollingExpr,
+  periodUnit,
+} from './dateExpr';
+import { isOrderedValue } from './number';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
@@ -24,9 +32,9 @@ import {
   WINDOW_OPERATORS,
 } from './operatorCatalog';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
-import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
+import type { ArrayRule, Condition, DateExpr, OrderedRuleValue, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
-import { extremalRewrite } from './window';
+import { extremalRewrite, hasWindow } from './window';
 
 export type ValidationIssue = {
   path: string;
@@ -415,7 +423,7 @@ const validateValueShape = (
       }
       return;
     case 'ordered':
-      if (!isOrderedRuleValue(value)) {
+      if (!isOrderedValue(value)) {
         pushIssue(
           context,
           path,
@@ -746,7 +754,7 @@ const validateDateRule = (
     (rule.value as unknown[]).forEach((item, i) => {
       if (isDateExpr(item)) {
         validateDateExpr(item, operator, `${path}.value[${i}]`, context, depth);
-      } else if (isDateInputValue(item) && !parseDateValue(item, DEFAULT_ZONE).isValid()) {
+      } else if (isOrderedValue(item) && !parseDateValue(item, DEFAULT_ZONE).isValid()) {
         pushIssue(
           context,
           `${path}.value[${i}]`,
@@ -758,7 +766,7 @@ const validateDateRule = (
     return;
   }
 
-  if (!isDateInputValue(rule.value)) {
+  if (!isOrderedValue(rule.value)) {
     pushIssue(
       context,
       `${path}.value`,
@@ -849,7 +857,7 @@ const validateDateExpr = (
   }
 
   if (isPeriodExpr(expr)) {
-    const unit = 'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
+    const unit = periodUnit(expr);
     validatePeriodUnit(unit, path, context);
     return;
   }
@@ -869,7 +877,7 @@ const validateDateExpr = (
       pushIssue(context, path, 'invalid_period_unit', `start/end requires a this/last/next period`);
       return;
     }
-    const unit = 'this' in period ? period.this : 'last' in period ? period.last : period.next;
+    const unit = periodUnit(period);
     validatePeriodUnit(unit, path, context);
     return;
   }
@@ -899,14 +907,11 @@ const targetSlug = (target: RuleTarget): string =>
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   isPlainObjectLodash(value);
 
-const isOrderedRuleValue = (value: unknown): value is OrderedRuleValue =>
-  typeof value === 'string' || typeof value === 'number' || value instanceof Date;
-
 const isOrderedRange = (value: unknown): value is [OrderedRuleValue, OrderedRuleValue] =>
   Array.isArray(value) &&
   value.length === 2 &&
-  isOrderedRuleValue(value[0]) &&
-  isOrderedRuleValue(value[1]);
+  isOrderedValue(value[0]) &&
+  isOrderedValue(value[1]);
 
 const isNumericRange = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&
@@ -917,8 +922,8 @@ const isNumericRange = (value: unknown): value is [number, number] =>
 const isDateRangeOrExprPair = (value: unknown): boolean =>
   Array.isArray(value) &&
   value.length === 2 &&
-  (isDateInputValue(value[0]) || isDateExpr(value[0])) &&
-  (isDateInputValue(value[1]) || isDateExpr(value[1]));
+  (isOrderedValue(value[0]) || isDateExpr(value[0])) &&
+  (isOrderedValue(value[1]) || isDateExpr(value[1]));
 
 const validateWindow = (
   rule: Record<string, unknown>,
@@ -926,11 +931,7 @@ const validateWindow = (
   context: ValidationContext,
   depth: number,
 ): void => {
-  const windowed =
-    ('filter' in rule && rule.filter !== undefined) ||
-    ('orderBy' in rule && rule.orderBy !== undefined) ||
-    ('take' in rule && rule.take !== undefined) ||
-    ('skip' in rule && rule.skip !== undefined);
+  const windowed = hasWindow(rule as WindowFields);
 
   if (windowed && context.target !== 'check') {
     // toPrisma supports the extremal (take:1, aligned, unfiltered) rewrite to every/some.

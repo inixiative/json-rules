@@ -2,7 +2,7 @@ import { parseDateValue, resolveDateConfig } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
-import { bigIntToNumber, orderPair } from './number';
+import { bigIntToNumber, isOrderedValue, orderPair } from './number';
 import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
@@ -14,7 +14,7 @@ import {
   RANGE_OPERATORS,
 } from './operatorCatalog';
 import { readField, type Scopes } from './scope';
-import type { DateConfig, Rule, RuleValue } from './types';
+import type { DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
@@ -251,12 +251,7 @@ const shift = (
   return amount === null ? null : addOffset(value, amount);
 };
 
-type OrderedValue = string | number | Date;
-
-const isOrderedValue = (value: unknown): value is OrderedValue =>
-  typeof value === 'string' || typeof value === 'number' || value instanceof Date;
-
-const toOrderedPrimitive = (value: OrderedValue): string | number =>
+const toOrderedPrimitive = (value: OrderedRuleValue): string | number =>
   value instanceof Date ? value.getTime() : value;
 
 const compareOrderedValues = (

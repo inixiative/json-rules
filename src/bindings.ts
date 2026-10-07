@@ -7,7 +7,9 @@ import {
 } from './traverse';
 import type { Condition, RuleValue, ValueSourceOf } from './types';
 
-export { readBinding } from './valueSource';
+import { readBinding } from './valueSource';
+
+export { readBinding };
 
 // Every `{ bind }` on a leaf: its comparison value, its offset, its unit amounts.
 type BindSource = Extract<ValueSourceOf<unknown>, { bind: string }>;
@@ -48,8 +50,7 @@ export const resolveBindings = (
   const resolve = (source: ValueSourceOf<unknown>): ValueSourceOf<unknown> => {
     if (typeof source.bind !== 'string' || !Object.hasOwn(bindings, source.bind)) return source;
     const { bind, bindOptional: _optional, ...rest } = source;
-    const bound = bindings[bind];
-    return { ...rest, value: bound === undefined ? null : bound } as ValueSourceOf<unknown>;
+    return { ...rest, value: readBinding(bind, true, bindings) } as ValueSourceOf<unknown>;
   };
   // A second pass resolves binds a substituted value brought with it (a bound `{ ago }` whose
   // amount is itself a `{ bind }`).

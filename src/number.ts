@@ -1,3 +1,5 @@
+import type { OrderedRuleValue } from './types';
+
 // BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
 // number on every side of a comparison, so 5n matches 5. Past ±2^53 a number cannot hold it
 // exactly and every comparison would be silently wrong, so that throws instead.
@@ -37,3 +39,7 @@ export const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean 
   const values = list.filter((v) => v !== null);
   return { values, hasNull: values.length !== list.length };
 };
+
+/** A value that orders: a string, a number or a Date — also every date input. */
+export const isOrderedValue = (value: unknown): value is OrderedRuleValue =>
+  typeof value === 'string' || typeof value === 'number' || value instanceof Date;

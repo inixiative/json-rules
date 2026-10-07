@@ -4,7 +4,7 @@
 **Linear**: ZLT-5217 (offset on path comparisons, numbers and dates)
 **Priority**: Medium
 **Created**: 2026-10-06
-**Target**: next minor — released once the consolidation follow-up lands (no version bump before then)
+**Target**: 2.27.0
 
 First consumer: Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident
 lifecycle is a `@inixiative/transitions` map, and its auto-resolve guard reads the rule's own

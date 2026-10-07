@@ -115,7 +115,7 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
   },
   {
     verb: 're-export a module wholesale',
-    pattern: /^export \* from/m,
+    pattern: /^export (type )?\* from/m,
     owners: [],
   },
 ];
@@ -129,6 +129,10 @@ describe('one implementation per verb', () => {
 });
 
 describe('the public API', () => {
+  test('index.ts lists every public name (no wholesale re-export)', () => {
+    expect(readFileSync(join(ROOT, 'index.ts'), 'utf8')).not.toMatch(/^export (type )?\* from/m);
+  });
+
   const doc = readFileSync(join(ROOT, 'docs/VERBS.md'), 'utf8');
   const exported = Object.keys(api).filter((name) => typeof (api as never)[name] === 'function');
 

@@ -782,19 +782,20 @@ Rules:
 - `validateRule`, `assertValidRule`, `bindRule`, `listBindings`
 - `Operator`, `ArrayOperator`, `DateOperator`
 - `Condition`, `StrictCondition`, `Rule`, `AggregateRule`, `AggregateMode`, `ArrayRule`, `DateRule`, `Row`, `CheckData`
-- `CheckOptions`, `ToPrismaOptions`, `ToSqlOptions`, `ToSqlResult`, `ToPrismaResult`, `ValidationIssue`, `ValidationResult`
+- `CheckOptions`, `CompileOptions`, `ToPrismaOptions`, `ToSqlOptions`, `ToSqlResult`, `ToPrismaResult`, `ValidateRuleOptions`, `ListBindingsOptions`, `ValidationIssue`, `ValidationResult`
+- every rule-shape type in `src/types.ts` (`StrictRule`, `DateExpr`, `RelativeUnits`, …), listed in `index.ts`
 - `engineGlobals`, `EngineGlobalsState`, `PrismaProvider`, `FuzzyConfig`
 
 Lens & bridges:
 
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`, `SourceSpec`, `SourceEntry`
-- `FieldMap`, `FieldMapEntry`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
+- `FieldMap`, `FieldMapEntry`, `ModelEntry`, `SourceOption`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
 - `createLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`
 - `projectLens`, `walkLensPath`, `describeRule`, `describeRuleSources`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
-- `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourceValues`
+- `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`
 
 Two shapes come out of a lens, and they are different things:
 
@@ -810,7 +811,8 @@ Two shapes come out of a lens, and they are different things:
 ### Operator Catalog
 
 What a rule builder can offer for a field. The catalog's constants are `FieldKind`,
-`RuleTarget`, `ValueShape`, `NUMERIC_KINDS` and `ALL_KINDS`.
+`RuleTarget`, `ValueShape`, `NUMERIC_KINDS` and `ALL_KINDS`; `getValueShape(operator, family)` takes an
+`OperatorFamily` (`'field' | 'date' | 'array'`).
 
 ```ts
 import {

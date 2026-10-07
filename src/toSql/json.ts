@@ -46,14 +46,22 @@ export const buildJsonComparison = (
   /** A string operator reads a string: `pattern` is a LIKE pattern. */
   const like = (pattern: string): string =>
     `(${type} = 'string' AND ${lc(text)} LIKE ${lc(nextParam(state, pattern))})`;
-  // An array member equal to `v`: `@>` reads an object or a list partially, so those compare
-  // element by element.
-  const member = (v: unknown): string =>
-    typeof v === 'object' && v !== null
-      ? `(CASE WHEN ${type} = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(${j}) AS e WHERE e = ${json(v)}) ELSE FALSE END)`
+  // An array member equal to `v`: `@>` reads an object or a list partially, and a string under
+  // the flag compares lowered, so those compare element by element.
+  const member = (v: unknown): string => {
+    const element = (match: string): string =>
+      `(CASE WHEN ${type} = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(${j}) AS e WHERE ${match}) ELSE FALSE END)`;
+    if (ci && typeof v === 'string')
+      return element(
+        `jsonb_typeof(e) = 'string' AND LOWER(e #>> '{}') = LOWER(${nextParam(state, v)})`,
+      );
+    return typeof v === 'object' && v !== null
+      ? element(`e = ${json(v)}`)
       : `(${type} = 'array' AND ${j} @> ${json([v])})`;
+  };
+  // A string holds a string; an array holds any member.
   const contains = (v: unknown): string =>
-    `(${like(`%${escapeLikePattern(String(v))}%`)} OR ${member(v)})`;
+    typeof v === 'string' ? `(${like(`%${escapeLikePattern(v)}%`)} OR ${member(v)})` : member(v);
 
   switch (rule.operator) {
     case Operator.equals:

@@ -61,3 +61,29 @@ describe('a case-insensitive equality matches only its own value', () => {
       agree([20]),
     ));
 });
+
+describe('contains on Json: a string holds a string, an array holds a member', () => {
+  const refusedOnPrisma = (ids: number[]) => ({
+    check: ids,
+    sql: ids,
+    prisma: expect.stringContaining('has no Prisma form') as unknown as `throws: ${string}`,
+  });
+  test('a case-insensitive member', () =>
+    expectRails(
+      { field: 'meta.list', operator: 'contains', value: 'a', caseInsensitive: true },
+      refusedOnPrisma([20, 23]),
+    ));
+  test('a case-insensitive member, negated', () =>
+    expectRails(
+      { field: 'meta.list', operator: 'notContains', value: 'x', caseInsensitive: true },
+      {
+        check: [1, 2, 3, 4, 5, 20, 22, 23],
+        sql: [1, 2, 3, 4, 5, 20, 22, 23],
+        prisma: expect.stringContaining('no Prisma form') as unknown as `throws: ${string}`,
+      },
+    ));
+  test('a number is a member, never a substring', () =>
+    expectRails({ field: 'meta.list', operator: 'contains', value: 1 }, agree([1])));
+  test('a number never reads inside a string', () =>
+    expectRails({ field: 'meta.s', operator: 'contains', value: 1 }, agree([])));
+});

@@ -249,13 +249,14 @@ export const buildFieldRule = (rule: Rule, options?: PrismaBuildOptions): Prisma
 
   // A string operator's positive form; a Json value contains a string's substring, or a
   // member of an array.
-  const positive = (operator: string): PrismaWhere =>
-    isJson(shape) && operator === Operator.contains
-      ? orWhere([
-          at(comparisonFilter({ ...rule, operator }, options)),
-          at({ array_contains: [jsonMember(rule.field, value)] }),
-        ])
-      : at(comparisonFilter({ ...rule, operator: operator as Operator }, options));
+  const positive = (operator: string): PrismaWhere => {
+    if (!isJson(shape) || operator !== Operator.contains)
+      return at(comparisonFilter({ ...rule, operator: operator as Operator }, options));
+    const member = at({ array_contains: [jsonMember(rule, value, options, shape)] });
+    return typeof value === 'string'
+      ? orWhere([at(comparisonFilter({ ...rule, operator }, options)), member])
+      : member;
+  };
   if (rule.operator === Operator.contains) return positive(Operator.contains);
 
   // A negated string operator or range negates its positive form at the WHERE level: no field
@@ -365,11 +366,21 @@ export const comparisonFilter = (rule: Rule, options?: PrismaBuildOptions): unkn
 };
 
 /** A Json array member Prisma can match exactly: `array_contains` reads an object or a list
- *  partially (its fields / members contained), unlike check()'s equal member. */
-const jsonMember = (field: string, value: unknown): unknown => {
+ *  partially (its fields / members contained), unlike check()'s equal member, and compares a
+ *  string case-sensitively. */
+const jsonMember = (
+  rule: Rule,
+  value: unknown,
+  options: PrismaBuildOptions | undefined,
+  shape: FieldShape,
+): unknown => {
   if (typeof value === 'object' && value !== null)
     throw new Error(
-      `Membership of an object or a list in the Json array '${field}' has no exact Prisma form; use toSql() or check().`,
+      `Membership of an object or a list in the Json array '${rule.field}' has no exact Prisma form; use toSql() or check().`,
+    );
+  if (queryMode(rule, options, shape, value).mode)
+    throw new Error(
+      `A case-insensitive member of the Json array '${rule.field}' has no Prisma form; use toSql() or check().`,
     );
   return value;
 };

@@ -149,7 +149,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
   });
 });
 
-describe('projectByPath — groupBy exposure', () => {
+describe('projectPaths — groupBy exposure', () => {
   test('exposes sourceGroupBys per sourced field', () => {
     const visit = projectLens(grouped())['User.enrichments'];
     expect(visit?.sourceGroupBys).toEqual({ value: ['map.definition.label'] });
@@ -449,7 +449,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
   });
 });
 
-describe('exposedSurface — grouped options survive the per-model union', () => {
+describe('projectModels — grouped options survive the per-model union', () => {
   test('options sharing a value across groups are all preserved', () => {
     const sourceValues: SourceValues[] = [
       {

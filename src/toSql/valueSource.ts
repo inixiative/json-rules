@@ -23,7 +23,7 @@ export const isMissing = (rhs: ResolvedRhs): boolean =>
 
 /** A ref on the SQL rail: `$.x` reads the current row the way a `field` does — relation hops
  *  join, a Json column's tail is a JSON path; a bare ref reads context. */
-export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
+const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));

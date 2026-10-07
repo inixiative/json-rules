@@ -59,7 +59,7 @@ export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
 // instant in check() and in toSql, at a month end (2024-02-29 + 1 year 1 month is 2025-03-29)
 // and across a DST change in the evaluation's zone (a day is 23 hours on the spring-forward day).
 /** The units' total in one Postgres interval field (months, days or secs). */
-export const intervalTotal = (
+const intervalTotal = (
   units: RelativeUnits<number>,
   field: (typeof INTERVAL_FIELDS)[number],
 ): number =>
@@ -90,7 +90,7 @@ export const shiftByUnits = (
   return dayjs.tz(wall.format(WALL), zone);
 };
 
-export const isRollingExpr = <A>(e: DateExpr<A>): e is RollingExpr<A> => 'ago' in e || 'ahead' in e;
+const isRollingExpr = <A>(e: DateExpr<A>): e is RollingExpr<A> => 'ago' in e || 'ahead' in e;
 /** A rolling expression from units and a direction: back (-1) is `ago`, forward (1) `ahead`. */
 export const rollingExpr = <A>(units: RelativeUnits<A>, direction: 1 | -1): RollingExpr<A> =>
   direction === -1 ? { ago: units } : { ahead: units };
@@ -123,7 +123,7 @@ const effectivePeriodUnit = (unit: PeriodUnit, config: ResolvedDateConfig): dayj
 };
 
 /** Resolve a calendar period (this/last/next) to its [start, end] boundaries. */
-export const resolvePeriodRange = (
+const resolvePeriodRange = (
   expr: PeriodExpr,
   config: ResolvedDateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs] => {

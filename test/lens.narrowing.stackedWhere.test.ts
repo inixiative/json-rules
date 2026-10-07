@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import type { FieldMapSet } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 
@@ -92,8 +92,8 @@ const targeted: LensNarrowing = {
 const attachment = (deletedAt: string | null, tag: Record<string, unknown>) => ({ deletedAt, tag });
 
 describe("stacked narrowings — every layer's where reaches the projection and the composed rule", () => {
-  test('projectByPath carries the where of each layer at the visit it narrows', () => {
-    const byPath = projectByPath(targeted);
+  test('projectPaths carries the where of each layer at the visit it narrows', () => {
+    const byPath = projectPaths(targeted);
     expect(byPath.User?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
     ]);
@@ -110,7 +110,7 @@ describe("stacked narrowings — every layer's where reaches the projection and 
       parent: targeted,
       root: { where: { field: 'name', operator: Operator.equals, value: 'Ann' } },
     };
-    expect(projectByPath(twice).User?.whereClauses).toEqual([
+    expect(projectPaths(twice).User?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
       { field: 'name', operator: Operator.equals, value: 'Ann' },
     ]);

@@ -1,5 +1,5 @@
-import { exposedSurface } from './exposedSurface.ts';
-import { type PathProjection, type ProjectOptions, projectByPath } from './projectByPath.ts';
+import { projectModels } from './projectModels.ts';
+import { type PathProjection, type ProjectOptions, projectPaths } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
@@ -21,6 +21,6 @@ export function projectLens(
   { by = 'path', ...options }: ProjectOptions & { by?: 'path' | 'model' } = {},
 ): PathProjection | Lens {
   return by === 'model'
-    ? exposedSurface(lensOrNarrowing, options)
-    : projectByPath(lensOrNarrowing, options);
+    ? projectModels(lensOrNarrowing, options)
+    : projectPaths(lensOrNarrowing, options);
 }

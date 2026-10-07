@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { getRoot } from '../src/lens/walk';
 import { Operator } from '../src/operator';
@@ -28,11 +28,11 @@ describe('narrowing parent-chain cycle detection', () => {
     expect(() => getRoot(b)).toThrow(/cycle detected/);
   });
 
-  test('projectByPath throws on cyclic chain', () => {
+  test('projectPaths throws on cyclic chain', () => {
     const a = { parent: lens } as LensNarrowing;
     const b = { parent: a } as LensNarrowing;
     a.parent = b;
-    expect(() => projectByPath(b)).toThrow(/cycle detected/);
+    expect(() => projectPaths(b)).toThrow(/cycle detected/);
   });
 
   test('narrowRule throws on cyclic chain', () => {

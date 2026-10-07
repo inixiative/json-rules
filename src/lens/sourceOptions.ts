@@ -7,8 +7,8 @@ import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
 import { prefixConditionFields } from './narrowRule.ts';
 import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
-import type { ProjectedVisit } from './projectByPath.ts';
-import { projectByPath } from './projectByPath.ts';
+import type { ProjectedVisit } from './projectPaths.ts';
+import { projectPaths } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 type Row = Record<string, unknown>;
@@ -84,7 +84,7 @@ const collectFieldPaths = (condition: Condition, out: string[] = []): string[] =
  * those joins just as surely as the group select does. Hops are folded once each
  * across all paths, so a label sharing a prefix with an axis costs no extra guard.
  */
-export const traversalGuards = (
+const traversalGuards = (
   policy: Policy,
   mapName: string,
   modelName: string,
@@ -132,7 +132,7 @@ export const optionKey = (groups: readonly string[] | undefined, value: string):
   JSON.stringify([groups ?? null, value]);
 
 /** Merge one occurrence into the accumulator; the first non-null label wins. */
-export const accumulateOption = (
+const accumulateOption = (
   byKey: Map<string, SourceOption>,
   value: string,
   label: string | undefined,
@@ -249,7 +249,7 @@ const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[]
 
 export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] => {
   const policy = resolvePolicy(lensOrNarrowing);
-  return Object.entries(projectByPath(lensOrNarrowing)).flatMap(([path, visit]) =>
+  return Object.entries(projectPaths(lensOrNarrowing)).flatMap(([path, visit]) =>
     Object.entries(visit.sources).map(([field, sourceClauses]) => {
       const label = visit.sourceLabels[field];
       const groupBy = visit.sourceGroupBys[field];

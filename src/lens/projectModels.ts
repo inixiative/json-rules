@@ -3,7 +3,7 @@ import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
-import { type ProjectOptions, projectFields } from './projectByPath.ts';
+import { type ProjectOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
@@ -38,7 +38,7 @@ const unionFieldInto = (
 };
 
 // Leak-safe total exposed surface of a narrowed lens, as a Lens. See docs/LENS.md.
-export const exposedSurface = (
+export const projectModels = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectOptions = {},
 ): Lens => {
@@ -109,7 +109,7 @@ export const exposedSurface = (
         JSON.stringify(existing) !== JSON.stringify(axes)
       )
         throw new Error(
-          `exposedSurface: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
+          `projectLens: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
         );
       unionFieldInto(acc.fields, fieldName, nextEntry);
 

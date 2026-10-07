@@ -30,10 +30,6 @@ const isEmptyValue = (value: unknown): boolean =>
   value === '' ||
   (Array.isArray(value) && value.length === 0);
 
-// Mirrors the server-side coerceValueForField contract: null/undefined pass through
-// (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
-// kinds pass through, and an uncoercible value returns unchanged so the comparison
-// fails with the rule's normal error instead of throwing on one dirty row.
 /**
  * Nothing to compare against — no row matches on any rail, as SQL's NULL comparison and
  * arithmetic never do: an ordered, string, pattern or set comparison or a range that reads
@@ -67,7 +63,7 @@ export const relationNotValue = (field: string): Error =>
     `'${field}' is a relation: it exists or not; compare its fields with '${field}.<field>'.`,
   );
 
-// A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
+// A bigint compares as a number (refused past the safe range).
 const fromBigInt = (value: unknown): unknown => {
   if (typeof value === 'bigint') return bigIntToNumber(value);
   return Array.isArray(value) && value.some((v) => typeof v === 'bigint')
@@ -75,6 +71,10 @@ const fromBigInt = (value: unknown): unknown => {
     : value;
 };
 
+// Mirrors the server-side coerceValueForField contract: null/undefined pass through
+// (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
+// kinds pass through, and an uncoercible value returns unchanged so the comparison
+// fails with the rule's normal error instead of throwing on one dirty row.
 const coerceScalar = (value: unknown, kind: FieldKind, zone: string): unknown => {
   if (value === null || value === undefined) return value;
 

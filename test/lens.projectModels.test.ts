@@ -38,7 +38,7 @@ const socialMap: FieldMap = {
   },
 };
 
-describe('exposedSurface — reachability', () => {
+describe('projectModels — reachability', () => {
   test('keeps the entrypoint and all reachable models, drops unreachable ones', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
     const reduced = projectLens(lens, { by: 'model' });
@@ -65,7 +65,7 @@ describe('exposedSurface — reachability', () => {
   });
 });
 
-describe('exposedSurface — model-default narrowing applied', () => {
+describe('projectModels — model-default narrowing applied', () => {
   test('omitting a field removes it and severs any models only reachable through it', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
     const narrowing: LensNarrowing = {
@@ -112,7 +112,7 @@ describe('exposedSurface — model-default narrowing applied', () => {
   });
 });
 
-describe('exposedSurface — multi-source bridges', () => {
+describe('projectModels — multi-source bridges', () => {
   const prismaMap: FieldMap = {
     models: {
       FanUser: {
@@ -226,7 +226,7 @@ describe('exposedSurface — multi-source bridges', () => {
   });
 });
 
-describe('exposedSurface — root narrowing must not leak (server→client surface)', () => {
+describe('projectModels — root narrowing must not leak (server→client surface)', () => {
   // Anchor with NO inbound edge: User → posts → Post, Post does not point back.
   const acyclicMap: FieldMap = {
     models: {
@@ -274,7 +274,7 @@ describe('exposedSurface — root narrowing must not leak (server→client surfa
   });
 });
 
-describe('exposedSurface — enum registry reflects narrowing (no stale values)', () => {
+describe('projectModels — enum registry reflects narrowing (no stale values)', () => {
   test('mapDefaults enum narrowing is reflected in the emitted registry, not just field.values', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
     const narrowing: LensNarrowing = {

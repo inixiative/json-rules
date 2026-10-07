@@ -2,7 +2,6 @@ import type { PrismaProvider } from '../engineGlobals';
 import type { FieldMapSet } from '../fieldMap/types';
 import type { DateConfig } from '../types';
 
-export type PrismaFilter = Record<string, unknown>;
 export type PrismaWhere = Record<string, unknown>;
 
 /** A selectable option — the standard `<select>` shape: a value with an optional display

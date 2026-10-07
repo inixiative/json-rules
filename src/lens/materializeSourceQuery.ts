@@ -1,5 +1,5 @@
 import type { SourceOption } from '../toPrisma/types.ts';
-import type { SourceValues } from './projectByPath.ts';
+import type { SourceValues } from './projectPaths.ts';
 import { accumulateRow, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';
 import type { SourceQuery } from './toSourceQueries.ts';
 

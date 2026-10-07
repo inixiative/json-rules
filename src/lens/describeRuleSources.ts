@@ -12,7 +12,7 @@ import { lensPathEnd, resolvePolicy } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
- * The values one rule compares at one declared source — keyed the way `projectByPath`
+ * The values one rule compares at one declared source — keyed the way `projectPaths`
  * keys a source (`path` + `field`), so the caller can join it back to the source's
  * model without spelling a path of its own. A `mapDefaults`-declared source resolves
  * wherever its model appears, so `path` may name a relation chain the narrowing never

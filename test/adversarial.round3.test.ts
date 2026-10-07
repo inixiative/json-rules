@@ -4,7 +4,7 @@ import type { Bridge } from '../src/fieldMap/types';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
 import { narrowRule } from '../src/lens/narrowRule';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import {
@@ -88,7 +88,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       parent: lens,
       root: { picks: ['email', 'salesforce:Contact'] },
     };
-    const projected = projectByPath(narrowing);
+    const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeDefined();
   });
 
@@ -98,7 +98,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       parent: lens,
       root: { picks: ['email'] },
     };
-    const projected = projectByPath(narrowing);
+    const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeUndefined();
   });
 
@@ -108,7 +108,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       parent: lens,
       root: { omits: ['salesforce:Contact'] },
     };
-    const projected = projectByPath(narrowing);
+    const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeUndefined();
   });
 });

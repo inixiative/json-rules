@@ -12,8 +12,8 @@ export { materializeSourceQuery } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';
 export { narrowRule } from './narrowRule';
-export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectByPath';
 export { projectLens } from './projectLens';
+export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectPaths';
 export type { SourcePrismaQuery, SourceQuery, SourceSqlQuery } from './toSourceQueries';
 export { toSourceQueries } from './toSourceQueries';
 export type {

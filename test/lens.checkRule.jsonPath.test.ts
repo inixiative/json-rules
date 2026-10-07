@@ -311,7 +311,7 @@ describe('narrowRule — Json sub-paths', () => {
 });
 
 describe('projection — the Json column is the leaf it already is', () => {
-  test('projectByPath exposes the column and keys no path below it', () => {
+  test('projectPaths exposes the column and keys no path below it', () => {
     const proj = projectLens(lens);
     expect(Object.keys(proj)).toEqual(['User']);
     expect(proj.User?.fields.metadata).toEqual({ kind: 'scalar', type: 'Json' });

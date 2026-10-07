@@ -6,7 +6,7 @@ import { hasPath, isValueSource } from './valueSource';
 
 export type ConditionNode = Record<string, unknown>;
 
-export const isObjCondition = (c: Condition): c is Exclude<Condition, boolean> =>
+const isObjCondition = (c: Condition): c is Exclude<Condition, boolean> =>
   typeof c === 'object' && c !== null;
 
 export const isRelationNode = (node: ConditionNode): boolean =>

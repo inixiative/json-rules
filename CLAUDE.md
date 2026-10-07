@@ -12,7 +12,7 @@ The CORE evaluates ONE rule against data; rules are blind to each other at evalu
   same day) was a free-floating grammar walk in the core, keyed by a caller-supplied
   dotted path, with no named consumer. The sanctioned home for "which values does a rule
   use at field X" is the LENS, keyed by its own source declarations (the
-  `ruleSourceValues(lens, rule)` shape) — the lens owns the vocabulary, so it answers
+  `describeRuleSources(rule, lens)` shape) — the lens owns the vocabulary, so it answers
   questions about it. Callers never pass magic dot-strings.
 - **Cross-rule GRAPH concerns stay with the caller.** Reference graphs, reconcile
   ordering, cycle detection, and what to do about an unmappable reference in a clone are

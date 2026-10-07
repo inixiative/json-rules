@@ -1,7 +1,7 @@
 import { modelOf } from '../own';
 import type { FieldMap, FieldMapEntry } from './types';
 
-export const findReverseRelation = (
+const findReverseRelation = (
   map: FieldMap,
   targetModel: string,
   currentModel: string,

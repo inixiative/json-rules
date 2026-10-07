@@ -14,7 +14,7 @@ import {
   relationHops,
   resolvePolicy,
 } from './policy.ts';
-import { projectByPath } from './projectByPath.ts';
+import { projectPaths } from './projectPaths.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
 import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
@@ -557,7 +557,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
   const set = getRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
   const parentPolicy = resolvePolicy(narrowing.parent);
-  const parentVisits = projectByPath(narrowing.parent);
+  const parentVisits = projectPaths(narrowing.parent);
 
   for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
     const fieldMap = own(set.maps, mapName);

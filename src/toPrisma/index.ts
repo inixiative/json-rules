@@ -38,36 +38,18 @@ export type {
 } from './types';
 
 /**
- * Convert a json-rules Condition to a Prisma query plan.
- *
- * Returns a `ToPrismaResult` with:
- * - `where` – the Prisma WHERE clause
- * - `steps` – optional array of groupBy steps for count-based relation filters
- *   (only present when `atLeast`/`atMost`/`exactly` operators are used with a map)
- *
- * When `steps` is present, pass the result to `executePrismaPlan` to
- * resolve step refs before using `where` in a Prisma query.
- *
- * @param condition - The rule condition to convert
- * @param options   - Optional map, model, and context
+ * Compile a condition to a Prisma query plan: `steps`, any groupBy steps (counts and relation
+ * aggregates, which need `{ map, model }`) and then the final `where`. Run a plan with
+ * `executePrismaPlan(plan, client)` to resolve step refs; a single-step plan's `where` is its
+ * last step's.
  *
  * @example
  * ```typescript
- * // Simple scalar
- * toPrisma({ field: 'status', operator: Operator.equals, value: 'active' })
- * // → { where: { status: { equals: 'active' } } }
+ * toPrisma({ field: 'status', operator: Operator.equals, value: 'active' }).steps
+ * // → [{ operation: 'where', where: { status: { equals: 'active' } } }]
  *
- * // JSON field detection (map required)
- * toPrisma({ field: 'metadata.theme', operator: Operator.equals, value: 'dark' }, { map, model: 'User' })
- * // → { where: { metadata: { path: ['theme'], equals: 'dark' } } }
- *
- * // Context path ref
- * toPrisma({ field: 'userId', operator: Operator.equals, path: 'currentUser.id' }, { context: { currentUser: { id: '123' } } })
- * // → { where: { userId: { equals: '123' } } }
- *
- * // Multi-step (map required)
- * const plan = toPrisma({ field: 'posts', arrayOperator: 'atLeast', count: 3, condition: {...} }, { map, model: 'User' });
- * const where = await executePrismaPlan(plan, { post: prisma.post });
+ * const plan = toPrisma({ field: 'posts', arrayOperator: 'atLeast', count: 3, condition }, { map, model: 'User' });
+ * const where = await executePrismaPlan(plan, prisma);
  * await prisma.user.findMany({ where });
  * ```
  */

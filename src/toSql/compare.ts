@@ -29,7 +29,7 @@ export const orderedSql = (
     : undefined;
 };
 
-export const operandSql = (rhs: ResolvedRhs, state: BuilderState): string =>
+const operandSql = (rhs: ResolvedRhs, state: BuilderState): string =>
   rhs.type === 'column' ? rhs.sql : nextParam(state, rhs.value);
 
 export const orNull = (field: string, expr: string): string => `(${expr} OR ${field} IS NULL)`;

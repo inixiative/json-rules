@@ -1,4 +1,4 @@
-import { listBindings, bindRule as resolveConditionBindings } from '../bindings.ts';
+import { bindRule, listBindings } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { isSourceSpec } from './policy.ts';
 import type {
@@ -99,7 +99,7 @@ export const listLensBindings = (lensOrNarrowing: Lens | LensNarrowing): string[
  * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
  * `where`/`sources`, returning a structurally-new lens with concrete conditions.
  * Partial — uncovered tokens stay, so stages bind progressively. Once resolved,
- * `narrowRule` / `toPrisma` / `toSql` / `toSourceQueries` / `projectByPath` consume the
+ * `narrowRule` / `toPrisma` / `toSql` / `toSourceQueries` / `projectPaths` consume the
  * lens unchanged: a bind needs nothing new downstream. `parent:name` draws the same
  * value as the ancestor's `name`. Does not mutate the input.
  */
@@ -111,9 +111,7 @@ export const bindLens = (
   const effective: Record<string, RuleValue> = { ...bindings };
   for (const [k, v] of Object.entries(bindings)) effective[`${PARENT_PREFIX}${k}`] = v;
   return {
-    ...mapLayerConditions(lensOrNarrowing, (condition) =>
-      resolveConditionBindings(condition, effective),
-    ),
+    ...mapLayerConditions(lensOrNarrowing, (condition) => bindRule(condition, effective)),
     parent: bindLens(lensOrNarrowing.parent, bindings),
   };
 };

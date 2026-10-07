@@ -31,8 +31,8 @@ export type PathProjection = Record<string, ProjectedVisit>;
 /**
  * The materialized option set for one sourced field — the fetched companion to a
  * serializable lens. Its `options` are `{ value, label? }` pairs (the standard
- * `<select>` shape); it feeds both projections: `projectByPath` keys by
- * `path`+`field` (exact), `exposedSurface` by `mapName`+`model`+`field` (union).
+ * `<select>` shape); it feeds both projections: `projectPaths` keys by
+ * `path`+`field` (exact), `projectModels` by `mapName`+`model`+`field` (union).
  */
 export type SourceValues = {
   path: string;
@@ -73,7 +73,7 @@ export const projectFields = (
   return fields;
 };
 
-export const projectByPath = (
+export const projectPaths = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectOptions = {},
 ): PathProjection => {
@@ -147,7 +147,7 @@ export const projectByPath = (
     };
 
     for (const relField of effect.relations.keys()) {
-      // A relation this visit hides is not projected, as exposedSurface skips it.
+      // A relation this visit hides is not projected, as projectModels skips it.
       if (!isFieldVisible(effect, relField)) continue;
       const entry = own(model.fields, relField);
       if (!entry) continue;

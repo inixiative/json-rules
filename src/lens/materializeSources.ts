@@ -2,7 +2,7 @@ import { type CheckOptions, check } from '../check.ts';
 import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
-import type { SourceValues } from './projectByPath.ts';
+import type { SourceValues } from './projectPaths.ts';
 import {
   accumulateRow,
   groupAtPath,

@@ -58,8 +58,6 @@ const show = (v: unknown): string =>
       ? JSON.stringify(v)
       : String(v);
 
-// Operators that compare one value: a list literal is a value no rail can compare.
-
 /**
  * Operator ⇄ kind, then literal ⇄ kind, for a field or date leaf. The kind is the rule's
  * `coerceType` when set, else the declared entry's; unknown means nothing to gate. With a

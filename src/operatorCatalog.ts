@@ -16,9 +16,9 @@ export const FieldKind = {
 export type FieldKind = (typeof FieldKind)[keyof typeof FieldKind];
 
 export const NUMERIC_KINDS: readonly FieldKind[] = ['Int', 'Float', 'Decimal', 'BigInt'];
-export const ORDERABLE_KINDS: readonly FieldKind[] = ['String', ...NUMERIC_KINDS, 'DateTime'];
-export const STRINGY_KINDS: readonly FieldKind[] = ['String'];
-export const EQUATABLE_KINDS: readonly FieldKind[] = [
+const ORDERABLE_KINDS: readonly FieldKind[] = ['String', ...NUMERIC_KINDS, 'DateTime'];
+const STRINGY_KINDS: readonly FieldKind[] = ['String'];
+const EQUATABLE_KINDS: readonly FieldKind[] = [
   'String',
   'Boolean',
   'Int',
@@ -32,7 +32,7 @@ export const ALL_KINDS: readonly FieldKind[] = Object.values(FieldKind);
 // Any column can be nullable — nullability is a per-field property, not a per-kind one.
 // isEmpty/notEmpty ("null or empty string") are therefore valid on every kind; the
 // SQL/Prisma compilers emit meaningful `IS NULL OR = ''` for any nullable column.
-export const NULLABLE_KINDS: readonly FieldKind[] = ALL_KINDS;
+const NULLABLE_KINDS: readonly FieldKind[] = ALL_KINDS;
 
 export const RuleTarget = {
   check: 'check',

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -60,7 +60,7 @@ const bridgeLens: Lens = {
   model: 'FanUser',
 };
 
-describe('projectByPath — bridges', () => {
+describe('projectPaths — bridges', () => {
   test('mapDefaults.salesforce.models.Contact applies at the bridged visit', () => {
     const n = withParent(bridgeLens, {
       root: { relations: { 'salesforce:Contact': {} } },
@@ -68,7 +68,7 @@ describe('projectByPath — bridges', () => {
         salesforce: { models: { Contact: { omits: ['industry'] } } },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     const contact = at(proj, 'FanUser.salesforce:Contact');
     expect(contact.mapName).toBe('salesforce');
     expect(contact.modelName).toBe('Contact');
@@ -86,7 +86,7 @@ describe('projectByPath — bridges', () => {
         },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     expect(Object.keys(proj).sort()).toEqual([
       'FanUser',
       'FanUser.salesforce:Contact',
@@ -109,7 +109,7 @@ describe('projectByPath — bridges', () => {
         relations: { 'salesforce:Contact': { picks: ['industry'] } },
       },
     });
-    const contact = at(projectByPath(n2), 'FanUser.salesforce:Contact');
+    const contact = at(projectPaths(n2), 'FanUser.salesforce:Contact');
     expect(Object.keys(contact.fields).sort()).toEqual(['industry']);
   });
 });
@@ -142,7 +142,7 @@ const multiUserMap: FieldMap = {
 };
 const postLens: Lens = { maps: { prisma: multiUserMap }, mapName: 'prisma', model: 'Post' };
 
-describe('projectByPath — mapDefaults.models[X].where anchors at every visit', () => {
+describe('projectPaths — mapDefaults.models[X].where anchors at every visit', () => {
   test('tenant-scoping where appears at root AND at every nested visit of the model', () => {
     const tenantScope = {
       field: 'tenantId',
@@ -160,7 +160,7 @@ describe('projectByPath — mapDefaults.models[X].where anchors at every visit',
         prisma: { models: { User: { where: tenantScope } } },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     // Post root visit: no User defaults apply here (we're on Post).
     expect(at(proj, 'Post').whereClauses).toEqual([]);
     // Both User visits have the tenant scope anchored.
@@ -191,7 +191,7 @@ describe('projectByPath — mapDefaults.models[X].where anchors at every visit',
       },
       mapDefaults: { prisma: { models: { User: { where: tenantScope } } } },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     expect(at(proj, 'User').whereClauses).toContainEqual(tenantScope);
     expect(at(proj, 'User.manager').whereClauses).toContainEqual(tenantScope);
     expect(at(proj, 'User.manager.manager').whereClauses).toContainEqual(tenantScope);
@@ -231,7 +231,7 @@ const deepMap: FieldMap = {
 };
 const deepLens: Lens = { maps: { prisma: deepMap }, mapName: 'prisma', model: 'User' };
 
-describe('projectByPath — narrowing only at depth', () => {
+describe('projectPaths — narrowing only at depth', () => {
   test('intermediate visits show all fields; only declared leaf is narrowed', () => {
     const n = withParent(deepLens, {
       root: {
@@ -244,7 +244,7 @@ describe('projectByPath — narrowing only at depth', () => {
         },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     expect(Object.keys(at(proj, 'User').fields).sort()).toEqual(['email', 'id', 'posts']);
     expect(Object.keys(at(proj, 'User.posts').fields).sort()).toEqual(['comments', 'id', 'title']);
     expect(Object.keys(at(proj, 'User.posts.comments').fields).sort()).toEqual(['body']);
@@ -271,12 +271,12 @@ const selfRefMap: FieldMap = {
 };
 const selfRefLens: Lens = { maps: { prisma: selfRefMap }, mapName: 'prisma', model: 'User' };
 
-describe('projectByPath — direct self-referential relation', () => {
+describe('projectPaths — direct self-referential relation', () => {
   test('declared 1 hop deep: only User and User.manager visits exist', () => {
     const n = withParent(selfRefLens, {
       root: { relations: { manager: { picks: ['email'] } } },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     expect(Object.keys(proj).sort()).toEqual(['User', 'User.manager']);
     expect(Object.keys(at(proj, 'User.manager').fields).sort()).toEqual(['email']);
     expect(proj['User.manager.manager']).toBeUndefined();
@@ -295,7 +295,7 @@ describe('projectByPath — direct self-referential relation', () => {
         },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     expect(Object.keys(proj).sort()).toEqual(['User', 'User.manager', 'User.manager.manager']);
     expect(Object.keys(at(proj, 'User.manager').fields).sort()).toEqual(['manager', 'name']);
     expect(Object.keys(at(proj, 'User.manager.manager').fields).sort()).toEqual(['email']);
@@ -309,7 +309,7 @@ describe('projectByPath — direct self-referential relation', () => {
 //      with mapDefaults applied.
 // ============================================================
 
-describe('projectByPath — only mapDefaults, no root narrowing', () => {
+describe('projectPaths — only mapDefaults, no root narrowing', () => {
   test('root visit reflects mapDefaults; no deeper visits without declared relations', () => {
     const lens: Lens = { maps: { prisma: multiUserMap }, mapName: 'prisma', model: 'User' };
     const n = withParent(lens, {
@@ -317,7 +317,7 @@ describe('projectByPath — only mapDefaults, no root narrowing', () => {
         prisma: { models: { User: { omits: ['tenantId', 'deletedAt'] } } },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     expect(Object.keys(proj)).toEqual(['User']);
     expect(Object.keys(at(proj, 'User').fields).sort()).toEqual(['id', 'name']);
   });
@@ -329,13 +329,13 @@ describe('projectByPath — only mapDefaults, no root narrowing', () => {
 //      whereClauses[], not just the last one.
 // ============================================================
 
-describe('projectByPath — chained where clauses accumulate', () => {
+describe('projectPaths — chained where clauses accumulate', () => {
   test('two layers each contribute a where at root; both appear', () => {
     const w1 = { field: 'id', operator: Operator.exists };
     const w2 = { field: 'title', operator: Operator.exists };
     const n1 = withParent(postLens, { root: { where: w1 } });
     const n2 = withParent(n1, { root: { where: w2 } });
-    const proj = projectByPath(n2);
+    const proj = projectPaths(n2);
     expect(at(proj, 'Post').whereClauses).toEqual([w1, w2]);
   });
 
@@ -352,7 +352,7 @@ describe('projectByPath — chained where clauses accumulate', () => {
         prisma: { models: { User: { where: tenantScope } } },
       },
     });
-    const proj = projectByPath(n);
+    const proj = projectPaths(n);
     // Both wheres land at the author visit (one from defaults, one from path).
     expect(at(proj, 'Post.author').whereClauses).toContainEqual(tenantScope);
     expect(at(proj, 'Post.author').whereClauses).toContainEqual(localScope);

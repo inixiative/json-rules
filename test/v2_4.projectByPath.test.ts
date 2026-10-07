@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -13,9 +13,9 @@ const withParent = (
 
 const postLens: Lens = { maps: { prisma: multiRelMap }, mapName: 'prisma', model: 'Post' };
 
-describe('projectByPath — path-keyed projection (v2.4)', () => {
+describe('projectPaths — path-keyed projection (v2.4)', () => {
   test('lens-only (no narrowing): single root entry with all fields', () => {
-    const projection = projectByPath(postLens);
+    const projection = projectPaths(postLens);
     expect(Object.keys(projection)).toEqual(['Post']);
     expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual([
       'author',
@@ -28,7 +28,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
 
   test('root picks restrict the root visit', () => {
     const n = withParent(postLens, { root: { picks: ['id'] } });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     expect(Object.keys(projection)).toEqual(['Post']);
     expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual(['id']);
   });
@@ -44,7 +44,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
         },
       },
     });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     expect(Object.keys(projection).sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
 
     const author = at(projection, 'Post.author');
@@ -69,7 +69,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
       },
       mapDefaults: { prisma: { models: { User: { omits: ['name'] } } } },
     });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['id']);
     expect(Object.keys(at(projection, 'Post.editor').fields).sort()).toEqual(['id']);
   });
@@ -89,7 +89,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
         },
       },
     });
-    const projection = projectByPath(n2);
+    const projection = projectPaths(n2);
     expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['id']);
   });
 
@@ -111,7 +111,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
     const n3 = withParent(n2, {
       mapDefaults: { prisma: { models: { User: { omits: ['email'] } } } },
     });
-    const projection = projectByPath(n3);
+    const projection = projectPaths(n3);
     expect(Object.keys(projection).sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
     // author: layer1 ∩ layer2 picks = {name, email}; mapDefaults omits email → {name}
     expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['name']);
@@ -143,7 +143,7 @@ const recursiveMap: FieldMap = {
 };
 const userLens: Lens = { maps: { prisma: recursiveMap }, mapName: 'prisma', model: 'User' };
 
-describe('projectByPath — recursive same model on one path', () => {
+describe('projectPaths — recursive same model on one path', () => {
   test('two visits to SpaceUser on the same path each have their own narrowing', () => {
     const n = withParent(userLens, {
       root: {
@@ -162,7 +162,7 @@ describe('projectByPath — recursive same model on one path', () => {
         },
       },
     });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     expect(Object.keys(projection).sort()).toEqual([
       'User',
       'User.spaceUsers',
@@ -197,7 +197,7 @@ describe('projectByPath — recursive same model on one path', () => {
       },
       mapDefaults: { prisma: { models: { SpaceUser: { omits: ['role'] } } } },
     });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     const v1 = at(projection, 'User.spaceUsers').fields;
     const v2 = at(projection, 'User.spaceUsers.user.spaceUsers').fields;
     expect(v1.role).toBeUndefined();
@@ -225,7 +225,7 @@ const enumMap: FieldMap = {
 };
 const inquiryLens: Lens = { maps: { prisma: enumMap }, mapName: 'prisma', model: 'Inquiry' };
 
-describe('projectByPath — enum narrowing', () => {
+describe('projectPaths — enum narrowing', () => {
   test('mapDefaults enums narrows registry; per-field enumOmits intersects', () => {
     const n = withParent(inquiryLens, {
       root: { enumOmits: { status: ['draft'] } },
@@ -233,13 +233,13 @@ describe('projectByPath — enum narrowing', () => {
         prisma: { enums: { InquiryStatus: { omits: ['canceled'] } } },
       },
     });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     const statusField = at(projection, 'Inquiry').fields.status;
     expect(sortedOptions(statusField)).toEqual(enumOptions('closed', 'open'));
   });
 });
 
-describe('projectByPath — where clauses preserved per visit', () => {
+describe('projectPaths — where clauses preserved per visit', () => {
   test('root.where lives at root visit; relations.X.where lives at that visit', () => {
     const n = withParent(postLens, {
       root: {
@@ -251,7 +251,7 @@ describe('projectByPath — where clauses preserved per visit', () => {
         },
       },
     });
-    const projection = projectByPath(n);
+    const projection = projectPaths(n);
     expect(at(projection, 'Post').whereClauses).toEqual([
       { field: 'id', operator: Operator.exists },
     ]);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
 import { at } from './fixtures/helpers';
@@ -24,24 +24,24 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('projectByPath composition is intersection (not last-write)', () => {
+describe('projectPaths composition is intersection (not last-write)', () => {
   test('chained picks: A=[email,name,id], B=[name,id,role] → projected={name,id}', () => {
     const a = withParent(lens, { root: { picks: ['email', 'name', 'id'] } });
     const b = withParent(a, { root: { picks: ['name', 'id', 'role'] } });
-    const fields = Object.keys(at(projectByPath(b), 'User').fields).sort();
+    const fields = Object.keys(at(projectPaths(b), 'User').fields).sort();
     expect(fields).toEqual(['id', 'name']);
   });
 
   test('pick then omit: pick keeps {email,name}, omit drops name → {email}', () => {
     const a = withParent(lens, { root: { picks: ['email', 'name'] } });
     const b = withParent(a, { root: { omits: ['name'] } });
-    expect(Object.keys(at(projectByPath(b), 'User').fields).sort()).toEqual(['email']);
+    expect(Object.keys(at(projectPaths(b), 'User').fields).sort()).toEqual(['email']);
   });
 
   test('omit accumulates: A omits=[name], B omits=[email] → both gone', () => {
     const a = withParent(lens, { root: { omits: ['name'] } });
     const b = withParent(a, { root: { omits: ['email'] } });
-    const fields = Object.keys(at(projectByPath(b), 'User').fields).sort();
+    const fields = Object.keys(at(projectPaths(b), 'User').fields).sort();
     expect(fields).not.toContain('name');
     expect(fields).not.toContain('email');
   });

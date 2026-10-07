@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { bindLens, listLensBindings } from '../src/lens/bindings';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
-import { projectByPath } from '../src/lens/projectByPath';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -58,7 +58,7 @@ describe('bindLens — preprocess binds into the lens', () => {
   test('resolves binds in a source eligibility where (toSourceQueries/projection see concrete)', () => {
     const n: LensNarrowing = { parent: lens, root: { sources: { tier: brandBind } } };
     const resolved = bindLens(n, { brandUuid: 'acme-1' });
-    expect(projectByPath(resolved).FanUser?.sources.tier).toEqual([
+    expect(projectPaths(resolved).FanUser?.sources.tier).toEqual([
       { field: 'brandUuid', operator: Operator.equals, value: 'acme-1' },
     ]);
   });

@@ -9,8 +9,6 @@ import type { Condition, RuleValue, ValueSourceOf } from './types';
 
 import { readBinding } from './valueSource';
 
-export { readBinding };
-
 // Every `{ bind }` on a leaf: its comparison value, its offset, its unit amounts.
 type BindSource = Extract<ValueSourceOf<unknown>, { bind: string }>;
 const bindTokens = (node: ConditionNode): BindSource[] =>

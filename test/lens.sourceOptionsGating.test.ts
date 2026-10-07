@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { validateRuleInLens } from '../src/lens/checkRule';
-import { exposedSurface } from '../src/lens/exposedSurface';
-import type { SourceValues } from '../src/lens/projectByPath';
+import { projectModels } from '../src/lens/projectModels';
+import type { SourceValues } from '../src/lens/projectPaths';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
 
 // The hydrated-source gate: a consumer (e.g. rules-builder) folds fetched sourceValues
-// onto `field.options` via exposedSurface, then re-feeds the exposed surface back into
+// onto `field.options` via projectModels, then re-feeds the exposed surface back into
 // validateRuleInLens. The fetched option set must gate the allowed values — otherwise a
 // rule can reference a value outside the source's fetched set. `free` carries no input
 // `values`, so the folded `options` is the ONLY gating source.
@@ -35,7 +35,7 @@ const sourceValues: SourceValues[] = [
 
 describe('validateRuleInLens — gates against folded source options', () => {
   test('a value in the folded option set passes', () => {
-    const surface = exposedSurface(lens, { sourceValues });
+    const surface = projectModels(lens, { sourceValues });
     const result = validateRuleInLens(
       { field: 'free', operator: Operator.equals, value: 'gold' },
       surface,
@@ -44,7 +44,7 @@ describe('validateRuleInLens — gates against folded source options', () => {
   });
 
   test('a value NOT in the folded option set is rejected', () => {
-    const surface = exposedSurface(lens, { sourceValues });
+    const surface = projectModels(lens, { sourceValues });
     const result = validateRuleInLens(
       { field: 'free', operator: Operator.equals, value: 'platinum' },
       surface,

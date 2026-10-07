@@ -373,7 +373,7 @@ describe('materialization — options carry index-aligned groups', () => {
   });
 });
 
-describe('exposedSurface — axes on the surface, groups in the union', () => {
+describe('projectModels — axes on the surface, groups in the union', () => {
   test('the surface field entry carries the partition axes', () => {
     const surface = projectLens(composite(), { by: 'model' });
     expect(surface.maps.app.models.Enrichment.fields.value.groupBy).toEqual(AXES);

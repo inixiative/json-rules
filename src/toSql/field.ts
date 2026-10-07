@@ -91,12 +91,6 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const lowered = (values: unknown[]): unknown[] =>
     lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
 
-  // A Json value as jsonb, where JSON null, "" and [] are told apart.
-  const json = (): string | undefined =>
-    resolved.shape === 'json' || resolved.shape === 'json-path'
-      ? resolveFieldSql(rule.field, state, { jsonb: true })
-      : undefined;
-
   // A scalar list contains a member, as check() reads a list; NULL elements and a NULL list
   // contain nothing.
   if (resolved.shape === 'list' && rule.operator === Operator.contains)
@@ -158,18 +152,15 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     case Operator.notMatches:
       return orNull(`${field} !~ ${nextParam(state, sqlPattern(rhsVal))}`);
 
-    // Empty is NULL, '', or an empty list or Json array, as check() reads it.
     case Operator.isEmpty:
-      if (resolved.shape === 'list') return `(${field} IS NULL OR cardinality(${field}) = 0)`;
-      if (json()) return `(${json()} IS NULL OR ${json()} IN (${EMPTY_JSON}))`;
-      if (!acceptsEmptyString(rule, state.map, state.currentModel)) return `${field} IS NULL`;
-      return `(${field} IS NULL OR ${field} = '')`;
-
     case Operator.notEmpty:
-      if (resolved.shape === 'list') return `cardinality(${field}) > 0`;
-      if (json()) return `${json()} NOT IN (${EMPTY_JSON})`;
-      if (!acceptsEmptyString(rule, state.map, state.currentModel)) return `${field} IS NOT NULL`;
-      return `(${field} IS NOT NULL AND ${field} <> '')`;
+      return emptinessSql(
+        rule.field,
+        resolved,
+        rule.operator === Operator.isEmpty,
+        state,
+        acceptsEmptyString(rule, state.map, state.currentModel),
+      );
 
     case Operator.exists:
       return `${field} IS NOT NULL`;
@@ -216,7 +207,6 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
   }) as [ResolvedRhs, ResolvedRhs];
 };
 
-const EMPTY_JSON = `'null'::jsonb, '""'::jsonb, '[]'::jsonb`;
 const EQUALITY: readonly string[] = [Operator.equals, Operator.notEquals];
 
 const hasString = (operand: unknown): boolean =>
@@ -246,4 +236,29 @@ const knownOperand = (rule: Rule, state: BuilderState): unknown => {
   }
   const rhs = resolveComparison(rule, state);
   return rhs.type === 'value' ? rhs.value : NOT_KNOWN;
+};
+
+/**
+ * Whether a field is empty — NULL, '', or an empty list or Json array, as check() reads it — or,
+ * with `empty` false, not. One form for the emptiness operators and the array ones.
+ */
+export const emptinessSql = (
+  path: string,
+  field: FieldSql,
+  empty: boolean,
+  state: BuilderState,
+  emptyString: boolean,
+): string => {
+  const { sql, shape } = field;
+  if (shape === 'list')
+    return empty ? `(${sql} IS NULL OR cardinality(${sql}) = 0)` : `cardinality(${sql}) > 0`;
+  if (shape === 'json' || shape === 'json-path') {
+    const j = resolveFieldSql(path, state, { jsonb: true });
+    const values = [`'null'::jsonb`, ...(emptyString ? [`'""'::jsonb`] : []), `'[]'::jsonb`].join(
+      ', ',
+    );
+    return empty ? `(${j} IS NULL OR ${j} IN (${values}))` : `${j} NOT IN (${values})`;
+  }
+  if (!emptyString) return empty ? `${sql} IS NULL` : `${sql} IS NOT NULL`;
+  return empty ? `(${sql} IS NULL OR ${sql} = '')` : `(${sql} IS NOT NULL AND ${sql} <> '')`;
 };

@@ -4,6 +4,12 @@ import type { FieldMap, FieldMapEntry, ModelEntry } from './toPrisma/types';
 export const own = <T>(record: Record<string, T> | undefined, key: string): T | undefined =>
   record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined;
 
+/** An own entry of `record`, created by `make` when absent — never one Object.prototype names. */
+export const ownEntry = <T>(record: Record<string, T>, key: string, make: () => T): T => {
+  if (!Object.hasOwn(record, key)) record[key] = make();
+  return record[key];
+};
+
 /** A model of a field map, own-property only. */
 export const modelOf = (map: FieldMap | undefined, model: string): ModelEntry | undefined =>
   own(map?.models, model);

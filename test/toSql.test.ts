@@ -356,13 +356,13 @@ describe('toSql', () => {
     describe('jsonb (default)', () => {
       it('empty', () => {
         const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty });
-        expect(sql).toBe('("tags" IS NULL OR jsonb_array_length("tags") = 0)');
+        expect(sql).toBe(`("tags" IS NULL OR "tags" IN ('null'::jsonb, '[]'::jsonb))`);
         expect(params).toEqual([]);
       });
 
       it('notEmpty', () => {
         const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty });
-        expect(sql).toBe('("items" IS NOT NULL AND jsonb_array_length("items") > 0)');
+        expect(sql).toBe(`"items" NOT IN ('null'::jsonb, '[]'::jsonb)`);
         expect(params).toEqual([]);
       });
     });
@@ -373,7 +373,7 @@ describe('toSql', () => {
           { field: 'tags', arrayOperator: ArrayOperator.empty },
           { map: nativeArrayMap, model: 'Test' },
         );
-        expect(sql).toBe('("t0"."tags" IS NULL OR array_length("t0"."tags", 1) IS NULL)');
+        expect(sql).toBe('("t0"."tags" IS NULL OR cardinality("t0"."tags") = 0)');
         expect(params).toEqual([]);
       });
 
@@ -382,9 +382,7 @@ describe('toSql', () => {
           { field: 'items', arrayOperator: ArrayOperator.notEmpty },
           { map: nativeArrayMap, model: 'Test' },
         );
-        expect(sql).toBe(
-          '("t0"."items" IS NOT NULL AND array_length("t0"."items", 1) IS NOT NULL)',
-        );
+        expect(sql).toBe('cardinality("t0"."items") > 0');
         expect(params).toEqual([]);
       });
     });

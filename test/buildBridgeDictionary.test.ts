@@ -134,3 +134,28 @@ describe('indexBridges', () => {
     expect(indexBridges({ maps: {} }, { foo: [{ id: '1' }] })).toEqual({});
   });
 });
+
+describe('indexBridges reads own properties only', () => {
+  test('a key Object.prototype names is an ordinary key', () => {
+    const set = {
+      maps: {},
+      bridges: [
+        {
+          endpoints: [
+            { fieldMap: 'constructor', model: 'toString', on: 'id' },
+            { fieldMap: 'crm', model: 'Event', on: 'postId' },
+          ],
+          cardinality: 'oneToOne' as const,
+        },
+      ],
+    };
+    const dict = indexBridges(set as never, {
+      'constructor:toString': [{ id: 'constructor' }, { id: 'valueOf' }],
+    });
+    expect(dict).toEqual({
+      constructor: {
+        toString: { id: { constructor: { id: 'constructor' }, valueOf: { id: 'valueOf' } } },
+      },
+    });
+  });
+});

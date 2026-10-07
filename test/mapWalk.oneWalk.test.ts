@@ -37,13 +37,13 @@ describe('toSql array and aggregate rules walk their field', () => {
   test('a native array through a relation joins', () => {
     const { sql, joins } = toSql(rule({ field: 'customer.tags', arrayOperator: 'notEmpty' }), opts);
     expect(joins).toEqual(['LEFT JOIN "Customer" AS "t1" ON "t1"."id" = "t0"."customerId"']);
-    expect(sql).toBe('("t1"."tags" IS NOT NULL AND array_length("t1"."tags", 1) IS NOT NULL)');
+    expect(sql).toBe('cardinality("t1"."tags") > 0');
   });
 
   test('a JSON array through a relation reads as JSONB', () => {
     const { sql } = toSql(rule({ field: 'customer.meta.scores', arrayOperator: 'empty' }), opts);
     expect(sql).toBe(
-      `("t1"."meta"->'scores' IS NULL OR jsonb_array_length("t1"."meta"->'scores') = 0)`,
+      `("t1"."meta"->'scores' IS NULL OR "t1"."meta"->'scores' IN ('null'::jsonb, '[]'::jsonb))`,
     );
   });
 

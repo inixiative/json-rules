@@ -78,7 +78,7 @@ export const someCondition = <S = undefined>(
 
 // Rewrite twin. `rewrite` sees a shallow clone before its children rebuild (pre-order, so a
 // substitution's own children are still walked); `after` sees it once they have (to wrap it
-// without walking the wrapper). Never mutates the input.
+// without walking the wrapper). Never mutates the input, and returns it when nothing changed.
 export const mapCondition = <S = undefined>(
   condition: Condition,
   opts: {
@@ -102,7 +102,25 @@ export const mapCondition = <S = undefined>(
     if (index === undefined) node[key] = mapped;
     else (node[key] as Condition[])[index] = mapped;
   }
-  return opts.after ? opts.after(node, at) : (node as Condition);
+  const result = opts.after ? opts.after(node, at) : (node as Condition);
+  return result === node && sameNode(node, condition as ConditionNode) ? condition : result;
+};
+
+// Whether a rebuilt node holds exactly what the original did, so an untouched tree comes back
+// as the same object.
+const sameNode = (node: ConditionNode, original: ConditionNode): boolean => {
+  const keys = Object.keys(node);
+  if (keys.length !== Object.keys(original).length) return false;
+  return keys.every((key) => {
+    const [a, b] = [node[key], original[key]];
+    if (a === b) return true;
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => item === b[index])
+    );
+  });
 };
 
 /** How a slot's value is used: the comparison value, a number, a whole number, a date shift. */

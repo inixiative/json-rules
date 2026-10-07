@@ -4,23 +4,21 @@ import { isJsonEntry, isRelationEntry } from '../fieldMap/entry.ts';
 import { entryKind } from '../fieldMap/shape';
 import type { FieldMapEntry } from '../fieldMap/types';
 import {
-  type CatalogEntry,
-  catalogEntry,
   FieldKind,
+  leafCatalogEntry,
   NUMERIC_KINDS,
   SINGLE_VALUE_SHAPES,
 } from '../operatorCatalog';
 import type { DateRule, Rule } from '../types';
 import type { ValidationIssue } from '../validate';
 
-/** A leaf's literal operands — the elements for in/notIn/between. Null when the comparison
- *  value is read at evaluation (a `path` or `bind`), unknown at gate time. */
-export const ruleLiterals = (cond: { value?: unknown }): readonly unknown[] | null => {
-  const v = cond.value;
-  if (v === undefined) return null;
-  if (Array.isArray(v)) return v;
-  return [v];
-};
+const flatten = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value.flatMap(flatten) : [value];
+
+/** A leaf's literal operands, lists flattened. Null when the comparison value is read at
+ *  evaluation (a `path` or `bind`), unknown at gate time. */
+export const ruleLiterals = (cond: { value?: unknown }): readonly unknown[] | null =>
+  cond.value === undefined ? null : flatten(cond.value);
 
 // A date the compilers can turn into an instant — the seam compileFieldLiteral emits from, so the
 // gate accepts exactly what compiles.
@@ -72,7 +70,7 @@ export const leafFitViolations = (
   if (kind === undefined || kind === FieldKind.Json) return [];
 
   const op = 'operator' in cond ? cond.operator : cond.dateOperator;
-  const entry = catalogEntry(op, 'operator' in cond ? 'field' : 'date') as CatalogEntry | undefined;
+  const entry = leafCatalogEntry(cond);
   if (!entry) return [];
 
   const coerced = coerceType !== undefined && coerceType !== declared;

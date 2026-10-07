@@ -1,4 +1,4 @@
-import { type CatalogEntry, catalogEntry, ValueShape } from '../operatorCatalog';
+import { leafCatalogEntry, ValueShape } from '../operatorCatalog';
 import { readScopeRef } from '../scope';
 import {
   type ConditionNode,
@@ -8,6 +8,7 @@ import {
   visitCondition,
 } from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
+import { ruleLiterals } from './fieldFit.ts';
 import { lensPathEnd, resolvePolicy } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -48,16 +49,6 @@ const ENUMERABLE_SHAPES = new Set<string>([
 /** Shapes whose `value` is not about the field's values at all (a flag, a cardinality). */
 const VALUELESS_SHAPES = new Set<string>([ValueShape.none, ValueShape.count]);
 
-const leafEntry = (node: ConditionNode): CatalogEntry | undefined =>
-  (typeof node.operator === 'string'
-    ? catalogEntry(node.operator, 'field')
-    : typeof node.dateOperator === 'string'
-      ? catalogEntry(node.dateOperator, 'date')
-      : undefined) as CatalogEntry | undefined;
-
-const literals = (value: unknown): RuleValue[] =>
-  Array.isArray(value) ? value.flatMap(literals) : [value as RuleValue];
-
 type Contribution = { values: RuleValue[]; dynamic: boolean };
 
 const contribution = (node: ConditionNode): Contribution => {
@@ -68,12 +59,12 @@ const contribution = (node: ConditionNode): Contribution => {
     leafSources(node).some(({ source }) => source.value === undefined)
   )
     return { values: [], dynamic: true };
-  const entry = leafEntry(node);
+  const entry = leafCatalogEntry(node);
   if (!entry) return { values: [], dynamic: true };
   if (VALUELESS_SHAPES.has(entry.valueShape)) return { values: [], dynamic: false };
   if (!ENUMERABLE_SHAPES.has(entry.valueShape)) return { values: [], dynamic: true };
   if (!('value' in node)) return { values: [], dynamic: false };
-  return { values: literals(node.value), dynamic: false };
+  return { values: (ruleLiterals(node) ?? []) as RuleValue[], dynamic: false };
 };
 
 const dedupeKey = (value: RuleValue): string => {

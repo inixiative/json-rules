@@ -243,6 +243,17 @@ export const catalogEntry = (
 ): CatalogEntry | ArrayCatalogEntry | undefined =>
   Object.hasOwn(CATALOGS[family], operator) ? CATALOGS[family][operator] : undefined;
 
+/** A field or date leaf's catalog entry: its operator read in its family. */
+export const leafCatalogEntry = (node: {
+  operator?: unknown;
+  dateOperator?: unknown;
+}): CatalogEntry | undefined =>
+  (typeof node.operator === 'string'
+    ? catalogEntry(node.operator, 'field')
+    : typeof node.dateOperator === 'string'
+      ? catalogEntry(node.dateOperator, 'date')
+      : undefined) as CatalogEntry | undefined;
+
 /** How an operator compares its field with one operand; undefined when it doesn't. */
 export const comparatorOf = (operator: string, family: OperatorFamily): Comparator | undefined =>
   catalogEntry(operator, family)?.comparator;

@@ -11,7 +11,7 @@ import {
 } from './dateExpr';
 import { ambiguousCondition, unknownAggregateMode, windowUnsupported } from './errors';
 import { isOrderedValue } from './number';
-import { ArrayOperator, type DateOperator, type Operator } from './operator';
+import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
   AGGREGATE_OPERATORS,
@@ -579,80 +579,64 @@ const validateArrayRule = (
     );
   }
 
-  switch (operator) {
-    case ArrayOperator.empty:
-    case ArrayOperator.notEmpty:
-      if ('condition' in rule && rule.condition !== undefined) {
-        pushIssue(
-          context,
-          `${path}.condition`,
-          'unexpected_condition',
-          `Array operator '${operator}' does not accept condition`,
-        );
-      }
-      if ('count' in rule && rule.count !== undefined) {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'unexpected_count',
-          `Array operator '${operator}' does not accept count`,
-        );
-      }
-      break;
-    case ArrayOperator.all:
-    case ArrayOperator.any:
-    case ArrayOperator.none:
-      if (!('condition' in rule) || rule.condition === undefined) {
-        pushIssue(
-          context,
-          `${path}.condition`,
-          'missing_condition',
-          `Array operator '${operator}' requires condition`,
-        );
-      } else {
-        validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-      }
-      if ('count' in rule && rule.count !== undefined) {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'unexpected_count',
-          `Array operator '${operator}' does not accept count`,
-        );
-      }
-      break;
-    case ArrayOperator.atLeast:
-    case ArrayOperator.atMost:
-    case ArrayOperator.exactly:
-      if (context.target !== 'toPrisma' && typeof rule.count !== 'number') {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'missing_count',
-          `Array operator '${operator}' requires count`,
-        );
-      } else if (
-        rule.count !== undefined &&
-        !(typeof rule.count === 'number' && Number.isInteger(rule.count) && rule.count >= 0)
-      ) {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'invalid_count',
-          'count must be a non-negative whole number',
-        );
-      }
-      if (context.target === 'check' && (!('condition' in rule) || rule.condition === undefined)) {
-        pushIssue(
-          context,
-          `${path}.condition`,
-          'missing_condition',
-          `Array operator '${operator}' requires condition for check()`,
-        );
-      } else if ('condition' in rule && rule.condition !== undefined) {
-        validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-      }
-      break;
+  // What the operator reads, as the catalog says: nothing, a predicate per element, or a count of
+  // the elements that match.
+  const shape = getValueShape(operator as ArrayOperator, 'array');
+  const hasCondition = rule.condition !== undefined;
+  const refuseCount = (): void => {
+    if (rule.count !== undefined)
+      pushIssue(
+        context,
+        `${path}.count`,
+        'unexpected_count',
+        `Array operator '${operator}' does not accept count`,
+      );
+  };
+  if (shape === 'none') {
+    if (hasCondition)
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'unexpected_condition',
+        `Array operator '${operator}' does not accept condition`,
+      );
+    refuseCount();
+  } else if (shape === 'predicate') {
+    if (hasCondition) validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+    else
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'missing_condition',
+        `Array operator '${operator}' requires condition`,
+      );
+    refuseCount();
+  } else if (shape === 'count') {
+    if (context.target !== 'toPrisma' && typeof rule.count !== 'number')
+      pushIssue(
+        context,
+        `${path}.count`,
+        'missing_count',
+        `Array operator '${operator}' requires count`,
+      );
+    else if (
+      rule.count !== undefined &&
+      !(typeof rule.count === 'number' && Number.isInteger(rule.count) && rule.count >= 0)
+    )
+      pushIssue(
+        context,
+        `${path}.count`,
+        'invalid_count',
+        'count must be a non-negative whole number',
+      );
+    if (hasCondition) validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+    else if (context.target === 'check')
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'missing_condition',
+        `Array operator '${operator}' requires condition for check()`,
+      );
   }
 };
 

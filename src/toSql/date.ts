@@ -28,16 +28,20 @@ import {
 // A known bound binds as an ISO instant, which compares against the column as stored. A bound
 // read per row, or a date stored as text, compares as instants on both sides — independent of
 // the column types and the session zone.
-const asOperand = (rhs: ResolvedRhs): ResolvedRhs =>
+const asOperand = (rhs: ResolvedRhs, state: BuilderState): ResolvedRhs =>
   rhs.type === 'column' && !rhs.computed
-    ? { type: 'column', sql: asInstant(rhs), computed: true }
+    ? { type: 'column', sql: asInstant(rhs, state), computed: true }
     : rhs;
 
-const sides = (field: FieldSql, ends: ResolvedRhs[]): { lhs: string; ends: ResolvedRhs[] } => {
+const sides = (
+  field: FieldSql,
+  ends: ResolvedRhs[],
+  state: BuilderState,
+): { lhs: string; ends: ResolvedRhs[] } => {
   const perRow = ends.some((end) => end.type === 'column');
   const text = field.shape === 'json-path' || field.shape === 'text';
   return perRow || text
-    ? { lhs: asInstant(field), ends: ends.map(asOperand) }
+    ? { lhs: asInstant(field, state), ends: ends.map((end) => asOperand(end, state)) }
     : { lhs: field.sql, ends };
 };
 
@@ -45,13 +49,13 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveField(rule.field, state);
   const ordered = orderedSql(rule.dateOperator, 'date');
   if (ordered) {
-    const { lhs, ends } = sides(field, [resolvePoint(rule, state)]);
+    const { lhs, ends } = sides(field, [resolvePoint(rule, state)], state);
     return compareSql(lhs, ordered.symbol, ends[0], ordered.negated, state);
   }
 
   const range = (pair: [ResolvedRhs, ResolvedRhs] | null, negated: boolean): string => {
     if (!pair) return rangeSql(field.sql, null, negated, state);
-    const { lhs, ends } = sides(field, pair);
+    const { lhs, ends } = sides(field, pair, state);
     return rangeSql(lhs, ends as [ResolvedRhs, ResolvedRhs], negated, state);
   };
 
@@ -76,7 +80,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       if (numbers === null) return noOperandSql(field.sql, negated);
       const zone = nextParam(state, dateConfigOf(state).timeZone);
       const days = nextParam(state, numbers);
-      const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
+      const dow = `EXTRACT(DOW FROM (${asInstant(field, state)} AT TIME ZONE ${zone}))`;
       return rule.dateOperator === DateOperator.dayIn
         ? `${dow} = ANY(${days})`
         : orNull(field.sql, `${dow} <> ALL(${days})`);

@@ -248,7 +248,18 @@ export const compileFieldLiteral = (
     return Array.isArray(value) ? value.map(instant) : instant(value);
   }
   // Unstamped, check() compares the literal as written, so a string never equals a number or a
-  // boolean column; the compilers would cast it. Refuse it — stamp `coerceType` to compare it.
+  // boolean column, nor a number or boolean a String one; the compilers would cast it. Refuse it —
+  // stamp `coerceType` to compare it.
+  if (
+    rule.coerceType === undefined &&
+    declared === FieldKind.String &&
+    (Array.isArray(value) ? value : [value]).some(
+      (item) => typeof item === 'number' || typeof item === 'boolean',
+    )
+  )
+    throw new Error(
+      `'${rule.field}' is String but the literal is not a string; pass a string, or stamp coerceType: 'String'.`,
+    );
   if (
     rule.coerceType === undefined &&
     declared !== undefined &&

@@ -31,15 +31,23 @@ const isRowRef = (magnitude: Magnitude | undefined): boolean =>
 /**
  * A date read from the row as an instant, whatever the session zone. A DateTime column goes
  * through its epoch, which a `timestamp` column (UTC wall time, as Prisma writes it) and a
- * `timestamptz` share; text — a JSON path — parses as `timestamptz`.
+ * `timestamptz` share. Text — a JSON path — reads as check() reads it: digits are epoch
+ * milliseconds, a string with a zone is that instant, and a zoneless one is wall time in the
+ * evaluation's zone.
  */
-export const asInstant = ({
-  sql,
-  shape,
-}: Pick<FieldSql, 'sql'> & { shape?: FieldShape }): string =>
-  shape === 'json-path' || shape === 'text'
-    ? `(${sql})::timestamptz`
-    : `to_timestamp(EXTRACT(EPOCH FROM ${sql}))`;
+export const asInstant = (
+  { sql, shape }: Pick<FieldSql, 'sql'> & { shape?: FieldShape },
+  state: BuilderState,
+): string => {
+  if (shape !== 'json-path' && shape !== 'text') return `to_timestamp(EXTRACT(EPOCH FROM ${sql}))`;
+  const zone = nextParam(state, dateConfigOf(state).timeZone);
+  return (
+    `(CASE WHEN ${sql} ~ '^-?[0-9]+$' THEN to_timestamp((${sql})::numeric / 1000)` +
+    ` WHEN ${sql} ~* '[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?\\s*(z|[+-][0-9]{2}(:?[0-9]{2})?)\\s*$'` +
+    ` OR ${sql} ~* '\\m(gmt|utc)\\M' THEN (${sql})::timestamptz` +
+    ` ELSE (${sql})::timestamp AT TIME ZONE ${zone} END)`
+  );
+};
 
 /** True when any unit is read per row — so the shift must compile to SQL. */
 export const readsRow = (units: RelativeUnits): boolean => Object.values(units).some(isRowRef);
@@ -95,7 +103,7 @@ export const shiftDate = (
     rhs.type === 'column'
       ? rhs.computed
         ? rhs.sql
-        : asInstant(rhs)
+        : asInstant(rhs, state)
       : `${nextParam(state, rhs.value ?? null)}::timestamptz`;
   const z = nextParam(state, zone);
   const sign = direction === 1 ? '+' : '-';

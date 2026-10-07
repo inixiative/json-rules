@@ -7,6 +7,7 @@ import { Operator } from '../operator';
 import {
   CONTAINS_OPERATORS,
   EQUALITY_OPERATORS,
+  getValueShape,
   NEGATED_OPERATORS,
   NO_VALUE_OPERATORS,
   RANGE_OPERATORS,
@@ -62,13 +63,17 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const isJson = resolved.shape === 'json' || resolved.shape === 'json-path';
   if (isJson && !NO_VALUE_OPERATORS.includes(rule.operator)) {
     const operand = knownOperand(rule, state);
-    if (operand !== NOT_KNOWN)
-      return buildJsonComparison(
-        rule,
-        resolveFieldSql(rule.field, state, { jsonb: true }),
-        operand,
-        state,
+    // A Json value compares by its type, which a per-row operand doesn't fix at compile time.
+    if (operand === NOT_KNOWN)
+      throw new Error(
+        `The Json value '${rule.field}' compares against an operand known when compiling, not one read per row.`,
       );
+    return buildJsonComparison(
+      rule,
+      resolveFieldSql(rule.field, state, { jsonb: true }),
+      operand,
+      state,
+    );
   }
   if (RANGE_OPERATORS.includes(rule.operator)) {
     const ends = resolveRange(rule, state);
@@ -103,6 +108,10 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
         : `array_position(${field}, ${member}) IS NOT NULL`;
       return rule.operator === Operator.contains ? has : `NOT ${has}`;
     }
+    if (withShapeString(rule.operator))
+      throw new Error(
+        `'${rule.operator}' does not apply to the list '${rule.field}'; test its members with contains.`,
+      );
     if (listLower && EQUALITY_OPERATORS.includes(rule.operator) && Array.isArray(rhs.value)) {
       const lowered = nextParam(
         state,
@@ -240,10 +249,9 @@ const sqlMatch = (field: string, value: unknown, negated: boolean, state: Builde
 
 const NOT_KNOWN = Symbol('not known');
 
-/** A comparison's operand when it is known now — a value, or a range of two values — or
- *  NOT_KNOWN when it is read per row (a column, an offset). */
+/** A comparison's operand when it is known now — a value, or a range of two values, moved by
+ *  a known offset — or NOT_KNOWN when it is read per row. */
 const knownOperand = (rule: Rule, state: BuilderState): unknown => {
-  if (rule.offset !== undefined) return NOT_KNOWN;
   if (RANGE_OPERATORS.includes(rule.operator)) {
     const ends = resolveRange(rule, state);
     if (!ends) return null;
@@ -279,3 +287,7 @@ export const emptinessSql = (
   if (!emptyString) return empty ? `${sql} IS NULL` : `${sql} IS NOT NULL`;
   return empty ? `(${sql} IS NULL OR ${sql} = '')` : `(${sql} IS NOT NULL AND ${sql} <> '')`;
 };
+
+/** A string operator other than containment: a list has no prefix or suffix. */
+const withShapeString = (operator: string): boolean =>
+  getValueShape(operator, 'field') === 'string' && !CONTAINS_OPERATORS.includes(operator);

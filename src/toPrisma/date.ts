@@ -7,8 +7,9 @@ import { comparatorOf, NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../ope
 import type { DateRule } from '../types';
 import { absentArms, buildMapAwareFilter } from './field';
 import { notLeaf, orWhere } from './logical';
+import { ruleShape } from './mapWalk';
 import { offsetDate } from './offset';
-import type { BuildOptions, PrismaWhere } from './types';
+import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
 // The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the
@@ -19,6 +20,16 @@ import { dateConfigOf, prismaRead, readSource } from './valueSource';
 // it, and nothing complains. The single-boundary complements (notBefore/notAfter) compile to a
 // plain `gte`/`lte` and need no negation at all.
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
+  // A date in Json is text, which Prisma's Json filters compare as text, not as an instant.
+  const shape = ruleShape(
+    { field: rule.field },
+    options?.map as FieldMap | undefined,
+    options?.model,
+  );
+  if (shape === 'json' || shape === 'json-path')
+    throw new Error(
+      `A date rule on the Json value '${rule.field}' has no Prisma form (Prisma compares Json text); use toSql() or check().`,
+    );
   const arms = NEGATED_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
   const filter = buildDateLeafFilter(rule, options);
   // Nothing to compare against — a null path, bind, offset or magnitude: no row matches, and a

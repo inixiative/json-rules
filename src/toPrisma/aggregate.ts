@@ -34,6 +34,8 @@ export const buildAggregateRule = (
     );
   }
 
+  if (rule.aggregate.mode !== 'sum' && rule.aggregate.mode !== 'avg')
+    throw new Error(`aggregate.mode '${String(rule.aggregate.mode)}' is not one of sum / avg`);
   if (!rule.aggregate.field) {
     throw new Error(
       `Prisma aggregate rules require aggregate.field to specify the numeric field on the related model.`,

@@ -72,8 +72,8 @@ describe('a path past a non-Json column is an error on both compilers', () => {
 });
 
 describe('toPrisma date rules are map-aware', () => {
-  test('a Json sub-path is a Prisma JSON path filter', () => {
-    const where = getWhere(
+  test('a date in Json is text, which Prisma compares as text: refused', () => {
+    expect(() =>
       toPrisma(
         rule({
           field: 'customer.meta.since',
@@ -82,10 +82,7 @@ describe('toPrisma date rules are map-aware', () => {
         }),
         opts,
       ),
-    );
-    expect(where).toEqual({
-      customer: { meta: { path: ['since'], lt: new Date('2026-01-01T00:00:00Z') } },
-    });
+    ).toThrow('has no Prisma form');
   });
 });
 

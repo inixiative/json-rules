@@ -69,6 +69,13 @@ const cases: Record<string, [object, number[]]> = {
   ],
 };
 
+describe('an offset on a Json number', () => {
+  test('moves it as a number', async () => {
+    const rule = { field: 'meta.n', operator: 'lessThanEquals', value: 8, offset: { value: 2 } };
+    expect(await rails.run(rule as Condition)).toEqual(agree([1]));
+  });
+});
+
 describe('Json values compare as JSON', () => {
   test('notBetween keeps the other types; Prisma has no form for it', async () => {
     const result = await rails.run({

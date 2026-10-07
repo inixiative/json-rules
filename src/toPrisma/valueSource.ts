@@ -1,10 +1,12 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
 import { type Settle, settleLiteral } from '../negate';
+import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
-import type { BuildOptions } from './types';
+import { ruleShape } from './mapWalk';
+import type { BuildOptions, FieldMap } from './types';
 
 /** A path on the Prisma rail: a context read. Prisma WHERE has no column-to-column comparison
  *  or arithmetic, so a row (`$.`) ref has no form here. */
@@ -50,6 +52,21 @@ export const settleLeaf =
       (typeof leaf.path === 'string' && leaf.path !== '') ||
       typeof leaf.bind === 'string';
     if (!comparison || 'aggregate' in leaf || !sourced) return leaf;
+    // The complement of an ordered comparison keeps the values of other types, which Prisma's
+    // Json filters can't test for.
+    const shape = ruleShape(
+      { field: String(leaf.field) },
+      options?.map as FieldMap | undefined,
+      options?.model,
+    );
+    if (
+      (shape === 'json' || shape === 'json-path') &&
+      typeof leaf.operator === 'string' &&
+      ORDERED_OPERATORS.includes(leaf.operator)
+    )
+      throw new Error(
+        `The complement of '${leaf.operator}' on the Json value '${leaf.field}' has no Prisma form (it keeps values of other types); use toSql() or check().`,
+      );
     const value = readSource(leaf, options);
     const offset =
       leaf.offset === undefined ? undefined : readSource(leaf.offset as never, options);

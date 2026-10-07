@@ -1,4 +1,5 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
+import { unorderedOperand } from '../errors';
 import { hasNoOperand } from '../field';
 import { splitNull } from '../number';
 import { Operator } from '../operator';
@@ -34,6 +35,8 @@ export const buildJsonComparison = (
   const not = (expr: string): string => orNull(j, `NOT (${expr})`);
 
   if (hasNoOperand(rule, value)) return noOperandSql(j, negated);
+  const unordered = unorderedOperand(rule.operator, value);
+  if (unordered) throw unordered;
 
   /** One value: a string compares case-insensitively under the flag; anything else exactly. */
   const equal = (v: unknown): string =>
@@ -43,8 +46,14 @@ export const buildJsonComparison = (
   /** A string operator reads a string: `pattern` is a LIKE pattern. */
   const like = (pattern: string): string =>
     `(${type} = 'string' AND ${lc(text)} LIKE ${lc(nextParam(state, pattern))})`;
+  // An array member equal to `v`: `@>` reads an object or a list partially, so those compare
+  // element by element.
+  const member = (v: unknown): string =>
+    typeof v === 'object' && v !== null
+      ? `(CASE WHEN ${type} = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(${j}) AS e WHERE e = ${json(v)}) ELSE FALSE END)`
+      : `(${type} = 'array' AND ${j} @> ${json([v])})`;
   const contains = (v: unknown): string =>
-    `(${like(`%${escapeLikePattern(String(v))}%`)} OR (${type} = 'array' AND ${j} @> ${json([v])}))`;
+    `(${like(`%${escapeLikePattern(String(v))}%`)} OR ${member(v)})`;
 
   switch (rule.operator) {
     case Operator.equals:

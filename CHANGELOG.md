@@ -148,6 +148,17 @@ reads off the generated client.
   field rule read it (`'1700000000000'` parsed as a year).
 - **`indexBridges` reads own properties only**: a row keyed `constructor` was a spurious duplicate,
   and a map named after an `Object.prototype` member wrote onto it.
+- **Dates in Json read as `check()` reads them on SQL** — digits as epoch milliseconds, a zoned
+  string as its instant, a zoneless one as wall time in the evaluation's zone (it read in the
+  database session's zone). Prisma compares Json as text, so a date rule on Json is refused there.
+- **A Json value compares against an operand known at compile time**, an offset included (an
+  offset made SQL compare `->>` text); a per-row operand on Json is refused on SQL.
+- **Refused where a database would answer differently:** an ordered comparison or range against a
+  boolean, list or object (Prisma panicked); the complement of an ordered comparison on Json on
+  Prisma (it drops the other types); membership of an object or list in a Json array on Prisma
+  (`array_contains` matches partially — SQL now compares members exactly); `startsWith` /
+  `endsWith` on a list; a number or boolean literal on a String column without `coerceType`;
+  an aggregate mode other than `sum` / `avg` on Prisma.
 - **`toPrisma` escapes `%` and `_`** in `contains` / `startsWith` / `endsWith` (and Json `string_*`):
   Prisma matches with LIKE and passed them through as wildcards.
 - **A scalar list `exists` / `notEquals`** compile on Prisma (`{ not: null }` is not a list

@@ -6,7 +6,7 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { fuzzyNotCompiled, relationNotValue } from '../errors';
+import { fuzzyNotCompiled, relationNotValue, unorderedOperand } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
@@ -236,7 +236,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     isJson(shape) && operator === Operator.contains
       ? orWhere([
           at(comparisonFilter({ ...rule, operator }, options)),
-          at({ array_contains: [value] }),
+          at({ array_contains: [jsonMember(rule.field, value)] }),
         ])
       : at(comparisonFilter({ ...rule, operator: operator as Operator }, options));
   if (rule.operator === Operator.contains) return positive(Operator.contains);
@@ -305,6 +305,8 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
     return { [key]: literal, ...ci(value) };
   };
 
+  const unordered = unorderedOperand(rule.operator, val());
+  if (unordered) throw unordered;
   const comparator = comparatorOf(rule.operator, 'field');
   if (comparator && ORDERED_OPERATORS.includes(rule.operator)) return { [comparator]: val() };
 
@@ -343,6 +345,16 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
       // Negated string operators / emptiness / existence are built at the WHERE level.
       throw new Error(`Operator '${rule.operator}' is built by buildFieldRule`);
   }
+};
+
+/** A Json array member Prisma can match exactly: `array_contains` reads an object or a list
+ *  partially (its fields / members contained), unlike check()'s equal member. */
+const jsonMember = (field: string, value: unknown): unknown => {
+  if (typeof value === 'object' && value !== null)
+    throw new Error(
+      `Membership of an object or a list in the Json array '${field}' has no exact Prisma form; use toSql() or check().`,
+    );
+  return value;
 };
 
 const JSON_MATCH = {

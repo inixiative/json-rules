@@ -1,6 +1,6 @@
 import { resolveFuzzy } from './engineGlobals';
 import type { FuzzyConfig } from './fuzzy';
-import { CONTAINS_OPERATORS } from './operatorCatalog';
+import { CONTAINS_OPERATORS, ORDERED_OPERATORS, RANGE_OPERATORS } from './operatorCatalog';
 // Error texts every rail raises the same way.
 
 /** A rule kind a compiler compiles only with a field (check() also takes a root array). */
@@ -30,3 +30,19 @@ export const fuzzyNotCompiled = (rule: { fuzzy?: unknown; operator: string }): E
   resolveFuzzy(rule.fuzzy as boolean | FuzzyConfig | undefined)
     ? new Error('Fuzzy matching has no compiled form — evaluate it in memory with check().')
     : null;
+
+/** An ordered comparison or a range against a value that doesn't order — a boolean, a list or an
+ *  object: check() matches nothing, and the databases order it by type (Prisma panics). */
+export const unorderedOperand = (operator: string, value: unknown): Error | null => {
+  if (!ORDERED_OPERATORS.includes(operator) && !RANGE_OPERATORS.includes(operator)) return null;
+  const ends = RANGE_OPERATORS.includes(operator) && Array.isArray(value) ? value : [value];
+  return ends.some(
+    (end) =>
+      typeof end === 'boolean' ||
+      (typeof end === 'object' && end !== null && !(end instanceof Date)),
+  )
+    ? new Error(
+        `'${operator}' orders numbers, strings and dates; it can't compare ${JSON.stringify(value)}`,
+      )
+    : null;
+};

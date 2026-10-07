@@ -162,6 +162,15 @@ describe('a pattern matches on Postgres what it matches on RE2', () => {
   });
 });
 
+test.each([
+  { field: 'age', dateOperator: 'before', value: '2026-10-03' },
+  { field: 'age', dateOperator: 'dayIn', value: ['monday'] },
+  { field: 'createdAt', dateOperator: 'before', path: '$.age' },
+])('a date rule on a number column has no SQL form: %j', async (rule) => {
+  const result = await rails.run(rule as Condition, { now: new Date('2026-10-06T12:00:00Z') });
+  expect(result.sql).toEqual(expect.stringContaining('is not a date column'));
+});
+
 test('a date rule on a String column has no Prisma form', async () => {
   const result = await rails.run({
     field: 'name',

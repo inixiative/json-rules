@@ -34,6 +34,11 @@ const asOperand = (rhs: ResolvedRhs, state: BuilderState): ResolvedRhs =>
     ? { type: 'column', sql: asInstant(rhs, state), computed: true }
     : rhs;
 
+// A date reads from a DateTime column, or text (a String column, a Json path); a number or a
+// boolean column is not one on Postgres.
+const notADate = (field: string): Error =>
+  new Error(`'${field}' is not a date column: a date rule on it has no SQL form; use check().`);
+
 const sides = (
   field: FieldSql,
   ends: ResolvedRhs[],
@@ -48,6 +53,10 @@ const sides = (
 
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveField(rule.field, state);
+  if (field.shape === 'scalar') throw notADate(rule.field);
+  const operand = resolveSource(rule, state);
+  if (operand.type === 'column' && operand.shape === 'scalar')
+    throw notADate(String(rule.path ?? rule.field));
   const ordered = orderedSql(rule.dateOperator, 'date');
   if (ordered) {
     const { lhs, ends } = sides(field, [resolvePoint(rule, state)], state);

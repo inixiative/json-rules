@@ -8,7 +8,8 @@ import { fieldEntry, type MapWalkResult, walkWith } from './walk';
  * What a field reads, for the operators whose form depends on it: `text` (a String column),
  * `json` (a whole Json column), `json-path` (inside one), `list` (a scalar list), `relation` (a
  * to-one relation, which exists or not), `relations` (a to-many one, which only array operators
- * read), `scalar` (any other column), or `unknown` (no map, or a path the map doesn't declare).
+ * read), `instant` (a DateTime column), `scalar` (any other column), or `unknown` (no map, or a
+ * path the map doesn't declare).
  */
 export type FieldShape =
   | 'relations'
@@ -18,6 +19,7 @@ export type FieldShape =
   | 'json-path'
   | 'list'
   | 'relation'
+  | 'instant'
   | 'scalar'
   | 'unknown';
 
@@ -33,6 +35,7 @@ export const fieldShape = (walk: MapWalkResult | undefined): FieldShape => {
 const kindShape = (kind: string): FieldShape => {
   if (kind === FieldKind.Json) return 'json';
   if (kind === FieldKind.Enum) return 'enum';
+  if (kind === FieldKind.DateTime) return 'instant';
   return kind === FieldKind.String ? 'text' : 'scalar';
 };
 
@@ -66,6 +69,7 @@ export const refuseRelationsValue = (
 /** A shape whose values read as text (an undeclared field may). */
 export const readsText = (shape: FieldShape | undefined): boolean =>
   shape !== 'scalar' &&
+  shape !== 'instant' &&
   shape !== 'list' &&
   shape !== 'enum' &&
   shape !== 'relation' &&

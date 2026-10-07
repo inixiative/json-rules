@@ -1,4 +1,5 @@
 import { isRelationEntry } from '../fieldMap/entry.ts';
+import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
@@ -22,7 +23,7 @@ import {
 } from './policy.ts';
 import { projectPaths } from './projectPaths.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
-import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
+import { collectChain, getRoot } from './walk.ts';
 
 /** A visit of the PARENT surface a `where` is validated at: the where's own model, reached
  * at `relPath` (a declared path, `[]` for the anchor, or `OFF_PATH` for the model-intrinsic
@@ -647,7 +648,7 @@ const validatePathNarrowing = (
       });
       continue;
     }
-    const target = resolveRelationTarget(entry, mapName);
+    const target = relationTargetOf(entry, mapName);
     if (!target) continue;
     if (!modelOf(own(maps, target.mapName), target.modelName)) {
       errors.push({

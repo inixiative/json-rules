@@ -1,3 +1,4 @@
+import { relationTargetOf } from '../fieldMap/walk.ts';
 import { own } from '../own';
 import type { FieldMapEntry, ModelEntry, SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
@@ -9,7 +10,6 @@ import {
   type VisitEffect,
 } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { resolveRelationTarget } from './walk.ts';
 
 export type ProjectedVisit = {
   mapName: string;
@@ -151,7 +151,7 @@ export const projectPaths = (
       if (!isFieldVisible(effect, relField)) continue;
       const entry = own(model.fields, relField);
       if (!entry) continue;
-      const target = resolveRelationTarget(entry, mapName);
+      const target = relationTargetOf(entry, mapName);
       if (!target) continue;
       visit(target.mapName, target.modelName, [...relPath, relField], `${dottedPath}.${relField}`);
     }

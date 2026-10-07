@@ -1,4 +1,5 @@
 import { isJsonEntry } from '../fieldMap/entry.ts';
+import { relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
@@ -12,7 +13,7 @@ import type {
   SourceSpec,
   SourceValue,
 } from './types.ts';
-import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
+import { collectChain, getRoot } from './walk.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;
@@ -285,22 +286,25 @@ export const resolvePolicyPath = (
   path: string,
 ): { resolution: LensPathResolution; effects: VisitEffect[] } => {
   const parts = path.split('.');
-  let mapName = startMap;
-  let modelName = startModel;
-  let relPath = [...startPath];
   const hops: LensPathHop[] = [];
   const effects: VisitEffect[] = [];
-
-  for (let i = 0; i < parts.length; i++) {
-    const model = modelOf(own(policy.lens.maps, mapName), modelName);
-    if (!model) return { resolution: { outcome: 'missing', index: i, hops }, effects };
-    const effect = resolveVisit(policy, mapName, modelName, relPath);
-    const fieldName = parts[i];
-    const entry = own(model.fields, fieldName);
+  const from = { mapName: startMap, modelName: startModel, relPath: startPath };
+  for (const { index: i, field: fieldName, at, entry, next } of walkMaps(
+    policy.lens.maps,
+    from,
+    path,
+  )) {
     if (!entry) return { resolution: { outcome: 'missing', index: i, hops }, effects };
+    const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
     if (!isFieldVisible(effect, fieldName))
       return { resolution: { outcome: 'hidden', index: i, hops }, effects };
-    const hop: LensPathHop = { field: fieldName, entry, mapName, modelName, relPath: [...relPath] };
+    const hop: LensPathHop = {
+      field: fieldName,
+      entry,
+      mapName: at.mapName,
+      modelName: at.modelName,
+      relPath: [...at.relPath],
+    };
     hops.push(hop);
     effects.push(effect);
     const last = i === parts.length - 1;
@@ -317,11 +321,7 @@ export const resolvePolicyPath = (
         effects,
       };
     }
-    const target = resolveRelationTarget(entry, mapName);
-    if (!target) return { resolution: { outcome: 'pastScalar', index: i, hops }, effects };
-    relPath = [...relPath, fieldName];
-    mapName = target.mapName;
-    modelName = target.modelName;
+    if (!next) return { resolution: { outcome: 'pastScalar', index: i, hops }, effects };
   }
   return { resolution: { outcome: 'missing', index: parts.length, hops }, effects };
 };
@@ -398,7 +398,7 @@ export const stepIntoField = (
   const walked = lensPathEnd(policy, mapName, modelName, relPath, target.path);
   if (!walked) return { violation: 'path does not resolve through the narrowed lens' };
   const open = isJsonEntry(walked.entry);
-  const relation = resolveRelationTarget(walked.entry, walked.mapName);
+  const relation = relationTargetOf(walked.entry, walked.mapName);
   const next = relation
     ? { ...relation, relPath: [...walked.relPath, walked.terminalFieldName], open }
     : { ...target.scope, open };
@@ -430,20 +430,19 @@ export const relationHops = (
   end: { mapName: string; modelName: string; relPath: string[] } | null;
 } => {
   const parts = path.split('.');
-  let at = { ...from, relPath: [...from.relPath] };
   const hops: RelationHop[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const entry = fieldOf(own(maps, at.mapName), at.modelName, parts[i]);
-    const relation = entry && resolveRelationTarget(entry, at.mapName);
-    if (!entry || !relation) break;
-    at = { ...relation, relPath: [...at.relPath, parts[i]] };
+  let end: { mapName: string; modelName: string; relPath: string[] } | null = null;
+  for (const { index: i, field, at, entry, next } of walkMaps(maps, from, path)) {
+    if (!entry || !next) break;
+    const relPath = [...at.relPath, field];
     hops.push({
-      map: at.mapName,
-      model: at.modelName,
-      relPath: [...at.relPath],
+      map: next.mapName,
+      model: next.modelName,
+      relPath,
       prefix: `${prefix}${parts.slice(0, i + 1).join('.')}`,
       isList: entry.isList === true,
     });
+    if (i === parts.length - 1) end = { ...next, relPath: [...relPath] };
   }
-  return { hops, end: hops.length === parts.length ? at : null };
+  return { hops, end };
 };

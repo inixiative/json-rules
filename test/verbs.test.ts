@@ -106,7 +106,7 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
   {
     verb: 'walk a field path through a FieldMap',
     pattern: /\.split\('\.'\)[\s\S]{0,400}\b(modelOf|fieldOf)\(/,
-    owners: ['src/toPrisma/mapWalk.ts', 'src/lens/policy.ts'],
+    owners: ['src/fieldMap/walk.ts'],
   },
 ];
 

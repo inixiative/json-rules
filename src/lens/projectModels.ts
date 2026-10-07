@@ -1,13 +1,13 @@
 import { endpointKey } from '../fieldMap/endpointKey.ts';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
+import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import { type ProjectOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { resolveRelationTarget } from './walk.ts';
 
 const modelKey = (mapName: string, modelName: string): string => `${mapName}::${modelName}`;
 
@@ -115,7 +115,7 @@ export const projectModels = (
       unionFieldInto(acc.fields, fieldName, nextEntry);
 
       if (isRelationEntry(entry)) {
-        const target = resolveRelationTarget(entry, mapName);
+        const target = relationTargetOf(entry, mapName);
         if (!target) continue;
         if (declared && effect.relations.has(fieldName)) {
           queue.push({

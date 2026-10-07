@@ -1,6 +1,7 @@
 import { relationsNotValue } from '../errors';
 import { applyCoercion } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
+import { walkMaps } from '../fieldMap/walk';
 import { COMPILE_COERCED_KINDS, FieldKind, isFieldKind, NUMERIC_KINDS } from '../operatorCatalog';
 import { modelOf, own } from '../own';
 import { someCondition } from '../traverse';
@@ -37,31 +38,30 @@ export type MapWalkResult =
 export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): MapWalkResult => {
   const parts = field.split('.');
   const hops: MapHop[] = [];
-  let model = rootModel;
-  for (let i = 0; i < parts.length; i++) {
-    const entry = own(modelOf(map, model)?.fields, parts[i]);
+  const from = { mapName: '', modelName: rootModel, relPath: [] };
+  for (const { index: i, field: column, at, entry } of walkMaps({ '': map }, from, field)) {
+    const model = at.modelName;
     if (!entry) return { kind: 'fallback', hops };
     if (entry.kind === 'bridge') return { kind: 'bridge', hops };
     const last = i === parts.length - 1;
     if (entry.kind === 'object') {
       if (!modelOf(map, entry.type)) return { kind: 'fallback', hops };
-      if (last) return { kind: 'direct', hops, entry, model, column: parts[i] };
-      hops.push({ field: parts[i], prefix: parts.slice(0, i + 1).join('.'), entry, from: model });
-      model = entry.type;
+      if (last) return { kind: 'direct', hops, entry, model, column };
+      hops.push({ field: column, prefix: parts.slice(0, i + 1).join('.'), entry, from: model });
       continue;
     }
-    if (last) return { kind: 'direct', hops, entry, model, column: parts[i] };
+    if (last) return { kind: 'direct', hops, entry, model, column };
     if (isJsonEntry(entry))
       return {
         kind: 'json-path',
         hops,
         entry,
         model,
-        column: parts[i],
+        column,
         stopIndex: i + 1,
         jsonPath: parts.slice(i + 1),
       };
-    return { kind: 'past-scalar', hops, column: parts[i] };
+    return { kind: 'past-scalar', hops, column };
   }
   return { kind: 'fallback', hops };
 };

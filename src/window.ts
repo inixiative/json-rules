@@ -1,7 +1,7 @@
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import { readOwnPath } from './scope';
-import { conditionShape } from './traverse';
-import type { ArrayRule, Condition, WindowFields } from './types';
+import { allOf, conditionShape } from './traverse';
+import type { AggregateRule, ArrayRule, Condition, WindowFields } from './types';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
 export const hasWindow = (rule: WindowFields): boolean =>
@@ -31,7 +31,7 @@ const conditionOpAndField = (condition: unknown): { op: string; field: string } 
  * `atLeast: 1` is treated as `any`. Returns the de-windowed condition, or null when the
  * rule is windowed but not extremal-eligible (caller throws "unsupported").
  */
-export const extremalRewrite = (rule: ArrayRule): Condition | null => {
+const extremalRewrite = (rule: ArrayRule): Condition | null => {
   if (rule.filter !== undefined) return null;
   if (rule.skip !== undefined && rule.skip !== 0) return null;
   if (rule.take !== 1) return null;
@@ -110,4 +110,37 @@ const compareNullsLast = (a: unknown, b: unknown, dir: 'asc' | 'desc'): number =
   const y = b instanceof Date ? b.getTime() : (b as number | string);
   const order = x < y ? -1 : x > y ? 1 : 0;
   return dir === 'asc' ? order : -order;
+};
+
+/**
+ * A windowed array or aggregate rule as one Prisma can compile, or null when it can't. A filter
+ * alone selects the elements a rule reads, so it folds into the rule: into the condition of any /
+ * none / a count / an aggregate, as the antecedent of `all`, and as the condition of `none` / `any`
+ * for `empty` / `notEmpty`. An unfiltered extremal window rewrites as `extremalRewrite` does.
+ */
+export const windowRewrite = (rule: ArrayRule | AggregateRule): Condition | null => {
+  if (!hasWindow(rule)) return rule as Condition;
+  const ordered = !!rule.orderBy?.length || rule.take !== undefined || rule.skip !== undefined;
+  if (rule.filter !== undefined && !ordered) {
+    const { filter, ...rest } = rule;
+    if ('aggregate' in rule)
+      return {
+        ...rest,
+        condition: rule.condition === undefined ? filter : allOf([filter, rule.condition]),
+      } as Condition;
+    switch (rule.arrayOperator) {
+      case 'all':
+        return { ...rest, condition: { if: filter, then: rule.condition ?? true } } as Condition;
+      case 'empty':
+        return { ...rest, arrayOperator: 'none', condition: filter } as Condition;
+      case 'notEmpty':
+        return { ...rest, arrayOperator: 'any', condition: filter } as Condition;
+      default:
+        return {
+          ...rest,
+          condition: rule.condition === undefined ? filter : allOf([filter, rule.condition]),
+        } as Condition;
+    }
+  }
+  return 'aggregate' in rule || rule.filter !== undefined ? null : extremalRewrite(rule);
 };

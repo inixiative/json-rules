@@ -35,7 +35,7 @@ import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { conditionShape } from './traverse';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
-import { extremalRewrite, hasWindow } from './window';
+import { hasWindow, windowRewrite } from './window';
 
 export type ValidationIssue = {
   path: string;
@@ -920,9 +920,9 @@ const validateWindow = (
   const windowed = hasWindow(rule as WindowFields);
 
   if (windowed && context.target !== 'check') {
-    // toPrisma supports the extremal (take:1, aligned, unfiltered) rewrite to every/some.
+    // toPrisma compiles a filter-only window and the extremal (take:1, aligned) one.
     const eligible =
-      context.target === 'toPrisma' && extremalRewrite(rule as unknown as ArrayRule) !== null;
+      context.target === 'toPrisma' && windowRewrite(rule as unknown as ArrayRule) !== null;
     if (!eligible) {
       pushIssue(
         context,

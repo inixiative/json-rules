@@ -4,7 +4,7 @@ import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
 import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
 import type { AggregateRule, ArrayRule, Condition } from '../types';
-import { extremalRewrite, hasWindow } from '../window';
+import { hasWindow, windowRewrite } from '../window';
 import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, emptinessWhere, hopArms } from './field';
 import { orWhere, overFetch } from './logical';
@@ -42,7 +42,7 @@ const compileArrayRule = (
   state?: PrismaBuildState,
 ): PrismaWhere => {
   if (hasWindow(rule)) {
-    const rewritten = extremalRewrite(rule);
+    const rewritten = windowRewrite(rule);
     if (!rewritten) throw new Error(WINDOW_UNSUPPORTED);
     return buildCondition(rewritten, options, state);
   }

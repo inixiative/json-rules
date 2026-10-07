@@ -187,6 +187,12 @@ For a single row, `comments.all(body matches foo)` with
 Deleted rows simply don't participate. A naive `all(scope ∧ user)` instead rejects
 the user's data over rows they weren't even asking about.
 
+`toPrisma` compiles a window that is only a `filter` (no `orderBy` / `take` / `skip`) by folding
+it into the rule: `all` becomes "no row in scope breaks the condition", through the exact
+complement of the condition (NULL fields included); `any`, `none`, counts and aggregates take
+`filter AND condition`. A window with `orderBy` / `take` / `skip` beyond the extremal case
+stays check-only, and `toSql` compiles no relation arrays.
+
 ### Why not a per-row implication?
 
 A previous approach realized the grant as a per-row implication *inside the condition* —
@@ -633,12 +639,12 @@ import { check, narrowRule } from '@inixiative/json-rules';
 const composed = narrowRule(userRule, narrowing);
 // composed now contains the user rule + tenantId/deletedAt wheres anchored
 // at every User and Post visit. Under the `all`, the Post grant is the
-// array rule's window `filter`, so only check() runs it.
+// array rule's window `filter`, which toPrisma folds into the rule.
 
 check(composed, userWithPosts);
 ```
 
-A rule with no narrowed `all` compiles as usual:
+The composed rule compiles like any other:
 
 ```ts
 import { executePrismaPlan, toPrisma } from '@inixiative/json-rules';

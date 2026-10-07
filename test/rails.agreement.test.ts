@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
-import { agree, openRails, type Rails } from './rails/harness';
+import { narrowRule } from '../index';
+import { agree, map, openRails, type Rails } from './rails/harness';
 
 // check(), toSql on Postgres and toPrisma on Prisma agree on every rule they all compile.
 // Fixture (test/rails/harness.ts): users 1–5; 2 has a DB-NULL meta and no tags, 5 a JSON-null
@@ -532,4 +533,43 @@ describe('the rule matrix', () => {
         else expect(result[rail]).toEqual(ids);
       }
     });
+});
+
+describe('a narrowed array rule compiles on Prisma', () => {
+  // The grant reads only posts with views; narrowRule puts it in the rule's window filter.
+  const lens = { maps: { app: map }, mapName: 'app', model: 'User' };
+  const narrowing = {
+    parent: lens,
+    root: { relations: { posts: { where: { field: 'views', operator: 'exists' } } } },
+  };
+  const narrowed = (r: object) => narrowRule(rule(r), narrowing as never);
+
+  test('all over the granted posts', async () => {
+    const result = await rails.run(
+      narrowed({
+        field: 'posts',
+        arrayOperator: 'all',
+        condition: { field: 'title', operator: 'equals', value: 'hello' },
+      }),
+    );
+    expect(result.check).toEqual([2, 3, 4, 5]);
+    expect(result.prisma).toEqual([2, 3, 4, 5]);
+  });
+
+  test('any and atLeast over the granted posts', async () => {
+    const any = await rails.run(
+      narrowed({
+        field: 'posts',
+        arrayOperator: 'any',
+        condition: { field: 'title', operator: 'equals', value: 'Hi' },
+      }),
+    );
+    expect(any.check).toEqual([]);
+    expect(any.prisma).toEqual([]);
+    const two = await rails.run(
+      narrowed({ field: 'posts', arrayOperator: 'atLeast', count: 2, condition: true }),
+    );
+    expect(two.check).toEqual([1]);
+    expect(two.prisma).toEqual([1]);
+  });
 });

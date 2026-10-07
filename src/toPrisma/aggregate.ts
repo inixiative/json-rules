@@ -4,7 +4,7 @@ import { negate } from '../negate';
 import { Operator } from '../operator';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
-import { hasWindow } from '../window';
+import { hasWindow, windowRewrite } from '../window';
 import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
@@ -18,10 +18,14 @@ export const buildAggregateRule = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
-  if (hasWindow(rule))
-    throw new Error(
-      'Windowing (orderBy/take/skip) is not supported by toPrisma(); evaluate with check().',
-    );
+  if (hasWindow(rule)) {
+    const rewritten = windowRewrite(rule);
+    if (!rewritten)
+      throw new Error(
+        'Windowing (orderBy/take/skip) is not supported by toPrisma(); evaluate with check().',
+      );
+    return buildCondition(rewritten, options, state);
+  }
 
   if (!options?.map || !options?.model || !state) {
     throw new Error(

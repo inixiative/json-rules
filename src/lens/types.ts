@@ -14,8 +14,8 @@ export type Lens = FieldMapSet & {
  * - SCHEMA narrowing (picks/omits/enumPicks/enumOmits): controls what's visible
  *   in the type surface. AI/SDK consumers can't see narrowed-away fields.
  * - DATA narrowing (where): controls which ROWS are in scope. Filter-first
- *   semantic, anchored to the model. Under arrayOperator: 'all', applied via
- *   implication (negate) to preserve filter-first meaning — see narrowRule.
+ *   semantic, anchored to the model. Under arrayOperator: 'all', it becomes the window filter
+ *   (filter-first) — see narrowRule.
  */
 export type ModelDefaultNarrowing = {
   picks?: string[];

@@ -7,7 +7,7 @@ import { parseScopeRef } from '../scope';
 import { isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
 import type { ValidationIssue } from '../validate';
-import { extremalRewrite, hasWindow } from '../window';
+import { hasWindow, windowRewrite } from '../window';
 import { validateRuleInLens } from './checkRule.ts';
 import type { Policy } from './policy.ts';
 import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
@@ -39,8 +39,7 @@ const restrictByOperator = (acc: Acc, operator: string, family: OperatorFamily):
 const restrictByWindow = (acc: Acc, cond: Record<string, unknown>): void => {
   if (!hasWindow(cond as unknown as WindowFields)) return;
   acc.targets.delete('toSql');
-  const isAggregate = 'aggregate' in cond;
-  if (isAggregate || extremalRewrite(cond as unknown as ArrayRule) === null) {
+  if (windowRewrite(cond as unknown as ArrayRule) === null) {
     acc.targets.delete('toPrisma');
   }
 };

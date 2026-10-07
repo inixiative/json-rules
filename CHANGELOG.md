@@ -152,6 +152,9 @@ reads off the generated client.
   Prisma matches with LIKE and passed them through as wildcards.
 - **A scalar list `exists` / `notEquals`** compile on Prisma (`{ not: null }` is not a list
   filter).
+- **A narrowed `all` compiles on Prisma.** `narrowRule` puts an `all` grant in the window `filter`;
+  `toPrisma` folds a filter-only window into the rule (`all` through the exact complement of its
+  condition, the rest as `filter AND condition`). Both compilers threw on it.
 - **A window sorts NULLs last** in both directions: `orderBy views desc, take 1` is the largest
   value, as "latest" reads (a NULL sorted first). The extremal `all` rewrite on Prisma is exact
   under it: the array is empty, or some element has a value and none with one breaks the bound.

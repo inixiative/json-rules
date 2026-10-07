@@ -15,12 +15,8 @@ import type { RuleLensViolation } from './checkRule.ts';
 import { isJsonEntry } from './walk.ts';
 
 /** A leaf's literal operands — the elements for in/notIn/between. Null when the comparison
- *  value is a `path` ref or a `bind` token: a runtime value, unknown at gate time. */
-export const ruleLiterals = (cond: {
-  value?: unknown;
-  path?: unknown;
-}): readonly unknown[] | null => {
-  if (cond.path !== undefined) return null;
+ *  value is read at evaluation (a `path` or `bind`), unknown at gate time. */
+export const ruleLiterals = (cond: { value?: unknown }): readonly unknown[] | null => {
   const v = cond.value;
   if (v === undefined) return null;
   if (Array.isArray(v)) return v;

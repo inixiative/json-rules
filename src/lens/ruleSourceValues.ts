@@ -6,7 +6,13 @@ import {
 } from '../operatorCatalog';
 import { own } from '../own';
 import { resolveScopeRef } from '../scope';
-import { type ConditionNode, isLogicalNode, isRelationNode, visitCondition } from '../traverse.ts';
+import {
+  type ConditionNode,
+  isLogicalNode,
+  isRelationNode,
+  leafSources,
+  visitCondition,
+} from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { resolvePolicy, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -26,15 +32,13 @@ export type RuleSourceValues = {
   /** Every literal a leaf at this source named; list operators flattened, deduped by content. */
   values: RuleValue[];
   /**
-   * The set of values cannot be enumerated from literals: a leaf took its value from
-   * `path` / `bind`, used an operator that describes values without naming them
+   * The set of values cannot be enumerated from literals: a leaf read a value at evaluation
+   * (a `path` / `bind` on its comparison value, an offset or an amount) or moved it by an offset, used an operator that describes values without naming them
    * (substring, pattern, range, date window), or used an operator the catalog does not
    * know. A caller deciding anything from `values` must fail closed.
    */
   dynamic: boolean;
 };
-
-const DYNAMIC_KEYS = ['path', 'bind'] as const;
 
 /** Shapes whose `value` IS the named value(s): a literal, an ordered literal, a list, a
  * day list, or a date literal / point expression. Everything else describes values
@@ -62,9 +66,13 @@ const literals = (value: unknown): RuleValue[] =>
 type Contribution = { values: RuleValue[]; dynamic: boolean };
 
 const contribution = (node: ConditionNode): Contribution => {
-  if (DYNAMIC_KEYS.some((k) => own(node as Record<string, unknown>, k) !== undefined)) {
+  // A value read at evaluation — a path or bind anywhere on the leaf, its comparison value, an
+  // offset or an amount — or an offset moving a literal: the literal doesn't name the value.
+  if (
+    node.offset !== undefined ||
+    leafSources(node).some(({ source }) => source.value === undefined)
+  )
     return { values: [], dynamic: true };
-  }
   const entry = catalogEntry(node);
   if (!entry) return { values: [], dynamic: true };
   if (VALUELESS_SHAPES.has(entry.valueShape)) return { values: [], dynamic: false };

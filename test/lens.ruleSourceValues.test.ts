@@ -289,3 +289,29 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
     ]);
   });
 });
+
+describe('ruleSourceValues — a value read at evaluation, or moved, is dynamic', () => {
+  const tierSource = (r: object) =>
+    ruleSourceValues(narrowing, r as Condition).find((s) => s.field === 'tier');
+
+  test('an offset moves the literal', () => {
+    expect(
+      tierSource({ field: 'tier', operator: 'equals', value: 'gold', offset: { value: 1 } })
+        ?.dynamic,
+    ).toBe(true);
+  });
+
+  test('an offset read from a bind', () => {
+    expect(
+      tierSource({ field: 'tier', operator: 'equals', value: 'gold', offset: { bind: 'n' } })
+        ?.dynamic,
+    ).toBe(true);
+  });
+
+  test('a plain literal is still enumerable', () => {
+    expect(tierSource({ field: 'tier', operator: 'equals', value: 'gold' })).toMatchObject({
+      values: ['gold'],
+      dynamic: false,
+    });
+  });
+});

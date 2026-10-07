@@ -55,8 +55,21 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const lower =
     resolveCaseInsensitive(rule.caseInsensitive) &&
     text(resolved.shape) &&
-    (rhs.type === 'column' ? !arithmetic && text(rhs.shape) : typeof rhs.value === 'string');
+    (rhs.type === 'column' ? !arithmetic && text(rhs.shape) : hasString(rhs.value));
   const lc = (expr: string): string => (lower ? `LOWER(${expr})` : expr);
+  const lowered = (values: unknown[]): unknown[] =>
+    lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
+
+  if (resolved.shape === 'relation' && !NO_VALUE_OPERATORS.includes(rule.operator))
+    if (!(rhs.type === 'value' && rhs.value === null && EQUALITY.includes(rule.operator)))
+      throw new Error(
+        `'${rule.field}' is a relation: it exists or not; compare its fields with '${rule.field}.<field>'.`,
+      );
+  // A Json value as jsonb, where JSON null, "" and [] are told apart.
+  const json = (): string | undefined =>
+    resolved.shape === 'json' || resolved.shape === 'json-path'
+      ? resolveFieldSql(rule.field, state, { jsonb: true })
+      : undefined;
 
   // A scalar list contains a member, as check() reads a list; NULL elements and a NULL list
   // contain nothing.
@@ -88,14 +101,14 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     case Operator.in: {
       const { values, hasNull } = splitNull(rhsVal);
       if (!values.length) return hasNull ? `${field} IS NULL` : 'FALSE';
-      const anyOf = `${field} = ANY(${nextParam(state, values)})`;
+      const anyOf = `${lc(field)} = ANY(${nextParam(state, lowered(values))})`;
       return hasNull ? orNull(anyOf) : anyOf;
     }
 
     case Operator.notIn: {
       const { values, hasNull } = splitNull(rhsVal);
       if (!values.length) return hasNull ? `${field} IS NOT NULL` : 'TRUE';
-      const noneOf = `${field} <> ALL(${nextParam(state, values)})`;
+      const noneOf = `${lc(field)} <> ALL(${nextParam(state, lowered(values))})`;
       return hasNull ? `(${noneOf} AND ${field} IS NOT NULL)` : orNull(noneOf);
     }
 
@@ -119,11 +132,16 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     case Operator.notMatches:
       return orNull(`${field} !~ ${nextParam(state, rhsVal)}`);
 
+    // Empty is NULL, '', or an empty list or Json array, as check() reads it.
     case Operator.isEmpty:
+      if (resolved.shape === 'list') return `(${field} IS NULL OR cardinality(${field}) = 0)`;
+      if (json()) return `(${json()} IS NULL OR ${json()} IN (${EMPTY_JSON}))`;
       if (!acceptsEmptyString(rule, state.map, state.currentModel)) return `${field} IS NULL`;
       return `(${field} IS NULL OR ${field} = '')`;
 
     case Operator.notEmpty:
+      if (resolved.shape === 'list') return `cardinality(${field}) > 0`;
+      if (json()) return `${json()} NOT IN (${EMPTY_JSON})`;
       if (!acceptsEmptyString(rule, state.map, state.currentModel)) return `${field} IS NOT NULL`;
       return `(${field} IS NOT NULL AND ${field} <> '')`;
 
@@ -177,3 +195,11 @@ const isNumeric = (operand: unknown): boolean =>
   (Array.isArray(operand) &&
     operand.some((item) => typeof item === 'number') &&
     operand.every((item) => typeof item === 'number' || item === null || item === undefined));
+
+const EMPTY_JSON = `'null'::jsonb, '""'::jsonb, '[]'::jsonb`;
+const EQUALITY: readonly string[] = [Operator.equals, Operator.notEquals];
+
+const hasString = (operand: unknown): boolean =>
+  Array.isArray(operand)
+    ? operand.some((item) => typeof item === 'string')
+    : typeof operand === 'string';

@@ -77,6 +77,20 @@ reads off the generated client.
   (`posts.title equals …`): `toSql` matched any child and `toPrisma` emitted an invalid filter.
   Compare its rows with an array rule on `posts`.
 - **Prisma relation aggregates keep parents with no children** (their sum and average are 0).
+- **A relation `all` fails a child whose condition reads NULL**, as in `check()`: Prisma's
+  `every` passed it. `all` compiles to `none` over the exact complement of its condition.
+- **A bridged condition over-fetches** in `none`, `all`, `atMost` and `exactly` (a matching child
+  can make them false); `none: {}` under-fetched. A bridged `isEmpty` no longer emits
+  `OR: [{}, {}]`, which Prisma reads as match-nothing.
+- **A to-one relation is a field that exists or not**: `org exists`, `org.parent notExists`,
+  `isEmpty` / `notEmpty`, and `equals` / `notEquals` null compile on both compilers (they emitted
+  a missing column and an invalid filter).
+- **Empty is `null`, `''`, or `[]`** on every rail: a list or a Json array with no elements is
+  empty, as `isEmpty` / `notEmpty` and the array operators read it.
+- **`caseInsensitive` applies to `in` / `notIn`** on every rail (all three ignored it).
+- **A `Date` field value compares as DateTime** in `check()` without a `coerceType`, as the
+  compilers read a DateTime column: `createdAt greaterThan '2026-10-05T00:00:00Z'` compared a
+  `Date` with a string.
 - **An implication with a NULL antecedent** holds on every rail (`NOT(if)` was NULL in SQL).
 
 Prisma filters by column kind, from the map (a stamped `coerceType` is the fallback):
@@ -128,7 +142,9 @@ On the SQL rail:
 ### Output changes
 
 - `toPrisma` leaves a single-arm OR unwrapped (`{ a: … }`, not `{ OR: [{ a: … }] }`).
-- `toPrisma` writes `notContains` as `{ NOT: { f: { contains } } }` for every column kind.
+- `toPrisma` leaves a single-arm AND unwrapped too.
+- `toPrisma` writes `notContains` as `{ NOT: { f: { contains } } }` for every column kind, and a
+  relation `all` as `{ none: <complement> }`.
 - `toSql` binds `Date` parameters as ISO strings.
 - A `toSql` array or aggregate column is alias-qualified when a map is given.
 

@@ -66,7 +66,10 @@ export const openRails = async () => {
   });
   // check() reads the rows a consumer holds: what Prisma loads, relations included.
   const rows = await prisma.user.findMany({
-    include: { org: { include: { parent: { include: { parent: true } } } }, posts: true },
+    include: {
+      org: { include: { users: true, parent: { include: { parent: true } } } },
+      posts: true,
+    },
     orderBy: { id: 'asc' },
   });
   const table = map.models.User?.dbName ?? 'User';

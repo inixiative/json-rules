@@ -1,11 +1,14 @@
+import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
+import { ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
 import type { ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, nullOf } from './field';
 import { orWhere } from './logical';
-import { type FieldShape, relationTarget, ruleShape } from './mapWalk';
+import { conditionTouchesBridge, type FieldShape, relationTarget, ruleShape } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import { settleLeaf } from './valueSource';
 
 const WINDOW_UNSUPPORTED =
   'Windowing (orderBy/take/skip) is not supported by toPrisma() for this rule; ' +
@@ -34,6 +37,19 @@ export const buildArrayRule = (
     if (!rewritten) throw new Error(WINDOW_UNSUPPORTED);
     return buildArrayRule(rewritten, options, state);
   }
+
+  // A condition that crosses a bridge is unknown here: unless a broader condition only widens the
+  // rule, over-fetch every parent and let check() decide.
+  if (
+    rule.condition !== undefined &&
+    !ARRAY_MONOTONE_OPERATORS.includes(rule.arrayOperator) &&
+    conditionTouchesBridge(
+      rule.condition,
+      options?.map as FieldMap | undefined,
+      childOptionsFor(rule, options)?.model,
+    )
+  )
+    return {};
 
   // Count operators generate a full WHERE clause (step ref) — skip the nested-filter wrapper
   if (
@@ -105,9 +121,13 @@ const buildArrayLeafFilter = (
   // Without this, JSON-path and bridge detection misfire inside some/every/none.
   const childOptions = childOptionsFor(rule, options);
   switch (rule.arrayOperator) {
+    // Prisma's `every` passes a child whose condition is NULL (a NULL field), which check()
+    // fails: no child in the exact complement instead.
     case ArrayOperator.all:
       if (!rule.condition) throw new Error(`ArrayOperator 'all' requires a condition`);
-      return { every: buildCondition(rule.condition, childOptions, state) };
+      return {
+        none: buildCondition(negate(rule.condition, settleLeaf(childOptions)), childOptions, state),
+      };
 
     case ArrayOperator.any:
       if (!rule.condition) throw new Error(`ArrayOperator 'any' requires a condition`);

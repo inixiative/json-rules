@@ -71,7 +71,7 @@ describe('toPrisma folds boolean constants through OR', () => {
 
 describe('toPrisma folds boolean constants through AND', () => {
   it('`true` arms drop out of an AND', () => {
-    expect(getWhere(toPrisma({ all: [mateo, true] }))).toEqual({ AND: [MATEO] });
+    expect(getWhere(toPrisma({ all: [mateo, true] }))).toEqual(MATEO);
     expect(getWhere(toPrisma({ all: [true, { all: [] }] }))).toEqual({});
   });
 
@@ -84,16 +84,12 @@ describe('toPrisma folds boolean constants through AND', () => {
 describe('toPrisma folds boolean constants through the implication', () => {
   it('`if: true` never emits `NOT: {}`', () => {
     expect(getWhere(toPrisma({ if: true, then: gold }))).toEqual(GOLD);
-    expect(getWhere(toPrisma({ if: true, then: gold, else: silver }))).toEqual({
-      AND: [GOLD],
-    });
+    expect(getWhere(toPrisma({ if: true, then: gold, else: silver }))).toEqual(GOLD);
   });
 
   it('`if: false` is vacuous without else and selects else with it', () => {
     expect(getWhere(toPrisma({ if: false, then: gold }))).toEqual({});
-    expect(getWhere(toPrisma({ if: false, then: gold, else: silver }))).toEqual({
-      AND: [SILVER],
-    });
+    expect(getWhere(toPrisma({ if: false, then: gold, else: silver }))).toEqual(SILVER);
   });
 
   it('`then: true` is vacuous; `then: false` is the negated antecedent', () => {
@@ -111,7 +107,7 @@ describe('toPrisma folds boolean constants through the implication', () => {
 
   it('`else: true` drops the else arm', () => {
     expect(getWhere(toPrisma({ if: mateo, then: gold, else: true }))).toEqual({
-      AND: [{ OR: [{ customerId: { not: 'mateo' } }, GOLD] }],
+      OR: [{ customerId: { not: 'mateo' } }, GOLD],
     });
   });
 });
@@ -183,7 +179,7 @@ describe('toPrisma bridge sentinel inside `any` over-fetches', () => {
   });
 
   it('`all: [bridge, x]` keeps only the local arm', () => {
-    expect(getWhere(toPrisma({ all: [tech, gold] }, opts))).toEqual({ AND: [GOLD] });
+    expect(getWhere(toPrisma({ all: [tech, gold] }, opts))).toEqual(GOLD);
   });
 });
 
@@ -247,7 +243,7 @@ describe('toPrisma folding keeps groupBy step state coherent', () => {
     expect(steps[0].args.having).toEqual({ authorId: { _count: { gte: 2 } } });
     expect(steps[1].args.having).toEqual({ authorId: { _count: { gte: 1 } } });
     expect(getWhere(plan)).toEqual({
-      AND: [{ id: { in: { __step: 0 } } }, { AND: [{ id: { in: { __step: 1 } } }] }],
+      AND: [{ id: { in: { __step: 0 } } }, { id: { in: { __step: 1 } } }],
     });
   });
 

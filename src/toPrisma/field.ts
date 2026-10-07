@@ -7,9 +7,9 @@ import {
 import { hasNoOperand } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
-import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
+import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS, NO_VALUE_OPERATORS } from '../operatorCatalog';
 import type { Rule } from '../types';
-import { notLeaf, orWhere } from './logical';
+import { andWhere, notLeaf, orWhere } from './logical';
 import {
   acceptsEmptyString,
   compileFieldLiteral,
@@ -75,6 +75,57 @@ export const absentArms = (
   ];
 };
 
+/**
+ * `mode: 'insensitive'` when the rule is case-insensitive and compares text: a String column, or a
+ * string (or strings) against Json or an undeclared field — and only where the connector accepts
+ * QueryMode (MySQL/SQLite are case-insensitive by collation and reject it).
+ */
+const queryMode = (
+  rule: Rule,
+  options: BuildOptions | undefined,
+  shape: FieldShape,
+  value: unknown,
+): { mode?: 'insensitive' } => {
+  const provider = (options?.datasource?.provider ??
+    engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
+  const strings = Array.isArray(value)
+    ? value.some((item) => typeof item === 'string')
+    : typeof value === 'string';
+  const text = shape === 'text' || ((isJson(shape) || shape === 'unknown') && strings);
+  return resolveCaseInsensitive(rule.caseInsensitive) && supportsQueryMode(provider) && text
+    ? { mode: 'insensitive' }
+    : {};
+};
+
+/** The non-null values that read as empty, as filters: `''`, and `[]` on a list or Json. */
+const emptyValues = (shape: FieldShape, emptyString: boolean): Record<string, unknown>[] => {
+  if (shape === 'list') return [{ isEmpty: true }];
+  const values: Record<string, unknown>[] = emptyString ? [{ equals: '' }] : [];
+  return isJson(shape) ? [...values, { equals: [] }] : values;
+};
+
+const notEmpty = (empty: Record<string, unknown>): Record<string, unknown> =>
+  'isEmpty' in empty ? { isEmpty: false } : { not: empty.equals };
+
+/** A to-one relation as a field: it exists or it doesn't. */
+const buildRelationRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+  const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
+  const value = NO_VALUE_OPERATORS.includes(rule.operator) ? null : readSource(rule, options);
+  const absent =
+    rule.operator === Operator.notExists ||
+    rule.operator === Operator.isEmpty ||
+    (rule.operator === Operator.equals && value === null);
+  const present =
+    rule.operator === Operator.exists ||
+    rule.operator === Operator.notEmpty ||
+    (rule.operator === Operator.notEquals && value === null);
+  if (absent) return orWhere([at({ is: null }), ...hopArms(rule.field, options)]);
+  if (present) return at({ isNot: null });
+  throw new Error(
+    `'${rule.field}' is a relation: it exists or not; compare its fields with '${rule.field}.<field>'.`,
+  );
+};
+
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
   const shape = shapeOf(rule, options);
@@ -84,6 +135,8 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     options?.map as FieldMap | undefined,
     options?.model,
   );
+
+  if (shape === 'relation') return buildRelationRule(rule, options);
 
   switch (rule.operator) {
     case Operator.exists:
@@ -97,12 +150,14 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     // operator.
     case Operator.isEmpty: {
       const nulls = [at({ equals: nullOf(shape) }), ...hopArms(rule.field, options)];
-      return orWhere(emptyString ? [...nulls, at({ equals: '' })] : nulls);
+      return orWhere([...nulls, ...emptyValues(shape, emptyString).map((empty) => at(empty))]);
     }
-    case Operator.notEmpty: {
-      const present = at({ not: nullOf(shape) });
-      return emptyString ? { AND: [present, at({ not: '' })] } : present;
-    }
+    // A list has no `not`; `isEmpty: false` is NULL — so false — for a NULL list.
+    case Operator.notEmpty:
+      return andWhere([
+        ...(shape === 'list' ? [] : [at({ not: nullOf(shape) })]),
+        ...emptyValues(shape, emptyString).map((empty) => at(notEmpty(empty))),
+      ]);
   }
 
   // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the absent
@@ -117,11 +172,12 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   if (rule.operator === Operator.in || rule.operator === Operator.notIn) {
     const { values, hasNull } = splitNull(value);
     // Json has no `in`: one `equals` per value.
+    const ci = queryMode(rule, options, shape, values);
     const listed = isJson(shape)
       ? rule.operator === Operator.in
-        ? orWhere(values.map((v) => at({ equals: v })))
-        : { AND: values.map((v) => at({ not: v })) }
-      : at({ [rule.operator]: values });
+        ? orWhere(values.map((v) => at({ equals: v, ...ci })))
+        : andWhere(values.map((v) => at({ not: v, ...ci })))
+      : at({ [rule.operator]: values, ...ci });
     if (rule.operator === Operator.in) return hasNull ? orWhere([listed, ...arms()]) : listed;
     return hasNull ? { AND: [listed, at({ not: nullOf(shape) })] } : orWhere([listed, ...arms()]);
   }
@@ -166,16 +222,7 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
     );
   const shape = shapeOf(rule, options);
   const val = () => resolveRuleValue(rule, options);
-  // QueryMode only on text, and only where the connector accepts it; MySQL/SQLite reject `mode`
-  // (collation-driven).
-  const provider = (options?.datasource?.provider ??
-    engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
-  const text = (value: unknown) =>
-    shape === 'text' || isJson(shape) || (shape === 'unknown' && typeof value === 'string');
-  const ci = (value: unknown) =>
-    resolveCaseInsensitive(rule.caseInsensitive) && supportsQueryMode(provider) && text(value)
-      ? { mode: 'insensitive' as const }
-      : {};
+  const ci = (value: unknown) => queryMode(rule, options, shape, value);
   // String matching on Json is `string_*`; containment on a list is `has`.
   const match = (op: 'contains' | 'startsWith' | 'endsWith') => {
     const value = val();
@@ -191,11 +238,11 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
   switch (rule.operator) {
     case Operator.equals: {
       const value = val() ?? nullOf(shape);
-      return { equals: value, ...(isJson(shape) ? {} : ci(value)) };
+      return { equals: value, ...ci(value) };
     }
     case Operator.notEquals: {
       const value = val() ?? nullOf(shape);
-      return { not: value, ...(isJson(shape) ? {} : ci(value)) };
+      return { not: value, ...ci(value) };
     }
     case Operator.lessThan:
       return { lt: val() };

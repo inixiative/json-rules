@@ -111,14 +111,16 @@ export const optionalToOneHops = (field: string, map: FieldMap, rootModel: strin
 
 /**
  * What a field reads, for the operators whose form depends on it: `text` (a String column),
- * `json` (a whole Json column), `json-path` (inside one), `list` (a scalar list), `scalar` (any
- * other column), or `unknown` (no map, or a path the map doesn't declare).
+ * `json` (a whole Json column), `json-path` (inside one), `list` (a scalar list), `relation` (a
+ * to-one relation, which exists or not), `scalar` (any other column), or `unknown` (no map, a
+ * path the map doesn't declare, or a to-many relation).
  */
-export type FieldShape = 'text' | 'json' | 'json-path' | 'list' | 'scalar' | 'unknown';
+export type FieldShape = 'text' | 'json' | 'json-path' | 'list' | 'relation' | 'scalar' | 'unknown';
 
 export const fieldShape = (walk: MapWalkResult | undefined): FieldShape => {
   if (walk?.kind === 'json-path') return 'json-path';
-  if (walk?.kind !== 'direct' || walk.entry.kind === 'object') return 'unknown';
+  if (walk?.kind !== 'direct') return 'unknown';
+  if (walk.entry.kind === 'object') return walk.entry.isList ? 'unknown' : 'relation';
   if (walk.entry.isList) return 'list';
   return kindShape(walk.entry.type);
 };

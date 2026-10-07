@@ -315,6 +315,11 @@ const arrayWithShape = (...shapes: ValueShape[]): readonly string[] =>
 export const ARRAY_COUNT_OPERATORS = arrayWithShape('count');
 /** Array operators that test each element against a condition. */
 export const ARRAY_CONDITION_OPERATORS = arrayWithShape('predicate', 'count');
+/** Array operators a broader condition only widens: more matching elements never make them false. */
+export const ARRAY_MONOTONE_OPERATORS: readonly string[] = [
+  ArrayOperator.any,
+  ArrayOperator.atLeast,
+];
 
 /** The negations: each is the complement of its positive form and keeps NULL fields
  *  (the 2.19.0 ruling). */

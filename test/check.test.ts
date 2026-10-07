@@ -123,11 +123,9 @@ describe('Existence Operators', () => {
 
   test('isEmpty and notEmpty', () => {
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: '' })).toBe(true);
-    // Empty iff null/undefined/'' — matches the SQL/Prisma compilers. A populated or
-    // empty array/object is a scalar-column value that is neither null nor '' → NOT empty.
-    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: [] })).toBe(
-      'val must be empty',
-    );
+    // Empty iff null/undefined/''/[] — as the compilers read a column, a list and a Json value.
+    // An object is not empty.
+    expect(check({ field: 'val', operator: Operator.isEmpty }, { val: [] })).toBe(true);
     expect(check({ field: 'val', operator: Operator.isEmpty }, { val: {} })).toBe(
       'val must be empty',
     );

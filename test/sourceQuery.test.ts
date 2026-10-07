@@ -125,7 +125,7 @@ describe('toSourceQueries', () => {
 
     // Prisma expresses it via `some`
     expect(q.prisma.distinct).toEqual(['code']);
-    expect(q.prisma.where).toEqual({ AND: [{ cities: { some: { active: { equals: true } } } }] });
+    expect(q.prisma.where).toEqual({ cities: { some: { active: { equals: true } } } });
 
     // SQL cannot — it degrades to null with a captured error rather than throwing
     expect(q.sql.sql).toBeNull();
@@ -218,7 +218,7 @@ describe('toSourceQueries', () => {
     });
     const q = toSourceQueries(n)[0];
     expect(q.prisma.select).toEqual({ code: true, name: true });
-    expect(q.prisma.where).toEqual({ AND: [{ cities: { some: { active: { equals: true } } } }] });
+    expect(q.prisma.where).toEqual({ cities: { some: { active: { equals: true } } } });
     expect(q.sql.sql).toBeNull();
     expect(q.sql.error).toContain('not supported in SQL');
   });

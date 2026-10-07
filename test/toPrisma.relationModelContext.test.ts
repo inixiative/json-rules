@@ -101,6 +101,6 @@ describe('toPrisma relation array operators — inner condition resolves against
       },
       opts,
     );
-    expect(getWhere(result)).toEqual({ posts: { every: { published: { equals: true } } } });
+    expect(getWhere(result)).toEqual({ posts: { none: { published: { not: true } } } });
   });
 });

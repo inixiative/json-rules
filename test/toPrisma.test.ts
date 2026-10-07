@@ -673,13 +673,14 @@ describe('toPrisma logical operators', () => {
 
 // ─── Array operators (Prisma-native) ─────────────────────────────────────────
 describe('toPrisma array operators', () => {
-  it('all → every', () => {
+  it('all → none in the complement', () => {
     const result = toPrisma({
       field: 'posts',
       arrayOperator: ArrayOperator.all,
       condition: { field: 'published', operator: Operator.equals, value: true },
     });
-    expect(getWhere(result)).toEqual({ posts: { every: { published: { equals: true } } } });
+    // `every` passes a child whose condition is NULL; no child in the complement is exact.
+    expect(getWhere(result)).toEqual({ posts: { none: { published: { not: true } } } });
   });
 
   it('any → some', () => {

@@ -87,7 +87,7 @@ describe('Windowing — extremal rewrite to Prisma (take:1, aligned)', () => {
   const lastWhere = (plan: { steps: ReadonlyArray<Record<string, unknown>> }) =>
     plan.steps[plan.steps.length - 1].where;
 
-  test('all + desc + before {ago} → every (most recent before bound)', () => {
+  test('all + desc + before {ago} → none past the bound (most recent before bound)', () => {
     const rule = {
       field: 'fanMissions',
       orderBy: [{ field: 'completedAt', dir: 'desc' as const }],
@@ -100,7 +100,7 @@ describe('Windowing — extremal rewrite to Prisma (take:1, aligned)', () => {
       },
     };
     expect(lastWhere(toPrisma(rule, { now, timeZone: 'UTC' }))).toEqual({
-      fanMissions: { every: { completedAt: { lt: new Date('2026-05-12T00:00:00.000Z') } } },
+      fanMissions: { none: { completedAt: { gte: new Date('2026-05-12T00:00:00.000Z') } } },
     });
   });
 

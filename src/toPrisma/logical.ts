@@ -44,10 +44,12 @@ const isMatchNothing = (where: PrismaWhere): boolean => {
   return keys.length === 1 && keys[0] === 'OR' && Array.isArray(where.OR) && where.OR.length === 0;
 };
 
-const andWhere = (arms: PrismaWhere[]): PrismaWhere => {
+/** AND of arms: match-nothing absorbs, match-all drops, one arm stands alone. */
+export const andWhere = (arms: PrismaWhere[]): PrismaWhere => {
   if (arms.some(isMatchNothing)) return matchNothing();
   const rest = arms.filter((arm) => !isMatchAll(arm));
-  return rest.length === 0 ? matchAll() : { AND: rest };
+  if (rest.length === 0) return matchAll();
+  return rest.length === 1 ? rest[0] : { AND: rest };
 };
 
 /** OR of arms: match-all absorbs, match-nothing drops, one arm stands alone. */

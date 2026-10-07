@@ -37,7 +37,8 @@ export const resolveField = (
   if (walk.kind === 'past-scalar') throw pastScalarError(field, walk.column);
   if (walk.kind === 'bridge')
     throw new Error(`'${field}' crosses a bridge to another source; toSql() has no column for it`);
-  if (walk.kind === 'fallback' || walk.entry.kind === 'object') return asWritten();
+  if (walk.kind === 'fallback' || (walk.entry.kind === 'object' && walk.entry.isList))
+    return asWritten();
   const toMany = walk.hops.find((hop) => hop.entry.isList);
   if (toMany) throw toManyHopError(field, toMany);
   let alias = state.currentAlias;
@@ -47,6 +48,14 @@ export const resolveField = (
     alias = joined;
   }
   const shape = fieldShape(walk);
+  // A to-one relation as a field reads the joined row's key: NULL when there is no row.
+  if (walk.kind === 'direct' && walk.entry.kind === 'object') {
+    const hop = { field: walk.column, prefix: field, entry: walk.entry, from: walk.model };
+    const keys = relationKeys(state.map, walk.model, walk.entry);
+    const joined = joinAlias(state, alias, hop);
+    if (!keys || !joined) return asWritten();
+    return { sql: `${escapeIdentifier(joined)}.${escapeIdentifier(keys[0].there)}`, shape };
+  }
   const column = walk.kind === 'json-path' ? [walk.column, ...walk.jsonPath] : [walk.column];
   const sql = quoteField(column.join('.'), alias, jsonb);
   // A JSON null in a Json column is null, as check() reads it.

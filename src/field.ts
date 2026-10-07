@@ -17,12 +17,14 @@ import { readField, type Scopes } from './scope';
 import type { DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
-// A value is "empty" iff it is null, undefined, or the empty string — matching the
-// SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
-// (lodash isEmpty would also treat Dates/numbers/populated arrays as empty, which
-// diverges from the compilers and breaks soft-delete grants like `deletedAt isEmpty`.)
+// A value is "empty" iff it is null, undefined, the empty string, or an empty array — as the
+// compilers read a column, a Json value and a list. (lodash isEmpty would also treat Dates and
+// numbers as empty, which breaks soft-delete grants like `deletedAt isEmpty`.)
 const isEmptyValue = (value: unknown): boolean =>
-  value === null || value === undefined || value === '';
+  value === null ||
+  value === undefined ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0);
 
 // Mirrors the server-side coerceValueForField contract: null/undefined pass through
 // (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
@@ -109,18 +111,17 @@ export const checkField = (
   // A computed left-hand side (an aggregate) in place of the field's value.
   computed?: { value: unknown },
 ): boolean | string => {
+  const raw = computed ? computed.value : (readField(condition.field, scopes) ?? null);
+  // A Date compares as DateTime even unstamped, as the compilers read a DateTime column.
+  const kind = condition.coerceType ?? (raw instanceof Date ? 'DateTime' : undefined);
   // Only a DateTime coercion reads the zone.
   const zone =
-    condition.coerceType === 'DateTime'
+    kind === 'DateTime'
       ? resolveDateConfig(config, (source) => readValueSource(source, scopes, context, bindings))
           .timeZone
       : DEFAULT_ZONE;
   // An absent path reads as NULL, as a column does on the compiled rails.
-  const fieldValue = applyCoercion(
-    fromBigInt(computed ? computed.value : (readField(condition.field, scopes) ?? null)),
-    condition.coerceType,
-    zone,
-  );
+  const fieldValue = applyCoercion(fromBigInt(raw), kind, zone);
 
   // Operators that don't need a value
   const needsValue = !NO_VALUE_OPERATORS.includes(condition.operator);
@@ -128,7 +129,7 @@ export const checkField = (
     ? shift(
         applyCoercion(
           fromBigInt(readValueSource(condition, scopes, context, bindings) ?? null),
-          condition.coerceType,
+          kind,
           zone,
         ),
         condition,
@@ -147,8 +148,9 @@ export const checkField = (
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
-  const lhs = ci && typeof fieldValue === 'string' ? fieldValue.toLowerCase() : fieldValue;
-  const rhs = ci && typeof value === 'string' ? value.toLowerCase() : value;
+  const lower = (v: unknown): unknown => (ci && typeof v === 'string' ? v.toLowerCase() : v);
+  const lhs = lower(fieldValue);
+  const rhs = Array.isArray(value) ? value.map(lower) : lower(value);
 
   // Fuzzy applies to containment search: typo-tolerant token match over strings, else the
   // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive.
@@ -177,9 +179,9 @@ export const checkField = (
         getError(`must be greater than or equal to`)
       );
     case Operator.in:
-      return (Array.isArray(value) && value.includes(fieldValue)) || getError(`must be one of`);
+      return (Array.isArray(rhs) && rhs.includes(lhs)) || getError(`must be one of`);
     case Operator.notIn:
-      return !Array.isArray(value) || !value.includes(fieldValue) || getError(`must not be one of`);
+      return !Array.isArray(rhs) || !rhs.includes(lhs) || getError(`must not be one of`);
     case Operator.contains:
       return containsMatch() || getError(`must contain`);
     case Operator.notContains:

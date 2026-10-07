@@ -69,10 +69,14 @@ describe('toPrisma isEmpty/notEmpty — the ""-branch is String-only', () => {
     });
   });
 
-  test('Json keeps the two-branch shape ("" is a representable JSON value)', () => {
+  test('Json is empty as null, "" or []', () => {
     const where = getWhere(toPrisma({ field: 'metadata', operator: Operator.isEmpty }, opts));
     expect(where).toEqual({
-      OR: [{ metadata: { equals: AnyNull } }, { metadata: { equals: '' } }],
+      OR: [
+        { metadata: { equals: AnyNull } },
+        { metadata: { equals: '' } },
+        { metadata: { equals: [] } },
+      ],
     });
   });
 
@@ -90,12 +94,16 @@ describe('toPrisma isEmpty/notEmpty — the ""-branch is String-only', () => {
     expect(where).toEqual({ sourceUpdatedAt: { equals: null } });
   });
 
-  test('a coerceType of Json keeps the two-branch shape, matching the map path', () => {
+  test('a coerceType of Json reads as Json, matching the map path', () => {
     const where = getWhere(
       toPrisma({ field: 'metadata', operator: Operator.isEmpty, coerceType: 'Json' }),
     );
     expect(where).toEqual({
-      OR: [{ metadata: { equals: AnyNull } }, { metadata: { equals: '' } }],
+      OR: [
+        { metadata: { equals: AnyNull } },
+        { metadata: { equals: '' } },
+        { metadata: { equals: [] } },
+      ],
     });
   });
 

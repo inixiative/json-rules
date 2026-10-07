@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { ArrayOperator, check, executePrismaQueryPlan, Operator, toPrisma } from '../index';
+import { ArrayOperator, check, executePrismaPlan, Operator, toPrisma } from '../index';
 import type { FieldMap, GroupByStep, WhereStep } from '../src/toPrisma/types';
 
 // atMost/exactly compiled to `id IN (groupBy having …)` — but a root with ZERO matching
@@ -74,7 +74,7 @@ const publishedCond = { field: 'published', operator: Operator.equals, value: tr
 
 const passing = async (rule: Record<string, unknown>): Promise<string[]> => {
   const plan = toPrisma(rule as never, { map, model: 'User' });
-  const where = await executePrismaQueryPlan(plan, { post: fakePost as never });
+  const where = await executePrismaPlan(plan, { post: fakePost as never });
   const clause = where as { id?: { in: string[] }; NOT?: { id: { in: string[] } } };
   if (clause.NOT) return USERS.filter((u) => !clause.NOT!.id.in.includes(u.id)).map((u) => u.id);
   if (clause.id) return USERS.filter((u) => clause.id!.in.includes(u.id)).map((u) => u.id);

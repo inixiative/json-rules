@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -11,7 +11,7 @@ const withParent = (
 ): LensNarrowing => ({ parent, ...rest });
 
 // FIX 3(a) — path (RHS) refs must be gated the same way as field (LHS) refs.
-describe('checkRuleAgainstLens — path (RHS) refs are gated', () => {
+describe('validateRuleInLens — path (RHS) refs are gated', () => {
   const map: FieldMap = {
     models: {
       Article: {
@@ -36,32 +36,32 @@ describe('checkRuleAgainstLens — path (RHS) refs are gated', () => {
   test('non-$ path to an omitted related field → ok:false', () => {
     const n = withParent(lens, { root: { relations: { author: { omits: ['secret'] } } } });
     const rule: Condition = { field: 'title', operator: Operator.equals, path: 'author.secret' };
-    const result = checkRuleAgainstLens(rule, n);
+    const result = validateRuleInLens(rule, n);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'author.secret')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'author.secret')).toBe(true);
   });
 
   test('non-$ path to an IN-lens related field → ok:true (control)', () => {
     const rule: Condition = { field: 'title', operator: Operator.equals, path: 'author.name' };
-    expect(checkRuleAgainstLens(rule, lens).ok).toBe(true);
+    expect(validateRuleInLens(rule, lens).ok).toBe(true);
   });
 
   test('non-$ path to a non-existent field → ok:false', () => {
     const rule: Condition = { field: 'title', operator: Operator.equals, path: 'author.ghost' };
-    expect(checkRuleAgainstLens(rule, lens).ok).toBe(false);
+    expect(validateRuleInLens(rule, lens).ok).toBe(false);
   });
 
   test('$.-prefixed path to an omitted current-element field → ok:false', () => {
     const n = withParent(lens, { root: { omits: ['secret'] } });
     const rule: Condition = { field: 'title', operator: Operator.equals, path: '$.secret' };
-    const result = checkRuleAgainstLens(rule, n);
+    const result = validateRuleInLens(rule, n);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === '$.secret')).toBe(true);
+    expect(result.errors.some((v) => v.path === '$.secret')).toBe(true);
   });
 });
 
 // FIX 3(b) — a window's filter (a full Condition) and orderBy must be gated too.
-describe('checkRuleAgainstLens — window filter/orderBy are gated', () => {
+describe('validateRuleInLens — window filter/orderBy are gated', () => {
   const map: FieldMap = {
     models: {
       User: {
@@ -90,9 +90,9 @@ describe('checkRuleAgainstLens — window filter/orderBy are gated', () => {
       filter: { field: 'score', operator: Operator.greaterThan, value: '5' },
       condition: { field: 'title', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    const result = checkRuleAgainstLens(rule, omitScore);
+    const result = validateRuleInLens(rule, omitScore);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'score')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'score')).toBe(true);
   });
 
   test('window filter referencing an in-lens element field → ok:true (control)', () => {
@@ -102,7 +102,7 @@ describe('checkRuleAgainstLens — window filter/orderBy are gated', () => {
       filter: { field: 'title', operator: Operator.equals, value: 'x' },
       condition: { field: 'title', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    expect(checkRuleAgainstLens(rule, lens).ok).toBe(true);
+    expect(validateRuleInLens(rule, lens).ok).toBe(true);
   });
 
   test('orderBy on an omitted element field → ok:false', () => {
@@ -112,9 +112,9 @@ describe('checkRuleAgainstLens — window filter/orderBy are gated', () => {
       orderBy: [{ field: 'score', dir: 'asc' }],
       condition: { field: 'title', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    const result = checkRuleAgainstLens(rule, omitScore);
+    const result = validateRuleInLens(rule, omitScore);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'score')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'score')).toBe(true);
   });
 
   test('orderBy on an in-lens element field → ok:true (control)', () => {
@@ -124,6 +124,6 @@ describe('checkRuleAgainstLens — window filter/orderBy are gated', () => {
       orderBy: [{ field: 'title', dir: 'asc' }],
       condition: { field: 'title', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    expect(checkRuleAgainstLens(rule, lens).ok).toBe(true);
+    expect(validateRuleInLens(rule, lens).ok).toBe(true);
   });
 });

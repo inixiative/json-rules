@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
-import { bindingNames, check, resolveBindings, toPrisma, toSql, validateRule } from '../index';
+import { bindingNames, bindRule, check, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // Where a value source reads nothing, check(), executed SQL and the Prisma filter agree.
@@ -99,14 +99,14 @@ describe('a missing zone bind throws whatever the row holds', () => {
 });
 
 describe('a bind inside a bound value', () => {
-  test('resolveBindings resolves what the substitution brought in', () => {
+  test('bindRule resolves what the substitution brought in', () => {
     const r = rule({
       field: 'ts',
       dateOperator: 'after',
       path: 'anchor',
       offset: { bind: 'o' },
     });
-    const resolved = resolveBindings(r, { o: { ago: { days: { bind: 'k' } } }, k: 2 });
+    const resolved = bindRule(r, { o: { ago: { days: { bind: 'k' } } }, k: 2 });
     expect(resolved).toEqual(
       rule({
         field: 'ts',

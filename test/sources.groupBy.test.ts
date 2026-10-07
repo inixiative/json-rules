@@ -3,11 +3,11 @@ import {
   exposedSurface,
   type Lens,
   type LensNarrowing,
+  materializeSourceQuery,
+  materializeSources,
   projectByPath,
   type SourceValues,
-  sourceQueries,
-  sourceValuesFromQueryRows,
-  sourceValuesFromRows,
+  toSourceQueries,
   validateNarrowing,
 } from '../index';
 import { Operator } from '../src/operator';
@@ -157,9 +157,9 @@ describe('projectByPath — groupBy exposure', () => {
   });
 });
 
-describe('sourceQueries — grouped compile', () => {
+describe('toSourceQueries — grouped compile', () => {
   test('carries groupBy, drops distinct, nests the group path into the prisma select', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     expect(q.groupBy).toEqual(['map.definition.label']);
     expect(q.prisma.distinct).toBeUndefined();
     expect(q.prisma.select).toEqual({
@@ -169,7 +169,7 @@ describe('sourceQueries — grouped compile', () => {
   });
 
   test('selects the joined group column as "__group" in sql', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     expect(q.sql.sql).toContain('SELECT DISTINCT');
     expect(q.sql.sql).toContain('AS "__group_0"');
     expect(q.sql.sql).toContain('LEFT JOIN "FieldDef"');
@@ -183,14 +183,14 @@ describe('sourceQueries — grouped compile', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.groupBy).toBeUndefined();
     expect(q.prisma.distinct).toEqual(['value']);
     expect(q.prisma.select).toEqual({ value: true });
   });
 });
 
-describe('sourceValuesFromRows — grouped materialization', () => {
+describe('materializeSources — grouped materialization', () => {
   test('partitions options by group and dedupes per (group, value)', () => {
     const rows = [
       {
@@ -207,7 +207,7 @@ describe('sourceValuesFromRows — grouped materialization', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(grouped(), rows);
+    const [sv] = materializeSources(grouped(), rows);
     expect(sv.path).toBe('User.enrichments');
     expect(sv.field).toBe('value');
     expect(sv.options).toEqual([
@@ -239,7 +239,7 @@ describe('sourceValuesFromRows — grouped materialization', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(n, rows);
+    const [sv] = materializeSources(n, rows);
     expect(sv.options).toEqual([
       { value: 'orphan' },
       { value: 'grouped', groups: ['business unit'] },
@@ -250,7 +250,7 @@ describe('sourceValuesFromRows — grouped materialization', () => {
 describe('grouped sources — traversed narrowing wheres fold into the compile', () => {
   // The groupBy traversal must honor the same guards as any lens traversal:
   // a relation node's `where` (tenancy/soft-delete) re-roots onto the anchor,
-  // exactly like applyLens folds hop wheres for rules.
+  // exactly like narrowRule folds hop wheres for rules.
   const guarded = (): LensNarrowing =>
     withParent(base, {
       root: {
@@ -270,8 +270,8 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
       },
     });
 
-  test('sourceQueries ANDs the hop where, re-rooted, into composedWhere', () => {
-    const [q] = sourceQueries(guarded());
+  test('toSourceQueries ANDs the hop where, re-rooted, into composedWhere', () => {
+    const [q] = toSourceQueries(guarded());
     expect(q.composedWhere).toEqual({
       field: 'map.brandId',
       operator: Operator.equals,
@@ -279,7 +279,7 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
     });
   });
 
-  test('sourceValuesFromRows excludes rows whose traversed hop fails the guard', () => {
+  test('materializeSources excludes rows whose traversed hop fails the guard', () => {
     const rows = [
       {
         id: 'u1',
@@ -289,20 +289,20 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(guarded(), rows);
+    const [sv] = materializeSources(guarded(), rows);
     expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 });
 
-describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
+describe('materializeSourceQuery — materialize fetched query rows', () => {
   test('extracts the group from prisma-shaped nested rows, deduping per group', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     const rows = [
       { value: 'marketing', map: { definition: { label: 'business unit' } } },
       { value: 'marketing', map: { definition: { label: 'business unit' } } },
       { value: 'sales', map: { definition: { label: 'department' } } },
     ];
-    const sv = sourceValuesFromQueryRows(q, rows);
+    const sv = materializeSourceQuery(q, rows);
     expect(sv).toEqual({
       path: 'User.enrichments',
       mapName: 'app',
@@ -316,17 +316,17 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
   });
 
   test('sql row shape reads the "__group_0" alias explicitly', () => {
-    const [q] = sourceQueries(grouped());
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'marketing', __group_0: 'business unit' }], {
+    const [q] = toSourceQueries(grouped());
+    const sv = materializeSourceQuery(q, [{ value: 'marketing', __group_0: 'business unit' }], {
       rowShape: 'sql',
     });
     expect(sv.options).toEqual([{ value: 'marketing', groups: ['business unit'] }]);
   });
 
   test('prisma row shape (the default) never reads a stray "__group" column', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     // Null hop → ungrouped; a stray scalar column named __group must not mis-group it.
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'v', map: null, __groups: ['STRAY'] }]);
+    const sv = materializeSourceQuery(q, [{ value: 'v', map: null, __groups: ['STRAY'] }]);
     expect(sv.options).toEqual([{ value: 'v' }]);
   });
 
@@ -341,8 +341,8 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
-    const sv = sourceValuesFromQueryRows(q, [
+    const [q] = toSourceQueries(n);
+    const sv = materializeSourceQuery(q, [
       { value: 'b', mapId: 'Bee' },
       { value: 'a', mapId: 'Ay' },
     ]);
@@ -383,7 +383,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
     });
 
   test('mapDefaults wheres on traversed models fold into composedWhere with no declared hops', () => {
-    const [q] = sourceQueries(tenanted());
+    const [q] = toSourceQueries(tenanted());
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -409,7 +409,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(tenanted(), rows);
+    const [sv] = materializeSources(tenanted(), rows);
     expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 
@@ -440,7 +440,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
         },
       },
     });
-    const [q] = sourceQueries(partial);
+    const [q] = toSourceQueries(partial);
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -531,7 +531,7 @@ describe('option sort — ungrouped is its own leading tier', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(n, rows);
+    const [sv] = materializeSources(n, rows);
     expect(sv.options).toEqual([
       { value: 'zzz' },
       { value: 'aaa', groups: [''] },
@@ -723,7 +723,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
     });
 
   test('each grouped source composes only its own path narrowing', () => {
-    const byPath = Object.fromEntries(sourceQueries(asym()).map((query) => [query.path, query]));
+    const byPath = Object.fromEntries(toSourceQueries(asym()).map((query) => [query.path, query]));
     expect(byPath['User.enrichments'].composedWhere).toEqual({
       field: 'map.brandId',
       operator: Operator.equals,
@@ -762,7 +762,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    const byPath = Object.fromEntries(sourceQueries(n).map((query) => [query.path, query]));
+    const byPath = Object.fromEntries(toSourceQueries(n).map((query) => [query.path, query]));
     expect(byPath['User.enrichments'].composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -782,9 +782,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
       { value: 'acme', map: { brandId: 'b2', definition: { label: 'account' } } },
     ];
     const rows = [{ id: 'u1', enrichments: enrichmentRows, archived: enrichmentRows }];
-    const byPath = Object.fromEntries(
-      sourceValuesFromRows(asym(), rows).map((sv) => [sv.path, sv]),
-    );
+    const byPath = Object.fromEntries(materializeSources(asym(), rows).map((sv) => [sv.path, sv]));
     expect(byPath['User.enrichments'].options).toEqual([
       { value: 'engineering', groups: ['department'] },
     ]);

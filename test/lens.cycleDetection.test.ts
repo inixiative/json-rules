@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { applyLens } from '../src/lens/applyLens';
 import { validateNarrowing } from '../src/lens/narrowing';
+import { narrowRule } from '../src/lens/narrowRule';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { getRoot } from '../src/lens/walk';
@@ -35,12 +35,12 @@ describe('narrowing parent-chain cycle detection', () => {
     expect(() => projectByPath(b)).toThrow(/cycle detected/);
   });
 
-  test('applyLens throws on cyclic chain', () => {
+  test('narrowRule throws on cyclic chain', () => {
     const a = { parent: lens } as LensNarrowing;
     const b = { parent: a } as LensNarrowing;
     a.parent = b;
     const rule = { field: 'email', operator: Operator.equals, value: 'x' };
-    expect(() => applyLens(rule, b)).toThrow(/cycle detected/);
+    expect(() => narrowRule(rule, b)).toThrow(/cycle detected/);
   });
 
   test('validateNarrowing throws on cyclic chain', () => {

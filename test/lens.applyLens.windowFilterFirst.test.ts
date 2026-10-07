@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { applyLens } from '../src/lens/applyLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
@@ -43,7 +43,7 @@ const scoped: LensNarrowing = {
 const paid: Condition = { field: 'status', operator: Operator.equals, value: 'paid' };
 const prismaOpts = { map: lens, mapName: 'prisma', model: 'Customer' };
 
-describe('applyLens — a windowed rule takes its grant as the window filter (filter-first)', () => {
+describe('narrowRule — a windowed rule takes its grant as the window filter (filter-first)', () => {
   test('windowed any: the grant is the filter, the user condition is untouched', () => {
     const rule = {
       field: 'orders',
@@ -52,7 +52,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       take: 1,
       condition: paid,
     } as unknown as Condition;
-    const composed = applyLens(rule, scoped) as { filter?: Condition; condition?: Condition };
+    const composed = narrowRule(rule, scoped) as { filter?: Condition; condition?: Condition };
     expect(composed.filter).toEqual(scope);
     expect(composed.condition).toEqual(paid);
     // A deleted top row must not displace the in-scope top row.
@@ -73,7 +73,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       take: 1,
       condition: { field: 'status', operator: Operator.equals, value: 'refunded' },
     } as unknown as Condition;
-    const composed = applyLens(rule, scoped);
+    const composed = narrowRule(rule, scoped);
     const data = {
       orders: [
         { total: 999, status: 'paid', deletedAt: '2020-01-01' },
@@ -93,7 +93,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       operator: Operator.greaterThan,
       value: 100,
     } as unknown as Condition;
-    const composed = applyLens(rule, scoped) as { filter?: Condition; condition?: Condition };
+    const composed = narrowRule(rule, scoped) as { filter?: Condition; condition?: Condition };
     expect(composed.filter).toEqual(scope);
     expect(composed.condition).toBe(true);
     const data = { orders: [{ total: 999, deletedAt: '2020-01-01' }, { total: 10 }, { total: 5 }] };
@@ -110,7 +110,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       take: 1,
       condition: paid,
     } as unknown as Condition;
-    const composed = applyLens(rule, scoped) as { filter?: Condition; condition?: Condition };
+    const composed = narrowRule(rule, scoped) as { filter?: Condition; condition?: Condition };
     expect(composed.filter).toEqual({ all: [userFilter, scope] });
     expect(composed.condition).toEqual(paid);
   });
@@ -141,7 +141,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       condition: paid,
     } as Condition;
     expect(
-      check(applyLens(rule, customerScoped), {
+      check(narrowRule(rule, customerScoped), {
         id: 'c1',
         orders: [
           { total: 100, status: 'unpaid', customer: { id: 'c2' } },
@@ -152,7 +152,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
   });
 
   test('compilers reject the scoped window when they cannot preserve its filter', () => {
-    const composed = applyLens(
+    const composed = narrowRule(
       {
         field: 'orders',
         arrayOperator: ArrayOperator.any,
@@ -173,7 +173,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       orderBy: [],
       condition: paid,
     } as unknown as Condition;
-    const composed = applyLens(rule, scoped) as { filter?: Condition; condition: Condition };
+    const composed = narrowRule(rule, scoped) as { filter?: Condition; condition: Condition };
     expect(composed.filter).toBeUndefined();
     expect(composed.condition).toEqual({ all: [scope, paid] });
     expect(() => toPrisma(composed as Condition, prismaOpts)).not.toThrow();
@@ -185,7 +185,7 @@ describe('applyLens — a windowed rule takes its grant as the window filter (fi
       arrayOperator: ArrayOperator.any,
       condition: paid,
     } as Condition;
-    const composed = applyLens(rule, scoped) as { filter?: Condition; condition: Condition };
+    const composed = narrowRule(rule, scoped) as { filter?: Condition; condition: Condition };
     expect(composed.filter).toBeUndefined();
     expect(composed.condition).toEqual({ all: [scope, paid] });
     expect(getWhere(toPrisma(composed as Condition, prismaOpts))).toEqual({

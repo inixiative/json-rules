@@ -83,7 +83,7 @@ describe('validateNarrowing — every where position is gated against the parent
   });
 
   test('a bare comparison ref is root context: gated at the lens anchor, not the related model', () => {
-    // check() resolves a bare `path` against the root row and applyLens injects a to-many
+    // check() resolves a bare `path` against the root row and narrowRule injects a to-many
     // grant unchanged, so `path: 'email'` in an Order grant means Customer.email — legal even
     // though Order has no `email` column.
     const rootRef = withParent(lens, {

@@ -1,5 +1,5 @@
 import { isOperatorSupportedForTarget, type RuleTarget } from '../operatorCatalog';
-import { parseScopeRef, resolveScopeRef } from '../scope';
+import { parseScopeRef, readScopeRef } from '../scope';
 import { isLogicalNode, valueRefRoles, valueRefs, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
@@ -69,7 +69,7 @@ const visit = (rule: Condition, acc: Acc): void =>
 
       for (const ref of valueRefs(node)) {
         if (!parseScopeRef(ref)) continue;
-        if ('outOfBounds' in resolveScopeRef(ref, scopes)) acc.violations.push(ref);
+        if ('outOfBounds' in readScopeRef(ref, scopes)) acc.violations.push(ref);
       }
 
       if (typeof node.field !== 'string' || node.field === '') return;

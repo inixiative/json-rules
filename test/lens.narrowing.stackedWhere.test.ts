@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import type { FieldMapSet } from '../src/fieldMap/types';
-import { applyLens } from '../src/lens/applyLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -119,7 +119,7 @@ describe("stacked narrowings — every layer's where reaches the projection and 
       arrayOperator: 'any',
       condition: { field: 'tag.name', operator: Operator.equals, value: 'vip' },
     };
-    const composed = applyLens(rule as never, twice);
+    const composed = narrowRule(rule as never, twice);
     const row = (id: string, name: string) => ({
       id,
       name,
@@ -130,13 +130,13 @@ describe("stacked narrowings — every layer's where reaches the projection and 
     expect(check(composed, row('u2', 'Ann'))).not.toBe(true);
   });
 
-  test('applyLens folds all three layers: liveness, ownership and target each decide', () => {
+  test('narrowRule folds all three layers: liveness, ownership and target each decide', () => {
     const rule = {
       field: 'tagAttachments',
       arrayOperator: 'any',
       condition: { field: 'tag.name', operator: Operator.equals, value: 'vip' },
     };
-    const composed = applyLens(rule as never, targeted);
+    const composed = narrowRule(rule as never, targeted);
     const own = { id: 't1', name: 'vip', ownerModel: 'Organization', organizationId: 'org-1' };
     const theirs = { id: 't2', name: 'vip', ownerModel: 'Organization', organizationId: 'org-2' };
     const platform = { id: 't3', name: 'vip', ownerModel: 'platform' };

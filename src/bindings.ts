@@ -42,10 +42,7 @@ export const requiredBindings = (condition: Condition): Set<string> =>
  * resolution). A supplied-but-undefined binding becomes null to stay serializable.
  * Non-mutating.
  */
-export const resolveBindings = (
-  condition: Condition,
-  bindings: Record<string, RuleValue>,
-): Condition => {
+export const bindRule = (condition: Condition, bindings: Record<string, RuleValue>): Condition => {
   // A covered `{ bind, bindOptional }` source becomes `{ value }`; an uncovered one stays.
   const resolve = (source: ValueSourceOf<unknown>): ValueSourceOf<unknown> => {
     if (typeof source.bind !== 'string' || !Object.hasOwn(bindings, source.bind)) return source;

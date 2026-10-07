@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { applyLens } from '../src/lens/applyLens';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import { validateRuleInLens } from '../src/lens/checkRule';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -9,7 +9,7 @@ import type { Condition } from '../src/types';
 // P1.1 from Codex review: same model reached via different paths can have
 // different narrowings declared. The pre-2.1 projectNarrowing collapses
 // these into a single User shape, and validation against the projected set
-// loses the distinction. checkRuleAgainstLens must walk the narrowing tree
+// loses the distinction. validateRuleInLens must walk the narrowing tree
 // alongside the user rule and apply path-specific narrowings per visit.
 
 const map: FieldMap = {
@@ -48,7 +48,7 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('checkRuleAgainstLens — path-aware (same model, different narrowings per path)', () => {
+describe('validateRuleInLens — path-aware (same model, different narrowings per path)', () => {
   test('User.manager.email allowed, Post.author.email rejected (different narrowings, same model)', () => {
     // User narrowing tree:
     //   .manager → User, picks ['email', 'name']
@@ -70,16 +70,16 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
 
     // Rule via .manager.email → allowed
     expect(
-      checkRuleAgainstLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
+      validateRuleInLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
     ).toBe(true);
 
     // Rule via .posts.author.email → rejected (email not in this path's narrowing)
-    const bad = checkRuleAgainstLens(
+    const bad = validateRuleInLens(
       { field: 'posts.author.email', operator: Operator.equals, value: 'x' },
       n,
     );
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0].path).toBe('posts.author.email');
+    expect(bad.errors[0].path).toBe('posts.author.email');
   });
 
   test('Two paths each declare User narrowing; rule must use the right field per path', () => {
@@ -98,20 +98,18 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
       },
     });
     expect(
-      checkRuleAgainstLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
+      validateRuleInLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
     ).toBe(true);
     expect(
-      checkRuleAgainstLens({ field: 'manager.name', operator: Operator.equals, value: 'x' }, n).ok,
+      validateRuleInLens({ field: 'manager.name', operator: Operator.equals, value: 'x' }, n).ok,
     ).toBe(false);
     expect(
-      checkRuleAgainstLens({ field: 'posts.author.name', operator: Operator.equals, value: 'x' }, n)
+      validateRuleInLens({ field: 'posts.author.name', operator: Operator.equals, value: 'x' }, n)
         .ok,
     ).toBe(true);
     expect(
-      checkRuleAgainstLens(
-        { field: 'posts.author.email', operator: Operator.equals, value: 'x' },
-        n,
-      ).ok,
+      validateRuleInLens({ field: 'posts.author.email', operator: Operator.equals, value: 'x' }, n)
+        .ok,
     ).toBe(false);
   });
 
@@ -170,28 +168,28 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
 
     // visit-1: spaceId visible
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'spaceUsers.spaceId', operator: Operator.equals, value: 'space-1' },
         n,
       ).ok,
     ).toBe(true);
     // visit-1: orgId NOT visible
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'spaceUsers.orgId', operator: Operator.equals, value: 'org-1' },
         n,
       ).ok,
     ).toBe(false);
     // visit-2: orgId IS visible (independent of visit-1)
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'spaceUsers.user.spaceUsers.orgId', operator: Operator.equals, value: 'org-1' },
         n,
       ).ok,
     ).toBe(true);
     // visit-2: spaceId NOT visible (visit-1's having it is irrelevant here)
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'spaceUsers.user.spaceUsers.spaceId', operator: Operator.equals, value: 'x' },
         n,
       ).ok,
@@ -221,7 +219,7 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
       },
     });
 
-    // applyLens should produce a rule where visit-1's where lives at the visit-1 anchor
+    // narrowRule should produce a rule where visit-1's where lives at the visit-1 anchor
     // and visit-2's where lives at the visit-2 anchor — not collapsed.
     const userRule: Condition = {
       field: 'spaceUsers',
@@ -231,7 +229,7 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
         operator: Operator.exists,
       },
     };
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { all: Condition[] };
     };
     // visit-1's where is ANDed into the spaceUsers arrayRule condition
@@ -264,14 +262,12 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
 
     // role blocked at visit-1
     expect(
-      checkRuleAgainstLens(
-        { field: 'spaceUsers.role', operator: Operator.equals, value: 'admin' },
-        n,
-      ).ok,
+      validateRuleInLens({ field: 'spaceUsers.role', operator: Operator.equals, value: 'admin' }, n)
+        .ok,
     ).toBe(false);
     // role blocked at visit-2 too — defaults apply at every visit of SpaceUser
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'spaceUsers.user.spaceUsers.role', operator: Operator.equals, value: 'admin' },
         n,
       ).ok,
@@ -299,24 +295,22 @@ describe('checkRuleAgainstLens — path-aware (same model, different narrowings 
     });
 
     expect(
-      checkRuleAgainstLens({ field: 'manager.password', operator: Operator.equals, value: 'x' }, n)
+      validateRuleInLens({ field: 'manager.password', operator: Operator.equals, value: 'x' }, n)
         .ok,
     ).toBe(false);
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'posts.author.password', operator: Operator.equals, value: 'x' },
         n,
       ).ok,
     ).toBe(false);
     // email IS visible via both paths
     expect(
-      checkRuleAgainstLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
+      validateRuleInLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
     ).toBe(true);
     expect(
-      checkRuleAgainstLens(
-        { field: 'posts.author.email', operator: Operator.equals, value: 'x' },
-        n,
-      ).ok,
+      validateRuleInLens({ field: 'posts.author.email', operator: Operator.equals, value: 'x' }, n)
+        .ok,
     ).toBe(true);
   });
 });

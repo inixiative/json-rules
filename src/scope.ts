@@ -18,7 +18,7 @@ export type ScopeOutOfBounds = { outOfBounds: string };
 // Resolves a ref against a stack of scopes (innermost last): a bare ref is the innermost
 // scope, `$.` the innermost, `$$.` the one above it, … A ref deeper than the stack is
 // out of bounds and carries its message.
-export const resolveScopeRef = <S>(
+export const readScopeRef = <S>(
   ref: string,
   scopes: readonly S[],
 ): ScopedRef<S> | ScopeOutOfBounds => {
@@ -42,7 +42,7 @@ export const readOwnPath = (root: unknown, path: string): unknown =>
     );
 
 const readScoped = (ref: string, scopes: Scopes): unknown => {
-  const target = resolveScopeRef(ref, scopes);
+  const target = readScopeRef(ref, scopes);
   if ('outOfBounds' in target) throw new Error(target.outOfBounds);
   return readOwnPath(target.scope, target.path);
 };

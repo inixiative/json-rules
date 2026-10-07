@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { validateFieldMap, validateFieldMapSet } from '../src/fieldMap/validate';
+import { validateFieldMap, validateFieldMaps } from '../src/fieldMap/validate';
 import type { FieldMap } from '../src/toPrisma/types';
 
-describe('validateFieldMapSet', () => {
+describe('validateFieldMaps', () => {
   test('passes for clean set', () => {
     expect(() =>
-      validateFieldMapSet({
+      validateFieldMaps({
         maps: {
           prisma: { models: { FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } } } },
         },
@@ -15,7 +15,7 @@ describe('validateFieldMapSet', () => {
 
   test('throws on dot in field name', () => {
     expect(() =>
-      validateFieldMapSet({
+      validateFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -29,7 +29,7 @@ describe('validateFieldMapSet', () => {
 
   test('throws on colon in field name', () => {
     expect(() =>
-      validateFieldMapSet({
+      validateFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -44,7 +44,7 @@ describe('validateFieldMapSet', () => {
   test('accumulates errors and lists all in single throw', () => {
     let err: Error | undefined;
     try {
-      validateFieldMapSet({
+      validateFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -71,10 +71,10 @@ describe('validateFieldMapSet', () => {
   });
 });
 
-describe('validateFieldMapSet — stitched bridges', () => {
+describe('validateFieldMaps — stitched bridges', () => {
   test('accepts bridge entries with colon in name (stitched output)', () => {
     expect(() =>
-      validateFieldMapSet({
+      validateFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -97,7 +97,7 @@ describe('validateFieldMapSet — stitched bridges', () => {
 
   test('still rejects colons on non-bridge field entries', () => {
     expect(() =>
-      validateFieldMapSet({
+      validateFieldMaps({
         maps: {
           prisma: {
             models: {

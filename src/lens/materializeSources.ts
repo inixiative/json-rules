@@ -33,7 +33,7 @@ const rowsAtPath = (rows: readonly Row[], path: string): Row[] => {
 
 /**
  * Materialize each sourced field's option set from an already-fetched collection —
- * the in-memory executor of `sources` declarations, alongside `sourceQueries`
+ * the in-memory executor of `sources` declarations, alongside `toSourceQueries`
  * (which compiles the same declarations to DISTINCT queries for a DB). Rows are
  * the collection fetched UNDER the lens (relations inline), so they are already
  * lens-scoped: eligibility here is the field's source `where` only, evaluated via
@@ -43,7 +43,7 @@ const rowsAtPath = (rows: readonly Row[], path: string): Row[] => {
  * numeric-aware in a fixed locale. Feed the result to `exposedSurface` /
  * `projectByPath` as `{ sourceValues }`.
  */
-export const sourceValuesFromRows = (
+export const materializeSources = (
   lensOrNarrowing: Lens | LensNarrowing,
   rows: readonly Row[],
   options?: CheckOptions,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildBridgeDictionary } from '../src/fieldMap/buildBridgeDictionary';
+import { indexBridges } from '../src/fieldMap/indexBridges';
 import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
@@ -37,10 +37,10 @@ const reversed: Bridge = {
 
 const set: FieldMapSet = { maps: { prisma: prismaMap, crm: crmMap }, bridges: [reversed] };
 
-describe('buildBridgeDictionary reversed-endpoint detection', () => {
+describe('indexBridges reversed-endpoint detection', () => {
   test('throws when endpoint[0] rows have duplicate `on` values (silent dedup risk)', () => {
     expect(() =>
-      buildBridgeDictionary(set, {
+      indexBridges(set, {
         'crm:MarketingEvent': [
           { id: 'e1', userId: 'u1' }, // same userId across two rows — keyBy would dedup
           { id: 'e2', userId: 'u1' },
@@ -53,7 +53,7 @@ describe('buildBridgeDictionary reversed-endpoint detection', () => {
   test('does not throw when endpoint[0] rows are unique on `on`', () => {
     // Even with reversed convention, if data happens not to collide, no harm done.
     expect(() =>
-      buildBridgeDictionary(set, {
+      indexBridges(set, {
         'crm:MarketingEvent': [
           { id: 'e1', userId: 'u1' },
           { id: 'e2', userId: 'u2' },

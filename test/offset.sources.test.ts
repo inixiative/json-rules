@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
-import { bindingNames, check, requiredBindings, resolveBindings, toPrisma, toSql } from '../index';
+import { bindingNames, bindRule, check, requiredBindings, toPrisma, toSql } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
 import { getWhere } from './fixtures/helpers';
@@ -38,7 +38,7 @@ const bothRails = async (condition: Condition, expected: number[], opts: Opts = 
   const inMemory = golfers
     .filter((r) => check(condition, r, { now: NOW, ...opts } as never) === true)
     .map((r) => r.id);
-  const compiled = opts.bindings ? resolveBindings(condition, opts.bindings as never) : condition;
+  const compiled = opts.bindings ? bindRule(condition, opts.bindings as never) : condition;
   const { sql, params } = toSql(compiled, { now: NOW, context: opts.context });
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
@@ -139,8 +139,8 @@ describe('bindings see an offset bind', () => {
     expect([...requiredBindings(r)].sort()).toEqual(['par', 'strokes']);
   });
 
-  test('resolveBindings turns a bound offset into a value', () => {
-    expect(resolveBindings(r, { par: 72, strokes: 10 })).toEqual(
+  test('bindRule turns a bound offset into a value', () => {
+    expect(bindRule(r, { par: 72, strokes: 10 })).toEqual(
       rule({
         all: [
           { field: 'score', operator: 'lessThanEquals', value: 72, offset: { value: 10 } },
@@ -188,9 +188,7 @@ describe('a date offset from each source', () => {
     };
     expect(check(r, ts, opts)).toBe(true);
     expect(check(r, { ts: d('2026-10-08T00:00:00Z') }, opts)).not.toBe(true);
-    expect(
-      getWhere(toPrisma(resolveBindings(r, opts.bindings), { context: opts.context })),
-    ).toEqual({
+    expect(getWhere(toPrisma(bindRule(r, opts.bindings), { context: opts.context }))).toEqual({
       ts: { lt: d('2026-10-07T00:00:00Z') },
     });
   });

@@ -28,7 +28,7 @@ const keyByUnique = (
           ? `endpoint[0] must be the "one" side of a oneToMany bridge — swap endpoints if '${endpointLabel}' is the "many" side`
           : `oneToOne bridges require unique '${on}' on both endpoints`;
       throw new Error(
-        `buildBridgeDictionary: duplicate '${on}' value '${key}' on '${endpointLabel}' — ${hint}.`,
+        `indexBridges: duplicate '${on}' value '${key}' on '${endpointLabel}' — ${hint}.`,
       );
     }
     out[key] = row;
@@ -36,7 +36,7 @@ const keyByUnique = (
   return out;
 };
 
-export const buildBridgeDictionary = (
+export const indexBridges = (
   set: FieldMapSet,
   rawData: Record<string, Row[]>,
 ): BridgeDictionary => {

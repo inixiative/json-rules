@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
 import { ArrayOperator, DateOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -72,17 +72,18 @@ const stitched = stitchFieldMaps({
 const lens: Lens = { ...stitched, mapName: 'db', model: 'Event' };
 const contactLens: Lens = { ...stitched, mapName: 'crm', model: 'Contact' };
 
-const run = (rule: unknown, at: Lens = lens) => checkRuleAgainstLens(rule as Condition, at);
-const reasons = (rule: unknown, at: Lens = lens) => run(rule, at).violations.map((v) => v.reason);
+const run = (rule: unknown, at: Lens = lens) => validateRuleInLens(rule as Condition, at);
+const reasons = (rule: unknown, at: Lens = lens) => run(rule, at).errors.map((v) => v.message);
 
-describe('checkRuleAgainstLens — operator must apply to the field kind', () => {
+describe('validateRuleInLens — operator must apply to the field kind', () => {
   test('contains on a DateTime field', () => {
     expect(run({ field: 'createdAt', operator: Operator.contains, value: 'abc' })).toEqual({
       ok: false,
-      violations: [
+      errors: [
         {
           path: 'createdAt',
-          reason:
+          code: 'operator_kind_mismatch',
+          message:
             "operator 'contains' does not apply to DateTime field 'createdAt' (applies to: String)",
         },
       ],
@@ -115,11 +116,12 @@ describe('checkRuleAgainstLens — operator must apply to the field kind', () =>
         field: 'items',
         arrayOperator: ArrayOperator.any,
         condition: { field: 'qty', operator: Operator.contains, value: '1' },
-      }).violations,
+      }).errors,
     ).toEqual([
       {
         path: 'qty',
-        reason: "operator 'contains' does not apply to Int field 'qty' (applies to: String)",
+        code: 'operator_kind_mismatch',
+        message: "operator 'contains' does not apply to Int field 'qty' (applies to: String)",
       },
     ]);
   });
@@ -135,14 +137,15 @@ describe('checkRuleAgainstLens — operator must apply to the field kind', () =>
   });
 });
 
-describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
+describe('validateRuleInLens — a literal must fit the field kind', () => {
   test('number against a String field', () => {
     expect(run({ field: 'name', operator: Operator.equals, value: 123 })).toEqual({
       ok: false,
-      violations: [
+      errors: [
         {
           path: 'name',
-          reason: "value 123 does not fit String field 'name' (expected a string)",
+          code: 'invalid_value',
+          message: "value 123 does not fit String field 'name' (expected a string)",
         },
       ],
     });
@@ -240,11 +243,12 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
 
   test('across a bridge, against the other map', () => {
     expect(
-      run({ field: 'crm:Contact.industry', operator: Operator.equals, value: 5 }).violations,
+      run({ field: 'crm:Contact.industry', operator: Operator.equals, value: 5 }).errors,
     ).toEqual([
       {
         path: 'crm:Contact.industry',
-        reason: "value 5 does not fit String field 'crm:Contact.industry' (expected a string)",
+        code: 'invalid_value',
+        message: "value 5 does not fit String field 'crm:Contact.industry' (expected a string)",
       },
     ]);
   });
@@ -256,7 +260,7 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
   });
 
   test('a stamp coerces the literal the way check() and the compilers do', () => {
-    // stampCoercions() stamps every leaf; with the stamp, check(), toPrisma and toSql all coerce
+    // coerceRule() stamps every leaf; with the stamp, check(), toPrisma and toSql all coerce
     // '5' to 5, so it fits. Without one, the compilers pass '5' raw and Prisma rejects it.
     expect(
       run({ field: 'count', operator: Operator.equals, value: '5', coerceType: 'Int' }).ok,
@@ -281,7 +285,7 @@ describe('checkRuleAgainstLens — a literal must fit the field kind', () => {
   });
 });
 
-describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
+describe('validateRuleInLens — an arrayOperator needs a list', () => {
   test('any on a to-one relation', () => {
     expect(
       run({
@@ -291,10 +295,11 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
       }),
     ).toEqual({
       ok: false,
-      violations: [
+      errors: [
         {
           path: 'account',
-          reason:
+          code: 'invalid_array_operator',
+          message:
             "arrayOperator 'any' needs a list, but 'account' is a to-one relation — a single related record; address its fields directly (e.g. 'account.<field>')",
         },
       ],
@@ -307,7 +312,7 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
         field: 'account',
         arrayOperator: ArrayOperator.all,
         condition: { field: 'ghost', operator: Operator.equals, value: 'a' },
-      }).violations,
+      }).errors,
     ).toHaveLength(1);
   });
 
@@ -349,7 +354,7 @@ describe('checkRuleAgainstLens — an arrayOperator needs a list', () => {
   });
 });
 
-describe('checkRuleAgainstLens — rules that must stay valid', () => {
+describe('validateRuleInLens — rules that must stay valid', () => {
   const valid: Record<string, [unknown, Lens?]> = {
     'day-only date on a DateTime field operator': [
       { field: 'createdAt', operator: Operator.greaterThan, value: '2026-09-01' },
@@ -583,7 +588,7 @@ describe('checkRuleAgainstLens — rules that must stay valid', () => {
 
   for (const [label, [rule, at]] of Object.entries(valid)) {
     test(label, () => {
-      expect(run(rule, at)).toEqual({ ok: true, violations: [] });
+      expect(run(rule, at)).toEqual({ ok: true, errors: [] });
     });
   }
 });

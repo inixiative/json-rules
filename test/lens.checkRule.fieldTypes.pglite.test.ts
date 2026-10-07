@@ -4,11 +4,11 @@ import type { Condition, Lens } from '../index';
 import {
   ArrayOperator,
   check,
-  checkRuleAgainstLens,
+  coerceRule,
   DateOperator,
   Operator,
-  stampCoercions,
   toSql,
+  validateRuleInLens,
 } from '../index';
 
 // The field-kind gate must track what the rails actually do: a rule it accepts runs on
@@ -106,8 +106,8 @@ describe('field-kind gate vs executed SQL (PGlite)', () => {
 
   for (const [label, raw] of Object.entries(accepted)) {
     it(`accepted, runs, agrees with check(): ${label}`, async () => {
-      expect(checkRuleAgainstLens(raw, lens).ok).toBe(true);
-      const rule = stampCoercions(raw, lens);
+      expect(validateRuleInLens(raw, lens).ok).toBe(true);
+      const rule = coerceRule(raw, lens);
       const inMemory = rows.filter((r) => check(rule, r, { now }) === true).map((r) => r.name);
       expect(await runSql(rule)).toEqual(inMemory);
     });
@@ -115,8 +115,8 @@ describe('field-kind gate vs executed SQL (PGlite)', () => {
 
   for (const [label, raw] of Object.entries(rejected)) {
     it(`rejected, and Postgres cannot run it: ${label}`, async () => {
-      expect(checkRuleAgainstLens(raw, lens).ok).toBe(false);
-      await expect(runSql(stampCoercions(raw, lens))).rejects.toThrow();
+      expect(validateRuleInLens(raw, lens).ok).toBe(false);
+      await expect(runSql(coerceRule(raw, lens))).rejects.toThrow();
     });
   }
 
@@ -126,7 +126,7 @@ describe('field-kind gate vs executed SQL (PGlite)', () => {
       arrayOperator: ArrayOperator.any,
       condition: { field: 'x', operator: Operator.equals, value: 1 },
     };
-    expect(checkRuleAgainstLens(rule, lens).ok).toBe(false);
+    expect(validateRuleInLens(rule, lens).ok).toBe(false);
     expect(() => check(rule, rows[0])).toThrow('name must be an array');
   });
 });

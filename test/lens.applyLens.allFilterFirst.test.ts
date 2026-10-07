@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { applyLens } from '../src/lens/applyLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -36,7 +36,7 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('applyLens — `all` grant is filter-first', () => {
+describe('narrowRule — `all` grant is filter-first', () => {
   test('windowed all: a deleted top-of-window row cannot mask a failing in-scope row (no leak)', () => {
     const n = withParent(lens, {
       mapDefaults: {
@@ -53,7 +53,7 @@ describe('applyLens — `all` grant is filter-first', () => {
       take: 1,
       condition: { field: 'body', operator: Operator.equals, value: 'approved' },
     } as unknown as Condition;
-    const composed = applyLens(rule, n);
+    const composed = narrowRule(rule, n);
     const data = {
       comments: [
         { score: 99, body: 'spam', deletedAt: '2020-01-01' }, // deleted → dropped before the window
@@ -78,7 +78,7 @@ describe('applyLens — `all` grant is filter-first', () => {
       arrayOperator: ArrayOperator.all,
       condition: { field: 'body', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    const composed = applyLens(rule, n);
+    const composed = narrowRule(rule, n);
     const data = {
       comments: [
         { body: 'y' }, // no score → out of scope → dropped

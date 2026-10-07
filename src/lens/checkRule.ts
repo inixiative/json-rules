@@ -1,38 +1,28 @@
 import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
-import { parseScopeRef, resolveScopeRef } from '../scope';
+import { parseScopeRef, readScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import { isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { Condition } from '../types';
+import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
 import {
   allowedEnumValues,
   type LensWalk,
+  lensPathEnd,
   lensRootScope,
   resolvePolicy,
-  resolveVisit,
   stepIntoField,
   type VisitScope,
-  walkLensPath,
 } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-
-export type RuleLensViolation = {
-  path: string;
-  reason: string;
-};
-
-export type RuleLensCheck = {
-  ok: boolean;
-  violations: RuleLensViolation[];
-};
 
 const visit = (
   rule: Condition,
   policy: Policy,
   root: VisitScope,
-  violations: RuleLensViolation[],
+  violations: ValidationIssue[],
 ): void =>
   visitCondition<readonly VisitScope[]>(
     rule,
@@ -42,9 +32,9 @@ const visit = (
 
       // A bare ref resolves at the current visit; `$`-prefixed refs count scopes up the stack.
       const scopeFor = (ref: string): { scope: VisitScope; field: string } | null => {
-        const target = resolveScopeRef(ref, scopes);
+        const target = readScopeRef(ref, scopes);
         if ('outOfBounds' in target) {
-          violations.push({ path: ref, reason: target.outOfBounds });
+          violations.push({ path: ref, code: 'scope_out_of_bounds', message: target.outOfBounds });
           return null;
         }
         return { scope: target.scope, field: target.path };
@@ -56,7 +46,11 @@ const visit = (
       if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
         const step = stepIntoField(policy, scopes, cond.field);
         if ('violation' in step) {
-          violations.push({ path: cond.field, reason: step.violation });
+          violations.push({
+            path: cond.field,
+            code: step.violation.startsWith('Scope ref') ? 'scope_out_of_bounds' : 'not_in_lens',
+            message: step.violation,
+          });
           fieldOk = false;
         } else {
           ({ next, walked } = step);
@@ -85,11 +79,12 @@ const visit = (
           : { scope: lensRootScope(policy), field: ref };
         if (!target || target.scope.open) continue;
         const { mapName, modelName, relPath } = target.scope;
-        const walked = walkLensPath(policy, mapName, modelName, relPath, target.field);
+        const walked = lensPathEnd(policy, mapName, modelName, relPath, target.field);
         if (!walked) {
           violations.push({
             path: ref,
-            reason:
+            code: 'not_in_lens',
+            message:
               role === 'value'
                 ? 'path (comparison ref) does not resolve through the narrowed lens'
                 : 'offset or magnitude ref does not resolve through the narrowed lens',
@@ -102,7 +97,8 @@ const visit = (
         if (!fits)
           violations.push({
             path: ref,
-            reason: `${role === 'whole' ? 'a calendar unit reads a whole number' : 'an offset or magnitude reads a number'}, not ${kind}`,
+            code: 'not_in_lens',
+            message: `${role === 'whole' ? 'a calendar unit reads a whole number' : 'an offset or magnitude reads a number'}, not ${kind}`,
           });
       }
 
@@ -134,7 +130,7 @@ const visit = (
       if (!next.open && 'orderBy' in cond && Array.isArray(cond.orderBy)) {
         for (const entry of cond.orderBy as { field?: unknown }[]) {
           if (entry && typeof entry.field === 'string' && entry.field !== '') {
-            const walkedOrder = walkLensPath(
+            const walkedOrder = lensPathEnd(
               policy,
               next.mapName,
               next.modelName,
@@ -144,7 +140,8 @@ const visit = (
             if (!walkedOrder) {
               violations.push({
                 path: entry.field,
-                reason: 'orderBy field does not resolve through the narrowed lens',
+                code: 'not_in_lens',
+                message: 'orderBy field does not resolve through the narrowed lens',
               });
             }
           }
@@ -165,7 +162,8 @@ const visit = (
             if (typeof v === 'string' && !allowed.has(v)) {
               violations.push({
                 path: terminalFieldName,
-                reason: `value '${v}' is not in the allowed set for ${scope} (allowed: ${[...allowed].join(', ')})`,
+                code: 'value_not_allowed',
+                message: `value '${v}' is not in the allowed set for ${scope} (allowed: ${[...allowed].join(', ')})`,
               });
             }
           }
@@ -182,17 +180,12 @@ const visit = (
         cond.aggregate.field !== ''
       ) {
         const aggField = cond.aggregate.field;
-        const aggWalked = walkLensPath(
-          policy,
-          next.mapName,
-          next.modelName,
-          next.relPath,
-          aggField,
-        );
+        const aggWalked = lensPathEnd(policy, next.mapName, next.modelName, next.relPath, aggField);
         if (!aggWalked) {
           violations.push({
             path: aggField,
-            reason: 'aggregate.field does not resolve through the narrowed lens',
+            code: 'not_in_lens',
+            message: 'aggregate.field does not resolve through the narrowed lens',
           });
         }
       }
@@ -214,25 +207,20 @@ export const checkConditionAtVisit = (
   mapName: string,
   modelName: string,
   relPath: readonly string[],
-): RuleLensViolation[] => {
-  const violations: RuleLensViolation[] = [];
+): ValidationIssue[] => {
+  const violations: ValidationIssue[] = [];
   visit(cond, policy, { mapName, modelName, relPath, open: false }, violations);
   return violations;
 };
 
-export const checkRuleAgainstLens = (
+/** Gate a rule against a lens: every field and value-side ref resolves through it, and every
+ *  operator, value and amount fits the field it reaches. */
+export const validateRuleInLens = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
-): RuleLensCheck => {
+): ValidationResult => {
   const policy = resolvePolicy(lensOrNarrowing);
-  const violations = checkConditionAtVisit(
-    rule,
-    policy,
-    policy.lens.mapName,
-    policy.lens.model,
-    [],
+  return validationResult(
+    checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),
   );
-  // Quickly validate that root visit doesn't have issues either (touches resolveVisit for the side effect, but mainly to ensure policy resolves)
-  resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
-  return { ok: violations.length === 0, violations };
 };

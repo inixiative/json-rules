@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildBridgeDictionary } from '../src/fieldMap/buildBridgeDictionary';
+import { indexBridges } from '../src/fieldMap/indexBridges';
 import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
@@ -65,9 +65,9 @@ const oneToManySet: FieldMapSet = {
   bridges: [oneToMany],
 };
 
-describe('buildBridgeDictionary', () => {
+describe('indexBridges', () => {
   test('keys 1-1 endpoints under map → model → on', () => {
-    const out = buildBridgeDictionary(oneToOneSet, {
+    const out = indexBridges(oneToOneSet, {
       'salesforce:Contact': [
         { id: 'c1', industry: 'tech' },
         { id: 'c2', industry: 'finance' },
@@ -82,7 +82,7 @@ describe('buildBridgeDictionary', () => {
   });
 
   test('1-many: "one" side keyed singular, "many" side grouped to arrays', () => {
-    const out = buildBridgeDictionary(oneToManySet, {
+    const out = indexBridges(oneToManySet, {
       'prisma:FanUser': [
         { id: 'u1', email: 'a@b.com' },
         { id: 'u2', email: 'd@e.com' },
@@ -110,7 +110,7 @@ describe('buildBridgeDictionary', () => {
       maps: { prisma: prismaMap, salesforce: salesforceMap, billing: billingMap },
       bridges: [oneToOne, contactToAccount],
     };
-    const out = buildBridgeDictionary(set, {
+    const out = indexBridges(set, {
       'salesforce:Contact': [
         { id: 'c1', accountId: 'a1' },
         { id: 'c2', accountId: 'a2' },
@@ -123,7 +123,7 @@ describe('buildBridgeDictionary', () => {
   });
 
   test('skips endpoints with no raw data provided', () => {
-    const out = buildBridgeDictionary(oneToOneSet, {
+    const out = indexBridges(oneToOneSet, {
       'salesforce:Contact': [{ id: 'c1' }],
     });
     expect(out.salesforce.Contact.id.c1).toBeDefined();
@@ -131,6 +131,6 @@ describe('buildBridgeDictionary', () => {
   });
 
   test('no bridges returns empty index', () => {
-    expect(buildBridgeDictionary({ maps: {} }, { foo: [{ id: '1' }] })).toEqual({});
+    expect(indexBridges({ maps: {} }, { foo: [{ id: '1' }] })).toEqual({});
   });
 });

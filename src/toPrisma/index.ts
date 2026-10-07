@@ -22,7 +22,7 @@ const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined => {
   return { ...options, map: resolved };
 };
 
-export { executePrismaQueryPlan } from './execute';
+export { executePrismaPlan } from './execute';
 export type {
   BuildOptions,
   FieldMap,
@@ -44,7 +44,7 @@ export type {
  * - `steps` – optional array of groupBy steps for count-based relation filters
  *   (only present when `atLeast`/`atMost`/`exactly` operators are used with a map)
  *
- * When `steps` is present, pass the result to `executePrismaQueryPlan` to
+ * When `steps` is present, pass the result to `executePrismaPlan` to
  * resolve step refs before using `where` in a Prisma query.
  *
  * @param condition - The rule condition to convert
@@ -66,7 +66,7 @@ export type {
  *
  * // Multi-step (map required)
  * const plan = toPrisma({ field: 'posts', arrayOperator: 'atLeast', count: 3, condition: {...} }, { map, model: 'User' });
- * const where = await executePrismaQueryPlan(plan, { post: prisma.post });
+ * const where = await executePrismaPlan(plan, { post: prisma.post });
  * await prisma.user.findMany({ where });
  * ```
  */

@@ -1,5 +1,5 @@
 import { fieldOf, modelOf, own } from '../own';
-import { resolveScopeRef } from '../scope';
+import { readScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import type {
@@ -305,7 +305,7 @@ export const resolvePolicyPath = (
   return { resolution: { outcome: 'missing', index: parts.length, hops }, effects };
 };
 
-export const walkLensPath = (
+export const lensPathEnd = (
   policy: Policy,
   startMap: string,
   startModel: string,
@@ -358,7 +358,7 @@ export const lensRootScope = (policy: Policy): VisitScope => ({
   open: false,
 });
 
-export type LensWalk = NonNullable<ReturnType<typeof walkLensPath>>;
+export type LensWalk = NonNullable<ReturnType<typeof lensPathEnd>>;
 
 /**
  * The scope a node's `field` leads into — where its `condition` / `filter` resolve — with the
@@ -370,11 +370,11 @@ export const stepIntoField = (
   scopes: readonly VisitScope[],
   field: string,
 ): { from: VisitScope; next: VisitScope; walked: LensWalk | null } | { violation: string } => {
-  const target = resolveScopeRef(field, scopes);
+  const target = readScopeRef(field, scopes);
   if ('outOfBounds' in target) return { violation: target.outOfBounds };
   if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
   const { mapName, modelName, relPath } = target.scope;
-  const walked = walkLensPath(policy, mapName, modelName, relPath, target.path);
+  const walked = lensPathEnd(policy, mapName, modelName, relPath, target.path);
   if (!walked) return { violation: 'path does not resolve through the narrowed lens' };
   const open = isJsonEntry(walked.entry);
   const relation = resolveRelationTarget(walked.entry, walked.mapName);

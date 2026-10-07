@@ -5,7 +5,7 @@ import {
   ValueShape,
 } from '../operatorCatalog';
 import { own } from '../own';
-import { resolveScopeRef } from '../scope';
+import { readScopeRef } from '../scope';
 import {
   type ConditionNode,
   isLogicalNode,
@@ -14,7 +14,7 @@ import {
   visitCondition,
 } from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
-import { resolvePolicy, walkLensPath } from './policy.ts';
+import { lensPathEnd, resolvePolicy } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
@@ -93,7 +93,7 @@ const dedupeKey = (value: RuleValue): string => {
  * vocabulary, so it answers questions about it; callers never spell a path. A leaf reaches a
  * source by its absolute path through the lens: nested (`{ field: 'orders', arrayOperator,
  * condition: { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`) spellings are one path,
- * resolved by `walkLensPath` — visibility, `mapDefaults`, and the Json boundary all apply, so a
+ * resolved by `lensPathEnd` — visibility, `mapDefaults`, and the Json boundary all apply, so a
  * source declared in `mapDefaults` answers wherever its model appears. Quantifier-blind on
  * purpose — a `none` relation names its value as much as an `any` one, `notIn` as much as `in` —
  * but shape-aware via the operator catalog: only literal-naming shapes contribute `values`;
@@ -102,7 +102,7 @@ const dedupeKey = (value: RuleValue): string => {
  * aggregate's threshold, an array `count`) belongs to the node, not to a source. Paths invisible
  * under the lens, unmapped segments, and sub-paths beneath a Json column are silent.
  */
-export const ruleSourceValues = (
+export const describeRuleSources = (
   lensOrNarrowing: Lens | LensNarrowing,
   rule: Condition,
 ): RuleSourceValues[] => {
@@ -112,7 +112,7 @@ export const ruleSourceValues = (
 
   const record = (segments: string[], node: ConditionNode): void => {
     if (segments.length === 0) return;
-    const resolved = walkLensPath(policy, policy.lens.mapName, root, [], segments.join('.'));
+    const resolved = lensPathEnd(policy, policy.lens.mapName, root, [], segments.join('.'));
     if (!resolved || resolved.jsonSubPath.length > 0) return;
     const { mapName, modelName, relPath, terminalEffect, terminalFieldName } = resolved;
     if (!terminalEffect.sources.has(terminalFieldName)) return;
@@ -143,7 +143,7 @@ export const ruleSourceValues = (
   // The scope is the stack of absolute anchors, innermost last; a `$`-prefixed field anchors at
   // the scope it names. An out-of-bounds ref anchors nowhere and is silent.
   const anchorOf = (field: string, prefixes: readonly string[][]): string[] | undefined => {
-    const target = resolveScopeRef(field, prefixes);
+    const target = readScopeRef(field, prefixes);
     if ('outOfBounds' in target) return undefined;
     return [...target.scope, ...target.path.split('.')];
   };

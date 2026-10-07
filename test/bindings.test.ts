@@ -2,10 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import {
   ArrayOperator,
   bindingNames,
+  bindRule,
   type Condition,
   Operator,
   requiredBindings,
-  resolveBindings,
 } from '../index';
 
 describe('requiredBindings', () => {
@@ -31,7 +31,7 @@ describe('requiredBindings', () => {
   });
 });
 
-describe('resolveBindings', () => {
+describe('bindRule', () => {
   test('substitutes covered binds, leaves uncovered ones as tokens (partial)', () => {
     const rule = {
       all: [
@@ -39,7 +39,7 @@ describe('resolveBindings', () => {
         { field: 'region', operator: Operator.equals, bind: 'region' },
       ],
     };
-    const out = resolveBindings(rule, { brandUuid: 'acme-1' });
+    const out = bindRule(rule, { brandUuid: 'acme-1' });
     expect(out).toEqual({
       all: [
         { field: 'brandUuid', operator: Operator.equals, value: 'acme-1' },
@@ -51,14 +51,14 @@ describe('resolveBindings', () => {
 
   test('fully resolves to a binding-free condition', () => {
     const rule = { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' };
-    const out = resolveBindings(rule, { brandUuid: 'acme-1' });
+    const out = bindRule(rule, { brandUuid: 'acme-1' });
     expect(out).toEqual({ field: 'brandUuid', operator: Operator.equals, value: 'acme-1' });
     expect(requiredBindings(out)).toEqual(new Set());
   });
 
   test('does not mutate the input', () => {
     const rule = { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' };
-    resolveBindings(rule, { brandUuid: 'acme-1' });
+    bindRule(rule, { brandUuid: 'acme-1' });
     expect(rule).toEqual({ field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' });
   });
 });
@@ -86,17 +86,17 @@ describe('the walk covers every grammar slot', () => {
     );
   });
 
-  test('resolveBindings substitutes in every slot', () => {
+  test('bindRule substitutes in every slot', () => {
     const bindings = Object.fromEntries(
       ['inAll', 'inIf', 'inThen', 'inFilter', 'inCondition'].map((n) => [n, `${n}-v`]),
     );
-    expect(requiredBindings(resolveBindings(rule, bindings))).toEqual(new Set());
+    expect(requiredBindings(bindRule(rule, bindings))).toEqual(new Set());
   });
 
   test('a bind whose name is an Object.prototype key does not resolve from the prototype', () => {
     const trap: Condition = { field: 'a', operator: Operator.equals, bind: 'toString' } as never;
-    expect(resolveBindings(trap, {})).toEqual(trap);
-    expect(requiredBindings(resolveBindings(trap, {}))).toEqual(new Set(['toString']));
+    expect(bindRule(trap, {})).toEqual(trap);
+    expect(requiredBindings(bindRule(trap, {}))).toEqual(new Set(['toString']));
   });
 });
 
@@ -123,14 +123,14 @@ describe('bindOptional — an unsupplied optional bind is null, never a missing 
     expect(requiredBindings(mixed)).toEqual(new Set(['tenant']));
   });
 
-  test('resolveBindings drops the flag with the token it resolves, leaves an unsupplied optional token in place', () => {
-    expect(resolveBindings(rule, { region: 'eu' })).toEqual({
+  test('bindRule drops the flag with the token it resolves, leaves an unsupplied optional token in place', () => {
+    expect(bindRule(rule, { region: 'eu' })).toEqual({
       all: [
         { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' },
         { field: 'region', operator: Operator.equals, value: 'eu' },
       ],
     });
-    expect(resolveBindings(rule, { brandUuid: 'acme' })).toEqual({
+    expect(bindRule(rule, { brandUuid: 'acme' })).toEqual({
       all: [
         { field: 'brandUuid', operator: Operator.equals, value: 'acme' },
         { field: 'region', operator: Operator.equals, bind: 'region', bindOptional: true },

@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  applyLens,
   check,
-  checkRuleAgainstLens,
+  coerceRule,
   createLens,
   describeRule,
   exposedSurface,
+  narrowRule,
   projectByPath,
-  stampCoercions,
+  validateRuleInLens,
 } from '../index';
 import type { FieldMap } from '../src/toPrisma/types';
 
@@ -39,18 +39,18 @@ const map: FieldMap = {
 
 const lens = createLens({ maps: { app: map }, mapName: 'app', model: 'User' });
 
-describe('checkRuleAgainstLens — Json sub-paths', () => {
+describe('validateRuleInLens — Json sub-paths', () => {
   test('a dotted sub-path into a visible Json column resolves (no violation)', () => {
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       { all: [{ field: 'metadata.theme', operator: 'equals', value: 'dark' }] },
       lens,
     );
     expect(res.ok).toBe(true);
-    expect(res.violations).toEqual([]);
+    expect(res.errors).toEqual([]);
   });
 
   test('a deeper sub-path also resolves', () => {
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       { all: [{ field: 'metadata.display.mode', operator: 'equals', value: 'dark' }] },
       lens,
     );
@@ -58,12 +58,12 @@ describe('checkRuleAgainstLens — Json sub-paths', () => {
   });
 
   test('the bare Json column resolves', () => {
-    const res = checkRuleAgainstLens({ all: [{ field: 'metadata', operator: 'exists' }] }, lens);
+    const res = validateRuleInLens({ all: [{ field: 'metadata', operator: 'exists' }] }, lens);
     expect(res.ok).toBe(true);
   });
 
   test('a sub-path under a non-existent column still fails', () => {
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       { all: [{ field: 'nope.theme', operator: 'equals', value: 'x' }] },
       lens,
     );
@@ -71,7 +71,7 @@ describe('checkRuleAgainstLens — Json sub-paths', () => {
   });
 
   test('a path traverses declared relations and then enters Json', () => {
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       { field: 'posts.payload.blocks.0.kind', operator: 'equals', value: 'hero' },
       lens,
     );
@@ -80,15 +80,15 @@ describe('checkRuleAgainstLens — Json sub-paths', () => {
 
   test('open-endedness is exclusive to the Json boundary — non-Json scalars reject sub-paths', () => {
     for (const field of ['firstName.foo', 'age.foo', 'status.foo', 'posts.title.foo']) {
-      const res = checkRuleAgainstLens({ field, operator: 'equals', value: 'x' }, lens);
+      const res = validateRuleInLens({ field, operator: 'equals', value: 'x' }, lens);
       expect(res.ok).toBe(false);
-      expect(res.violations[0].path).toBe(field);
+      expect(res.errors[0].path).toBe(field);
     }
   });
 
   test('no relation traversal resumes below the boundary', () => {
     // `posts` is a declared relation on User, but under `metadata` it is just a JSON key.
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       { field: 'metadata.posts.title', operator: 'equals', value: 'x' },
       lens,
     );
@@ -96,15 +96,15 @@ describe('checkRuleAgainstLens — Json sub-paths', () => {
   });
 });
 
-describe('checkRuleAgainstLens — value sets stop at the Json boundary', () => {
+describe('validateRuleInLens — value sets stop at the Json boundary', () => {
   test("the column's declared values still gate the bare column", () => {
-    const res = checkRuleAgainstLens({ field: 'settings', operator: 'equals', value: 'zzz' }, lens);
+    const res = validateRuleInLens({ field: 'settings', operator: 'equals', value: 'zzz' }, lens);
     expect(res.ok).toBe(false);
-    expect(res.violations[0].reason).toContain('not in the allowed set');
+    expect(res.errors[0].message).toContain('not in the allowed set');
   });
 
   test("the column's declared values do not gate its sub-paths", () => {
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       { field: 'settings.theme', operator: 'equals', value: 'zzz' },
       lens,
     );
@@ -114,16 +114,15 @@ describe('checkRuleAgainstLens — value sets stop at the Json boundary', () => 
   test('enumPicks on the Json column do not gate its sub-paths', () => {
     const narrowed = { parent: lens, root: { enumPicks: { settings: ['a'] } } };
     expect(
-      checkRuleAgainstLens({ field: 'settings', operator: 'equals', value: 'b' }, narrowed).ok,
+      validateRuleInLens({ field: 'settings', operator: 'equals', value: 'b' }, narrowed).ok,
     ).toBe(false);
     expect(
-      checkRuleAgainstLens({ field: 'settings.theme', operator: 'equals', value: 'b' }, narrowed)
-        .ok,
+      validateRuleInLens({ field: 'settings.theme', operator: 'equals', value: 'b' }, narrowed).ok,
     ).toBe(true);
   });
 });
 
-describe('checkRuleAgainstLens — nested scopes below the Json boundary', () => {
+describe('validateRuleInLens — nested scopes below the Json boundary', () => {
   const jsonArrayRule = (inner: Record<string, unknown>) => ({
     field: 'metadata.items',
     arrayOperator: 'any' as const,
@@ -132,16 +131,14 @@ describe('checkRuleAgainstLens — nested scopes below the Json boundary', () =>
 
   test('a nested condition on an undeclared JSON key is accepted', () => {
     expect(
-      checkRuleAgainstLens(
-        jsonArrayRule({ field: 'color', operator: 'equals', value: 'red' }),
-        lens,
-      ).ok,
+      validateRuleInLens(jsonArrayRule({ field: 'color', operator: 'equals', value: 'red' }), lens)
+        .ok,
     ).toBe(true);
   });
 
   test('an arrayOperator on the bare Json column opens the nested scope too', () => {
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         {
           field: 'metadata',
           arrayOperator: 'any',
@@ -153,7 +150,7 @@ describe('checkRuleAgainstLens — nested scopes below the Json boundary', () =>
   });
 
   test('filter, orderBy and aggregate.field below the boundary are open-ended', () => {
-    const res = checkRuleAgainstLens(
+    const res = validateRuleInLens(
       {
         field: 'metadata.items',
         arrayOperator: 'any',
@@ -165,7 +162,7 @@ describe('checkRuleAgainstLens — nested scopes below the Json boundary', () =>
     );
     expect(res.ok).toBe(true);
 
-    const agg = checkRuleAgainstLens(
+    const agg = validateRuleInLens(
       {
         field: 'metadata.items',
         aggregate: { mode: 'sum', field: 'amount' },
@@ -179,7 +176,7 @@ describe('checkRuleAgainstLens — nested scopes below the Json boundary', () =>
 
   test('a `$.` comparison ref below the boundary is open-ended', () => {
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         jsonArrayRule({ field: 'color', operator: 'equals', path: '$.fallbackColor' }),
         lens,
       ).ok,
@@ -188,22 +185,20 @@ describe('checkRuleAgainstLens — nested scopes below the Json boundary', () =>
 
   test('a root-anchored comparison ref is still gated inside an open scope', () => {
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         jsonArrayRule({ field: 'color', operator: 'equals', path: 'firstName' }),
         lens,
       ).ok,
     ).toBe(true);
     expect(
-      checkRuleAgainstLens(
-        jsonArrayRule({ field: 'color', operator: 'equals', path: 'nope' }),
-        lens,
-      ).ok,
+      validateRuleInLens(jsonArrayRule({ field: 'color', operator: 'equals', path: 'nope' }), lens)
+        .ok,
     ).toBe(false);
   });
 
   test('a relation nested scope is still resolved strictly', () => {
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         {
           field: 'posts',
           arrayOperator: 'any',
@@ -215,25 +210,21 @@ describe('checkRuleAgainstLens — nested scopes below the Json boundary', () =>
   });
 });
 
-describe('checkRuleAgainstLens — narrowing governs the Json column, sub-paths follow', () => {
+describe('validateRuleInLens — narrowing governs the Json column, sub-paths follow', () => {
   test('omitting the column rejects its sub-paths', () => {
     const narrowed = { parent: lens, root: { omits: ['metadata'] } };
-    expect(checkRuleAgainstLens({ field: 'metadata', operator: 'exists' }, narrowed).ok).toBe(
-      false,
-    );
+    expect(validateRuleInLens({ field: 'metadata', operator: 'exists' }, narrowed).ok).toBe(false);
     expect(
-      checkRuleAgainstLens({ field: 'metadata.theme', operator: 'equals', value: 'x' }, narrowed)
-        .ok,
+      validateRuleInLens({ field: 'metadata.theme', operator: 'equals', value: 'x' }, narrowed).ok,
     ).toBe(false);
   });
 
   test('picking the column keeps its sub-paths', () => {
     const narrowed = { parent: lens, root: { picks: ['metadata'] } };
     expect(
-      checkRuleAgainstLens({ field: 'metadata.theme', operator: 'equals', value: 'x' }, narrowed)
-        .ok,
+      validateRuleInLens({ field: 'metadata.theme', operator: 'equals', value: 'x' }, narrowed).ok,
     ).toBe(true);
-    expect(checkRuleAgainstLens({ field: 'id', operator: 'equals', value: 'x' }, narrowed).ok).toBe(
+    expect(validateRuleInLens({ field: 'id', operator: 'equals', value: 'x' }, narrowed).ok).toBe(
       false,
     );
   });
@@ -263,15 +254,17 @@ describe('describeRule — Json sub-paths', () => {
   });
 });
 
-describe('stampCoercions — the kind is undeclared below the Json boundary', () => {
+describe('coerceRule — the kind is undeclared below the Json boundary', () => {
   test('a Json sub-path is left unstamped', () => {
-    expect(
-      stampCoercions({ field: 'metadata.count', operator: 'equals', value: '5' }, lens),
-    ).toEqual({ field: 'metadata.count', operator: 'equals', value: '5' });
+    expect(coerceRule({ field: 'metadata.count', operator: 'equals', value: '5' }, lens)).toEqual({
+      field: 'metadata.count',
+      operator: 'equals',
+      value: '5',
+    });
   });
 
   test('declared scalars are still stamped', () => {
-    expect(stampCoercions({ field: 'age', operator: 'equals', value: '5' }, lens)).toEqual({
+    expect(coerceRule({ field: 'age', operator: 'equals', value: '5' }, lens)).toEqual({
       field: 'age',
       operator: 'equals',
       value: '5',
@@ -285,11 +278,11 @@ describe('stampCoercions — the kind is undeclared below the Json boundary', ()
       arrayOperator: 'any' as const,
       condition: { field: 'age', operator: 'equals' as const, value: '5' },
     };
-    expect(stampCoercions(rule as never, lens)).toEqual(rule as never);
+    expect(coerceRule(rule as never, lens)).toEqual(rule as never);
   });
 });
 
-describe('applyLens — Json sub-paths', () => {
+describe('narrowRule — Json sub-paths', () => {
   const narrowed = {
     parent: lens,
     root: { where: { field: 'id', operator: 'equals' as const, value: '1' } },
@@ -297,7 +290,7 @@ describe('applyLens — Json sub-paths', () => {
 
   test('a Json sub-path rule passes through unrewritten under the model where', () => {
     expect(
-      applyLens({ field: 'metadata.theme', operator: 'equals', value: 'dark' }, narrowed),
+      narrowRule({ field: 'metadata.theme', operator: 'equals', value: 'dark' }, narrowed),
     ).toEqual({
       all: [
         { field: 'id', operator: 'equals', value: '1' },
@@ -312,7 +305,7 @@ describe('applyLens — Json sub-paths', () => {
       arrayOperator: 'any' as const,
       condition: { field: 'color', operator: 'equals' as const, value: 'red' },
     };
-    expect(applyLens(rule as never, narrowed)).toEqual({
+    expect(narrowRule(rule as never, narrowed)).toEqual({
       all: [{ field: 'id', operator: 'equals', value: '1' }, rule],
     } as never);
   });

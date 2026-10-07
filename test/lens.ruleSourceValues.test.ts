@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ruleSourceValues } from '../src/lens/ruleSourceValues';
+import { describeRuleSources } from '../src/lens/describeRuleSources';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
@@ -52,21 +52,21 @@ const narrowing: LensNarrowing = {
 
 const tagSource = { path: 'User.tagAttachments.tag', mapName: 'app', model: 'Tag', field: 'id' };
 
-describe('ruleSourceValues — the values a rule names at each declared source', () => {
+describe('describeRuleSources — the values a rule names at each declared source', () => {
   test('nested relation spelling reaches the source through the relation node', () => {
     const rule: Condition = {
       field: 'tagAttachments',
       arrayOperator: 'any',
       condition: { field: 'tag.id', operator: 'in', value: ['a', 'b'] },
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: ['a', 'b'], dynamic: false },
     ]);
   });
 
   test('dotted spelling is the same path', () => {
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: ['a'], dynamic: false },
     ]);
   });
@@ -82,7 +82,7 @@ describe('ruleSourceValues — the values a rule names at each declared source',
         { field: 'tagAttachments.tag.id', operator: 'notIn', value: ['b', 'a'] },
       ],
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: ['a', 'b'], dynamic: false },
     ]);
   });
@@ -94,7 +94,7 @@ describe('ruleSourceValues — the values a rule names at each declared source',
         { field: 'tier', operator: 'equals', bind: 'tier' },
       ],
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: [], dynamic: true },
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: true },
     ]);
@@ -107,7 +107,7 @@ describe('ruleSourceValues — the values a rule names at each declared source',
         { field: 'tier', operator: 'isEmpty', value: true },
       ],
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: [], dynamic: false },
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: false },
     ]);
@@ -121,7 +121,7 @@ describe('ruleSourceValues — the values a rule names at each declared source',
         { field: 'meta.tag.id', operator: 'equals', value: 'a' },
       ],
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([]);
+    expect(describeRuleSources(narrowing, rule)).toEqual([]);
   });
 
   test('a windowing filter is walked at the relation anchor; the aggregate threshold is not a source value', () => {
@@ -132,7 +132,7 @@ describe('ruleSourceValues — the values a rule names at each declared source',
       operator: 'greaterThan',
       value: 2,
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: ['a'], dynamic: false },
     ]);
   });
@@ -143,7 +143,7 @@ describe('ruleSourceValues — the values a rule names at each declared source',
       then: { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' },
       else: { field: 'tagAttachments.tag.id', operator: 'equals', value: 'b' },
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -158,23 +158,23 @@ describe('ruleSourceValues — the values a rule names at each declared source',
 
   test('a bare lens declares no sources', () => {
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' };
-    expect(ruleSourceValues(lens, rule)).toEqual([]);
+    expect(describeRuleSources(lens, rule)).toEqual([]);
   });
 
   test('a prototype-named field is not a source', () => {
     const rule: Condition = { field: 'toString', operator: 'equals', value: 'a' };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([]);
+    expect(describeRuleSources(narrowing, rule)).toEqual([]);
   });
 });
 
-describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
+describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
   test('a mapDefaults-declared source answers wherever its model appears, with no root.relations spelling', () => {
     const byDefaults: LensNarrowing = {
       parent: lens,
       mapDefaults: { app: { models: { Tag: { sources: { id: true } } } } },
     };
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'in', value: ['t1', 't2'] };
-    expect(ruleSourceValues(byDefaults, rule)).toEqual([
+    expect(describeRuleSources(byDefaults, rule)).toEqual([
       { ...tagSource, values: ['t1', 't2'], dynamic: false },
     ]);
   });
@@ -186,7 +186,7 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
       { field: 'tagAttachments.tag.id', operator: 'matches', value: '^gold$' },
     ];
     for (const rule of rules) {
-      expect(ruleSourceValues(narrowing, rule)).toEqual([
+      expect(describeRuleSources(narrowing, rule)).toEqual([
         { ...tagSource, values: [], dynamic: true },
       ]);
     }
@@ -198,7 +198,7 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
       operator: 'definitelyNotAnOperator',
       value: 'x',
     } as unknown as Condition;
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: true },
     ]);
   });
@@ -211,7 +211,7 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
       path: undefined,
       bind: undefined,
     } as unknown as Condition;
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -230,7 +230,7 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
       value: 'gold',
       variable: {},
     } as unknown as Condition;
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -251,7 +251,7 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
         { field: 'tier', operator: 'in', value: [{ a: 1 }, { a: 1 }] },
       ],
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -265,7 +265,7 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
 
   test('a null inside an in list is a named value', () => {
     const rule = { field: 'tier', operator: 'in', value: ['a', null] } as unknown as Condition;
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -284,15 +284,15 @@ describe('ruleSourceValues — adversarial round (2.20.0 fix set)', () => {
       count: 0,
       condition: { field: 'tag.id', operator: 'equals', value: 'a' },
     };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(narrowing, rule)).toEqual([
       { ...tagSource, values: ['a'], dynamic: false },
     ]);
   });
 });
 
-describe('ruleSourceValues — a value read at evaluation, or moved, is dynamic', () => {
+describe('describeRuleSources — a value read at evaluation, or moved, is dynamic', () => {
   const tierSource = (r: object) =>
-    ruleSourceValues(narrowing, r as Condition).find((s) => s.field === 'tier');
+    describeRuleSources(narrowing, r as Condition).find((s) => s.field === 'tier');
 
   test('an offset moves the literal', () => {
     expect(

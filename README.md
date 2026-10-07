@@ -363,7 +363,7 @@ bare `path` is always the root context (`options.context`, defaulting to the roo
 
 A ref deeper than the nesting (`$$.` at the top level, `$$$.` one array deep) throws in
 `check()`, is a `scope_out_of_bounds` issue from `validateRule`, and a violation from
-`checkRuleAgainstLens`. A reachable ancestor that lacks the named key fails the comparison
+`validateRuleInLens`. A reachable ancestor that lacks the named key fails the comparison
 like any absent field.
 
 `toSql()` keeps `path: '$.x'` as a same-row column comparison. Every other scope ref — a
@@ -395,7 +395,7 @@ instead of `now`:
   offset: { value: { ahead: { days: 4 } } } }
 ```
 
-`resolveBindings` resolves an offset's bind as it does the comparison value's, and
+`bindRule` resolves an offset's bind as it does the comparison value's, and
 `bindingNames` / `requiredBindings` list it. A date offset read per row (a column holding
 `{ ago: … }`) is check-only; to size a shift from the row, read the amount instead.
 
@@ -426,7 +426,7 @@ in double precision on every rail.
 | `$.` date offset (a stored `{ ago }`) | yes | throws | throws |
 | `$$.` anything | yes | throws | throws |
 
-`checkRuleAgainstLens` gates offset and magnitude refs like `path` (they must resolve through
+`validateRuleInLens` gates offset and magnitude refs like `path` (they must resolve through
 the lens and read a number), and an offset must fit the field's kind: a number on a numeric
 field, a rolling shift on a DateTime.
 
@@ -440,7 +440,7 @@ format grows a node type, and it goes blind silently.
 | --- | --- |
 | `requiredBindings(rule)` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`. A name optional at one leaf and required at another is required. |
 | `bindingNames(rule)` | Every `{ bind }` name in the tree, optional or not — what a lens declares. |
-| `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
+| `bindRule(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
 
 A leaf may mark its bind optional: `{ field, operator, bind: 'region', bindOptional: true }`. An
 unsupplied required bind is a caller bug — `check()` throws, and both compilers refuse a
@@ -511,13 +511,13 @@ const plan = toPrisma({
 // plan.steps => [{ operation: 'where', where: { status: { equals: 'active' } } }]
 ```
 
-Aggregate relation filters (`sum`, `avg`) and count-based filters (`atLeast`, `atMost`, `exactly`) can produce multi-step plans. Use `executePrismaQueryPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
+Aggregate relation filters (`sum`, `avg`) and count-based filters (`atLeast`, `atMost`, `exactly`) can produce multi-step plans. Use `executePrismaPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
 
 ```ts
 import {
   ArrayOperator,
   Operator,
-  executePrismaQueryPlan,
+  executePrismaPlan,
   toPrisma,
 } from '@inixiative/json-rules';
 
@@ -535,7 +535,7 @@ const plan = toPrisma(
   { map, model: 'User' },
 );
 
-const where = await executePrismaQueryPlan(plan, { post: prisma.post });
+const where = await executePrismaPlan(plan, { post: prisma.post });
 await prisma.user.findMany({ where });
 ```
 
@@ -552,7 +552,7 @@ const plan = toPrisma(
   { map, model: 'User' },
 );
 
-const where = await executePrismaQueryPlan(plan, { order: prisma.order });
+const where = await executePrismaPlan(plan, { order: prisma.order });
 await prisma.user.findMany({ where }); // users whose orders sum to more than 1000
 ```
 
@@ -701,7 +701,7 @@ Useful exports:
 
 - `check`
 - `toPrisma`
-- `executePrismaQueryPlan`
+- `executePrismaPlan`
 - `toSql`
 - `validateRule`
 - `assertValidRule`
@@ -720,10 +720,10 @@ Lens & bridges:
 
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
-- `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
-- `validateNarrowing`, `projectByPath`, `exposedSurface`, `describeRule`, `checkRuleAgainstLens`, `applyLens`
+- `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMaps`
+- `validateNarrowing`, `projectByPath`, `exposedSurface`, `describeRule`, `validateRuleInLens`, `narrowRule`
 - `PathProjection`, `ProjectedVisit`, `RuleDescription`
-- `buildBridgeDictionary`
+- `indexBridges`
 
 Two shapes come out of a lens, and they are different things:
 
@@ -810,9 +810,9 @@ trust boundaries (platform → org → space → subtenant → client). Each lay
 boundary is **enforced, not documented**:
 
 - a rule authored against a lens provably can't reference outside it —
-  `checkRuleAgainstLens`, at author time;
+  `validateRuleInLens`, at author time;
 - the row-scope **`where` is the grant, applied server-side at execution** via
-  `applyLens` — the authored rule never sees it and can't escape it;
+  `narrowRule` — the authored rule never sees it and can't escape it;
 - what reaches an untrusted party reveals nothing hidden — `exposedSurface`.
 
 A lens defines a **surface area**, reused for distinct, separately-enforced
@@ -907,9 +907,9 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 | --- | --- |
 | `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call at narrowing construction. |
 | `projectByPath(lens)` | Returns `Map<dottedPath, ProjectedVisit>` — each declared path keys its own resolved narrowing (path picks/omits/enums chain-intersected ∩ `mapDefaults` for the target model). Sibling paths to the same model stay independent. Use for SDK-contract / OpenAPI emission, search-field enumeration, validation whitelists. See [docs/LENS.md §10](./docs/LENS.md). |
-| `ruleSourceValues(lens, rule)` | The values a rule names at each source the lens declares, keyed like `projectByPath` (`path` + `field`, with the source's `mapName` / `model`). Resolved via `walkLensPath`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
-| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, violations }`. The security gate. |
-| `applyLens(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
+| `describeRuleSources(lens, rule)` | The values a rule names at each source the lens declares, keyed like `projectByPath` (`path` + `field`, with the source's `mapName` / `model`). Resolved via `lensPathEnd`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
+| `validateRuleInLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, violations }`. The security gate. |
+| `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
 
 ### Evaluating Across Bridges
 
@@ -918,7 +918,7 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 **Limitations to know:**
 
 - **1-many bridge arrays are not iterable mid-path.** `field: 'crm:MarketingEvent.campaign'` or `path: 'crm:MarketingEvent.campaign'` returns `undefined` when the bridge value is an array — `lodash.get` can't fan out across array elements. Use a numeric index (`crm:MarketingEvent.0.campaign`) or `arrayOperator` on the `field:` side to iterate.
-- **Bridge keys are plain object properties.** The engine doesn't consult `lens.bridges` at eval time — callers structure `data` correctly using the schema as a guide. Use `buildBridgeDictionary(lens, rawForeign)` to pre-index foreign rows by `on` field, then embed under bridge keys per anchor row.
+- **Bridge keys are plain object properties.** The engine doesn't consult `lens.bridges` at eval time — callers structure `data` correctly using the schema as a guide. Use `indexBridges(lens, rawForeign)` to pre-index foreign rows by `on` field, then embed under bridge keys per anchor row.
 
 
 `check()` itself is bridge-unaware — it walks paths via plain property access. The lens primitive is **schema metadata** (what fields exist, what bridges link them, what `on` fields join each side). The caller is responsible for structuring `data` accordingly:

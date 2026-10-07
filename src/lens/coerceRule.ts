@@ -9,7 +9,7 @@ import type { Lens, LensNarrowing } from './types.ts';
 // values. A relation node's condition / filter stamp against the relation's model; below a Json
 // boundary the kind is undeclared, so nothing is stamped. A date rule, an aggregate comparison
 // (numeric by contract) and a rule that already names its coercion are left as they are.
-export const stampCoercions = (
+export const coerceRule = (
   condition: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
 ): Condition => {

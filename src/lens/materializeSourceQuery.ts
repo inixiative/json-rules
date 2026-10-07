@@ -1,7 +1,7 @@
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { SourceValues } from './projectByPath.ts';
 import { accumulateRow, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';
-import type { SourceQuery } from './sourceQuery.ts';
+import type { SourceQuery } from './toSourceQueries.ts';
 
 type Row = Record<string, unknown>;
 
@@ -10,13 +10,13 @@ export type SourceRowShape = 'prisma' | 'sql';
 
 /**
  * Materialize one compiled `SourceQuery`'s fetched rows into its `SourceValues` —
- * the executor-side counterpart of `sourceQueries`, so apps never hand-map rows.
+ * the executor-side counterpart of `toSourceQueries`, so apps never hand-map rows.
  * `rowShape` names the wire format: prisma rows (default) nest each `groupBy` axis
  * (and a dotted `label`) as related objects; sql rows carry them flat under the
  * statement's `__group_i` / `__label` aliases. Grouped queries fetch without
  * DISTINCT, so dedup per (groups, value) happens here.
  */
-export const sourceValuesFromQueryRows = (
+export const materializeSourceQuery = (
   query: SourceQuery,
   rows: readonly Row[],
   opts: { rowShape?: SourceRowShape } = {},

@@ -18,7 +18,7 @@ export type BridgeCardinality = 'oneToOne' | 'oneToMany';
  *     (typically a foreign key).
  *
  * Mis-ordering produces wrong `isList` flags during stitching and silent
- * row-dedup when building bridge dictionaries. `buildBridgeDictionary` throws
+ * row-dedup when building bridge dictionaries. `indexBridges` throws
  * at runtime if endpoint[0]'s data has duplicate `on` values to catch this.
  *
  * For `oneToOne`, both `on` fields must be unique; endpoint order is symmetric.

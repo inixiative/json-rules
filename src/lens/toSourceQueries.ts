@@ -17,11 +17,11 @@ export type SourceSelect = { [field: string]: true | { select: SourceSelect } };
 export type SourcePrismaQuery = {
   model: string;
   /** Absent for grouped sources — DISTINCT on the value column alone would collapse
-   * same-value rows across groups; dedup happens in `sourceValuesFromQueryRows`. */
+   * same-value rows across groups; dedup happens in `materializeSourceQuery`. */
   distinct?: string[];
   select: SourceSelect;
   where: PrismaWhere;
-  /** Present only if the composed where used count operators (run via executePrismaQueryPlan). */
+  /** Present only if the composed where used count operators (run via executePrismaPlan). */
   steps?: PrismaStep[];
 };
 
@@ -148,9 +148,9 @@ const compileOne = (
  * the projected lens. The WHERE is the field's composed eligibility: the model's
  * own narrowing at that path AND its source where(s). The app runs these (with
  * its own client) to materialize each field's option set — feed the fetched rows
- * to `sourceValuesFromQueryRows`.
+ * to `materializeSourceQuery`.
  */
-export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
+export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;
   const projection = projectByPath(lensOrNarrowing);

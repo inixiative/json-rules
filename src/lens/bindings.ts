@@ -1,7 +1,7 @@
 import {
   bindingNames as conditionBindingNames,
   requiredBindings as conditionRequiredBindings,
-  resolveBindings as resolveConditionBindings,
+  bindRule as resolveConditionBindings,
 } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { isSourceSpec, normalizeSource } from './policy.ts';
@@ -103,11 +103,11 @@ export const lensRequiredBindings = (lensOrNarrowing: Lens | LensNarrowing): Set
  * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
  * `where`/`sources`, returning a structurally-new lens with concrete conditions.
  * Partial — uncovered tokens stay, so stages bind progressively. Once resolved,
- * `applyLens` / `toPrisma` / `toSql` / `sourceQueries` / `projectByPath` consume the
+ * `narrowRule` / `toPrisma` / `toSql` / `toSourceQueries` / `projectByPath` consume the
  * lens unchanged: a bind needs nothing new downstream. `parent:name` draws the same
  * value as the ancestor's `name`. Does not mutate the input.
  */
-export const resolveLensBindings = (
+export const bindLens = (
   lensOrNarrowing: Lens | LensNarrowing,
   bindings: Record<string, RuleValue>,
 ): Lens | LensNarrowing => {
@@ -118,7 +118,7 @@ export const resolveLensBindings = (
     ...mapLayerConditions(lensOrNarrowing, (condition) =>
       resolveConditionBindings(condition, effective),
     ),
-    parent: resolveLensBindings(lensOrNarrowing.parent, bindings),
+    parent: bindLens(lensOrNarrowing.parent, bindings),
   };
 };
 

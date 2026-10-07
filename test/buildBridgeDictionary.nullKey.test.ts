@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildBridgeDictionary } from '../src/fieldMap/buildBridgeDictionary';
+import { indexBridges } from '../src/fieldMap/indexBridges';
 import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
 import type { FieldMap } from '../src/toPrisma/types';
 
@@ -34,9 +34,9 @@ const oneToMany: Bridge = {
 
 const set: FieldMapSet = { maps: { prisma: prismaMap, crm: crmMap }, bridges: [oneToMany] };
 
-describe('buildBridgeDictionary null join keys', () => {
+describe('indexBridges null join keys', () => {
   test('many-side rows with null `on` are filtered (do not create "null" key)', () => {
-    const out = buildBridgeDictionary(set, {
+    const out = indexBridges(set, {
       'prisma:FanUser': [{ id: 'u1' }],
       'crm:Event': [
         { id: 'e1', userId: 'u1' },
@@ -50,7 +50,7 @@ describe('buildBridgeDictionary null join keys', () => {
   });
 
   test('one-side rows with null `on` already skipped (existing behavior)', () => {
-    const out = buildBridgeDictionary(set, {
+    const out = indexBridges(set, {
       'prisma:FanUser': [
         { id: 'u1' },
         { id: null }, // bad row

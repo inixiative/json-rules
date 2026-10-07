@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { applyLens } from '../src/lens/applyLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -50,14 +50,14 @@ const data = {
   ],
 };
 
-describe('applyLens — a relation node without a condition', () => {
+describe('narrowRule — a relation node without a condition', () => {
   test('emptiness reads only the rows its grant allows', () => {
     const rule = { field: 'orders', arrayOperator: ArrayOperator.notEmpty } as Condition;
-    const composed = applyLens(rule, ordersScoped) as { filter?: Condition };
+    const composed = narrowRule(rule, ordersScoped) as { filter?: Condition };
     expect(composed.filter).toEqual(live);
     const allDeleted = { id: 'c1', orders: [{ total: 9, deletedAt: '2026-01-01' }] };
     expect(check(rule, allDeleted)).toBe(true);
-    expect(check(applyLens(rule, ordersScoped), allDeleted)).not.toBe(true);
+    expect(check(narrowRule(rule, ordersScoped), allDeleted)).not.toBe(true);
   });
 
   test('an aggregate sums only the rows its grant allows', () => {
@@ -68,7 +68,7 @@ describe('applyLens — a relation node without a condition', () => {
       value: 10,
     } as Condition;
     expect(check(rule, data)).toBe(true);
-    expect(check(applyLens(rule, ordersScoped), data)).not.toBe(true);
+    expect(check(narrowRule(rule, ordersScoped), data)).not.toBe(true);
   });
 
   test('grants on relations the filter reaches are injected', () => {
@@ -85,7 +85,7 @@ describe('applyLens — a relation node without a condition', () => {
       arrayOperator: ArrayOperator.notEmpty,
       filter: { field: 'customer.id', operator: Operator.notEquals, value: 'none' },
     } as Condition;
-    const composed = applyLens(rule, customerScoped) as { all: Condition[] };
+    const composed = narrowRule(rule, customerScoped) as { all: Condition[] };
     const scopedRule = composed.all.at(-1) as { filter: Condition };
     expect(scopedRule.filter).toEqual({
       all: [

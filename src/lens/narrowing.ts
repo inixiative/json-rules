@@ -37,7 +37,7 @@ const validateWhere = (
   const seen = new Set<string>();
   for (const { mapName, modelName, relPath } of visits) {
     for (const v of checkConditionAtVisit(condition, parentPolicy, mapName, modelName, relPath)) {
-      const message = `${position}: '${v.path}' ${v.reason}`;
+      const message = `${position}: '${v.path}' ${v.message}`;
       if (seen.has(message)) continue;
       seen.add(message);
       errors.push(message);

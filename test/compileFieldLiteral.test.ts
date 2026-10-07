@@ -7,7 +7,7 @@ import type { Rule } from '../src/types';
 import { getWhere } from './fixtures/helpers';
 
 // How both compilers emit a field rule's literal for the column it targets. A stamped
-// `coerceType` (what stampCoercions and the rule builder write) coerces the literal exactly as
+// `coerceType` (what coerceRule and the rule builder write) coerces the literal exactly as
 // check() does, so all three rails compare the same value; Decimal and BigInt keep their
 // lossless string spelling; columns the map does not type are left alone.
 const map: FieldMap = {

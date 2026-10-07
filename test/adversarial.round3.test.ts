@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import type { Bridge } from '../src/fieldMap/types';
-import { applyLens } from '../src/lens/applyLens';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -164,8 +164,8 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
   });
 });
 
-// Bug #8: checkRuleAgainstLens must walk aggregate.field paths against the lens schema.
-describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () => {
+// Bug #8: validateRuleInLens must walk aggregate.field paths against the lens schema.
+describe('Bug #8 — validateRuleInLens validates aggregate sub-fields', () => {
   const map: FieldMap = {
     models: {
       User: {
@@ -191,9 +191,9 @@ describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () =>
       operator: Operator.greaterThan,
       value: 0,
     };
-    const result = checkRuleAgainstLens(rule as never, lens);
+    const result = validateRuleInLens(rule as never, lens);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'ghostField')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'ghostField')).toBe(true);
   });
 
   test('aggregate.field referencing a real leaf passes', () => {
@@ -204,7 +204,7 @@ describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () =>
       operator: Operator.greaterThan,
       value: 0,
     };
-    const result = checkRuleAgainstLens(rule as never, lens);
+    const result = validateRuleInLens(rule as never, lens);
     expect(result.ok).toBe(true);
   });
 
@@ -216,11 +216,11 @@ describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () =>
       arrayOperator: 'any' as const,
       condition: { field: 'ghostField', operator: Operator.equals, value: 1 },
     };
-    const result = checkRuleAgainstLens(rule as never, lens);
+    const result = validateRuleInLens(rule as never, lens);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'ghostField')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'ghostField')).toBe(true);
   });
 });
 
-// Sanity: applyLens import retained for future tests
-void applyLens;
+// Sanity: narrowRule import retained for future tests
+void narrowRule;

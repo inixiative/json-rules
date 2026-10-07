@@ -8,7 +8,7 @@ export * from './src/operator';
 export * from './src/operatorCatalog';
 export {
   parseScopeRef,
-  resolveScopeRef,
+  readScopeRef,
   type ScopedRef,
   type ScopeOutOfBounds,
   type ScopeRef,

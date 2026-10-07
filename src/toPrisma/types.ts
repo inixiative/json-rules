@@ -28,7 +28,7 @@ export type FieldMapEntry = {
   /**
    * Per-field allowed values, primarily for enum fields. Takes precedence over
    * `FieldMap.enums[type]` if both are set. Pass-through from codegen
-   * (e.g. prisma-map's `EnumField.values`). Consumed by `checkRuleAgainstLens`.
+   * (e.g. prisma-map's `EnumField.values`). Consumed by `validateRuleInLens`.
    */
   values?: readonly string[];
   /**

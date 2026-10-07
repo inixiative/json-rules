@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { bindingNames, check, requiredBindings, resolveBindings, toPrisma, toSql } from '../index';
+import { bindingNames, bindRule, check, requiredBindings, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // One value-source type in every slot: a unit amount and the evaluation's time zone take
@@ -51,8 +51,8 @@ describe('a bound unit amount', () => {
     expect([...requiredBindings(offsetAmount)]).toEqual([]);
   });
 
-  test('resolveBindings rewrites it, and both compilers then agree with check()', async () => {
-    const resolved = resolveBindings(withinBoundHours, { quietHours: 2 });
+  test('bindRule rewrites it, and both compilers then agree with check()', async () => {
+    const resolved = bindRule(withinBoundHours, { quietHours: 2 });
     expect(resolved).toEqual(
       rule({ field: 'ts', dateOperator: 'after', value: { ago: { hours: { value: 2 } } } }),
     );

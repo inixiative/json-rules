@@ -47,6 +47,18 @@ export type ValidationResult = {
   errors: ValidationIssue[];
 };
 
+/** Every validator's result: ok when it found nothing. */
+export const validationResult = (errors: ValidationIssue[]): ValidationResult => ({
+  ok: errors.length === 0,
+  errors,
+});
+
+/** Every validator's assert form: throws the issues, one per line, under `label`. */
+export const throwIfInvalid = (result: ValidationResult, label: string): void => {
+  if (result.ok) return;
+  throw new Error(`${label}:\n${result.errors.map((e) => `${e.path}: ${e.message}`).join('\n')}`);
+};
+
 type ValidationContext = {
   target: RuleTarget;
   errors: ValidationIssue[];
@@ -66,18 +78,14 @@ export const validateRule = (
   };
 
   validateCondition(condition, '$', context, 1);
-  return { ok: context.errors.length === 0, errors: context.errors };
+  return validationResult(context.errors);
 };
 
 export const assertValidRule = (
   condition: unknown,
   options: { target?: RuleTarget } = {},
 ): asserts condition is Condition => {
-  const result = validateRule(condition, options);
-  if (result.ok) return;
-
-  const message = result.errors.map((error) => `${error.path}: ${error.message}`).join('\n');
-  throw new Error(`Invalid rule:\n${message}`);
+  throwIfInvalid(validateRule(condition, options), 'Invalid rule');
 };
 
 const validateCondition = (

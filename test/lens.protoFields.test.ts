@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma, toSql, validateRule } from '../index';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import { walkFieldPath } from '../src/toPrisma/mapWalk';
@@ -34,12 +34,10 @@ const lens: Lens = {
 
 describe('prototype-named fields never resolve', () => {
   test('the policy gate rejects them like any other undeclared field', () => {
-    expect(checkRuleAgainstLens({ field: 'email', operator: Operator.exists }, lens).ok).toBe(true);
-    expect(checkRuleAgainstLens({ field: 'secret', operator: Operator.exists }, lens).ok).toBe(
-      false,
-    );
+    expect(validateRuleInLens({ field: 'email', operator: Operator.exists }, lens).ok).toBe(true);
+    expect(validateRuleInLens({ field: 'secret', operator: Operator.exists }, lens).ok).toBe(false);
     for (const name of PROTO_NAMES) {
-      expect(checkRuleAgainstLens({ field: name, operator: Operator.exists }, lens).ok).toBe(false);
+      expect(validateRuleInLens({ field: name, operator: Operator.exists }, lens).ok).toBe(false);
     }
   });
 

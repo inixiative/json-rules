@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge } from '../src/fieldMap/types';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -62,48 +62,42 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('checkRuleAgainstLens', () => {
+describe('validateRuleInLens', () => {
   test('rule fully within unrestricted lens passes', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'email', operator: Operator.equals, value: 'x' },
       lens,
     );
     expect(result.ok).toBe(true);
-    expect(result.violations).toEqual([]);
+    expect(result.errors).toEqual([]);
   });
 
   test('rule referencing non-existent field fails', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'nope', operator: Operator.equals, value: 'x' },
       lens,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('nope');
+    expect(result.errors[0].path).toBe('nope');
   });
 
   test('rule referencing omitted field fails after narrowing', () => {
     const n = withParent(lens, { root: { omits: ['email'] } });
-    const result = checkRuleAgainstLens(
-      { field: 'email', operator: Operator.equals, value: 'x' },
-      n,
-    );
+    const result = validateRuleInLens({ field: 'email', operator: Operator.equals, value: 'x' }, n);
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('email');
+    expect(result.errors[0].path).toBe('email');
   });
 
   test('rule referencing un-picked field fails after pick narrowing', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
-    const result = checkRuleAgainstLens(
-      { field: 'name', operator: Operator.equals, value: 'x' },
-      n,
-    );
+    const result = validateRuleInLens({ field: 'name', operator: Operator.equals, value: 'x' }, n);
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('name');
+    expect(result.errors[0].path).toBe('name');
   });
 
   test('AND rule collects violations for all bad branches', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         all: [
           { field: 'email', operator: Operator.equals, value: 'x' },
@@ -114,7 +108,7 @@ describe('checkRuleAgainstLens', () => {
       n,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations.map((v) => v.path).sort()).toEqual(['id', 'name']);
+    expect(result.errors.map((v) => v.path).sort()).toEqual(['id', 'name']);
   });
 
   test('rule traversing a relation that remains picked passes', () => {
@@ -124,7 +118,7 @@ describe('checkRuleAgainstLens', () => {
         relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'fanMissions.missionUuid', operator: Operator.equals, value: 'x' },
       n,
     );
@@ -137,12 +131,12 @@ describe('checkRuleAgainstLens', () => {
         relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'fanMissions.status', operator: Operator.equals, value: 'x' },
       n,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('fanMissions.status');
+    expect(result.errors[0].path).toBe('fanMissions.status');
   });
 
   test('cross-map bridge path passes when narrowed in', () => {
@@ -151,7 +145,7 @@ describe('checkRuleAgainstLens', () => {
         relations: { 'salesforce:Contact': { picks: ['industry'] } },
       },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'x' },
       n,
     );
@@ -159,7 +153,7 @@ describe('checkRuleAgainstLens', () => {
   });
 
   test('arrayRule inner condition resolves against relation target (not anchor)', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         field: 'fanMissions',
         arrayOperator: 'any',
@@ -168,11 +162,11 @@ describe('checkRuleAgainstLens', () => {
       lens,
     );
     expect(result.ok).toBe(true);
-    expect(result.violations).toEqual([]);
+    expect(result.errors).toEqual([]);
   });
 
   test('arrayRule inner condition catches bogus field on relation target', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         field: 'fanMissions',
         arrayOperator: 'any',
@@ -181,7 +175,7 @@ describe('checkRuleAgainstLens', () => {
       lens,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('ghostField');
+    expect(result.errors[0].path).toBe('ghostField');
   });
 
   test('cross-map bridge path fails when un-picked', () => {
@@ -190,11 +184,11 @@ describe('checkRuleAgainstLens', () => {
         relations: { 'salesforce:Contact': { picks: ['industry'] } },
       },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'salesforce:Contact.id', operator: Operator.equals, value: 'x' },
       n,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('salesforce:Contact.id');
+    expect(result.errors[0].path).toBe('salesforce:Contact.id');
   });
 });

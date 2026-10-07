@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { LensNarrowing } from '../index';
-import { createLens, sourceValuesFromRows } from '../index';
+import { createLens, materializeSources } from '../index';
 
 const lens = createLens({
   mapName: 'sdk',
@@ -74,10 +74,10 @@ const rows = [
   },
 ];
 
-describe('sourceValuesFromRows', () => {
+describe('materializeSources', () => {
   test('materializes distinct sorted options for a root sourced field, skipping nulls', () => {
     const narrowing: LensNarrowing = { parent: lens, root: { sources: { rewardType: true } } };
-    const [sv] = sourceValuesFromRows(narrowing, rows);
+    const [sv] = materializeSources(narrowing, rows);
     expect(sv).toEqual({
       path: 'Reward',
       mapName: 'sdk',
@@ -92,7 +92,7 @@ describe('sourceValuesFromRows', () => {
       parent: lens,
       root: { sources: { regionId: { label: 'regionName' } } },
     };
-    const [sv] = sourceValuesFromRows(narrowing, rows);
+    const [sv] = materializeSources(narrowing, rows);
     expect(sv.options).toEqual([
       { value: 'apac', label: 'Asia Pacific' },
       { value: 'eu', label: 'Europe' },
@@ -107,7 +107,7 @@ describe('sourceValuesFromRows', () => {
         sources: { rewardType: { where: { field: 'isActive', operator: 'equals', value: true } } },
       },
     };
-    const [sv] = sourceValuesFromRows(narrowing, rows);
+    const [sv] = materializeSources(narrowing, rows);
     expect(sv.options).toEqual([{ value: 'digital' }, { value: 'physical' }]);
   });
 
@@ -119,7 +119,7 @@ describe('sourceValuesFromRows', () => {
         sources: { rewardType: true },
       },
     };
-    const [sv] = sourceValuesFromRows(narrowing, rows);
+    const [sv] = materializeSources(narrowing, rows);
     expect(sv.options).toEqual([{ value: 'digital' }, { value: 'physical' }]);
   });
 
@@ -132,19 +132,19 @@ describe('sourceValuesFromRows', () => {
         },
       },
     };
-    const [sv] = sourceValuesFromRows(narrowing, rows, { bindings: { region: 'us' } });
+    const [sv] = materializeSources(narrowing, rows, { bindings: { region: 'us' } });
     expect(sv.options).toEqual([{ value: 'physical' }]);
   });
 
   test('flattens scalar-list sourced fields to one option per element', () => {
     const narrowing: LensNarrowing = { parent: lens, root: { sources: { tags: true } } };
-    const [sv] = sourceValuesFromRows(narrowing, rows);
+    const [sv] = materializeSources(narrowing, rows);
     expect(sv.options).toEqual([{ value: 'clearance' }, { value: 'featured' }, { value: 'new' }]);
   });
 
   test('sorts numeric values numerically in a fixed locale', () => {
     const narrowing: LensNarrowing = { parent: lens, root: { sources: { priority: true } } };
-    const [sv] = sourceValuesFromRows(narrowing, rows);
+    const [sv] = materializeSources(narrowing, rows);
     expect(sv.options.map((o) => o.value)).toEqual(['1', '2', '3', '10']);
   });
 
@@ -157,7 +157,7 @@ describe('sourceValuesFromRows', () => {
       parent: lens,
       root: { sources: { regionId: { label: 'regionName' } } },
     };
-    const [sv] = sourceValuesFromRows(narrowing, sparseRows);
+    const [sv] = materializeSources(narrowing, sparseRows);
     expect(sv.options).toEqual([{ value: 'us', label: 'United States' }]);
   });
 
@@ -166,7 +166,7 @@ describe('sourceValuesFromRows', () => {
       parent: lens,
       root: { relations: { brand: { sources: { tier: true } } } },
     };
-    const values = sourceValuesFromRows(narrowing, rows);
+    const values = materializeSources(narrowing, rows);
     const brandTier = values.find((sv) => sv.path === 'Reward.brand');
     expect(brandTier).toEqual({
       path: 'Reward.brand',
@@ -178,7 +178,7 @@ describe('sourceValuesFromRows', () => {
   });
 
   test('returns nothing when no sources are declared', () => {
-    expect(sourceValuesFromRows(lens, rows)).toEqual([]);
+    expect(materializeSources(lens, rows)).toEqual([]);
   });
 
   // Aliased relations: two differently-named relation fields targeting the SAME model.
@@ -223,7 +223,7 @@ describe('sourceValuesFromRows', () => {
         ],
       },
     ];
-    const values = sourceValuesFromRows(narrowing, users);
+    const values = materializeSources(narrowing, users);
     const parents = values.find((sv) => sv.path === 'User.parents');
     const children = values.find((sv) => sv.path === 'User.children');
     expect(parents?.model).toBe('User');
@@ -240,12 +240,12 @@ describe('sources entry hygiene: {} is not a Condition', () => {
       // @ts-expect-error — {} is neither a Condition nor a SourceSpec (both keys absent)
       root: { sources: { rewardType: {} } },
     };
-    expect(() => sourceValuesFromRows(narrowing, rows)).toThrow('sources: {} is not a Condition');
+    expect(() => materializeSources(narrowing, rows)).toThrow('sources: {} is not a Condition');
   });
 
   test('the unconstrained spelling is `true`', () => {
     const narrowing: LensNarrowing = { parent: lens, root: { sources: { rewardType: true } } };
-    const [values] = sourceValuesFromRows(narrowing, rows);
+    const [values] = materializeSources(narrowing, rows);
     expect(values.options.length).toBeGreaterThan(0);
   });
 
@@ -254,7 +254,7 @@ describe('sources entry hygiene: {} is not a Condition', () => {
       parent: lens,
       root: { sources: { regionId: { label: 'regionName' } } },
     };
-    const [values] = sourceValuesFromRows(narrowing, rows);
+    const [values] = materializeSources(narrowing, rows);
     expect(values.options.length).toBeGreaterThan(0);
     expect(values.options[0].label).toBeDefined();
   });

@@ -276,7 +276,7 @@ export type Rule<TValue = RuleValue> = ValueSourceFields<TValue> & {
   caseInsensitive?: boolean;
   fuzzy?: boolean | FuzzyConfig;
   // Declared kind both sides coerce to before comparing — never inferred from the
-  // values. Stamp mechanically from a lens via stampCoercions().
+  // values. Stamp mechanically from a lens via coerceRule().
   coerceType?: FieldKind;
 };
 

@@ -12,7 +12,7 @@ field on every model and write a `where: tenantId = "other-tenant"` predicate,
 no amount of code review will stop the next prompt from doing it. Lens is that
 boundary: a schema-aware view layer that says, declaratively, "this is what's
 visible, and these are the rows in scope, *anywhere this model is reached.*"
-`checkRuleAgainstLens` is the gatekeeper. `applyLens` is the composer that
+`validateRuleInLens` is the gatekeeper. `narrowRule` is the composer that
 injects the scope where clauses at the *right anchor points* in the rule tree
 so the resulting query/check operates only on rows the lens admits.
 
@@ -64,7 +64,7 @@ const scopeNarrowing: LensNarrowing = {
 ```
 
 The surface narrowing means a rule like `{ field: 'deletedAt', operator: 'exists' }`
-will be rejected by `checkRuleAgainstLens` (the field isn't in the projected
+will be rejected by `validateRuleInLens` (the field isn't in the projected
 surface). The scope narrowing leaves the field visible but guarantees that every
 rule executed against the lens runs over non-deleted rows.
 
@@ -72,7 +72,7 @@ rule executed against the lens runs over non-deleted rows.
 
 The whole point of v2.1's anchored composition is that a `where` does not
 always belong at the *root* of the rule. It belongs anchored to the model it
-describes — and `applyLens` finds that anchor point and injects it there.
+describes — and `narrowRule` finds that anchor point and injects it there.
 
 | Layer | Where it lives | Semantic |
 | --- | --- | --- |
@@ -158,7 +158,7 @@ out of scope. The scope semantic is broken.
 
 ### Filter-first via the window `filter` — right
 
-`applyLens` injects the `all` grant into the array rule's window `filter`, not its condition:
+`narrowRule` injects the `all` grant into the array rule's window `filter`, not its condition:
 
 ```ts
 {
@@ -380,7 +380,7 @@ Each path key gets its own resolved field set, so path-specific enum divergence
 is preserved (e.g. `User.role` picks `['admin']` at root and `['member']` via
 `posts.author` — each path's allowed values stand on their own, no leakage).
 
-`checkRuleAgainstLens` rejects rule values not in the resolved set — leaf
+`validateRuleInLens` rejects rule values not in the resolved set — leaf
 rules, plus inside `all`/`any`/`if`/`arrayRule.condition` (it recurses with
 model-context awareness so a value like `users.any(role equals 'GHOST')`
 correctly resolves against `User.role`, not the lens root).
@@ -537,13 +537,13 @@ const narrowing: LensNarrowing = {
 
 ## 10. Using the lens
 
-### `checkRuleAgainstLens(rule, lens)` — validate at the API boundary
+### `validateRuleInLens(rule, lens)` — validate at the API boundary
 
 This is the *gatekeeper*. Call it on every user-authored rule before doing
 anything else with it.
 
 ```ts
-import { checkRuleAgainstLens } from '@inixiative/json-rules';
+import { validateRuleInLens } from '@inixiative/json-rules';
 
 const userRule = {
   field: 'posts',
@@ -551,7 +551,7 @@ const userRule = {
   condition: { field: 'published', operator: Operator.equals, value: true },
 };
 
-const check = checkRuleAgainstLens(userRule, narrowing);
+const check = validateRuleInLens(userRule, narrowing);
 // { ok: boolean, violations: Array<{ path, reason }> }
 
 if (!check.ok) {
@@ -575,9 +575,9 @@ the JSON value at evaluation time. Path resolution therefore **stops at the Json
 column** and everything below it is accepted as-is.
 
 ```ts
-checkRuleAgainstLens({ field: 'metadata.theme.color', operator: 'equals', value: 'red' }, lens);
+validateRuleInLens({ field: 'metadata.theme.color', operator: 'equals', value: 'red' }, lens);
 // ok — resolution stops at the visible `metadata` column
-checkRuleAgainstLens({ field: 'firstName.foo', operator: 'equals', value: 'x' }, lens);
+validateRuleInLens({ field: 'firstName.foo', operator: 'equals', value: 'x' }, lens);
 // violation — open-endedness is exclusively a Json-boundary property
 ```
 
@@ -600,23 +600,23 @@ What follows from that:
   is a `$$.` ref that climbs back out to a declared ancestor: it is gated at the
   scope it names, exactly as it would be outside the boundary.
 - **No kind-specific narrowing applies.** The value kind below the boundary is
-  unknown, so the generic operator set is allowed and `stampCoercions` leaves
+  unknown, so the generic operator set is allowed and `coerceRule` leaves
   the rule unstamped. This mirrors `check`, which compares the traversed JSON
   value untyped — a type mismatch fails the comparison rather than throwing.
 
 `describeRule` follows the same boundary, so a Json sub-path is never reported
 as a violation.
 
-### `applyLens(rule, narrowing)` — compose with scope
+### `narrowRule(rule, narrowing)` — compose with scope
 
-Once a rule has passed the gate, run it through `applyLens` to get the
+Once a rule has passed the gate, run it through `narrowRule` to get the
 **composed rule** with all where clauses injected at their proper anchors. Pass
 the result to `check()`, `toPrisma()`, or `toSql()`.
 
 ```ts
-import { applyLens, toPrisma } from '@inixiative/json-rules';
+import { narrowRule, toPrisma } from '@inixiative/json-rules';
 
-const composed = applyLens(userRule, narrowing);
+const composed = narrowRule(userRule, narrowing);
 // composed now contains the user rule + tenantId/deletedAt wheres anchored
 // at every User and Post visit, with `all` operators rewritten filter-first.
 
@@ -662,20 +662,20 @@ for (const [dottedPath, visit] of projection) {
 
 For the runtime per-path narrowing facts (without materializing the whole
 projection), `resolveVisit(policy, mapName, modelName, relPath)` returns the
-same composition for a single visit. `checkRuleAgainstLens` uses it
+same composition for a single visit. `validateRuleInLens` uses it
 internally — it's the path-aware authority for "is this rule field allowed."
 
-### `resolveLensPath(lens, path)` — one path, verified hop by hop
+### `walkLensPath(lens, path)` — one path, verified hop by hop
 
 ```ts
-import { resolveLensPath } from '@inixiative/json-rules';
+import { walkLensPath } from '@inixiative/json-rules';
 
-const walk = resolveLensPath(narrowing, 'posts.author.name');
+const walk = walkLensPath(narrowing, 'posts.author.name');
 // { outcome: 'resolved', hops: [...], terminal: LensPathHop, jsonSubPath: [] }
 // { outcome: 'hidden' | 'missing' | 'pastScalar', index: number, hops: [...] }
 ```
 
-The per-path counterpart of `projectByPath`: the walk `checkRuleAgainstLens`
+The per-path counterpart of `projectByPath`: the walk `validateRuleInLens`
 gates a rule's `field` with, exposed for consumers that resolve paths of their
 own — template tokens, loop bindings, presence guards. It verifies as it walks:
 every hop is checked against the narrowing at that visit, so `hidden` is a
@@ -726,10 +726,10 @@ exposed values. The traversal is cycle-safe, so recursive schemas
 The lens is your **SDK contract**. The narrowing is the description of what the
 caller may say. The flow is:
 
-1. **Validate** the incoming rule with `checkRuleAgainstLens`. Reject anything
+1. **Validate** the incoming rule with `validateRuleInLens`. Reject anything
    that touches a narrowed-away field, a denied enum value, or an
    unresolvable path. This is the security boundary.
-2. **Apply** the lens with `applyLens` to inject the where clauses at their
+2. **Apply** the lens with `narrowRule` to inject the where clauses at their
    proper anchors.
 3. **Execute** the composed rule with `toPrisma` / `toSql` / `check`.
 
@@ -738,15 +738,15 @@ crosses a bridge, and which targets can run it — use `describeRule(rule, lens)
 It returns `{ sources, bridgesCrossed, supportedTargets, violations }`. A
 bridge-crossing rule is `check()`-only (no cross-source joins), and windowing
 restricts targets further. `describeRule` is for routing/UX (pick an executor,
-badge a rule); `checkRuleAgainstLens` remains the security gate.
+badge a rule); `validateRuleInLens` remains the security gate.
 
 ```ts
-import { checkRuleAgainstLens, applyLens, toPrisma } from '@inixiative/json-rules';
+import { validateRuleInLens, narrowRule, toPrisma } from '@inixiative/json-rules';
 
-const check = checkRuleAgainstLens(userRule, narrowing);
+const check = validateRuleInLens(userRule, narrowing);
 if (!check.ok) throw new HttpError(400, check.violations);
 
-const composed = applyLens(userRule, narrowing);
+const composed = narrowRule(userRule, narrowing);
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
 return prisma.$transaction(plan.steps.map(executeStep));
 ```
@@ -754,7 +754,7 @@ return prisma.$transaction(plan.steps.map(executeStep));
 `toPrisma` / `toSql` / `check` operate against the **base lens / FieldMap** —
 they're *not* the security boundary. They don't know about narrowing chains;
 they only see the composed rule they're given. If you skip
-`checkRuleAgainstLens` or skip `applyLens`, the executor will happily run an
+`validateRuleInLens` or skip `narrowRule`, the executor will happily run an
 unnarrowed rule. Treat the two-step (validate → apply) as the bottleneck for
 every rule entering execution.
 
@@ -963,19 +963,19 @@ const userRule = {
 ### Validate
 
 ```ts
-import { checkRuleAgainstLens } from '@inixiative/json-rules';
+import { validateRuleInLens } from '@inixiative/json-rules';
 
 const narrowing = buildNarrowing('tenant-42');
-const check = checkRuleAgainstLens(userRule, narrowing);
+const check = validateRuleInLens(userRule, narrowing);
 // { ok: true, violations: [] }
 ```
 
 ### Apply
 
 ```ts
-import { applyLens } from '@inixiative/json-rules';
+import { narrowRule } from '@inixiative/json-rules';
 
-const composed = applyLens(userRule, narrowing);
+const composed = narrowRule(userRule, narrowing);
 // Composed AST (filter-first under `all`):
 // {
 //   all: [

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { applyLens } from '../src/lens/applyLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -51,7 +51,7 @@ describe('root.where — root-anchored', () => {
     const userRule: Condition = { field: 'tier', operator: Operator.equals, value: 'gold' };
     const scope: Condition = { field: 'id', operator: Operator.equals, value: 'u1' };
     const n: LensNarrowing = { parent: lens, root: { where: scope } };
-    expect(applyLens(userRule, n)).toEqual({ all: [scope, userRule] });
+    expect(narrowRule(userRule, n)).toEqual({ all: [scope, userRule] });
   });
 });
 
@@ -63,7 +63,7 @@ describe('mapDefaults[X].models[M].where — model-anchored', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { User: { where: userConstraint } } } },
     });
-    const composed = applyLens(userRule, n);
+    const composed = narrowRule(userRule, n);
     expect(composed).toEqual({ all: [userConstraint, userRule] });
   });
 
@@ -86,7 +86,7 @@ describe('mapDefaults[X].models[M].where — model-anchored', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentConstraint } } } },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       field: string;
       arrayOperator: string;
       condition: { field: string; arrayOperator: string; condition: { all: Condition[] } };
@@ -112,7 +112,7 @@ describe('mapDefaults[X].models[M].where — model-anchored', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentConstraint } } } },
     });
-    const composed = applyLens(userRule, n);
+    const composed = narrowRule(userRule, n);
     // Should NOT have the comment constraint at root (anchored to Comment, never visited)
     expect(composed).toEqual(userRule);
   });
@@ -141,7 +141,7 @@ describe('root.relations[R].where — path-anchored', () => {
         },
       },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { condition: { all: Condition[] } };
     };
     const innerAll = composed.condition.condition.all;
@@ -165,7 +165,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { condition: { all: Condition[] } };
     };
     expect(composed.condition.condition.all).toContainEqual(commentScope);
@@ -189,7 +189,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { filter?: Condition; condition?: Condition };
     };
     // The grant is the window filter; the inner condition is the untouched user condition.
@@ -214,7 +214,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { condition: { all: Condition[] } };
     };
     // none({all: [c, u]}) = "no row is both non-deleted AND matching" = "no non-deleted matches"
@@ -235,7 +235,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    const composed = applyLens(userRule, n) as unknown as {
+    const composed = narrowRule(userRule, n) as unknown as {
       condition: { count: number; condition: { all: Condition[] } };
     };
     // count lives on the comments arrayRule (composed.condition), not its inner condition
@@ -258,7 +258,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { condition: { all: Condition[] } };
     };
     expect(composed.condition.condition.all).toContainEqual(commentScope);
@@ -282,7 +282,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       condition: { condition: { all: Condition[] } };
     };
     // The constraint anchors at the comment-arrayRule's condition level — wraps the if/then/else
@@ -305,7 +305,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Comment: { where: grant } } } },
     });
-    const composed = applyLens(userRule, n) as { condition: { filter?: Condition } };
+    const composed = narrowRule(userRule, n) as { condition: { filter?: Condition } };
     expect(composed.condition.filter).toEqual(grant);
   });
 });
@@ -329,7 +329,7 @@ describe('multiple where compose at their own anchors', () => {
       mapDefaults: { prisma: { models: { Comment: { where: commentScope } } } },
     });
 
-    const composed = applyLens(userRule, n) as {
+    const composed = narrowRule(userRule, n) as {
       all: [Condition, { field: string; condition: { condition: { all: Condition[] } } }];
     };
     // Root level should have the rootScope AND the rewritten user rule

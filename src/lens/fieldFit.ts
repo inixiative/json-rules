@@ -11,7 +11,7 @@ import { own } from '../own';
 import { entryKind, instantMs } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';
-import type { RuleLensViolation } from './checkRule.ts';
+import type { ValidationIssue } from '../validate';
 import { isJsonEntry } from './walk.ts';
 
 /** A leaf's literal operands — the elements for in/notIn/between. Null when the comparison
@@ -69,7 +69,7 @@ const show = (v: unknown): string =>
 export const leafFitViolations = (
   cond: Rule | DateRule,
   declared: FieldKind | undefined,
-): RuleLensViolation[] => {
+): ValidationIssue[] => {
   const coerceType = 'coerceType' in cond ? cond.coerceType : undefined;
   const kind = coerceType ?? declared;
   if (kind === undefined || kind === FieldKind.Json) return [];
@@ -88,7 +88,8 @@ export const leafFitViolations = (
     return [
       {
         path: cond.field,
-        reason: `operator '${op}' does not apply to ${label} (applies to: ${entry.kinds.join(', ')})`,
+        code: 'operator_kind_mismatch',
+        message: `operator '${op}' does not apply to ${label} (applies to: ${entry.kinds.join(', ')})`,
       },
     ];
   }
@@ -98,7 +99,14 @@ export const leafFitViolations = (
   if (cond.offset !== undefined) {
     const shiftable =
       'dateOperator' in cond ? kind === FieldKind.DateTime : NUMERIC_KINDS.includes(kind);
-    if (!shiftable) return [{ path: cond.field, reason: `an offset does not apply to ${label}` }];
+    if (!shiftable)
+      return [
+        {
+          path: cond.field,
+          code: 'invalid_offset',
+          message: `an offset does not apply to ${label}`,
+        },
+      ];
   }
 
   // Date-rule values are validateRule's (grammar-level, kind-independent); a regex pattern is
@@ -110,7 +118,8 @@ export const leafFitViolations = (
     return [
       {
         path: cond.field,
-        reason: `operator '${op}' compares one value, but ${label} was given a list`,
+        code: 'invalid_value_shape',
+        message: `operator '${op}' compares one value, but ${label} was given a list`,
       },
     ];
   }
@@ -130,7 +139,8 @@ export const leafFitViolations = (
     .filter((v) => v !== null && !fitsAsCompiled(v))
     .map((v) => ({
       path: cond.field,
-      reason: `value ${show(v)} does not fit ${label} (expected ${expected})`,
+      code: 'invalid_value',
+      message: `value ${show(v)} does not fit ${label} (expected ${expected})`,
     }));
 };
 
@@ -140,11 +150,11 @@ export const arrayFitViolation = (
   field: string,
   arrayOperator: string,
   entry: FieldMapEntry,
-): RuleLensViolation | null => {
+): ValidationIssue | null => {
   if (entry.isList === true || isJsonEntry(entry)) return null;
-  const reason =
+  const message =
     entry.kind === 'object' || entry.kind === 'bridge'
       ? `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a to-one relation — a single related record; address its fields directly (e.g. '${field}.<field>')`
       : `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a single ${entryKind(entry) ?? entry.type} value`;
-  return { path: field, reason };
+  return { path: field, code: 'invalid_array_operator', message };
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { GroupByStep, ToPrismaResult, WhereStep } from '../index';
-import { ArrayOperator, DateOperator, executePrismaQueryPlan, Operator, toPrisma } from '../index';
+import { ArrayOperator, DateOperator, executePrismaPlan, Operator, toPrisma } from '../index';
 import { blogMap } from './fixtures/blogMap';
 import { compositeFkMap } from './fixtures/compositeFkMap';
 import { getWhere } from './fixtures/helpers';
@@ -434,11 +434,11 @@ describe('toPrisma multi-step count operators', () => {
   });
 });
 
-// ─── executePrismaQueryPlan ───────────────────────────────────────────────────
-describe('executePrismaQueryPlan', () => {
+// ─── executePrismaPlan ───────────────────────────────────────────────────
+describe('executePrismaPlan', () => {
   it('no groupBy steps → returns where directly', async () => {
     const result = toPrisma({ field: 'id', operator: Operator.equals, value: '123' });
-    const resolved = await executePrismaQueryPlan(result, {});
+    const resolved = await executePrismaPlan(result, {});
     expect(resolved).toEqual({ id: { equals: '123' } });
   });
 
@@ -459,7 +459,7 @@ describe('executePrismaQueryPlan', () => {
       },
     };
 
-    const resolved = await executePrismaQueryPlan(result, mockDelegate);
+    const resolved = await executePrismaPlan(result, mockDelegate);
     expect(resolved).toEqual({ id: { in: ['user-1', 'user-2'] } });
   });
 
@@ -483,7 +483,7 @@ describe('executePrismaQueryPlan', () => {
       post: { groupBy: async () => [{ authorId: 'u1' }] },
     };
 
-    const resolved = await executePrismaQueryPlan(plan, mockDelegate);
+    const resolved = await executePrismaPlan(plan, mockDelegate);
     expect(resolved).toEqual({ AND: [{ id: { in: ['u1'] } }, { status: { equals: 'active' } }] });
   });
 
@@ -506,7 +506,7 @@ describe('executePrismaQueryPlan', () => {
       },
     };
 
-    const resolved = await executePrismaQueryPlan(result, mockDelegate);
+    const resolved = await executePrismaPlan(result, mockDelegate);
     expect(resolved).toEqual({ id: { in: ['user-1', 'user-2'] } });
   });
 
@@ -525,7 +525,7 @@ describe('executePrismaQueryPlan', () => {
       post: { groupBy: async () => [{ authorId: null }] },
     };
 
-    const resolved = await executePrismaQueryPlan(result, mockDelegate);
+    const resolved = await executePrismaPlan(result, mockDelegate);
     expect(resolved).toEqual({ id: { in: [] } });
   });
 
@@ -539,14 +539,14 @@ describe('executePrismaQueryPlan', () => {
       },
       { map: blogMap, model: 'User' },
     );
-    await expect(executePrismaQueryPlan(result, {})).rejects.toThrow('post');
+    await expect(executePrismaPlan(result, {})).rejects.toThrow('post');
   });
 
   it('throws when __step index out of range', async () => {
     const plan: ToPrismaResult = {
       steps: [{ operation: 'where', where: { id: { in: { __step: 5 } } } }],
     };
-    await expect(executePrismaQueryPlan(plan, {})).rejects.toThrow('out of range');
+    await expect(executePrismaPlan(plan, {})).rejects.toThrow('out of range');
   });
 });
 
@@ -932,14 +932,14 @@ describe('toPrisma aggregate with dot-path and conditions', () => {
   });
 });
 
-// ─── executePrismaQueryPlan preserves compiled leaf objects ──────────────────
-describe('executePrismaQueryPlan — Date leaves survive step-ref resolution', () => {
+// ─── executePrismaPlan preserves compiled leaf objects ──────────────────
+describe('executePrismaPlan — Date leaves survive step-ref resolution', () => {
   it('a compiled Date in the where is returned as the same instant, not {}', async () => {
     const plan = toPrisma(
       { field: 'createdAt', dateOperator: DateOperator.after, value: '2024-01-01T00:00:00.000Z' },
       { map: blogMap, model: 'Post' },
     );
-    const where = await executePrismaQueryPlan(plan, {});
+    const where = await executePrismaPlan(plan, {});
     const gt = (where.createdAt as { gt: unknown }).gt;
     expect(gt instanceof Date).toBe(true);
     expect((gt as Date).toISOString()).toBe('2024-01-01T00:00:00.000Z');

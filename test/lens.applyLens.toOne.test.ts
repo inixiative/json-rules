@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { applyLens } from '../src/lens/applyLens';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -50,13 +50,13 @@ const withParent = (
 
 const userWhere: Condition = { field: 'tenantId', operator: Operator.equals, value: 't1' };
 
-describe('applyLens — to-one relation grant injection', () => {
+describe('narrowRule — to-one relation grant injection', () => {
   test('mapDefaults.User.where is AND-ed at the relation level for author.email', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { User: { where: userWhere } } } },
     });
     const rule: Condition = { field: 'author.email', operator: Operator.equals, value: 'x' };
-    const composed = applyLens(rule, n);
+    const composed = narrowRule(rule, n);
     // The User where is re-rooted under `author.` and AND-ed with the original rule.
     expect(composed).toEqual({
       all: [{ field: 'author.tenantId', operator: Operator.equals, value: 't1' }, rule],
@@ -75,7 +75,7 @@ describe('applyLens — to-one relation grant injection', () => {
       operator: Operator.equals,
       value: 'Acme',
     };
-    const composed = applyLens(rule, n) as { all: Condition[] };
+    const composed = narrowRule(rule, n) as { all: Condition[] };
     expect(composed.all).toContainEqual({
       field: 'author.tenantId',
       operator: Operator.equals,
@@ -91,7 +91,7 @@ describe('applyLens — to-one relation grant injection', () => {
 
   test('no User grant → rule returned unchanged (no spurious injection)', () => {
     const rule: Condition = { field: 'author.email', operator: Operator.equals, value: 'x' };
-    expect(applyLens(rule, lens)).toBe(rule);
+    expect(narrowRule(rule, lens)).toBe(rule);
   });
 
   test('to-many injection (control) still works via the condition path', () => {
@@ -104,7 +104,7 @@ describe('applyLens — to-one relation grant injection', () => {
       arrayOperator: ArrayOperator.any,
       condition: { field: 'body', operator: Operator.contains, value: 'foo' },
     } as Condition;
-    const composed = applyLens(rule, n) as { condition: { all: Condition[] } };
+    const composed = narrowRule(rule, n) as { condition: { all: Condition[] } };
     expect(composed.condition.all).toContainEqual(commentWhere);
   });
 
@@ -119,6 +119,6 @@ describe('applyLens — to-one relation grant injection', () => {
       },
     });
     const rule: Condition = { field: 'author.email', operator: Operator.equals, value: 'x' };
-    expect(() => applyLens(rule, n)).toThrow();
+    expect(() => narrowRule(rule, n)).toThrow();
   });
 });

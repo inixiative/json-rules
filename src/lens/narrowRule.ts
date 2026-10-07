@@ -1,5 +1,5 @@
 import { ArrayOperator } from '../operator.ts';
-import { parseScopeRef, resolveScopeRef } from '../scope';
+import { parseScopeRef, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
@@ -35,24 +35,24 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
       if (isLogicalNode(node)) return node;
       if (typeof node.field !== 'string' || node.field === '')
         throw new Error(
-          `applyLens: cannot re-root a relation grant of unknown shape under '${prefix}'`,
+          `narrowRule: cannot re-root a relation grant of unknown shape under '${prefix}'`,
         );
       const refs = valueRefs(node);
       if (refs.length) {
         throw new Error(
-          `applyLens: cannot re-root a relation grant with a path reference ('${refs[0]}') ` +
+          `narrowRule: cannot re-root a relation grant with a path reference ('${refs[0]}') ` +
             `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
         );
       }
       if (parseScopeRef(node.field)) {
         throw new Error(
-          `applyLens: cannot re-root a relation grant with a scope ref field ('${node.field}') ` +
+          `narrowRule: cannot re-root a relation grant with a scope ref field ('${node.field}') ` +
             `under '${prefix}'. Author the grant against the model's own columns.`,
         );
       }
       if (node.condition !== undefined) {
         throw new Error(
-          `applyLens: cannot re-root a relation grant with a nested array/aggregate condition on ` +
+          `narrowRule: cannot re-root a relation grant with a nested array/aggregate condition on ` +
             `'${node.field}' under '${prefix}'. Anchor such grants at the relation's own model.`,
         );
       }
@@ -75,7 +75,7 @@ const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] => {
     if (effect.whereClauses.length === 0) continue;
     if (hop.isList) {
       throw new Error(
-        `applyLens: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
+        `narrowRule: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
           `arrayOperator condition to anchor it (row-scoped). Traverse '${hop.prefix}' via an ` +
           `array operator (any/all/none/...) so the grant can be injected safely.`,
       );
@@ -95,8 +95,8 @@ const anchorOf = (
   scopes: readonly Visit[],
 ): { hops: RelationHop[]; below: Visit | null } | null => {
   if (isLogicalNode(node) || typeof node.field !== 'string' || node.field === '') return null;
-  const target = resolveScopeRef(node.field, scopes);
-  if ('outOfBounds' in target) throw new Error(`applyLens: ${target.outOfBounds}`);
+  const target = readScopeRef(node.field, scopes);
+  if ('outOfBounds' in target) throw new Error(`narrowRule: ${target.outOfBounds}`);
   const scopePrefix = node.field.slice(0, node.field.length - target.path.length);
   const { hops, end } = relationHops(policy.lens.maps, target.scope, target.path, scopePrefix);
   return { hops, below: end };
@@ -145,7 +145,7 @@ const rewriteRule = (rule: Condition, policy: Policy, root: Visit): Condition =>
     [root],
   );
 
-export const applyLens = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
+export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
   const policy = resolvePolicy(lensOrNarrowing);
   const rootEffect = resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
 

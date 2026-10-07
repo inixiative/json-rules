@@ -3,7 +3,7 @@ import type { FieldMapSet } from './types.ts';
 
 const FORBIDDEN_FIELD_CHARS = /[.:]/;
 
-export const validateFieldMapSet = (set: FieldMapSet): void => {
+export const validateFieldMaps = (set: FieldMapSet): void => {
   const errors: string[] = [];
   for (const [mapName, fieldMap] of Object.entries(set.maps)) {
     for (const [modelName, model] of Object.entries(fieldMap.models)) {
@@ -16,10 +16,10 @@ export const validateFieldMapSet = (set: FieldMapSet): void => {
     }
   }
   if (errors.length) {
-    throw new Error(`validateFieldMapSet:\n${errors.join('\n')}`);
+    throw new Error(`validateFieldMaps:\n${errors.join('\n')}`);
   }
 };
 
 export const validateFieldMap = (fieldMap: FieldMap, mapName = 'fieldMap'): void => {
-  validateFieldMapSet({ maps: { [mapName]: fieldMap } });
+  validateFieldMaps({ maps: { [mapName]: fieldMap } });
 };

@@ -2,7 +2,7 @@ import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
-import { prefixConditionFields } from './applyLens.ts';
+import { prefixConditionFields } from './narrowRule.ts';
 import { type Policy, relationHops, resolveVisit } from './policy.ts';
 
 type Row = Record<string, unknown>;
@@ -11,7 +11,7 @@ type Row = Record<string, unknown>;
  * Fold the traversal guards one dotted path picks up: every traversed model's
  * effective narrowing `where` (tenancy/soft-delete) — declared relation nodes AND
  * mapDefaults, composed across all layers via `resolveVisit` — re-rooted onto the
- * sourced model, the same hop-where fold `applyLens` performs for rule paths. The
+ * sourced model, the same hop-where fold `narrowRule` performs for rule paths. The
  * compile always joins every hop the path names, so every hop must carry its guard
  * whether or not the narrowing declares it.
  *

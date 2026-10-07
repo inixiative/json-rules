@@ -3,9 +3,9 @@ import {
   exposedSurface,
   type Lens,
   type LensNarrowing,
-  sourceQueries,
-  sourceValuesFromQueryRows,
-  sourceValuesFromRows,
+  materializeSourceQuery,
+  materializeSources,
+  toSourceQueries,
   validateNarrowing,
 } from '../index';
 import { Operator } from '../src/operator';
@@ -212,9 +212,9 @@ describe('validateNarrowing — composite groupBy', () => {
   });
 });
 
-describe('sourceQueries — composite compile', () => {
+describe('toSourceQueries — composite compile', () => {
   test('SourceQuery.groupBy is the normalized axes array', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     expect(q.groupBy).toEqual(AXES);
   });
 
@@ -229,12 +229,12 @@ describe('sourceQueries — composite compile', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.groupBy).toEqual(['map.definition.label']);
   });
 
   test('prisma select nests every axis; distinct stays absent', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     expect(q.prisma.distinct).toBeUndefined();
     expect(q.prisma.select).toEqual({
       value: true,
@@ -248,13 +248,13 @@ describe('sourceQueries — composite compile', () => {
   });
 
   test('sql aliases each axis as __group_i', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     expect(q.sql.sql).toContain('AS "__group_0"');
     expect(q.sql.sql).toContain('AS "__group_1"');
   });
 
   test('guards fold ONCE per traversed hop across shared axis prefixes', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     // Both axes traverse `map` — the IntegrationMap mapDefaults brand guard must
     // appear exactly once, not once per axis.
     expect(q.composedWhere).toEqual({
@@ -265,7 +265,7 @@ describe('sourceQueries — composite compile', () => {
   });
 });
 
-describe('sourceQueries — source-where hop guards (hardening)', () => {
+describe('toSourceQueries — source-where hop guards (hardening)', () => {
   test('a where clause traversing an off-groupBy relation folds that hop guard', () => {
     const n = withParent(base, {
       root: {
@@ -295,7 +295,7 @@ describe('sourceQueries — source-where hop guards (hardening)', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.source.active', operator: Operator.equals, value: true },
@@ -320,7 +320,7 @@ describe('materialization — options carry index-aligned groups', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(composite(), rows);
+    const [sv] = materializeSources(composite(), rows);
     // Axes sort lexicographically, first axis outermost: HubSpot < Salesforce,
     // then Business Unit < Industry within Salesforce.
     expect(sv.options).toEqual([
@@ -337,16 +337,16 @@ describe('materialization — options carry index-aligned groups', () => {
         enrichments: [row('orphan', null, 'Industry'), row('kept', 'Salesforce', 'Industry')],
       },
     ];
-    const [sv] = sourceValuesFromRows(composite(), rows);
+    const [sv] = materializeSources(composite(), rows);
     expect(sv.options).toEqual([
       { value: 'orphan' },
       { value: 'kept', groups: ['Salesforce', 'Industry'] },
     ]);
   });
 
-  test('sourceValuesFromQueryRows: prisma-shaped rows nest each axis', () => {
-    const [q] = sourceQueries(composite());
-    const sv = sourceValuesFromQueryRows(q, [
+  test('materializeSourceQuery: prisma-shaped rows nest each axis', () => {
+    const [q] = toSourceQueries(composite());
+    const sv = materializeSourceQuery(q, [
       {
         value: 'Manufacturing',
         map: { source: { label: 'Salesforce' }, definition: { label: 'Industry' } },
@@ -362,9 +362,9 @@ describe('materialization — options carry index-aligned groups', () => {
     ]);
   });
 
-  test('sourceValuesFromQueryRows: sql-shaped rows read the indexed aliases', () => {
-    const [q] = sourceQueries(composite());
-    const sv = sourceValuesFromQueryRows(
+  test('materializeSourceQuery: sql-shaped rows read the indexed aliases', () => {
+    const [q] = toSourceQueries(composite());
+    const sv = materializeSourceQuery(
       q,
       [{ value: 'Manufacturing', __group_0: 'Salesforce', __group_1: 'Industry' }],
       { rowShape: 'sql' },

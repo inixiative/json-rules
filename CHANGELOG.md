@@ -3,8 +3,10 @@
 ## 3.0.0 — one verb, one name, one implementation
 
 A consolidation release. Every operation has one public name and one implementation;
-`docs/VERBS.md` is the catalog and `test/verbs.test.ts` keeps it that way. `src/` is about
-400 lines smaller than 2.27.0 with more behavior covered.
+`docs/VERBS.md` is the catalog and `test/verbs.test.ts` keeps it that way. `src/` grew by about
+1,100 lines (11%) over 2.27.0. The growth is the rails agreeing: typed Json comparisons in SQL,
+enums, case-insensitivity, RE2 patterns and the refusals each rail now states where it can't
+express a rule.
 
 ### Breaking: renamed and reshaped API
 

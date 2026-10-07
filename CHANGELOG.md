@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
+## 2.27.0 — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
 
 **First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident
 lifecycle is a `@inixiative/transitions` map, and its auto-resolve guard reads its window off

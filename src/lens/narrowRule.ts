@@ -1,7 +1,9 @@
+import { check } from '../check';
 import { ArrayOperator } from '../operator.ts';
 import { parseScopeRef, readScopeRef } from '../scope';
 import {
   allOf,
+  anyOf,
   elementRefs,
   isLogicalNode,
   isRelationNode,
@@ -29,6 +31,30 @@ import type { Lens, LensNarrowing } from './types.ts';
 
 const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition =>
   wheres.length ? allOf([...wheres, rule]) : rule;
+
+// Whether a node holds with its field absent — check() answers. A node reading a value ref (or
+// one check() can't settle without options) keeps the plain AND, which only narrows.
+const holdsWhenAbsent = (node: Condition): boolean => {
+  if (valueRefs(node as Record<string, unknown>).length) return false;
+  try {
+    return check(node, {}) === true;
+  } catch {
+    return false;
+  }
+};
+
+// A node read through granted hops: each hop's grant AND-ed with it, so a related row outside its
+// grant fails the node. A missing related row is not a hidden one — where the node holds with its
+// path absent (a negation, notExists), a hop that isn't there satisfies it without the grant.
+const underHopGrants = (node: Condition, hops: HopGrant[]): Condition => {
+  if (!hops.length) return node;
+  if (!holdsWhenAbsent(node)) return allOf([...hops.flatMap((hop) => hop.grants), node]);
+  const [hop, ...deeper] = hops;
+  return anyOf([
+    allOf([...hop.grants, underHopGrants(node, deeper)]),
+    allOf([{ field: hop.prefix, operator: 'notExists' } as Condition, node]),
+  ]);
+};
 
 // Re-roots a related-model `where` grant so its field refs resolve from the current
 // anchor through the relation path (e.g. a User grant `tenantId` reached via `author`
@@ -75,11 +101,12 @@ type Visit = { mapName: string; modelName: string; relPath: readonly string[] };
 // with the rule at the current anchor. To-many hops have no scalar path to AND against —
 // their grant must be row-scoped via an arrayOperator condition — so reaching one here
 // (a to-many with a grant but no condition anchor) fails closed rather than dropping it.
-const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] => {
-  const out: Condition[] = [];
-  for (const hop of hops) {
+type HopGrant = { prefix: string; grants: Condition[] };
+
+const hopGrants = (policy: Policy, hops: RelationHop[]): HopGrant[] =>
+  hops.flatMap((hop) => {
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
-    if (effect.whereClauses.length === 0) continue;
+    if (effect.whereClauses.length === 0) return [];
     if (hop.isList) {
       throw new Error(
         `narrowRule: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
@@ -87,10 +114,16 @@ const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] => {
           `array operator (any/all/none/...) so the grant can be injected safely.`,
       );
     }
-    for (const where of effect.whereClauses) out.push(prefixConditionFields(where, hop.prefix));
-  }
-  return out;
-};
+    return [
+      {
+        prefix: hop.prefix,
+        grants: effect.whereClauses.map((where) => prefixConditionFields(where, hop.prefix)),
+      },
+    ];
+  });
+
+const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] =>
+  hopGrants(policy, hops).flatMap((hop) => hop.grants);
 
 // A scope is a visit the walk reached, or null inside a Json value (undeclared: nothing to grant).
 type Scope = Visit | null;
@@ -156,10 +189,10 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
         );
         const below = anchor.below;
         if (!below || !isRelationNode(node))
-          return wrapWithWheres(node as Condition, [
-            ...collectHopWheres(policy, anchor.hops),
-            ...valueWheres,
-          ]);
+          return wrapWithWheres(
+            underHopGrants(node as Condition, hopGrants(policy, anchor.hops)),
+            valueWheres,
+          );
         const grants = [
           ...resolveVisit(policy, below.mapName, below.modelName, below.relPath).whereClauses,
           ...collectHopWheres(
@@ -178,10 +211,10 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
             ...grants,
           ]);
         else if (grants.length) out.condition = allOf([...grants, node.condition as Condition]);
-        return wrapWithWheres(out as Condition, [
-          ...collectHopWheres(policy, anchor.hops.slice(0, -1)),
-          ...valueWheres,
-        ]);
+        return wrapWithWheres(
+          underHopGrants(out as Condition, hopGrants(policy, anchor.hops.slice(0, -1))),
+          valueWheres,
+        );
       },
     },
     [root],

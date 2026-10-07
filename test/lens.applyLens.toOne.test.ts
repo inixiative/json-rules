@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { check } from '../src/check';
 import type { FieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
@@ -120,5 +121,37 @@ describe('narrowRule — to-one relation grant injection', () => {
     });
     const rule: Condition = { field: 'author.email', operator: Operator.equals, value: 'x' };
     expect(() => narrowRule(rule, n)).toThrow();
+  });
+});
+
+describe('narrowRule — a missing related row is not a hidden one', () => {
+  const n = withParent(lens, {
+    mapDefaults: { prisma: { models: { User: { where: userWhere } } } },
+  });
+  const articles = {
+    none: { author: null },
+    granted: { author: { tenantId: 't1', email: 'a@x' } },
+    hidden: { author: { tenantId: 't2', email: 'b@x' } },
+  };
+  const holds = (rule: Condition) =>
+    Object.entries(articles)
+      .filter(([, row]) => check(narrowRule(rule, n), row) === true)
+      .map(([name]) => name);
+
+  test('notExists on a granted relation holds where the relation is missing', () => {
+    expect(holds({ field: 'author', operator: Operator.notExists })).toEqual(['none']);
+  });
+
+  test('a negation through the hop keeps the missing row and never reads the hidden one', () => {
+    expect(holds({ field: 'author.email', operator: Operator.notEquals, value: 'z' })).toEqual([
+      'none',
+      'granted',
+    ]);
+  });
+
+  test('a positive comparison reads only the granted row', () => {
+    expect(holds({ field: 'author.email', operator: Operator.contains, value: '@' })).toEqual([
+      'granted',
+    ]);
   });
 });

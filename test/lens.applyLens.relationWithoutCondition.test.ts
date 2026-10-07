@@ -85,13 +85,14 @@ describe('narrowRule — a relation node without a condition', () => {
       arrayOperator: ArrayOperator.notEmpty,
       filter: { field: 'customer.id', operator: Operator.notEquals, value: 'none' },
     } as Condition;
-    const composed = narrowRule(rule, customerScoped) as { all: Condition[] };
-    const scopedRule = composed.all.at(-1) as { filter: Condition };
-    expect(scopedRule.filter).toEqual({
-      all: [
-        { field: 'customer.id', operator: Operator.equals, value: 'c2' },
-        { field: 'customer.id', operator: Operator.notEquals, value: 'none' },
-      ],
+    const composed = narrowRule(rule, customerScoped);
+    const orders = (...customers: (string | null)[]) => ({
+      id: 'c2',
+      orders: customers.map((id) => ({ customer: id === null ? null : { id } })),
     });
+    // A hidden customer fails the filter; a granted one and a missing one pass it.
+    expect(check(composed, orders('c3'))).not.toBe(true);
+    expect(check(composed, orders('c2'))).toBe(true);
+    expect(check(composed, orders(null))).toBe(true);
   });
 });

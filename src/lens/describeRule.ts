@@ -3,8 +3,8 @@ import {
   type OperatorFamily,
   type RuleTarget,
 } from '../operatorCatalog';
-import { parseScopeRef, readScopeRef } from '../scope';
-import { isLogicalNode, valueRefRoles, valueRefs, visitCondition } from '../traverse';
+import { parseScopeRef } from '../scope';
+import { isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
 import type { ValidationIssue } from '../validate';
 import { extremalRewrite, hasWindow } from '../window';

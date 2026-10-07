@@ -657,7 +657,7 @@ describe('toPrisma logical operators', () => {
       then: { field: 'credits', operator: Operator.greaterThan, value: 0 },
     });
     expect(getWhere(result)).toEqual({
-      OR: [{ NOT: { type: { equals: 'premium' } } }, { credits: { gt: 0 } }],
+      OR: [{ type: { not: 'premium' } }, { credits: { gt: 0 } }],
     });
   });
 

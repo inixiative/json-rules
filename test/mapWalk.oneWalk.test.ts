@@ -86,3 +86,29 @@ describe('toPrisma date rules are map-aware', () => {
     });
   });
 });
+
+describe('a bridged leaf stays over-fetch under negation', () => {
+  const bridged = {
+    models: {
+      Order: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          'crm:Deal': { kind: 'bridge', type: 'crm:Deal' },
+        },
+      },
+    },
+  } as never;
+  test('a date notBetween through a bridge is {} (Prisma reads NOT: {} as match-all too)', () => {
+    const where = getWhere(
+      toPrisma(
+        rule({
+          field: 'crm:Deal.closedAt',
+          dateOperator: 'notBetween',
+          value: ['2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z'],
+        }),
+        { map: bridged, model: 'Order' },
+      ),
+    );
+    expect(where).toEqual({});
+  });
+});

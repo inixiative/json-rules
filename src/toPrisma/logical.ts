@@ -1,6 +1,8 @@
+import { negate } from '../negate';
 import type { All, Any, Condition, IfThenElse } from '../types';
 import { conditionTouchesBridge } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import { settleLeaf } from './valueSource';
 
 // Forward declaration - provided by condition.ts to avoid circular import
 type BuildConditionFn = (
@@ -56,11 +58,10 @@ export const orWhere = (arms: PrismaWhere[]): PrismaWhere => {
   return rest.length === 1 ? rest[0] : { OR: rest };
 };
 
-const notWhere = (where: PrismaWhere): PrismaWhere => {
-  if (isMatchAll(where)) return matchNothing();
-  if (isMatchNothing(where)) return matchAll();
-  return { NOT: where };
-};
+/** A leaf filter's complement. A bridged leaf compiles to the over-fetch sentinel `{}` —
+ *  unknown, not true — and its complement stays unknown; Prisma reads `NOT: {}` as match-all too. */
+export const notLeaf = (where: PrismaWhere): PrismaWhere =>
+  isMatchAll(where) ? where : { NOT: where };
 
 export const buildAll = (all: All, options?: BuildOptions, state?: PrismaBuildState): PrismaWhere =>
   andWhere(all.all.map((c) => buildCondition(c, options, state)));
@@ -73,7 +74,7 @@ export const buildIfThenElse = (
   options?: BuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
-  // if → then is equivalent to: NOT(if) OR then
+  // if → then is: (complement of if) OR then
   // With else: (NOT(if) OR then) AND (if OR else)
   //
   // When any sub-clause hits a bridge, the precise compilation breaks. The sentinel `{}`
@@ -93,12 +94,15 @@ export const buildIfThenElse = (
   // GroupByStep as it compiles, and the same clause is reused in both conjuncts below.
   // Boolean branches (`then: true`, `else: false`, …) are compiled like any other
   // condition and folded by orWhere/andWhere/notWhere so no constant lands under OR/NOT.
-  const ifClause = buildCondition(cond.if, options, state);
+  // Prisma's NOT drops a row whose `if` is NULL (a NULL field) that check() reads as false, so
+  // the implication compiles the complement of `if` instead of negating it.
+  const notIf = buildCondition(negate(cond.if, settleLeaf(options)), options, state);
   const thenClause = buildCondition(cond.then, options, state);
-  const implication = orWhere([notWhere(ifClause), thenClause]);
+  const implication = orWhere([notIf, thenClause]);
 
   // !== undefined so `else: false` (deny branch) is emitted rather than skipped.
   if (cond.else !== undefined) {
+    const ifClause = buildCondition(cond.if, options, state);
     const elseClause = buildCondition(cond.else, options, state);
     return andWhere([implication, orWhere([ifClause, elseClause])]);
   }

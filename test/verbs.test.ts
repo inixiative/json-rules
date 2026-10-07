@@ -26,6 +26,7 @@ const SOURCES = walk(join(ROOT, 'src')).map((file) => ({ file, code: code(file) 
 // The evaluators and compilers keep their own descent — it is their semantics (CLAUDE.md).
 const OWN_DESCENT = [
   'src/check.ts',
+  'src/negate.ts',
   'src/validate.ts',
   'src/toSql/condition.ts',
   'src/toSql/logical.ts',

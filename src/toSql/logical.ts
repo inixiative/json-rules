@@ -34,11 +34,11 @@ export const buildIfThenElse = (cond: IfThenElse, state: BuilderState): string =
   const ifClause = buildCondition(cond.if, state);
   const thenClause = buildCondition(cond.then, state);
 
-  // if → then is equivalent to: NOT(if) OR then
-  // With else: (NOT(if) OR then) AND (if OR else)
+  // if → then is: (if IS NOT TRUE) OR then — an `if` that is NULL (a NULL field) is false, as in
+  // check(), where NOT(NULL) would drop the row. With else: … AND (if IS TRUE OR else).
   if (cond.else !== undefined) {
     const elseClause = buildCondition(cond.else, state);
-    return `((NOT(${ifClause}) OR ${thenClause}) AND (${ifClause} OR ${elseClause}))`;
+    return `(((${ifClause}) IS NOT TRUE OR ${thenClause}) AND ((${ifClause}) IS TRUE OR ${elseClause}))`;
   }
-  return `(NOT(${ifClause}) OR ${thenClause})`;
+  return `((${ifClause}) IS NOT TRUE OR ${thenClause})`;
 };

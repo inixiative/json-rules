@@ -115,7 +115,7 @@ describe('toPrisma if/then with bridge antecedent (over-approximation contract)'
       opts,
     );
     expect(getWhere(result)).toEqual({
-      OR: [{ NOT: { tier: { equals: 'gold' } } }, { email: { contains: '@' } }],
+      OR: [{ tier: { not: 'gold' } }, { email: { contains: '@' } }],
     });
   });
 });

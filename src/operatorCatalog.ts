@@ -441,3 +441,48 @@ export const DAY_NAMES = [
 ] as const;
 export const isDayName = (name: string): boolean =>
   (DAY_NAMES as readonly string[]).includes(name.toLowerCase());
+
+// --- Complements -----------------------------------------------------------------------------
+// Each operator's complement under check(). A negation keeps NULL fields (the 2.19.0 ruling), so
+// a flip is exact; an ordered comparison has no negated twin, so its complement is the opposite
+// comparison or an absent field.
+
+export const COMPLEMENT_OPERATORS: Readonly<Record<string, string>> = {
+  [Operator.equals]: Operator.notEquals,
+  [Operator.notEquals]: Operator.equals,
+  [Operator.in]: Operator.notIn,
+  [Operator.notIn]: Operator.in,
+  [Operator.contains]: Operator.notContains,
+  [Operator.notContains]: Operator.contains,
+  [Operator.matches]: Operator.notMatches,
+  [Operator.notMatches]: Operator.matches,
+  [Operator.between]: Operator.notBetween,
+  [Operator.notBetween]: Operator.between,
+  [Operator.isEmpty]: Operator.notEmpty,
+  [Operator.notEmpty]: Operator.isEmpty,
+  [Operator.exists]: Operator.notExists,
+  [Operator.notExists]: Operator.exists,
+};
+
+export const COMPLEMENT_DATE_OPERATORS: Readonly<Record<string, string>> = {
+  [DateOperator.before]: DateOperator.notBefore,
+  [DateOperator.notBefore]: DateOperator.before,
+  [DateOperator.after]: DateOperator.notAfter,
+  [DateOperator.notAfter]: DateOperator.after,
+  [DateOperator.within]: DateOperator.notWithin,
+  [DateOperator.notWithin]: DateOperator.within,
+  [DateOperator.between]: DateOperator.notBetween,
+  [DateOperator.notBetween]: DateOperator.between,
+  [DateOperator.dayIn]: DateOperator.dayNotIn,
+  [DateOperator.dayNotIn]: DateOperator.dayIn,
+};
+
+/** The opposite of a comparison with no negated twin: its complement, less the absent field. */
+export const OPPOSITE_OPERATORS: Readonly<Record<string, string>> = {
+  [Operator.lessThan]: Operator.greaterThanEquals,
+  [Operator.lessThanEquals]: Operator.greaterThan,
+  [Operator.greaterThan]: Operator.lessThanEquals,
+  [Operator.greaterThanEquals]: Operator.lessThan,
+  [DateOperator.onOrBefore]: DateOperator.after,
+  [DateOperator.onOrAfter]: DateOperator.before,
+};

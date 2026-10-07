@@ -14,7 +14,7 @@ import {
   NO_VALUE_OPERATORS,
 } from '../operatorCatalog';
 import type { Rule } from '../types';
-import { orWhere } from './logical';
+import { notLeaf, orWhere } from './logical';
 import {
   acceptsEmptyString,
   compileFieldLiteral,
@@ -127,7 +127,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
 
   if (NEGATED_RANGE_OPERATORS.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
-    return orWhere([{ NOT: at(buildLeafFilter(rule, options)) }, ...arms]);
+    return orWhere([notLeaf(at(buildLeafFilter(rule, options))), ...arms]);
   }
 
   const filter = at(buildLeafFilter(rule, options));

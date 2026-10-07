@@ -440,7 +440,7 @@ describe('toSql', () => {
         if: { field: 'type', operator: Operator.equals, value: 'premium' },
         then: { field: 'credits', operator: Operator.greaterThan, value: 0 },
       });
-      expect(sql).toBe('(NOT("type" = $1) OR "credits" > $2)');
+      expect(sql).toBe('(("type" = $1) IS NOT TRUE OR "credits" > $2)');
       expect(params).toEqual(['premium', 0]);
     });
 
@@ -452,7 +452,7 @@ describe('toSql', () => {
       });
       // Reuses $1 for the if clause in both branches (efficient)
       expect(sql).toBe(
-        '((NOT("type" = $1) OR "daysLeft" > $2) AND ("type" = $1 OR "subscribed" = $3))',
+        '((("type" = $1) IS NOT TRUE OR "daysLeft" > $2) AND (("type" = $1) IS TRUE OR "subscribed" = $3))',
       );
       expect(params).toEqual(['trial', 0, true]);
     });

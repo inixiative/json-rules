@@ -98,18 +98,20 @@ describe('toPrisma folds boolean constants through the implication', () => {
 
   it('`then: true` is vacuous; `then: false` is the negated antecedent', () => {
     expect(getWhere(toPrisma({ if: mateo, then: true }))).toEqual({});
-    expect(getWhere(toPrisma({ if: mateo, then: false }))).toEqual({ NOT: MATEO });
+    expect(getWhere(toPrisma({ if: mateo, then: false }))).toEqual({
+      customerId: { not: 'mateo' },
+    });
   });
 
   it('`else: false` keeps the deny branch without an id sentinel', () => {
     expect(getWhere(toPrisma({ if: mateo, then: gold, else: false }))).toEqual({
-      AND: [{ OR: [{ NOT: MATEO }, GOLD] }, MATEO],
+      AND: [{ OR: [{ customerId: { not: 'mateo' } }, GOLD] }, MATEO],
     });
   });
 
   it('`else: true` drops the else arm', () => {
     expect(getWhere(toPrisma({ if: mateo, then: gold, else: true }))).toEqual({
-      AND: [{ OR: [{ NOT: MATEO }, GOLD] }],
+      AND: [{ OR: [{ customerId: { not: 'mateo' } }, GOLD] }],
     });
   });
 });

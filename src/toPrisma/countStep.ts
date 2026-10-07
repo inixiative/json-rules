@@ -1,6 +1,7 @@
 import { ArrayOperator } from '../operator';
 import { fieldOf, modelOf } from '../own';
 import type { ArrayRule, Condition } from '../types';
+import { notLeaf } from './logical';
 import { relationKeys } from './relationUtils';
 import type {
   BuildOptions,
@@ -116,7 +117,7 @@ export const buildCountStep = (
 
   const stepRef: StepRef = { __step: stepIndex };
   const membership = { [pkOnCurrent]: { in: stepRef } };
-  return complement ? { NOT: membership } : membership;
+  return complement ? notLeaf(membership) : membership;
 };
 
 // Prisma 6.x having format: field first, then _count nested inside.

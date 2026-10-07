@@ -6,7 +6,7 @@ import { DateOperator } from '../operator';
 import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import type { DateRule } from '../types';
 import { absentArms, buildMapAwareFilter } from './field';
-import { orWhere } from './logical';
+import { notLeaf, orWhere } from './logical';
 import { offsetDate } from './offset';
 import type { BuildOptions, PrismaWhere } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
@@ -25,7 +25,7 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
   // negation keeps the absent rows only, as on the other rails.
   if (filter === null) return orWhere(arms);
   const positive = buildMapAwareFilter(rule.field, filter, options);
-  const nested = NEGATED_RANGE_OPERATORS.includes(rule.dateOperator) ? { NOT: positive } : positive;
+  const nested = NEGATED_RANGE_OPERATORS.includes(rule.dateOperator) ? notLeaf(positive) : positive;
   return orWhere([nested, ...arms]);
 };
 

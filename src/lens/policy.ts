@@ -26,9 +26,9 @@ export type VisitEffect = {
   sourceLabels: Map<string, string>;
   /** Per-field option-partition axes (from a SourceSpec's `groupBy`, normalized); a later layer wins. */
   sourceGroupBys: Map<string, string[]>;
-  /** The chain index of the layer that declared each source's label / axes: a later layer that
-   *  hides one of those columns drops it. */
-  sourceLayers: Map<string, number>;
+  /** The chain index of the earliest layer that declared each source's label / axes (keyed by
+   *  `declaredKey`): every layer after it that hides one of those columns drops it. */
+  sourceDeclaredAt: Map<string, number>;
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -129,6 +129,9 @@ const accumulateEnumFields = (
   }
 };
 
+const declaredKey = (field: string, kind: 'label' | 'groupBy', value: string | string[]): string =>
+  JSON.stringify([field, kind, value]);
+
 const accumulateInto = (
   out: VisitEffect,
   n: ModelDefaultNarrowing | ModelNarrowing,
@@ -143,10 +146,16 @@ const accumulateInto = (
       const clauses = out.sources.get(field) ?? [];
       if (spec.where !== undefined) clauses.push(narrow(spec.where));
       out.sources.set(field, clauses); // register the field even when only a label is set
-      if (spec.label !== undefined || spec.groupBy !== undefined)
-        out.sourceLayers.set(field, layer);
-      if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       const axes = normalizeGroupBy(spec.groupBy);
+      for (const [kind, value] of [
+        ['label', spec.label],
+        ['groupBy', axes],
+      ] as const) {
+        if (value === undefined) continue;
+        const key = declaredKey(field, kind, value);
+        if (!out.sourceDeclaredAt.has(key)) out.sourceDeclaredAt.set(key, layer);
+      }
+      if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);
     }
   }
@@ -166,7 +175,7 @@ export const resolveVisit = (
     sources: new Map(),
     sourceLabels: new Map(),
     sourceGroupBys: new Map(),
-    sourceLayers: new Map(),
+    sourceDeclaredAt: new Map(),
     relations: new Map(),
   };
 
@@ -324,6 +333,32 @@ export const resolvePolicyPath = (
     if (!next) return { resolution: { outcome: 'pastScalar', index: i, hops }, effects };
   }
   return { resolution: { outcome: 'missing', index: parts.length, hops }, effects };
+};
+
+/**
+ * Whether a source's label or axes, as in force at a visit, read only columns every layer but
+ * their earliest declaration shows. The declaring layer may source a column it hides itself; any
+ * other layer that hides it — an ancestor, or a layer after — drops it, so re-declaring an
+ * ancestor's label never revives what a layer in between hid. A path that doesn't resolve stays,
+ * for the compile to refuse.
+ */
+export const sourceReadsVisible = (
+  policy: Policy,
+  effect: VisitEffect,
+  at: { mapName: string; modelName: string; relPath: readonly string[] },
+  field: string,
+  kind: 'label' | 'groupBy',
+): boolean => {
+  const value =
+    kind === 'label' ? effect.sourceLabels.get(field) : effect.sourceGroupBys.get(field);
+  if (value === undefined) return true;
+  const from = effect.sourceDeclaredAt.get(declaredKey(field, kind, value)) ?? -1;
+  const others = { lens: policy.lens, chain: policy.chain.filter((_, i) => i !== from) };
+  return (typeof value === 'string' ? [value] : value).every(
+    (path) =>
+      resolvePolicyPath(others, at.mapName, at.modelName, at.relPath, path).resolution.outcome !==
+      'hidden',
+  );
 };
 
 export const lensPathEnd = (

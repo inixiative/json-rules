@@ -131,7 +131,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
@@ -149,7 +149,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 });
 

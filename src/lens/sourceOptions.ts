@@ -250,8 +250,8 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
   const policy = resolvePolicy(lensOrNarrowing);
   return Object.entries(projectPaths(lensOrNarrowing)).flatMap(([path, visit]) =>
     Object.entries(visit.sources).map(([field, sourceClauses]) => {
-      const label = visit.sourceLabels[field];
-      const groupBy = visit.sourceGroupBys[field];
+      const label = own(visit.sourceLabels, field);
+      const groupBy = own(visit.sourceGroupBys, field);
       const relPath = path.split('.').slice(1);
       const guards = traversalGuards(
         policy,

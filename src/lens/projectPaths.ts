@@ -5,8 +5,8 @@ import type { Condition } from '../types.ts';
 import {
   isFieldVisible,
   resolvePolicy,
-  resolvePolicyPath,
   resolveVisit,
+  sourceReadsVisible,
   type VisitEffect,
 } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -110,29 +110,22 @@ export const projectPaths = (
       if (isFieldVisible(effect, fieldName)) sources[fieldName] = clauses;
     }
 
-    // A label or axis reads another column (or path). The declaring layer may source a column it
-    // doesn't show (visibility isn't materialization within one layer), but a LATER layer that
-    // hides it drops it, so a child never materializes what it hides.
-    const visible = (field: string) => (path: string) => {
-      const after = {
-        lens: policy.lens,
-        chain: policy.chain.slice((effect.sourceLayers.get(field) ?? -1) + 1),
-      };
-      // Hidden drops it; a path that doesn't resolve at all stays, to fail closed downstream.
-      return (
-        resolvePolicyPath(after, mapName, modelName, relPath, path).resolution.outcome !== 'hidden'
-      );
-    };
-
+    const at = { mapName, modelName, relPath };
     const sourceLabels: Record<string, string> = {};
     for (const [fieldName, label] of effect.sourceLabels) {
-      if (isFieldVisible(effect, fieldName) && visible(fieldName)(label))
+      if (
+        isFieldVisible(effect, fieldName) &&
+        sourceReadsVisible(policy, effect, at, fieldName, 'label')
+      )
         sourceLabels[fieldName] = label;
     }
 
     const sourceGroupBys: Record<string, string[]> = {};
     for (const [fieldName, groupBy] of effect.sourceGroupBys) {
-      if (isFieldVisible(effect, fieldName) && groupBy.every(visible(fieldName)))
+      if (
+        isFieldVisible(effect, fieldName) &&
+        sourceReadsVisible(policy, effect, at, fieldName, 'groupBy')
+      )
         sourceGroupBys[fieldName] = groupBy;
     }
 

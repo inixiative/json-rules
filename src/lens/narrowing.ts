@@ -12,7 +12,6 @@ import {
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getRoot } from './chain.ts';
 import {
-  augmentPicksWithRelations,
   intersectStringSet,
   normalizeGroupBy,
   normalizeSource,
@@ -20,6 +19,8 @@ import {
   type Policy,
   relationHops,
   resolvePolicy,
+  resolveVisit,
+  sourceReadsVisible,
 } from './policy.ts';
 import { projectPaths } from './projectPaths.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
@@ -54,99 +55,35 @@ const validateWhere = (
   }
 };
 
-// A parent layer's removals bind descendant materialization targets: group keys and
-// label columns are client-visible option data, so a child source may not reference
-// what an ancestor removed. The declaring layer itself stays free — visibility ≠
-// materialization within one layer.
-const ancestorRemoval = (
-  name: string,
-  ancestorNodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[],
-): string | null => {
-  for (const anc of ancestorNodes) {
-    const augmented = augmentPicksWithRelations(anc);
-    if (augmented && !augmented.includes(name)) return "is not in an ancestor layer's picks";
-    if (anc.omits?.includes(name)) return 'was omitted by an ancestor layer';
-  }
-  return null;
-};
-
+// A label or axis is client-visible option data: at every visit the node applies to, it may read
+// only what the layers after its earliest declaration show (`sourceReadsVisible`, the rule
+// projectLens enforces). The declaring layer itself stays free — visibility ≠ materialization
+// within one layer.
 const validateSourceTargetVisibility = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
-  ancestorChain: readonly ModelNarrowing[],
-  ancestorLayers: readonly LensNarrowing[],
-  maps: Record<string, FieldMap>,
-  mapName: string,
-  modelName: string,
+  current: LensNarrowing,
+  parentPolicy: Policy,
+  visits: readonly WhereVisit[],
   position: string,
   errors: ValidationIssue[],
 ): void => {
-  const defaultsFor = (map: string, model: string): ModelDefaultNarrowing[] =>
-    ancestorLayers
-      .map((layer) => own(own(layer.mapDefaults, map)?.models, model))
-      .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-
-  // Descend a dotted materialization path, checking each segment against the removals
-  // in force at the node it is read from — the same walk for a groupBy axis and a label.
-  const checkPathVisibility = (path: string, kind: 'groupBy' | 'label', field: string): void => {
-    const segments = path.split('.');
-    const { hops } = relationHops(maps, { mapName, modelName, relPath: [] }, path);
-    let nodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[] = ancestorChain;
-    let at = { map: mapName, model: modelName };
-    // Path resolvability is validated by toOnePathError; this checks each readable segment.
-    for (let i = 0; i <= Math.min(hops.length, segments.length - 1); i++) {
-      const seg = segments[i];
-      const removed = ancestorRemoval(seg, [...nodes, ...defaultsFor(at.map, at.model)]);
-      if (removed) {
+  const policy: Policy = { lens: parentPolicy.lens, chain: [...parentPolicy.chain, current] };
+  const reported = new Set<string>();
+  for (const at of visits) {
+    const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
+    for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
+      const spec = normalizeSource(entry);
+      for (const kind of ['label', 'groupBy'] as const) {
+        if (spec[kind] === undefined || reported.has(`${field}|${kind}`)) continue;
+        if (sourceReadsVisible(policy, effect, at, field, kind)) continue;
+        reported.add(`${field}|${kind}`);
         errors.push({
           path: `${position}.sources.${field}`,
           code: 'invalid_source',
-          message: `${kind} segment '${seg}' ${removed}`,
+          message: `${kind} '${String(spec[kind])}' reads a column hidden by another layer`,
         });
-        return;
-      }
-      if (i === hops.length) return;
-      nodes = nodes
-        .map((n) => ('relations' in n ? own(n.relations, seg) : undefined))
-        .filter((x): x is ModelNarrowing => x !== undefined);
-      at = hops[i];
-    }
-  };
-
-  for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
-    const spec = normalizeSource(entry);
-
-    // An ancestor that declared the same target for this field already authorized
-    // materializing those values — re-declaring it is inherited authority, not a
-    // new reference past the ancestor's removals.
-    const ancestorSpecs = [...ancestorChain, ...defaultsFor(mapName, modelName)]
-      .map((n) => own(n.sources, field))
-      .filter((x): x is NonNullable<typeof x> => x !== undefined)
-      .map(normalizeSource);
-
-    if (spec.label !== undefined && !ancestorSpecs.some((s) => s.label === spec.label)) {
-      if (spec.label.includes('.')) {
-        checkPathVisibility(spec.label, 'label', field);
-      } else {
-        const removed = ancestorRemoval(spec.label, [
-          ...ancestorChain,
-          ...defaultsFor(mapName, modelName),
-        ]);
-        if (removed)
-          errors.push({
-            path: `${position}.sources.${field}`,
-            code: 'invalid_source',
-            message: `label column '${spec.label}' ${removed}`,
-          });
       }
     }
-
-    const axes = normalizeGroupBy(spec.groupBy);
-    if (axes === undefined) continue;
-    const axesKey = JSON.stringify(axes);
-    if (ancestorSpecs.some((s) => JSON.stringify(normalizeGroupBy(s.groupBy)) === axesKey)) {
-      continue;
-    }
-    for (const axis of axes) checkPathVisibility(axis, 'groupBy', field);
   }
 };
 
@@ -621,11 +558,9 @@ const validatePathNarrowing = (
 
   validateSourceTargetVisibility(
     narrowing,
-    ancestorChain,
-    chain,
-    maps,
-    mapName,
-    modelName,
+    current,
+    parentPolicy,
+    [{ mapName, modelName, relPath }],
     position,
     errors,
   );
@@ -744,11 +679,9 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
       );
       validateSourceTargetVisibility(
         dflt,
-        [],
-        ancestors,
-        set.maps,
-        mapName,
-        modelName,
+        narrowing,
+        parentPolicy,
+        whereVisits,
         `mapDefaults.${mapName}.models.${modelName}`,
         errors,
       );

@@ -619,7 +619,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 
   test('a hop the ancestor declares as a relation stays traversable', () => {
@@ -656,7 +656,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 
   test('a label column omitted by an ancestor is an error', () => {
@@ -671,7 +671,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 });
 
@@ -814,6 +814,36 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    expect(() => assertValidNarrowing(throughRemovedPath)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(throughRemovedPath)).toThrow(/hidden by another layer/);
   });
+});
+
+describe('re-declaring an ancestor label or axis never revives what a layer between hid', () => {
+  for (const spec of [{ label: 'id' }, { groupBy: 'id' }])
+    test(JSON.stringify(spec), () => {
+      const declares = withParent(base, { root: { sources: { tier: spec } } });
+      const hides = withParent(declares, { root: { omits: ['id'] } });
+      const redeclares = withParent(hides, { root: { sources: { tier: spec } } });
+      expect(() => assertValidNarrowing(redeclares)).toThrow(/hidden by another layer/);
+      const [q] = toSourceQueries(redeclares);
+      expect(q.label).toBeUndefined();
+      expect(q.groupBy).toBeUndefined();
+      expect(q.sql?.sql ?? '').not.toContain('"id"');
+    });
+});
+
+test('a sourced field named after an Object.prototype key plans without inherited label or axes', () => {
+  const proto: Lens = {
+    maps: {
+      app: {
+        models: { User: { fields: { toString: { kind: 'scalar' as const, type: 'String' } } } },
+      },
+    },
+    mapName: 'app',
+    model: 'User',
+  };
+  const [q] = toSourceQueries(withParent(proto, { root: { sources: { toString: true } } }));
+  expect(q.field).toBe('toString');
+  expect(q.label).toBeUndefined();
+  expect(q.groupBy).toBeUndefined();
 });

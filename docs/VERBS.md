@@ -24,6 +24,8 @@ modules allowed to implement it, and every exported function must appear in this
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |
 | materialize | `materializeSources`, `materializeSourceQuery` | Turn fetched rows into source option sets. |
 | create | `createLens` | Build a lens from field maps and bridges. |
+| store | `storeLens` | A composed lens as the records it's stored in: one per layer, each listing the ids it composes with (the base lens first). |
+| compose | `composeLens` | A stored layer and the records it lists, resolved into the composed lens every other function takes. |
 | stitch | `stitchFieldMaps` | Join field maps across bridges. |
 | index | `indexBridges` | Key a set of bridges by endpoint. |
 | read | `parseScopeRef`, `readScopeRef` | Parse a `$`-prefixed ref; read which scope it names. |

@@ -17,6 +17,8 @@ export type {
   ProjectLensOptions,
   SourceValues,
 } from './projectPaths';
+export type { StoredLens } from './storedLens';
+export { composeLens, storeLens } from './storedLens';
 export type {
   SourcePrismaQuery,
   SourceQuery,

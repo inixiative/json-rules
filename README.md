@@ -791,23 +791,35 @@ Lens & bridges:
 
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`, `SourceSpec`, `SourceEntry`
 - `FieldMap`, `FieldMapEntry`, `ModelEntry`, `SourceOption`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
-- `createLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
+- `createLens`, `storeLens`, `composeLens`, `StoredLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`
 - `projectLens`, `walkLensPath`, `describeRule`, `describeRuleSources`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
 - `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`
 
-Two shapes come out of a lens, and they are different things:
+A lens has three forms, each with its own job:
 
-- **Lens** (maps intact — the navigable graph): `projectLens(lensOrNarrowing, { by: 'model' })`
-  returns the leak-safe total exposed surface *as a Lens* — every reachable model
-  with the full narrowing applied (root + path-specific + `mapDefaults`), unioned
-  per model, `where` stripped. Use it as the server→client builder surface; it
-  never exposes the raw, un-narrowed lens.
-- **Projection** (path-keyed view — graph flattened away): `projectLens(lens)`
-  returns a plain `Record<dottedPath, ProjectedVisit>` for per-path checks where sibling
-  paths to the same model diverge.
+- **Composed** — a `Lens`, or a `LensNarrowing` whose `parent` holds the layer above it as an
+  object, down to the base lens. Every evaluator takes this form.
+- **Stored** — `StoredLens`, one record per layer: its `id`, `parents` (the ids of every layer it
+  composes with, the base lens first) and its own part. The base lens is the root-most record,
+  stored as itself with no parents. `storeLens(lens, ids)` writes a composed lens out as records;
+  `composeLens(id, records)` reads them back — fetch the layer, then the ids it lists — validating
+  each layer against the ones above it and failing closed on a missing record, a base out of
+  place, or a parent whose own list disagrees.
+- **Projected** — what a lens exposes, which never leads back to the lens:
+  - `projectLens(lens)` returns `Record<dottedPath, ProjectedVisit>` for per-path checks where
+    sibling paths to the same model diverge.
+  - `projectLens(lens, { by: 'model' })` returns the leak-safe total surface *as a Lens* — every
+    reachable model with the full narrowing applied, unioned per model, `where` stripped. Use it as
+    the server→client builder surface; it never exposes the raw lens.
+
+```ts
+const records = storeLens(grantLens, ['user', 'org-acme', 'grant-7']); // persist each record
+// later: fetch 'grant-7', then the ids in its `parents`
+const lens = composeLens('grant-7', { user, 'org-acme': orgAcme, 'grant-7': grant7 });
+```
 
 ### Operator Catalog
 

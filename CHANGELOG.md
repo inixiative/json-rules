@@ -64,6 +64,14 @@ does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `ToSqlOptions`
 `getAggregateOperators()` takes no target: every target compiles every aggregate comparison
 (`toPrisma` gained `notBetween`), and the `unsupported_prisma_aggregate_operator` code is gone.
 
+### A lens has three forms: composed, stored, projected
+
+`StoredLens` is a lens as a database holds it: one record per layer, each with its `id` and the
+ids of every layer it composes with, the base lens first (stored as itself, no parents).
+`storeLens(lens, ids)` writes a composed lens out; `composeLens(id, records)` resolves the records
+back into the composed lens every evaluator takes, validating each layer and failing closed on a
+missing, misplaced or stale record. Projections stay output only.
+
 ### Json null checks on Prisma use `Prisma.AnyNull`
 
 A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent; `check()`

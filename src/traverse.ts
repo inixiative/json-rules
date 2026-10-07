@@ -9,6 +9,9 @@ export type ConditionNode = Record<string, unknown>;
 const isObjCondition = (c: Condition): c is Exclude<Condition, boolean> =>
   typeof c === 'object' && c !== null;
 
+// An implication is any of its three keys, as conditionShape reads it.
+const isIfNode = (node: ConditionNode): boolean => 'if' in node || 'then' in node || 'else' in node;
+
 export const isRelationNode = (node: ConditionNode): boolean =>
   'arrayOperator' in node || 'aggregate' in node;
 
@@ -27,7 +30,7 @@ const childSlots = (node: ConditionNode): Slot[] => [
       ? (node[key] as Condition[]).map((child, index) => ({ key, index, child, nested: false }))
       : [],
   ),
-  ...('if' in node
+  ...(isIfNode(node)
     ? (['if', 'then', 'else'] as const).flatMap((key) =>
         node[key] !== undefined ? [{ key, child: node[key] as Condition, nested: false }] : [],
       )
@@ -38,7 +41,7 @@ const childSlots = (node: ConditionNode): Slot[] => [
 ];
 
 export const isLogicalNode = (node: ConditionNode): boolean =>
-  'all' in node || 'any' in node || 'if' in node;
+  'all' in node || 'any' in node || isIfNode(node);
 
 /** Visits every node with the scope it sits in. `enter` returns the scope for the node's
  *  `condition` / `filter` (nothing for the same, `false` to stop there). */
@@ -216,7 +219,7 @@ export const conditionShape = (node: Record<string, unknown>): ConditionShape | 
   const shapes = new Set<ConditionShape>();
   if ('all' in node) shapes.add('all');
   if ('any' in node) shapes.add('any');
-  if ('if' in node || 'then' in node || 'else' in node) shapes.add('if');
+  if (isIfNode(node)) shapes.add('if');
   if ('arrayOperator' in node) shapes.add('array');
   if ('dateOperator' in node) shapes.add('date');
   if ('aggregate' in node) shapes.add('aggregate');

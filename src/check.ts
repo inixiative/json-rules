@@ -163,8 +163,8 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   );
 
   const { mode, field: itemField } = condition.aggregate;
-  if (!AGGREGATE_MODES.includes(mode))
-    return condition.error || `${condition.field} ${unknownAggregateMode(mode).message}`;
+  // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
+  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
 
   const nestedCondition = condition.condition;
   const filtered = nestedCondition

@@ -154,7 +154,7 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
     expect(result.errors.map((e) => e.code)).toContain('invalid_aggregate_mode');
   });
 
-  test('check returns error string instead of silently using avg', () => {
+  test('check refuses it instead of silently using avg', () => {
     const rule = {
       field: 'orders',
       aggregate: {} as never, // no mode
@@ -162,8 +162,7 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
       value: 0,
     };
     const data = { orders: [{ total: 100 }] };
-    const result = check(rule as never, data);
-    expect(typeof result).toBe('string');
+    expect(() => check(rule as never, data)).toThrow('aggregate.mode must be one of');
   });
 });
 

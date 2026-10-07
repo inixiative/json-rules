@@ -979,7 +979,7 @@ describe('validateRule() aggregate rules', () => {
       operator: Operator.greaterThan,
       value: 0,
     } as never;
-    expect(check(rule, { scores: [1] })).toContain('aggregate.mode must be one of sum / avg');
+    expect(() => check(rule, { scores: [1] })).toThrow('aggregate.mode must be one of sum / avg');
     expect(() => toSql(rule)).toThrow('aggregate.mode must be one of sum / avg');
   });
 

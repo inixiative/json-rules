@@ -17,7 +17,8 @@ import {
 } from './operatorCatalog';
 import { readPattern } from './pattern';
 import { readField, type Scopes } from './scope';
-import type { DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
+import { allOf, anyOf } from './traverse';
+import type { Condition, DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, the empty string, or an empty array — as the
@@ -55,6 +56,17 @@ export const isExistenceTest = (
     rule.value === null &&
     rule.path === undefined &&
     rule.bind === undefined);
+
+/** A list's membership in a set of lists, as the equalities it means: the compilers have no list
+ *  `in`. A member that isn't a list (or null) never equals one. */
+export const listMembership = (rule: Rule, members: readonly unknown[]): Condition => {
+  const lists = members.filter((member) => Array.isArray(member) || member === null);
+  const each = (operator: Operator) =>
+    lists.map((value) => ({ ...rule, operator, value }) as Condition);
+  return rule.operator === Operator.in
+    ? anyOf(each(Operator.equals))
+    : allOf(each(Operator.notEquals));
+};
 
 // A bigint compares as a number (refused past the safe range).
 const fromBigInt = (value: unknown): unknown => {

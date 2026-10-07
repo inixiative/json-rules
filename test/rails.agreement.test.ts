@@ -267,6 +267,18 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'tags', operator: 'notEquals', value: ['a', 'b'] },
     ids: [2, 3, 4, 5],
   },
+  'a list in a set of lists': {
+    rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
+    ids: [1, 2, 3, 5],
+  },
+  'a list notIn a set of lists': {
+    rule: { field: 'tags', operator: 'notIn', value: [['a', 'b']] },
+    ids: [2, 3, 4, 5],
+  },
+  'a list is never in a set of strings': {
+    rule: { field: 'tags', operator: 'in', value: ['a', null] },
+    ids: [],
+  },
   'an enum equals, case-insensitive': {
     rule: { field: 'role', operator: 'equals', value: 'ADMIN', caseInsensitive: true },
     ids: [1],

@@ -14,7 +14,7 @@ import {
   toManyHopError,
   unorderedOperand,
 } from '../errors';
-import { hasNoOperand, isExistenceTest } from '../field';
+import { hasNoOperand, isExistenceTest, listMembership } from '../field';
 import { acceptsEmptyString, comparesText, type FieldShape, ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
 import { fieldEntry, optionalToOneHops, walkFieldPath, walkWith } from '../fieldMap/walk';
@@ -34,6 +34,7 @@ import type { Condition, Rule } from '../types';
 import { prismaAnyNull } from './anyNull';
 import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
+import { buildCondition } from './recurse';
 import type { PrismaBuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 import { dateConfigOf, readSource } from './valueSource';
@@ -207,6 +208,9 @@ export const buildFieldRule = (rule: Rule, options?: PrismaBuildOptions): Prisma
   const value = resolveRuleValue(rule, options);
   if (hasNoOperand(rule, value))
     return orWhere(NEGATED_OPERATORS.includes(rule.operator) ? arms() : []);
+
+  if (shape === 'list' && SET_OPERATORS.includes(rule.operator) && Array.isArray(value))
+    return buildCondition(listMembership(rule, value), options);
 
   // Prisma's list filters have no case-insensitive mode.
   if (

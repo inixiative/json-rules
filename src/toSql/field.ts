@@ -2,7 +2,7 @@ import { compileFieldLiteral } from '../compileLiteral';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
 import { fuzzyNotCompiled, relationNotValue } from '../errors';
-import { hasNoOperand, isExistenceTest } from '../field';
+import { hasNoOperand, isExistenceTest, listMembership } from '../field';
 import { acceptsEmptyString, comparesText, readsText } from '../fieldMap/shape';
 import { fieldEntry, walkWith } from '../fieldMap/walk';
 import { orderPair, readPair, splitNull } from '../number';
@@ -14,6 +14,7 @@ import {
   NEGATED_OPERATORS,
   NO_VALUE_OPERATORS,
   RANGE_OPERATORS,
+  SET_OPERATORS,
 } from '../operatorCatalog';
 import { postgresSource, readPattern } from '../pattern';
 import type { Rule } from '../types';
@@ -23,6 +24,7 @@ import { buildJsonComparison } from './json';
 import { offsetNumber } from './offset';
 import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
+import { buildCondition } from './recurse';
 import type { BuilderState } from './types';
 import { dateConfigOf, type ResolvedRhs, resolveSource } from './valueSource';
 
@@ -103,6 +105,8 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
         : `array_position(${field}, ${member}) IS NOT NULL`;
       return rule.operator === Operator.contains ? has : `NOT ${has}`;
     }
+    if (SET_OPERATORS.includes(rule.operator) && Array.isArray(rhs.value))
+      return buildCondition(listMembership(rule, rhs.value), state);
     if (withShapeString(rule.operator))
       throw new Error(
         `'${rule.operator}' does not apply to the list '${rule.field}'; test its members with contains.`,

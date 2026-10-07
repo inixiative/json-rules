@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -55,12 +55,12 @@ describe('sources — per-field eligibility wheres in the narrowing', () => {
 
   test('validateNarrowing rejects a source on an unknown field', () => {
     const n = withParent(base, { root: { sources: { nope: activeAccount } } });
-    expect(() => validateNarrowing(n)).toThrow(/nope/);
+    expect(() => assertValidNarrowing(n)).toThrow(/nope/);
   });
 
   test('validateNarrowing accepts a source whose where traverses a relation', () => {
     const n = withParent(base, { root: { sources: { tier: activeAccount } } });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 });
 
@@ -91,13 +91,13 @@ describe('sources — SourceSpec { where, label }', () => {
     const n = withParent(base, {
       root: { sources: { tier: { where: activeAccount, label: 'id' } } },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('validateNarrowing rejects a SourceSpec whose label column is not on the model', () => {
     const n = withParent(base, {
       root: { sources: { tier: { where: activeAccount, label: 'nope' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/nope/);
+    expect(() => assertValidNarrowing(n)).toThrow(/nope/);
   });
 });

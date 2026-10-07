@@ -11,7 +11,7 @@ export { exposedSurface } from './exposedSurface';
 export type { SourceRowShape } from './materializeSourceQuery';
 export { materializeSourceQuery } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';
-export { validateNarrowing } from './narrowing';
+export { assertValidNarrowing, validateNarrowing } from './narrowing';
 export { narrowRule } from './narrowRule';
 export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectByPath';
 export { projectByPath } from './projectByPath';

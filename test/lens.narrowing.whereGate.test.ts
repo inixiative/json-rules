@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -55,7 +55,7 @@ describe('validateNarrowing — every where position is gated against the parent
       root: { relations: { orders: { omits: ['secretMargin'] } } },
     });
     expect(() =>
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(platform, {
           mapDefaults: { prisma: { models: { Order: { where: marginOver50 } } } },
         }),
@@ -68,7 +68,7 @@ describe('validateNarrowing — every where position is gated against the parent
       root: { relations: { orders: { omits: ['secretMargin'] } } },
     });
     expect(() =>
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(platform, {
           root: {
             relations: {
@@ -95,7 +95,7 @@ describe('validateNarrowing — every where position is gated against the parent
         },
       },
     });
-    expect(() => validateNarrowing(rootRef)).not.toThrow();
+    expect(() => assertValidNarrowing(rootRef)).not.toThrow();
 
     // ...and it is gated by the ANCESTOR's anchor surface, like any root ref.
     const platform = withParent(lens, { root: { omits: ['internalScore'] } });
@@ -110,7 +110,7 @@ describe('validateNarrowing — every where position is gated against the parent
         },
       },
     });
-    expect(() => validateNarrowing(hiddenRootRef)).toThrow(
+    expect(() => assertValidNarrowing(hiddenRootRef)).toThrow(
       /Order\.where: 'internalScore' .*comparison ref/,
     );
 
@@ -122,7 +122,7 @@ describe('validateNarrowing — every where position is gated against the parent
         },
       },
     });
-    expect(() => validateNarrowing(relatedOnly)).toThrow(/'secretMargin' .*comparison ref/);
+    expect(() => assertValidNarrowing(relatedOnly)).toThrow(/'secretMargin' .*comparison ref/);
   });
   test('root.relations[R].where on a field the ancestor hid at that path → error', () => {
     const platform = withParent(lens, {
@@ -131,7 +131,7 @@ describe('validateNarrowing — every where position is gated against the parent
     const org = withParent(platform, {
       root: { relations: { orders: { where: marginOver50 } } },
     });
-    expect(() => validateNarrowing(org)).toThrow(
+    expect(() => assertValidNarrowing(org)).toThrow(
       /root\.relations\.orders\.where: 'secretMargin' .*does not resolve/,
     );
   });
@@ -143,7 +143,7 @@ describe('validateNarrowing — every where position is gated against the parent
     const org = withParent(platform, {
       mapDefaults: { prisma: { models: { Order: { where: marginOver50 } } } },
     });
-    expect(() => validateNarrowing(org)).toThrow(
+    expect(() => assertValidNarrowing(org)).toThrow(
       /mapDefaults\.prisma\.models\.Order\.where: 'secretMargin' .*does not resolve/,
     );
   });
@@ -161,7 +161,7 @@ describe('validateNarrowing — every where position is gated against the parent
         },
       },
     });
-    expect(() => validateNarrowing(org)).toThrow(
+    expect(() => assertValidNarrowing(org)).toThrow(
       /Customer\.where: .*'internal' is not in the allowed set/,
     );
   });
@@ -173,7 +173,7 @@ describe('validateNarrowing — every where position is gated against the parent
     const org = withParent(platform, {
       mapDefaults: { prisma: { models: { Order: { sources: { status: marginOver50 } } } } },
     });
-    expect(() => validateNarrowing(org)).toThrow(
+    expect(() => assertValidNarrowing(org)).toThrow(
       /mapDefaults\.prisma\.models\.Order\.sources\.status: 'secretMargin' .*does not resolve/,
     );
   });
@@ -183,7 +183,9 @@ describe('validateNarrowing — every where position is gated against the parent
     const org = withParent(platform, {
       root: { where: { field: 'internalScore', operator: Operator.greaterThan, value: 1 } },
     });
-    expect(() => validateNarrowing(org)).toThrow(/root\.where: 'internalScore' .*does not resolve/);
+    expect(() => assertValidNarrowing(org)).toThrow(
+      /root\.where: 'internalScore' .*does not resolve/,
+    );
   });
 });
 
@@ -206,7 +208,7 @@ describe('validateNarrowing — where paths resolve through relations, not again
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('a relation-node where with a bogus nested field → error at the descended model', () => {
@@ -219,7 +221,7 @@ describe('validateNarrowing — where paths resolve through relations, not again
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/root\.where: 'nope' .*does not resolve/);
+    expect(() => assertValidNarrowing(n)).toThrow(/root\.where: 'nope' .*does not resolve/);
   });
 
   test('a dotted to-one path resolves; a bogus tail is rejected', () => {
@@ -234,7 +236,7 @@ describe('validateNarrowing — where paths resolve through relations, not again
         },
       },
     });
-    expect(() => validateNarrowing(ok)).not.toThrow();
+    expect(() => assertValidNarrowing(ok)).not.toThrow();
 
     const bad = withParent(lens, {
       mapDefaults: {
@@ -245,7 +247,7 @@ describe('validateNarrowing — where paths resolve through relations, not again
         },
       },
     });
-    expect(() => validateNarrowing(bad)).toThrow(
+    expect(() => assertValidNarrowing(bad)).toThrow(
       /Customer\.where: 'account\.nope' .*does not resolve/,
     );
   });
@@ -256,7 +258,7 @@ describe('validateNarrowing — where paths resolve through relations, not again
         prisma: { models: { Order: { omits: ['secretMargin'], where: marginOver50 } } },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('a mapDefaults where on a model that is not the anchor validates against that model', () => {
@@ -270,6 +272,6 @@ describe('validateNarrowing — where paths resolve through relations, not again
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/Order\.where: 'region' .*does not resolve/);
+    expect(() => assertValidNarrowing(n)).toThrow(/Order\.where: 'region' .*does not resolve/);
   });
 });

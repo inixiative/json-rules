@@ -1,6 +1,7 @@
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
+import { throwIfInvalid, type ValidationResult, validationResult } from '../validate';
 import { validateBindNames } from './bindings.ts';
 import { checkConditionAtVisit } from './checkRule.ts';
 import {
@@ -551,7 +552,7 @@ const validatePathNarrowing = (
   }
 };
 
-export const validateNarrowing = (narrowing: LensNarrowing): void => {
+export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult => {
   const errors: string[] = [];
   const set = getRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
@@ -659,7 +660,15 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
 
   for (const e of validateBindNames(narrowing)) errors.push(e);
 
-  if (errors.length) {
-    throw new Error(`validateNarrowing:\n${errors.join('\n')}`);
-  }
+  return validationResult(
+    errors.map((error) => {
+      const at = error.indexOf(': ');
+      return at === -1
+        ? { path: '', message: error, code: 'invalid_narrowing' }
+        : { path: error.slice(0, at), message: error.slice(at + 2), code: 'invalid_narrowing' };
+    }),
+  );
 };
+
+export const assertValidNarrowing = (narrowing: LensNarrowing): void =>
+  throwIfInvalid(validateNarrowing(narrowing), 'validateNarrowing');

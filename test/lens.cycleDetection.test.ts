@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
@@ -47,6 +47,6 @@ describe('narrowing parent-chain cycle detection', () => {
     const a = { parent: lens } as LensNarrowing;
     const b = { parent: a } as LensNarrowing;
     a.parent = b;
-    expect(() => validateNarrowing(b)).toThrow(/cycle detected/);
+    expect(() => assertValidNarrowing(b)).toThrow(/cycle detected/);
   });
 });

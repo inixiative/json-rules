@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
-import { validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -28,7 +28,7 @@ const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'FanU
 describe('constraints — out-of-bounds investigation', () => {
   test('validateNarrowing allows root.where on a field the same narrowing omits (where scopes incoming rows; omit only narrows output)', () => {
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent: lens,
         root: {
           omits: ['secretField'],
@@ -44,7 +44,7 @@ describe('constraints — out-of-bounds investigation', () => {
       root: { picks: ['email'] },
     };
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent,
         root: { where: { field: 'secretField', operator: Operator.equals, value: 'x' } },
       }),
@@ -88,7 +88,7 @@ describe('constraints — out-of-bounds investigation', () => {
       parent: grandparent,
       root: { omits: ['secretField'] },
     };
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
 
     // narrowRule preserves the grandparent constraint
     const rule = { field: 'email', operator: Operator.equals, value: 'a@b.com' };

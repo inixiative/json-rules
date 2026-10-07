@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  assertValidNarrowing,
   type Lens,
   type LensNarrowing,
   materializeSourceQuery,
@@ -7,7 +8,6 @@ import {
   projectByPath,
   type SourceSpec,
   toSourceQueries,
-  validateNarrowing,
 } from '../index';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -88,7 +88,7 @@ const pathLabeled = (): LensNarrowing =>
 
 describe('validateNarrowing — a dotted label is validated like a groupBy axis', () => {
   test('accepts a label path through to-one relations ending on a scalar', () => {
-    expect(() => validateNarrowing(pathLabeled())).not.toThrow();
+    expect(() => assertValidNarrowing(pathLabeled())).not.toThrow();
   });
 
   test('rejects an unknown segment', () => {
@@ -99,14 +99,14 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/label/);
+    expect(() => assertValidNarrowing(n)).toThrow(/label/);
   });
 
   test('rejects a to-many hop', () => {
     const n = withParent(base, {
       root: { picks: ['tier'], sources: { tier: { label: 'enrichments.value' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/label cannot traverse to-many/);
+    expect(() => assertValidNarrowing(n)).toThrow(/label cannot traverse to-many/);
   });
 
   test('rejects a path ending on a relation', () => {
@@ -117,7 +117,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/label must end on a scalar column/);
+    expect(() => assertValidNarrowing(n)).toThrow(/label must end on a scalar column/);
   });
 
   test("a hop excluded by an ancestor node's picks is an error", () => {
@@ -131,7 +131,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
@@ -149,7 +149,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
   });
 });
 

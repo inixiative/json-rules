@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  assertValidNarrowing,
   exposedSurface,
   type Lens,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
   toSourceQueries,
-  validateNarrowing,
 } from '../index';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -119,7 +119,7 @@ const row = (value: string, source: string | null, def: string | null, brandId =
 
 describe('validateNarrowing — composite groupBy', () => {
   test('accepts an array of to-one scalar-terminal paths', () => {
-    expect(() => validateNarrowing(composite())).not.toThrow();
+    expect(() => assertValidNarrowing(composite())).not.toThrow();
   });
 
   test('a single-string groupBy still validates (normalized form)', () => {
@@ -133,7 +133,7 @@ describe('validateNarrowing — composite groupBy', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('each axis is validated — a to-many hop in ANY axis is an error', () => {
@@ -143,7 +143,7 @@ describe('validateNarrowing — composite groupBy', () => {
         sources: { id: { groupBy: ['enrichments.value'] } },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/to-many/i);
+    expect(() => assertValidNarrowing(n)).toThrow(/to-many/i);
   });
 
   test('cross-layer conflict compares normalized axes — [a] vs a is NOT a conflict', () => {
@@ -164,7 +164,7 @@ describe('validateNarrowing — composite groupBy', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
   });
 
   test('cross-layer conflict on genuinely different axes is an error', () => {
@@ -182,7 +182,7 @@ describe('validateNarrowing — composite groupBy', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/conflict|differ/i);
+    expect(() => assertValidNarrowing(child)).toThrow(/conflict|differ/i);
   });
 
   test('indexed alias names are reserved on grouped sources', () => {
@@ -208,7 +208,7 @@ describe('validateNarrowing — composite groupBy', () => {
     const n = withParent(collisionBase, {
       root: { picks: ['__group_1'], sources: { __group_1: { groupBy: 'cat.name' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/__group/);
+    expect(() => assertValidNarrowing(n)).toThrow(/__group/);
   });
 });
 

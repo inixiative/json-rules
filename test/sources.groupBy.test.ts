@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  assertValidNarrowing,
   exposedSurface,
   type Lens,
   type LensNarrowing,
@@ -8,7 +9,6 @@ import {
   projectByPath,
   type SourceValues,
   toSourceQueries,
-  validateNarrowing,
 } from '../index';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -92,7 +92,7 @@ const grouped = (): LensNarrowing =>
 
 describe('validateNarrowing — groupBy on a SourceSpec', () => {
   test('accepts a groupBy path through to-one relations ending on a scalar', () => {
-    expect(() => validateNarrowing(grouped())).not.toThrow();
+    expect(() => assertValidNarrowing(grouped())).not.toThrow();
   });
 
   test('accepts a groupBy-only spec (no where, no label)', () => {
@@ -106,7 +106,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('accepts a sibling-column groupBy (single segment)', () => {
@@ -117,7 +117,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('rejects an unknown segment', () => {
@@ -128,14 +128,14 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(n)).toThrow(/groupBy/);
   });
 
   test('rejects a to-many hop', () => {
     const n = withParent(base, {
       root: { picks: ['tier'], sources: { tier: { groupBy: 'enrichments.value' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(n)).toThrow(/groupBy/);
   });
 
   test('rejects a path ending on a relation', () => {
@@ -146,7 +146,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(n)).toThrow(/groupBy/);
   });
 });
 
@@ -493,7 +493,7 @@ describe('validateNarrowing — conflicting groupBy across layers', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(child)).toThrow(/groupBy/);
   });
 
   test('a child layer re-declaring the SAME groupBy is fine', () => {
@@ -504,7 +504,7 @@ describe('validateNarrowing — conflicting groupBy across layers', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
   });
 });
 
@@ -565,21 +565,21 @@ describe('validateNarrowing — "__group" is reserved on grouped sources', () =>
     const n = withParent(collisionBase, {
       root: { picks: ['__group'], sources: { __group: { groupBy: 'cat.name' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/__group/);
+    expect(() => assertValidNarrowing(n)).toThrow(/__group/);
   });
 
   test('rejects a grouped source whose label column is named __group', () => {
     const n = withParent(collisionBase, {
       root: { picks: ['id'], sources: { id: { label: '__group', groupBy: 'cat.name' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/__group/);
+    expect(() => assertValidNarrowing(n)).toThrow(/__group/);
   });
 
   test('ungrouped sources may still use a __group column (no alias in play)', () => {
     const n = withParent(collisionBase, {
       root: { picks: ['id'], sources: { id: { label: '__group' } } },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 });
 
@@ -601,7 +601,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test("a hop excluded by an ancestor node's picks is an error", () => {
@@ -620,7 +620,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
   });
 
   test('a hop the ancestor declares as a relation stays traversable', () => {
@@ -639,7 +639,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
@@ -657,7 +657,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
   });
 
   test('a label column omitted by an ancestor is an error', () => {
@@ -672,7 +672,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/ancestor/);
   });
 });
 
@@ -806,7 +806,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    expect(() => validateNarrowing(throughKeptPath)).not.toThrow();
+    expect(() => assertValidNarrowing(throughKeptPath)).not.toThrow();
 
     const throughRemovedPath = withParent(parent, {
       root: {
@@ -815,6 +815,6 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    expect(() => validateNarrowing(throughRemovedPath)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(throughRemovedPath)).toThrow(/ancestor/);
   });
 });

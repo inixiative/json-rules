@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { bindLens, lensRequiredBindings } from '../src/lens/bindings';
-import { validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectByPath } from '../src/lens/projectByPath';
 import type { Lens, LensNarrowing } from '../src/lens/types';
@@ -77,7 +77,7 @@ describe('bind-name discipline — unique names + parent:', () => {
       parent: a,
       root: { where: { field: 'region', operator: Operator.equals, bind: 'brandUuid' } },
     };
-    expect(() => validateNarrowing(b)).toThrow(/already declared by an ancestor/);
+    expect(() => assertValidNarrowing(b)).toThrow(/already declared by an ancestor/);
   });
 
   test('parent:name references an inherited binding read-only — no collision, draws the same value', () => {
@@ -86,7 +86,7 @@ describe('bind-name discipline — unique names + parent:', () => {
       parent: a,
       root: { where: { field: 'region', operator: Operator.equals, bind: 'parent:brandUuid' } },
     };
-    expect(() => validateNarrowing(b)).not.toThrow();
+    expect(() => assertValidNarrowing(b)).not.toThrow();
     expect(lensRequiredBindings(b)).toEqual(new Set(['brandUuid']));
 
     const resolved = bindLens(b, { brandUuid: 'acme-1' });
@@ -104,7 +104,7 @@ describe('bind-name discipline — unique names + parent:', () => {
       parent: lens,
       root: { where: { field: 'region', operator: Operator.equals, bind: 'parent:brandUuid' } },
     };
-    expect(() => validateNarrowing(b)).toThrow(/no ancestor declares/);
+    expect(() => assertValidNarrowing(b)).toThrow(/no ancestor declares/);
   });
 });
 
@@ -137,7 +137,7 @@ describe('bindOptional through a lens', () => {
         },
       },
     };
-    expect(() => validateNarrowing(b)).toThrow(/already declared by an ancestor/);
+    expect(() => assertValidNarrowing(b)).toThrow(/already declared by an ancestor/);
   });
 
   test('an unsupplied optional token survives resolution and applies as null', () => {

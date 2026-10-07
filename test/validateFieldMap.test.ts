@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { validateFieldMap, validateFieldMaps } from '../src/fieldMap/validate';
+import { assertValidFieldMaps, validateFieldMaps } from '../src/fieldMap/validate';
 import type { FieldMap } from '../src/toPrisma/types';
 
 describe('validateFieldMaps', () => {
   test('passes for clean set', () => {
     expect(() =>
-      validateFieldMaps({
+      assertValidFieldMaps({
         maps: {
           prisma: { models: { FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } } } },
         },
@@ -15,7 +15,7 @@ describe('validateFieldMaps', () => {
 
   test('throws on dot in field name', () => {
     expect(() =>
-      validateFieldMaps({
+      assertValidFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -24,12 +24,12 @@ describe('validateFieldMaps', () => {
           },
         },
       }),
-    ).toThrow(/'prisma:FanUser\.foo\.bar' contains forbidden character/);
+    ).toThrow(/prisma:FanUser\.foo\.bar: contains forbidden character/);
   });
 
   test('throws on colon in field name', () => {
     expect(() =>
-      validateFieldMaps({
+      assertValidFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -38,13 +38,13 @@ describe('validateFieldMaps', () => {
           },
         },
       }),
-    ).toThrow(/'prisma:FanUser\.foo:bar' contains forbidden character/);
+    ).toThrow(/prisma:FanUser\.foo:bar: contains forbidden character/);
   });
 
   test('accumulates errors and lists all in single throw', () => {
     let err: Error | undefined;
     try {
-      validateFieldMaps({
+      assertValidFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -74,7 +74,7 @@ describe('validateFieldMaps', () => {
 describe('validateFieldMaps — stitched bridges', () => {
   test('accepts bridge entries with colon in name (stitched output)', () => {
     expect(() =>
-      validateFieldMaps({
+      assertValidFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -97,7 +97,7 @@ describe('validateFieldMaps — stitched bridges', () => {
 
   test('still rejects colons on non-bridge field entries', () => {
     expect(() =>
-      validateFieldMaps({
+      assertValidFieldMaps({
         maps: {
           prisma: {
             models: {
@@ -114,31 +114,22 @@ describe('validateFieldMaps — stitched bridges', () => {
   });
 });
 
-describe('validateFieldMap', () => {
+describe('assertValidFieldMaps — a single map', () => {
   test('passes for clean map', () => {
     const fm: FieldMap = {
       models: {
         FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } },
       },
     };
-    expect(() => validateFieldMap(fm)).not.toThrow();
+    expect(() => assertValidFieldMaps({ maps: { fieldMap: fm } })).not.toThrow();
   });
 
-  test('uses default mapName when omitted', () => {
+  test('names the map in each issue', () => {
     const fm: FieldMap = {
       models: {
         FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
       },
     };
-    expect(() => validateFieldMap(fm)).toThrow(/'fieldMap:FanUser/);
-  });
-
-  test('uses provided mapName', () => {
-    const fm: FieldMap = {
-      models: {
-        FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
-      },
-    };
-    expect(() => validateFieldMap(fm, 'prisma')).toThrow(/'prisma:FanUser/);
+    expect(() => assertValidFieldMaps({ maps: { fieldMap: fm } })).toThrow(/fieldMap:FanUser/);
   });
 });

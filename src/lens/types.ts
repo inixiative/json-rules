@@ -75,7 +75,7 @@ export type NarrowingDefaults = {
 };
 
 export type LensNarrowing = {
-  // TODO: may need to be an identifier (lens name/uuid) rather than a direct reference for persistence
+  // The composed form: the layer above as an object. A database stores layers as StoredLens records.
   parent: Lens | LensNarrowing;
   /**
    * Path-specific narrowing anchored at (lens.mapName, lens.model). Descends via

@@ -555,6 +555,16 @@ const narrowing: LensNarrowing = {
 };
 ```
 
+### Storing a lens
+
+A composed lens holds its layers as nested objects; a database holds them as records.
+`storeLens(lens, ids)` writes one `StoredLens` per layer — its `id`, `parents` (every layer it
+composes with, the base lens first) and its own part; the base lens is a record with no parents.
+To use one, fetch its record and the ids it lists, and `composeLens(id, records)` nests them from
+the base down, validating each layer against the ones above it (`validateNarrowing`). A missing
+record, a base anywhere but first, or a parent whose own `parents` disagree with the list fails
+closed. Re-parenting a stored layer means rewriting the layers below it, whose lists name it.
+
 ## 10. Using the lens
 
 ### `validateRuleInLens(rule, lens)` — validate at the API boundary

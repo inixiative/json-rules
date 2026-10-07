@@ -121,13 +121,14 @@ export const postgresSource = (source: string): string => {
         i += 3;
       } else refuse('a flag group');
     } else if (c === '{') {
-      const repeat = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i));
+      // A count with a leading zero is literal text to RE2.
+      const repeat = /^\{(0|[1-9]\d*)(?:,(0|[1-9]\d*)?)?\}/.exec(source.slice(i));
       if (!repeat) {
         out += '\\{';
         i++;
         continue;
       }
-      if (Number(repeat[1]) > MAX_REPEAT || Number(repeat[3] || 0) > MAX_REPEAT)
+      if (Number(repeat[1]) > MAX_REPEAT || Number(repeat[2] ?? 0) > MAX_REPEAT)
         refuse(`a repeat count past ${MAX_REPEAT}`);
       out += repeat[0];
       i += repeat[0].length;
@@ -143,8 +144,18 @@ export const postgresSource = (source: string): string => {
         out += '\\]';
         i++;
       }
+      // A class expands to ranges, so a - after one is a literal, as RE2 reads it; after a
+      // range's -, the next character ends the range, even a [.
+      let afterClass = false;
+      let rangeEnd = false;
+      let members = 0;
       while (i < source.length && source[i] !== ']') {
-        const posix = /^\[:(\^?)([a-z]+):\]/.exec(source.slice(i));
+        const posix: RegExpExecArray | null = rangeEnd
+          ? null
+          : /^\[:(\^?)([a-z]+):\]/.exec(source.slice(i));
+        const expands: boolean = !!posix || /^\\[dswDSW]/.test(source.slice(i));
+        const dash: boolean =
+          source[i] === '-' && members > 0 && source[i + 1] !== ']' && !rangeEnd;
         if (posix) {
           if (posix[1]) refuse(`a negated class [:^${posix[2]}:]`);
           if (!Object.hasOwn(POSIX, posix[2])) refuse(`the class [:${posix[2]}:]`);
@@ -152,10 +163,16 @@ export const postgresSource = (source: string): string => {
           i += posix[0].length;
         } else if (source[i] === '\\') {
           out += translateEscape(true);
+        } else if (dash && afterClass) {
+          out += '\\-';
+          i++;
         } else {
           out += source[i] === '[' ? '\\[' : source[i];
           i++;
         }
+        rangeEnd = dash && !afterClass;
+        afterClass = expands;
+        members++;
       }
       out += ']';
       i++;

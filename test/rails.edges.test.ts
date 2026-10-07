@@ -115,6 +115,14 @@ describe('a pattern matches on Postgres what it matches on RE2', () => {
       test('\\Q…\\E quotes', () => both(field, '\\Qa%b\\E', [20]));
       test('a named group', () => both(field, '(?P<w>foo) ', [24]));
       test('\\z ends the text', () => both(field, 'line2\\z', [25]));
+      test.each([
+        '^[\\s-z]+$',
+        '[\\w-z]',
+        '[\\d-z]',
+        '[[:alpha:]-z]',
+        '[%-[:digit:]]',
+        '^a{01}b$',
+      ])('a - beside a class, a zero-led count: %s', (pattern) => both(field, pattern));
     });
 
   test.each([

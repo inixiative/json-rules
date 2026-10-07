@@ -410,14 +410,6 @@ const validatePathNarrowing = (
   const ancestorDefaultsForModel = chain
     .map((a) => own(own(a.mapDefaults, mapName)?.models, modelName))
     .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-  const _sameLayerDefaultsEnums: Record<string, EnumNarrowing> | undefined = own(
-    current.mapDefaults,
-    mapName,
-  )?.enums;
-  const _ancestorDefaultsEnums: Record<string, EnumNarrowing>[] = chain
-    .map((a) => own(a.mapDefaults, mapName)?.enums)
-    .filter((x): x is Record<string, EnumNarrowing> => x !== undefined);
-
   const synthAncestors = [
     ...ancestorDefaultsForModel.map((d) => d as ModelNarrowing),
     ...ancestorChain,

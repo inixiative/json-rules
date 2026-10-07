@@ -138,7 +138,7 @@ export const optionalToOneHops = (field: string, map: FieldMap, rootModel: strin
 /** The model a path of relations leads to; null when a segment isn't a declared relation. */
 export const relationTarget = (field: string, map: FieldMap, model: string): string | null => {
   const walk = walkFieldPath(field, map, model);
-  return walk.kind === 'direct' && walk.entry?.kind === 'object' ? walk.entry.type : null;
+  return walk.kind === 'direct' && walk.entry.kind === 'object' ? walk.entry.type : null;
 };
 
 /** Whether a field path crosses a bridge. */

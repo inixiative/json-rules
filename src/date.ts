@@ -65,12 +65,23 @@ export const checkDate = (
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
+  // A weekday list reads no instant.
+  if (DAY_LIST_OPERATORS.includes(condition.dateOperator)) {
+    const days = dayNumbers(readValueSource(condition, scopes, context, bindings));
+    if (days === null) return condition.error || `${condition.field} has no comparison value`;
+    const listed = days.includes(fieldDate.tz(tz).day());
+    const names = days.map((day) => DAY_NAMES[day]).join(' or ');
+    return condition.dateOperator === DateOperator.dayIn
+      ? listed || getError(`must be on ${names}`)
+      : !listed || getError(`must not be on ${names}`);
+  }
+
   const dates = parseCompareDates(condition, scopes, context, exprConfig, tz, bindings);
   // Nothing to compare against — a null path, bind or magnitude: no operator matches, as SQL's
   // comparison with NULL never does. A null field was already decided above.
   if (dates === null) return condition.error || `${condition.field} has no comparison value`;
-  const compareDate = dates[0];
-  const endDate = dates[1];
+  // A window or range operator always reads a pair; the others read one point.
+  const [compareDate, endDate = compareDate] = dates;
 
   switch (condition.dateOperator) {
     case DateOperator.before:
@@ -92,7 +103,6 @@ export const checkDate = (
       );
 
     case DateOperator.within: {
-      if (!endDate) throw new Error('within operator requires a range');
       return (
         (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate)) ||
         getError(`must be within ${compareDate.format()} and ${endDate.format()}`)
@@ -112,7 +122,6 @@ export const checkDate = (
       );
 
     case DateOperator.notWithin: {
-      if (!endDate) throw new Error('notWithin operator requires a range');
       return (
         fieldDate.isBefore(compareDate) ||
         fieldDate.isAfter(endDate) ||
@@ -121,31 +130,18 @@ export const checkDate = (
     }
 
     case DateOperator.between: {
-      if (!endDate) throw new Error('between operator requires an end date');
       return (
         (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate)) ||
-        getError(`must be between ${compareDate.format()} and ${endDate?.format()}`)
+        getError(`must be between ${compareDate.format()} and ${endDate.format()}`)
       );
     }
 
     case DateOperator.notBetween: {
-      if (!endDate) throw new Error('notBetween operator requires an end date');
       return (
         fieldDate.isBefore(compareDate) ||
         fieldDate.isAfter(endDate) ||
-        getError(`must not be between ${compareDate.format()} and ${endDate?.format()}`)
+        getError(`must not be between ${compareDate.format()} and ${endDate.format()}`)
       );
-    }
-
-    case DateOperator.dayIn:
-    case DateOperator.dayNotIn: {
-      const days = dayNumbers(readValueSource(condition, scopes, context, bindings));
-      if (days === null) return condition.error || `${condition.field} has no comparison value`;
-      const listed = days.includes(fieldDate.tz(tz).day());
-      const names = days.map((day) => DAY_NAMES[day]).join(' or ');
-      return condition.dateOperator === DateOperator.dayIn
-        ? listed || getError(`must be on ${names}`)
-        : !listed || getError(`must not be on ${names}`);
     }
 
     default:
@@ -160,9 +156,8 @@ const parseCompareDates = (
   config: ResolvedDateConfig,
   tz: string,
   bindings?: Record<string, RuleValue>,
-): [dayjs.Dayjs, dayjs.Dayjs | undefined] | null => {
+): [dayjs.Dayjs] | [dayjs.Dayjs, dayjs.Dayjs] | null => {
   const operator = condition.dateOperator;
-  if (DAY_LIST_OPERATORS.includes(operator)) return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
 
   const read: ReadSource = (source) => readValueSource(source, scopes, context, bindings);
   const raw = readValueSource(condition, scopes, context, bindings);
@@ -213,7 +208,7 @@ const parseCompareDates = (
   const point = isDateExpr(raw) ? pointOf(raw) : toPoint(raw, 'comparison date');
   if (!point) return null;
   const shifted = shift(point);
-  return shifted && [shifted, undefined];
+  return shifted && [shifted];
 };
 
 /**

@@ -102,6 +102,8 @@ reads all three as null. Prisma matches them together only with its `AnyNull` in
   hop lost its NULL rows. A row outside the grant still fails the rule; a relation that isn't
   there reads as absent.
 - A sourced field named after an `Object.prototype` key no longer inherits a label or axes.
+- A hidden `groupBy` axis drops from the projected fields as well as from `sourceGroupBys`.
+- A `$`-scoped field through a granted to-one hop reads a missing relation as absent too.
 
 ### Breaking: the rails agree
 
@@ -225,22 +227,33 @@ On the SQL rail:
   holds a member, case-insensitively under the flag (SQL lowers each element; Prisma, whose
   `array_contains` can't, refuses). A number or boolean compiles to `array_contains` alone.
 - **Patterns mean the same on Postgres.** `toSql` translates RE2's dialect: `.` stops at a
-  newline, `\b` / `\B` / `\z` become `\y` / `\Y` / `\Z`, `\d` `\w` `\s` and POSIX classes stay
-  ASCII, `\x41` and octal escapes are characters (not Postgres's longer hex or a backreference),
-  `\Q…\E` and named groups translate. A Unicode class, a flag group or a repeat past 255 is
-  refused, and `validateRule(…, { target: 'toSql' })` reports it.
+  newline, word boundaries and `\d` `\w` `\s` and POSIX classes stay ASCII, `\z` becomes `\Z`,
+  `\x41` and octal escapes are characters (not Postgres's longer hex or a backreference), a `-`
+  after a class is literal, a zero-led repeat count is literal text, and `\Q…\E` and named groups
+  translate. A Unicode class, a flag group or a repeat past 255 is refused, and
+  `validateRule(…, { target: 'toSql' })` reports it.
 - **A list `in` / `notIn` a set of lists** compiles as the equalities it means (both compilers
-  threw).
+  threw); Prisma refuses a list holding `null`, which its list filters can't take.
+- **A case-insensitive Json comparison with a list operand** lowers the list's strings on SQL, as
+  `check()` does, and is refused on Prisma; a Json value holding a quote or a control character is
+  refused there too (Prisma's JSON text escapes them).
+- **Operands read per row on SQL:** a list `contains` one; a column compared with a Json value
+  read per row, a set or a pattern read per row, and a date rule on (or read from) a number or
+  boolean column are refused with a clear error rather than a raw Postgres one. A padded epoch
+  string in Json reads as `check()` reads it.
 - **A date rule on a non-DateTime column** (String, a number) is refused on Prisma, which sent it
   a `Date`; a Json epoch with a fraction reads on SQL.
-- **An unknown aggregate mode** is refused on every rail; `toSql` computed it as AVG.
+- **An unknown aggregate mode** throws on every rail; `toSql` computed it as AVG, and `check()`
+  returned a failure a negation could turn true.
 
-Two differences remain, both outside the rules' control:
+Three differences remain, all outside the rules' control:
 
 - Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
   Postgres's `LOWER` under the database collation can differ on letters like `İ`.
 - An array or aggregate rule on a Json value that isn't an array is a data error: `check()`
   reports it, and SQL, which can't raise per row, reads it as empty.
+- Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
+  `check()` compares UTF-16 code units, Postgres the column's collation.
 
 ### Fixed
 

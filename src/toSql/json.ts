@@ -19,6 +19,12 @@ import type { BuilderState } from './types';
  * `rule` against the Json value `jsonb` (a column, or a path read with `->`), its operand known
  * now: `value`, or a range's two ends.
  */
+const lowerStrings = (v: unknown): unknown =>
+  typeof v === 'string' ? v.toLowerCase() : Array.isArray(v) ? v.map(lowerStrings) : v;
+
+const holdsObject = (v: unknown): boolean =>
+  Array.isArray(v) ? v.some(holdsObject) : typeof v === 'object' && v !== null;
+
 export const buildJsonComparison = (
   rule: Rule,
   jsonb: string,
@@ -38,11 +44,24 @@ export const buildJsonComparison = (
   const unordered = unorderedOperand(rule.operator, value);
   if (unordered) throw unordered;
 
-  /** One value: a string compares case-insensitively under the flag; anything else exactly. */
+  // Under the flag check() lowers strings through lists, never inside objects. A list operand
+  // without objects compares against the lowered JSON text: any object the value holds then
+  // differs in type anyway.
+  const lowered = (v: unknown[]): string => {
+    if (holdsObject(v))
+      throw new Error(
+        `A case-insensitive comparison of '${rule.field}' with a list holding objects has no SQL form; use check().`,
+      );
+    return json(lowerStrings(v));
+  };
+  /** One value: a string or a list compares case-insensitively under the flag; anything else
+   *  exactly. */
   const equal = (v: unknown): string =>
     ci && typeof v === 'string'
       ? `(${type} = 'string' AND LOWER(${text}) = LOWER(${nextParam(state, v)}))`
-      : `${j} = ${json(v)}`;
+      : ci && Array.isArray(v)
+        ? `(${type} = 'array' AND LOWER(${j}::text)::jsonb = ${lowered(v)})`
+        : `${j} = ${json(v)}`;
   /** A string operator reads a string: `pattern` is a LIKE pattern. */
   const like = (pattern: string): string =>
     `(${type} = 'string' AND ${lc(text)} LIKE ${lc(nextParam(state, pattern))})`;
@@ -55,6 +74,7 @@ export const buildJsonComparison = (
       return element(
         `jsonb_typeof(e) = 'string' AND LOWER(e #>> '{}') = LOWER(${nextParam(state, v)})`,
       );
+    if (ci && Array.isArray(v)) return element(`LOWER(e::text)::jsonb = ${lowered(v)}`);
     return typeof v === 'object' && v !== null
       ? element(`e = ${json(v)}`)
       : `(${type} = 'array' AND ${j} @> ${json([v])})`;

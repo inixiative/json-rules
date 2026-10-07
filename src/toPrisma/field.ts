@@ -92,6 +92,10 @@ const equalityFilter = (
   mode: { mode?: 'insensitive' },
   shape: FieldShape,
 ): PrismaWhere => {
+  if (mode.mode && isJson(shape) && Array.isArray(value))
+    throw new Error(
+      `A case-insensitive comparison of a Json value with the list ${JSON.stringify(value)} has no Prisma form; use toSql() or check().`,
+    );
   if (!mode.mode || typeof value !== 'string') return { [key]: value, ...mode };
   if (!isJson(shape)) return { [key]: escapeLikePattern(value), ...mode };
   // biome-ignore lint/suspicious/noControlCharactersInRegex: JSON text escapes them.

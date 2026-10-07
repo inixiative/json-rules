@@ -74,10 +74,11 @@ export const readsText = (shape: FieldShape | undefined): boolean =>
 /** Whether a case-insensitive comparison applies — text against a string operand (or a list
  *  holding one), as check() lowercases only strings. */
 export const comparesText = (shape: FieldShape | undefined, operand: unknown): boolean =>
-  readsText(shape) &&
-  (Array.isArray(operand)
-    ? operand.some((item) => typeof item === 'string')
-    : typeof operand === 'string');
+  readsText(shape) && holdsString(operand);
+
+// check() lowers strings through lists at any depth.
+const holdsString = (v: unknown): boolean =>
+  typeof v === 'string' || (Array.isArray(v) && v.some(holdsString));
 
 /** A rule's field shape: the map's authority, a stamped `coerceType` the fallback. */
 export const ruleShape = (

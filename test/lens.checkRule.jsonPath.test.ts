@@ -232,10 +232,12 @@ describe('validateRuleInLens — narrowing governs the Json column, sub-paths fo
 describe('describeRule — Json sub-paths', () => {
   test('a Json sub-path is not a violation; a non-Json scalar sub-path is', () => {
     expect(
-      describeRule({ field: 'metadata.theme', operator: 'equals', value: 'x' }, lens).violations,
+      describeRule({ field: 'metadata.theme', operator: 'equals', value: 'x' }, lens).errors,
     ).toEqual([]);
     expect(
-      describeRule({ field: 'firstName.foo', operator: 'equals', value: 'x' }, lens).violations,
+      describeRule({ field: 'firstName.foo', operator: 'equals', value: 'x' }, lens).errors.map(
+        (e) => e.path,
+      ),
     ).toEqual(['firstName.foo']);
   });
 
@@ -248,7 +250,7 @@ describe('describeRule — Json sub-paths', () => {
           condition: { field: 'color', operator: 'equals', value: 'x' },
         },
         lens,
-      ).violations,
+      ).errors,
     ).toEqual([]);
   });
 });

@@ -6,7 +6,9 @@ import {
 import { parseScopeRef, readScopeRef } from '../scope';
 import { isLogicalNode, valueRefRoles, valueRefs, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
+import type { ValidationIssue } from '../validate';
 import { extremalRewrite, hasWindow } from '../window';
+import { validateRuleInLens } from './checkRule.ts';
 import type { Policy } from './policy.ts';
 import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -15,7 +17,8 @@ export type RuleDescription = {
   sources: string[];
   bridgesCrossed: boolean;
   supportedTargets: RuleTarget[];
-  violations: string[];
+  /** What the lens refuses in the rule — validateRuleInLens's issues. */
+  errors: ValidationIssue[];
 };
 
 const ALL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma', 'toSql'];
@@ -25,7 +28,6 @@ type Acc = {
   sources: Set<string>;
   bridgesCrossed: boolean;
   targets: Set<RuleTarget>;
-  violations: string[];
 };
 
 const restrictByOperator = (acc: Acc, operator: string, family: OperatorFamily): void => {
@@ -72,17 +74,9 @@ const visit = (rule: Condition, acc: Acc): void =>
       restrictByWindow(acc, node);
       restrictByScopeRefs(acc, node);
 
-      for (const ref of valueRefs(node)) {
-        if (!parseScopeRef(ref)) continue;
-        if ('outOfBounds' in readScopeRef(ref, scopes)) acc.violations.push(ref);
-      }
-
       if (typeof node.field !== 'string' || node.field === '') return;
       const step = stepIntoField(acc.policy, scopes, node.field);
-      if ('violation' in step) {
-        acc.violations.push(node.field);
-        return false;
-      }
+      if ('violation' in step) return false;
       if (step.walked) {
         acc.sources.add(step.walked.mapName);
         if (step.walked.entry.kind === 'bridge' || step.walked.mapName !== step.from.mapName)
@@ -104,7 +98,6 @@ export const describeRule = (
     sources: new Set(),
     bridgesCrossed: false,
     targets: new Set(ALL_TARGETS),
-    violations: [],
   };
   visit(rule, acc);
   if (acc.bridgesCrossed) {
@@ -114,6 +107,6 @@ export const describeRule = (
     sources: [...acc.sources].sort(),
     bridgesCrossed: acc.bridgesCrossed,
     supportedTargets: ALL_TARGETS.filter((t) => acc.targets.has(t)),
-    violations: acc.violations,
+    errors: validateRuleInLens(rule, lensOrNarrowing).errors,
   };
 };

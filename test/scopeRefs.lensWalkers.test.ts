@@ -136,7 +136,7 @@ describe('describeRule — scope refs', () => {
       atLineItems({ field: '$$.maxQty', operator: Operator.lessThan, path: '$$$.limit' }),
       lens,
     );
-    expect(result.violations).toEqual([]);
+    expect(result.errors).toEqual([]);
     expect(result.supportedTargets).toEqual(['check']);
   });
 
@@ -153,7 +153,9 @@ describe('describeRule — scope refs', () => {
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$$$.limit' }),
       lens,
     );
-    expect(result.violations).toEqual(['$$$$.limit']);
+    expect(result.errors.map((e) => [e.path, e.code])).toEqual([
+      ['$$$$.limit', 'scope_out_of_bounds'],
+    ]);
   });
 });
 

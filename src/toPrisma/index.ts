@@ -1,9 +1,8 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import { own } from '../own';
 import { assertConditionDepth } from '../traverse';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
-import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from './types';
+import type { BuildOptions, PrismaBuildState, ToPrismaResult } from './types';
 
 const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined =>
   options?.map

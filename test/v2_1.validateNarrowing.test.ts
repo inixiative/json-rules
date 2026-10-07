@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assertValidNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -301,5 +301,32 @@ describe('validateNarrowing — ModelDefaultNarrowing rejects relations field', 
     expect(() => assertValidNarrowing(bad)).toThrow(
       /relations.*not.*allowed.*default|defaults.*cannot.*relations/i,
     );
+  });
+});
+
+describe('validateNarrowing reports what is wrong, by code and path', () => {
+  const codes = (n: LensNarrowing) =>
+    validateNarrowing(n).errors.map(({ path, code }) => ({ path, code }));
+
+  test('a missing field, a conflict, and a field an ancestor hid', () => {
+    expect(codes(withParent(lens, { root: { picks: ['nope'] } }))).toEqual([
+      { path: 'root.picks', code: 'not_in_lens' },
+    ]);
+    expect(codes(withParent(lens, { root: { picks: ['id'], omits: ['name'] } }))).toContainEqual({
+      path: 'root',
+      code: 'conflicting_selection',
+    });
+    const hidden = withParent(lens, { root: { omits: ['password'] } });
+    expect(codes(withParent(hidden, { root: { picks: ['password'] } }))).toEqual([
+      { path: 'root.picks', code: 'not_visible' },
+    ]);
+  });
+
+  test("a where keeps the lens gate's own code", () => {
+    const hidden = withParent(lens, { root: { omits: ['password'] } });
+    const where = { field: 'password', operator: Operator.equals, value: 'x' };
+    expect(codes(withParent(hidden, { root: { where } }))).toEqual([
+      { path: 'root.where', code: 'not_in_lens' },
+    ]);
   });
 });

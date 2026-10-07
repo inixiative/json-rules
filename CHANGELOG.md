@@ -30,12 +30,25 @@ A consolidation release. Every operation has one public name and one implementat
 | `validateNarrowing(n)` — throws | `validateNarrowing(n)` → `{ ok, errors }`; `assertValidNarrowing(n)` throws |
 | `validateFieldMapSet(set)` — throws | `validateFieldMaps(set)` → `{ ok, errors }`; `assertValidFieldMaps(set)` throws |
 | `validateFieldMap(map, name)` | `assertValidFieldMaps({ maps: { [name]: map } })` |
-| `buildBridgeDictionary(bridges)` | `indexBridges(bridges)` |
+| `buildBridgeDictionary(set, rawData)` | `indexBridges(set, rawData)` |
+| `RuleLensViolation`, `RuleLensCheck` | `ValidationIssue`, `ValidationResult` (`{ path, message, code }`) |
+| `describeRule(...).violations: string[]` | `describeRule(...).errors: ValidationIssue[]` (the lens gate's issues) |
+| `getValueShape(operator)` | `getValueShape(operator, family)` — `family` is `'field' \| 'date' \| 'array'` (`between` is in two) |
+| `getAggregateOperators(target)` | `getAggregateOperators()` — every target compiles them all |
+| `getWindowSupport`, `WindowSupport`, `WINDOW_SELECTOR`, `WindowRuleType` | `validateRule(rule, { target })` reports an unsupported window |
+| `isOperatorSupportedForTarget`, `isAggregateSingleOperator`, `isAggregateRangeOperator` | `getOperatorsForKind(kind, target)`, `getAggregateOperators()`, `validateRule(rule, { target })` |
+| `isCalendarUnit`, `isRelativeUnit`, `RelativeUnit` | `validateRule` reports an unknown or fractional unit |
+| `FIELD_OPERATOR_CATALOG`, `DATE_OPERATOR_CATALOG`, `ARRAY_OPERATOR_CATALOG`, `CatalogEntry`, `ArrayCatalogEntry` | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape` |
 | `readBinding`, `validateBindNames`, `resolveCaseInsensitive`, `resolveFuzzy`, `supportsQueryMode`, `fuzzyContains`, `maxFuzzyDistance`, the catalog's internal operator / kind / unit sets | no longer exported |
 
 Every validator returns `{ ok, errors: { path, message, code }[] }` and has an `assert*`
 form that throws. Lens violations carry codes (`not_in_lens`, `operator_kind_mismatch`,
 `invalid_value`, `value_not_allowed`, …).
+
+`validateNarrowing` reports a code per problem (`not_in_lens`, `not_visible`,
+`conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`, `invalid_binding`, and
+the lens gate's own codes for a `where`). `toSql` takes a FieldMapSet with `mapName`, as `toPrisma`
+does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `SqlBuildOptions`.
 
 `getAggregateOperators()` takes no target: every target compiles every aggregate comparison
 (`toPrisma` gained `notBetween`), and the `unsupported_prisma_aggregate_operator` code is gone.

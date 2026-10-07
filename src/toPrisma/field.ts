@@ -21,6 +21,7 @@ import {
 } from '../operatorCatalog';
 import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
+import { prismaAnyNull } from './anyNull';
 import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import {
   acceptsEmptyString,
@@ -49,12 +50,7 @@ const isJson = (shape: FieldShape): boolean => shape === 'json' || shape === 'js
  *  null, and an absent path all read as null in check(). */
 export const nullOf = (shape: FieldShape): unknown => {
   if (!isJson(shape)) return null;
-  const anyNull = engineGlobals.get('prismaOptions.anyNull');
-  if (anyNull === undefined)
-    throw new Error(
-      "A null check on a Json field needs Prisma's AnyNull: engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull).",
-    );
-  return anyNull;
+  return prismaAnyNull();
 };
 
 /** Each optional to-one hop on the path NULL: `{ rel: { col: { equals: null } } }` requires the

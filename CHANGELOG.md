@@ -53,21 +53,12 @@ does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `SqlBuildOptio
 `getAggregateOperators()` takes no target: every target compiles every aggregate comparison
 (`toPrisma` gained `notBetween`), and the `unsupported_prisma_aggregate_operator` code is gone.
 
-### Breaking: Json null checks on Prisma need `Prisma.AnyNull`
+### Json null checks on Prisma use `Prisma.AnyNull`
 
 A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent; `check()`
-reads all three as null. Prisma matches them together only with its `AnyNull` instance, which is
-not plain data, so you hand it to the engine once, beside your client:
-
-```ts
-import { engineGlobals } from '@inixiative/json-rules';
-import { Prisma } from './generated/client';
-
-engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
-```
-
-`toPrisma` throws when a rule needs it and it is not set: null checks, emptiness and existence
-on Json, and every negation on a Json path (which keeps absent paths).
+reads all three as null. Prisma matches them together only with its `AnyNull` instance, which
+`toPrisma` takes from your installed `@prisma/client` (a new optional peer dependency). Set
+`engineGlobals.set('prismaOptions.anyNull', …)` only to use a different client's.
 
 ### Security
 

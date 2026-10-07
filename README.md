@@ -582,21 +582,15 @@ await prisma.user.findMany({ where }); // users whose orders sum to more than 10
 A user with no orders sums to 0, as in `check()`: a comparison that holds at 0 selects the
 parents outside the groups where it fails, so childless parents stay in.
 
-### Json fields need `Prisma.AnyNull`
+### Json null checks
 
 A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent — `check()`
-reads all three as null, and Prisma matches them together only with its `AnyNull` instance.
-Hand it to the engine once, beside your client:
+reads all three as null, and Prisma matches them together only with its `AnyNull` instance,
+which it knows by identity. `toPrisma()` takes it from your installed `@prisma/client` (an
+optional peer dependency), so there is nothing to configure; set `prismaOptions.anyNull` only to
+use a different client's. Without `@prisma/client`, a Json null check throws.
 
-```ts
-import { engineGlobals } from '@inixiative/json-rules';
-import { Prisma } from './generated/client';
-
-engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
-```
-
-`toPrisma()` throws when a rule needs it and it is not set: null checks, emptiness and
-existence on Json, and negations on a Json path. Prisma filters follow the column kind the map
+Prisma filters follow the column kind the map
 declares: on Json, `contains` / `startsWith` / `endsWith` become `string_contains` / … and `in`
 becomes one `equals` per value; on a scalar list, `contains` becomes `has` and emptiness
 `isEmpty`; `caseInsensitive` adds `mode: 'insensitive'` on text only.
@@ -608,9 +602,9 @@ becomes one `equals` per value; on a scalar list, `contains` becomes `has` and e
 | Key | Default | Governs |
 | --- | --- | --- |
 | `string.caseInsensitive` | `false` | Default for a rule's `caseInsensitive`. A rule's own flag wins. Read by `check()`, `toSql()` and `toPrisma()`. |
-| `string.fuzzy` | `false` | Default for a rule's `fuzzy` (`true` or a `FuzzyConfig` `{ maxDistance?, maxRatio? }`): typo-tolerant `contains` / `notContains` on strings. A rule's own flag wins. Read by `check()` only: the compilers compile exact containment whatever this says, and a rule that sets `fuzzy` itself throws in both. |
+| `string.fuzzy` | `false` | Default for a rule's `fuzzy` (`true` or a `FuzzyConfig` `{ maxDistance?, maxRatio? }`): typo-tolerant `contains` / `notContains` on strings. A rule's own flag wins. The compilers have no fuzzy form: they refuse `contains` / `notContains` whenever fuzzy is on, by the rule or by this default. |
 | `prismaOptions.datasource.provider` | `'postgresql'` | The Prisma connector. `toPrisma()` emits `mode: 'insensitive'` only for `postgresql`, `cockroachdb` and `mongodb`; the others are case-insensitive by collation and reject it. `toPrisma(rule, { datasource: { provider } })` overrides it per call. |
-| `prismaOptions.anyNull` | unset | Your client's `Prisma.AnyNull` (see above). |
+| `prismaOptions.anyNull` | your `@prisma/client`'s | Prisma's `AnyNull` for Json null checks (see above); set it only to use another client's. |
 
 ```ts
 import { engineGlobals } from '@inixiative/json-rules';
@@ -618,7 +612,7 @@ import { engineGlobals } from '@inixiative/json-rules';
 engineGlobals.set('string.caseInsensitive', true);
 engineGlobals.get('string.caseInsensitive'); // true
 engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
-engineGlobals.reset(); // back to the defaults (this clears anyNull too)
+engineGlobals.reset(); // back to the defaults
 
 // A scoped override: merged over the current state for the duration of a synchronous callback.
 const result = engineGlobals.with({ string: { caseInsensitive: true } }, () => check(rule, data));

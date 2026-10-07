@@ -19,8 +19,8 @@ export type EngineGlobalsState = {
     datasource: {
       provider: PrismaProvider;
     };
-    /** Your client's `Prisma.AnyNull`: matches a DB NULL, a JSON null, and an absent path in a
-     *  Json column. toPrisma() needs it to compile a null check on Json. */
+    /** Prisma's `AnyNull` — matches a DB NULL, a JSON null and an absent Json path. Defaults to
+     *  your installed @prisma/client's; set it only to use another. */
     anyNull?: unknown;
   };
 };

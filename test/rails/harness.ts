@@ -6,8 +6,8 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { buildPrismaMapV7 } from '@inixiative/prisma-map';
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { Condition, FieldMap } from '../../index';
-import { check, engineGlobals, executePrismaPlan, toPrisma, toSql } from '../../index';
-import { Prisma, PrismaClient } from './generated/client';
+import { check, executePrismaPlan, toPrisma, toSql } from '../../index';
+import { PrismaClient } from './generated/client';
 
 // The three rails on one database: check() over the rows Prisma loads, toSql executed by
 // Postgres (PGlite), and toPrisma executed by Prisma 7 through PGlite's socket server — the
@@ -55,8 +55,6 @@ const attempt = async (run: () => Promise<number[]> | number[]): Promise<RailRes
 
 /** `seed` adds rows after the base fixture's. */
 export const openRails = async (seed = '') => {
-  // What a consumer configures once, beside its client.
-  engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
   const db = new PGlite();
   await db.exec(readFileSync(join(GENERATED, 'schema.sql'), 'utf8'));
   await db.exec(SEED + seed);
@@ -108,7 +106,6 @@ export const openRails = async (seed = '') => {
     await server.stop();
     await db.close();
     rmSync(dir, { recursive: true, force: true });
-    engineGlobals.reset();
   };
 
   return { run, close, rows };

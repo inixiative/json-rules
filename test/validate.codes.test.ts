@@ -129,6 +129,10 @@ describe('validateRule — each rejection', () => {
 
 describe('validateRule — well-formed siblings', () => {
   test.each([
+    [
+      'an empty orderBy (no window)',
+      { field: 'a', arrayOperator: 'any', condition: cond, orderBy: [] },
+    ],
     ['a date range', { field: 'a', dateOperator: 'between', value: ['2024-01-01', '2024-02-01'] }],
     [
       'a date range of expressions',

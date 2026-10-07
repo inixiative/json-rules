@@ -8,7 +8,7 @@ import {
   namedPeriod,
   rollingShift,
 } from './dateExpr';
-import { unknownAggregateMode } from './errors';
+import { unknownAggregateMode, windowUnsupported } from './errors';
 import { isOrderedValue } from './number';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
@@ -925,7 +925,7 @@ const validateWindow = (
         context,
         path,
         `unsupported_${targetSlug(context.target)}_window`,
-        `Windowing (filter/orderBy/take/skip) is not supported by ${context.target}() for this rule; evaluate with check()`,
+        windowUnsupported(context.target).message,
       );
     }
   }
@@ -936,12 +936,13 @@ const validateWindow = (
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {
     const ob = rule.orderBy;
-    if (!Array.isArray(ob) || ob.length === 0) {
+    // An empty orderBy orders nothing: no window, as hasWindow reads it.
+    if (!Array.isArray(ob)) {
       pushIssue(
         context,
         `${path}.orderBy`,
         'invalid_order_by',
-        'orderBy must be a non-empty array of { field, dir }',
+        'orderBy must be an array of { field, dir }',
       );
     } else {
       ob.forEach((o, i) => {

@@ -69,7 +69,7 @@ console.log(check(endAfterStartRule, validRange)); // true
 console.log(check(endAfterStartRule, invalidRange)); // "End date must be after start date"
 
 // Example 5: Complex date validation with logical operators
-const bookingRule = {
+export const bookingRule = {
   all: [
     // Must be in the future
     {

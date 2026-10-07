@@ -58,7 +58,7 @@ const ordersWithBudget = {
 console.log(check(budgetComplianceRule, ordersWithBudget)); // true
 
 // Example 4: Complex nested validation
-const userValidationRule = {
+export const userValidationRule = {
   all: [
     // Basic field validation
     { field: 'username', operator: Operator.matches, value: /^[a-zA-Z0-9_]{3,20}$/ },
@@ -124,7 +124,7 @@ const userWithOrders = {
 console.log(check(orderLimitRule, userWithOrders)); // true
 
 // Example 7: Combining all features
-const complexBusinessRule = {
+export const complexBusinessRule = {
   all: [
     // User must be active
     { field: 'status', operator: Operator.equals, value: 'active' },

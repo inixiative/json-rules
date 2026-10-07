@@ -52,7 +52,7 @@ const orderValidationRule = {
 };
 
 // Example 2: User Registration Form
-const registrationRule = {
+export const registrationRule = {
   all: [
     // Username validation
     {
@@ -125,7 +125,7 @@ const registrationRule = {
 };
 
 // Example 3: Loan Application
-const loanApplicationRule = {
+export const loanApplicationRule = {
   all: [
     // Basic eligibility
     {
@@ -173,7 +173,7 @@ const loanApplicationRule = {
 };
 
 // Example 4: Event Scheduling System
-const eventSchedulingRule = {
+export const eventSchedulingRule = {
   all: [
     // Event must be in the future
     { field: 'startDate', dateOperator: DateOperator.after, value: new Date().toISOString() },
@@ -221,7 +221,7 @@ const eventSchedulingRule = {
 };
 
 // Example 5: API Rate Limiting
-const rateLimitRule = {
+export const rateLimitRule = {
   any: [
     // Premium users have higher limits
     {

@@ -1,4 +1,4 @@
-import { ArrayOperator } from './operator';
+import { ArrayOperator, Operator } from './operator';
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import { readOwnPath } from './scope';
 import { allOf, conditionShape } from './traverse';
@@ -59,14 +59,18 @@ const extremalRewrite = (rule: ArrayRule): Condition | null => {
 
   const { orderBy, take, skip, count, ...rest } = rule;
   if (kind === 'any') return { ...rest, arrayOperator: ArrayOperator.any } as ArrayRule;
-  const present = { field: orderField, operator: 'exists' } as Condition;
+  const present = { field: orderField, operator: Operator.exists } as Condition;
   return {
     any: [
-      { field: rule.field, arrayOperator: 'empty' },
+      { field: rule.field, arrayOperator: ArrayOperator.empty },
       {
         all: [
-          { field: rule.field, arrayOperator: 'any', condition: present },
-          { ...rest, arrayOperator: 'all', condition: { if: present, then: rule.condition } },
+          { field: rule.field, arrayOperator: ArrayOperator.any, condition: present },
+          {
+            ...rest,
+            arrayOperator: ArrayOperator.all,
+            condition: { if: present, then: rule.condition },
+          },
         ],
       },
     ],

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.27.0 — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
+## Unreleased — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
 
 **First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident
 lifecycle is a `@inixiative/transitions` map, and its auto-resolve guard reads its window off
@@ -80,6 +80,10 @@ Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
 - Aggregate rules read `bind` on both compilers; `toPrisma` also reads a context `path`.
 - `toSql` lowercases only string comparisons under `caseInsensitive` (`LOWER(int)` failed).
 - Operator, kind and relative-unit sets are defined once in `operatorCatalog.ts`.
+- The SQL rail treats a DateTime column as `timestamptz`. A plain `timestamp` column (Prisma's
+  default) is read as UTC through the session zone, as Prisma writes it. `dayIn` / `dayNotIn`
+  assumed `timestamp` and were off on `timestamptz`; a shift read per row assumed `timestamptz`
+  and was off across DST on `timestamp`.
 
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 

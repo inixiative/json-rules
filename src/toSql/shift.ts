@@ -26,6 +26,13 @@ import {
 const isRowRef = (magnitude: Magnitude | undefined): boolean =>
   typeof magnitude === 'object' && rowRef(magnitude) !== null;
 
+/**
+ * A DateTime column as an instant. The SQL rail treats DateTime as `timestamptz`; a plain
+ * `timestamp` column (Prisma's default) casts through the session zone, which Prisma keeps at
+ * UTC — the zone it writes in — so both column types read the same instant.
+ */
+export const asInstant = (sql: string): string => `(${sql})::timestamptz`;
+
 /** True when any unit is read per row — so the shift must compile to SQL. */
 export const readsRow = (units: RelativeUnits): boolean => Object.values(units).some(isRowRef);
 
@@ -77,7 +84,9 @@ export const shiftDate = (
     };
   }
   const base =
-    rhs.type === 'column' ? rhs.sql : `${nextParam(state, rhs.value ?? null)}::timestamptz`;
+    rhs.type === 'column'
+      ? asInstant(rhs.sql)
+      : `${nextParam(state, rhs.value ?? null)}::timestamptz`;
   const z = nextParam(state, zone);
   const sign = direction === 1 ? '+' : '-';
   return {

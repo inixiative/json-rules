@@ -16,7 +16,7 @@ import { mapDayNames } from './dayNames';
 import { resolveFieldSql } from './join';
 import { offsetDate } from './offset';
 import { nextParam } from './params';
-import { readsRow, shiftDate } from './shift';
+import { asInstant, readsRow, shiftDate } from './shift';
 import type { BuilderState } from './types';
 import {
   compileTimeRead,
@@ -59,7 +59,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       }
       const zone = nextParam(state, zoneOf(dateConfigOf(state)));
       const days = nextParam(state, mapDayNames(rule.value.map((day) => String(day))));
-      const dow = `EXTRACT(DOW FROM (${field} AT TIME ZONE 'UTC' AT TIME ZONE ${zone}))`;
+      const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
       return rule.dateOperator === DateOperator.dayIn
         ? `${dow} = ANY(${days})`
         : orNull(field, `${dow} <> ALL(${days})`);

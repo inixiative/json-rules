@@ -58,7 +58,7 @@ describe('toSql — negated date operators keep NULL rows', () => {
   it('dayNotIn ORs an IS NULL arm', () => {
     const { sql } = toSql(dayNotIn as never);
     expect(sql).toBe(
-      `(EXTRACT(DOW FROM ("lastLoginAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) <> ALL($2) OR "lastLoginAt" IS NULL)`,
+      `(EXTRACT(DOW FROM (("lastLoginAt")::timestamptz AT TIME ZONE $1)) <> ALL($2) OR "lastLoginAt" IS NULL)`,
     );
   });
 
@@ -72,7 +72,7 @@ describe('toSql — negated date operators keep NULL rows', () => {
     ).toBe('"lastLoginAt" BETWEEN $1 AND $2');
     expect(
       toSql({ field: 'lastLoginAt', dateOperator: 'dayIn', value: ['monday'] } as never).sql,
-    ).toBe(`EXTRACT(DOW FROM ("lastLoginAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) = ANY($2)`);
+    ).toBe(`EXTRACT(DOW FROM (("lastLoginAt")::timestamptz AT TIME ZONE $1)) = ANY($2)`);
   });
 });
 

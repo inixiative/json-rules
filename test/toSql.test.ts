@@ -334,7 +334,7 @@ describe('toSql', () => {
         value: ['monday', 'wednesday', 'friday'],
       });
       expect(sql).toBe(
-        `EXTRACT(DOW FROM ("scheduledAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) = ANY($2)`,
+        `EXTRACT(DOW FROM (("scheduledAt")::timestamptz AT TIME ZONE $1)) = ANY($2)`,
       );
       expect(params).toEqual(['UTC', [1, 3, 5]]);
     });
@@ -346,7 +346,7 @@ describe('toSql', () => {
         value: ['saturday', 'sunday'],
       });
       expect(sql).toBe(
-        `(EXTRACT(DOW FROM ("deliveryDate" AT TIME ZONE 'UTC' AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
+        `(EXTRACT(DOW FROM (("deliveryDate")::timestamptz AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
       );
       expect(params).toEqual(['UTC', [6, 0]]);
     });

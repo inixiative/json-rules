@@ -9,6 +9,7 @@ import { hasNoOperand } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS, NO_VALUE_OPERATORS } from '../operatorCatalog';
+import { escapeLikePattern } from '../toSql/quoting';
 import type { Rule } from '../types';
 import { andWhere, notLeaf, orWhere } from './logical';
 import {
@@ -270,7 +271,9 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
       return { has: value };
     }
     const key = isJson(shape) ? JSON_MATCH[op] : op;
-    return { [key]: value, ...ci(value) };
+    // Prisma matches with LIKE and passes % and _ through: escape them, as toSql does.
+    const literal = typeof value === 'string' ? escapeLikePattern(value) : value;
+    return { [key]: literal, ...ci(value) };
   };
 
   switch (rule.operator) {

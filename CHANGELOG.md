@@ -123,6 +123,8 @@ reads off the generated client.
   stamp `coerceType` to compare it.
 - **`in` / `notIn` with a scalar, and an unknown period unit, throw on every rail** (they compiled
   to an empty set and to a millisecond).
+- **`toPrisma` escapes `%` and `_`** in `contains` / `startsWith` / `endsWith` (and Json `string_*`):
+  Prisma matches with LIKE and passed them through as wildcards.
 - **A scalar list `exists` / `notEquals`** compile on Prisma (`{ not: null }` is not a list
   filter).
 - **A window sorts NULLs last** in both directions: `orderBy views desc, take 1` is the largest

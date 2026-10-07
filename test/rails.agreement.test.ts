@@ -296,6 +296,18 @@ const MATRIX: Record<string, Case> = {
     ids: [],
     refuses: { sql: 'the literal is a string', prisma: 'the literal is a string' },
   },
+  'contains reads % and _ literally': {
+    rule: { field: 'name', operator: 'contains', value: '%' },
+    ids: [],
+  },
+  'startsWith reads _ literally': {
+    rule: { field: 'name', operator: 'startsWith', value: '_' },
+    ids: [],
+  },
+  'a Json string reads % literally': {
+    rule: { field: 'meta.a.b', operator: 'contains', value: '%' },
+    ids: [],
+  },
   'a list isEmpty': { rule: { field: 'tags', operator: 'isEmpty' }, ids: [2, 3, 5] },
   'a list notEmpty': { rule: { field: 'tags', operator: 'notEmpty' }, ids: [1, 4] },
   'a relation exists': { rule: { field: 'org', operator: 'exists' }, ids: [1, 2, 3] },

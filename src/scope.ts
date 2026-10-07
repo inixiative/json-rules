@@ -29,17 +29,27 @@ export const readScopeRef = <S>(
   return { scope: scopes[scopes.length - parsed.depth], path: parsed.path };
 };
 
-/** A dotted path read, own-property only: a name on Object.prototype reads as absent. */
+// Segments of a path: dotted names, bracket indices and quoted keys (`ids[1]`, `meta["a.b"]`).
+const SEGMENT = /\[(\d+)\]|\[(["'])(.*?)\2\]|([^.[\]]+)/g;
+const segments = (path: string): string[] =>
+  [...path.matchAll(SEGMENT)].map((m) => m[1] ?? m[3] ?? m[4]);
+
+// One step of a path read: an own property, or an inherited one (a class getter, a string's
+// `length`) unless Object.prototype names it — `constructor`, `toString`, `__proto__` never
+// resolve — and never a method.
+const step = (at: unknown, key: string): unknown => {
+  if (at === null || at === undefined) return undefined;
+  const boxed = Object(at) as Record<string, unknown>;
+  if (Object.hasOwn(boxed, key)) return boxed[key];
+  if (key in Object.prototype || !(key in boxed)) return undefined;
+  const value = boxed[key];
+  return typeof value === 'function' ? undefined : value;
+};
+
+/** A path read that never reaches Object.prototype: own properties, inherited getters and data,
+ *  bracket indices. */
 export const readOwnPath = (root: unknown, path: string): unknown =>
-  path
-    .split('.')
-    .reduce<unknown>(
-      (at, key) =>
-        at !== null && typeof at === 'object' && Object.hasOwn(at, key)
-          ? (at as Record<string, unknown>)[key]
-          : undefined,
-      root,
-    );
+  segments(path).reduce<unknown>(step, root);
 
 const readScoped = (ref: string, scopes: Scopes): unknown => {
   const target = readScopeRef(ref, scopes);

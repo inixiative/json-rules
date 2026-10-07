@@ -234,11 +234,13 @@ export const resolveDateConfig = (config: DateConfig, read: ReadSource): Resolve
   return { ...config, timeZone: read_ ?? DEFAULT_ZONE };
 };
 
-// Detects an explicit zone on a date STRING only (never String(Date), whose render is
-// host-locale-dependent): a trailing `Z`, or a `±HH:MM`/`±HHMM` offset after the time.
-const TRAILING_OFFSET = /[+-]\d{2}:?\d{2}$/;
+// Whether a date STRING names its own zone (never String(Date), whose render is host-locale-
+// dependent): a `Z` / `z`, or a `±HH`, `±HHMM` or `±HH:MM` offset after the time (with `T` or a
+// space — Postgres renders timestamptz as `2026-10-05 08:00:00+00`), or a GMT / UTC token
+// (RFC 2822, Date#toString). Anything else is zoneless and anchors in the evaluation zone.
+const ZONED_TIME = /\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:[zZ]|[+-]\d{2}(?::?\d{2})?)$/;
 const hasExplicitZone = (value: string): boolean =>
-  /Z$/.test(value) || (value.includes('T') && TRAILING_OFFSET.test(value));
+  ZONED_TIME.test(value.trim()) || /\b(?:GMT|UTC)\b/.test(value);
 
 /**
  * Parse a comparison/field value into an instant, given the already-resolved anchor zone.
@@ -255,7 +257,8 @@ export const parseDateValue = (value: DateInputValue | undefined, tz: string): d
     if (!base.isValid()) return base;
     return dayjs.tz(value, tz);
   }
-  return dayjs(value);
+  // An absolute instant in any of the forms above; the Date parser reads them all.
+  return typeof value === 'string' ? dayjs(new Date(value.trim())) : dayjs(value);
 };
 
 // Literal and context date values compile to concrete Dates through the same parse-and-anchor

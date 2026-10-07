@@ -2,9 +2,8 @@ import { isEqual } from 'lodash-es';
 import { parseDateValue, resolveDateConfig } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
-import { unorderedOperand } from './errors';
 import { fuzzyContains } from './fuzzy';
-import { bigIntToNumber, isOrderedValue, orderPair, readPair, readSet } from './number';
+import { bigIntToNumber, isOrderedValue, orderPair, readOrderedPair, readSet } from './number';
 import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
@@ -68,6 +67,11 @@ export const listMembership = (rule: Rule, members: readonly unknown[]): Conditi
     ? anyOf(each(Operator.equals))
     : allOf(each(Operator.notEquals));
 };
+
+/** Case-insensitivity lowers every string, a list's members included at any depth — never
+ *  inside an object. Every rail lowers through this. */
+export const lowerStrings = (v: unknown): unknown =>
+  typeof v === 'string' ? v.toLowerCase() : Array.isArray(v) ? v.map(lowerStrings) : v;
 
 // A bigint compares as a number (refused past the safe range).
 const fromBigInt = (value: unknown): unknown => {
@@ -174,9 +178,7 @@ export const checkField = (
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
-  // Case-insensitivity lowers every string on both sides, a list's members included.
-  const lower = (v: unknown): unknown =>
-    !ci ? v : typeof v === 'string' ? v.toLowerCase() : Array.isArray(v) ? v.map(lower) : v;
+  const lower = (v: unknown): unknown => (ci ? lowerStrings(v) : v);
   const lhs = lower(fieldValue);
   const rhs = lower(value);
 
@@ -323,18 +325,11 @@ const hasMatch = (value: unknown): value is string => typeof value === 'string';
 const isPattern = (value: unknown): value is string | RegExp =>
   typeof value === 'string' || value instanceof RegExp;
 
-/** A range operand's two ends, ordered; refused when one doesn't order. */
-const orderedRange = (value: unknown, operator: string): [string | number, string | number] => {
-  const [low, high] = readPair(value, operator);
-  if (!isOrderedValue(low) || !isOrderedValue(high))
-    throw (
-      unorderedOperand(operator, value) ??
-      new Error(
-        `${operator} orders numbers, strings and dates; it can't compare ${JSON.stringify(value)}`,
-      )
-    );
-  return orderPair([toOrderedPrimitive(low), toOrderedPrimitive(high)]);
-};
+/** A range operand's two ends, ordered. */
+const orderedRange = (value: unknown, operator: string): [string | number, string | number] =>
+  orderPair(
+    readOrderedPair(value, operator).map((end) => toOrderedPrimitive(end as OrderedRuleValue)),
+  ) as [string | number, string | number];
 
 const containsValue = (container: unknown, search: unknown): boolean =>
   typeof container === 'string' && typeof search === 'string' && container.includes(search);

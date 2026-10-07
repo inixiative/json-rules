@@ -1,5 +1,5 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { CompileOptions, Condition } from '../types';
+import type { Condition } from '../types';
 import { buildCondition } from './condition';
 import type { BuilderState, ToSqlOptions, ToSqlResult } from './types';
 

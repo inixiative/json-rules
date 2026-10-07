@@ -1,6 +1,6 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { unorderedOperand } from '../errors';
-import { hasNoOperand } from '../field';
+import { hasNoOperand, lowerStrings } from '../field';
 import { splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS } from '../operatorCatalog';
@@ -15,16 +15,13 @@ import type { BuilderState } from './types';
 // and never across types; JSON null is null; string operators read strings, and `contains` is
 // also exact membership in an array.
 
+const holdsObject = (v: unknown): boolean =>
+  Array.isArray(v) ? v.some(holdsObject) : typeof v === 'object' && v !== null;
+
 /**
  * `rule` against the Json value `jsonb` (a column, or a path read with `->`), its operand known
  * now: `value`, or a range's two ends.
  */
-const lowerStrings = (v: unknown): unknown =>
-  typeof v === 'string' ? v.toLowerCase() : Array.isArray(v) ? v.map(lowerStrings) : v;
-
-const holdsObject = (v: unknown): boolean =>
-  Array.isArray(v) ? v.some(holdsObject) : typeof v === 'object' && v !== null;
-
 export const buildJsonComparison = (
   rule: Rule,
   jsonb: string,

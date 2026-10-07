@@ -2,7 +2,7 @@ import { compileFieldLiteral } from '../compileLiteral';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
 import { fuzzyNotCompiled, relationNotValue } from '../errors';
-import { hasNoOperand, isExistenceTest, listMembership } from '../field';
+import { hasNoOperand, isExistenceTest, listMembership, lowerStrings } from '../field';
 import { acceptsEmptyString, comparesText, readsText } from '../fieldMap/shape';
 import { fieldEntry, walkWith } from '../fieldMap/walk';
 import { orderPair, readPair, splitNull } from '../number';
@@ -103,8 +103,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
       ? !arithmetic && readsText(resolved.shape) && readsText(rhs.shape)
       : comparesText(resolved.shape, rhs.value));
   const lc = (expr: string): string => (lower ? `LOWER(${expr})` : expr);
-  const lowered = (values: unknown[]): unknown[] =>
-    lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
+  const lowered = (values: unknown[]): unknown => (lower ? lowerStrings(values) : values);
 
   // A member read per row: a NULL one is nothing to look for, so only a NULL list is without it.
   if (
@@ -140,10 +139,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
         `'${rule.operator}' does not apply to the list '${rule.field}'; test its members with contains.`,
       );
     if (listLower && EQUALITY_OPERATORS.includes(rule.operator) && Array.isArray(rhs.value)) {
-      const lowered = nextParam(
-        state,
-        rhs.value.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)),
-      );
+      const lowered = nextParam(state, lowerStrings(rhs.value));
       const same = `(${field} IS NOT NULL AND ARRAY(SELECT LOWER(e) FROM unnest(${field}) AS e) = ${lowered})`;
       return rule.operator === Operator.equals ? same : orNullSql(field, `NOT ${same}`);
     }

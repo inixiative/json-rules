@@ -40,6 +40,16 @@ export const readPair = (value: unknown, operator: string): [unknown, unknown] =
   return [value[0], value[1]];
 };
 
+/** A range operand whose ends order (numbers, strings, dates), or an error naming the operator. */
+export const readOrderedPair = (value: unknown, operator: string): [unknown, unknown] => {
+  const pair = readPair(value, operator);
+  if (!pair.every(isOrderedValue))
+    throw new Error(
+      `${operator} requires two ends that order — numbers, strings or dates (got ${JSON.stringify(value)})`,
+    );
+  return pair;
+};
+
 /** A set operand: a list, or an error — a scalar is not a set. */
 export const readSet = (value: unknown): unknown[] => {
   if (!Array.isArray(value))

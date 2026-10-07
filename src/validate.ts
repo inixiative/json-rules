@@ -18,7 +18,7 @@ import {
   unknownOperator,
   windowUnsupported,
 } from './errors';
-import { isOrderedValue } from './number';
+import { isOrderedValue, readOrderedPair } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
@@ -450,13 +450,10 @@ const validateValueShape = (
       return;
     }
     case 'range':
-      if (!isOrderedRange(value)) {
-        pushIssue(
-          context,
-          path,
-          'invalid_range_value',
-          `Operator '${operator}' requires a two-item range`,
-        );
+      try {
+        readOrderedPair(value, operator);
+      } catch (error) {
+        pushIssue(context, path, 'invalid_range_value', (error as Error).message);
       }
       return;
   }
@@ -865,12 +862,6 @@ const targetSlug = (target: RuleTarget): string =>
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   isPlainObjectLodash(value);
-
-const isOrderedRange = (value: unknown): value is [OrderedRuleValue, OrderedRuleValue] =>
-  Array.isArray(value) &&
-  value.length === 2 &&
-  isOrderedValue(value[0]) &&
-  isOrderedValue(value[1]);
 
 const isNumericRange = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&

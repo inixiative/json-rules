@@ -13,6 +13,7 @@ import {
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getRoot } from './chain.ts';
 import {
+  allowedEnumValues,
   augmentPicksWithRelations,
   intersectStringSet,
   normalizeGroupBy,
@@ -360,80 +361,33 @@ const validateDefaultsEnums = (
   }
 };
 
-const validateEnumFieldAgainstChain = (
-  modelFields: Record<string, FieldMapEntry>,
+// A layer's enumPicks / enumOmits name only values its inheritance still shows — the allowed
+// set resolveVisit folds at the visit from `inherited` (the layers above, and for a path node this
+// layer's own defaults). A value the enum doesn't declare is validateEnumOp's to report.
+const validateEnumInheritance = (
   narrowing: ModelDefaultNarrowing | ModelNarrowing,
-  sameLayerDefaultsEnums: Record<string, EnumNarrowing> | undefined,
-  ancestorDefaultsEnums: Array<Record<string, EnumNarrowing>>,
-  sameLayerDefaultsForModel: ModelDefaultNarrowing | undefined,
-  ancestorDefaultsForModel: ModelDefaultNarrowing[],
-  ancestorChainAtSamePosition: ModelNarrowing[],
+  inherited: Policy,
+  at: WhereVisit,
+  modelFields: Record<string, FieldMapEntry>,
+  enumRegistry: Record<string, readonly string[]> | undefined,
   position: string,
   errors: ValidationIssue[],
 ): void => {
-  const check = (
-    op: 'enumPicks' | 'enumOmits',
-    fieldName: string,
-    values: readonly string[],
-  ): void => {
-    const entry = own(modelFields, fieldName);
-    if (entry?.kind !== 'enum') return;
-    const enumType = entry.type;
-
-    const state: { picks: Set<string> | null; omits: Set<string> } = {
-      picks: null,
-      omits: new Set(),
-    };
-    const addPicks = (vals: readonly string[]): void => {
-      state.picks = intersectStringSet(state.picks, vals);
-    };
-    const addOmits = (vals: readonly string[]): void => {
-      for (const v of vals) state.omits.add(v);
-    };
-
-    const typeLayers = [...ancestorDefaultsEnums];
-    if (sameLayerDefaultsEnums) typeLayers.push(sameLayerDefaultsEnums);
-    for (const layer of typeLayers) {
-      const e = layer[enumType];
-      if (!e) continue;
-      if (e.picks) addPicks(e.picks);
-      if (e.omits) addOmits(e.omits);
+  const effect = resolveVisit(inherited, at.mapName, at.modelName, at.relPath);
+  for (const op of ['enumPicks', 'enumOmits'] as const)
+    for (const [field, values] of Object.entries(narrowing[op] ?? {})) {
+      const entry = own(modelFields, field);
+      if (entry?.kind !== 'enum') continue;
+      const declared = declaredEnumValues(entry, enumRegistry) ?? [];
+      const allowed = allowedEnumValues(effect, field) ?? declared;
+      for (const v of values)
+        if (declared.includes(v) && !allowed.includes(v))
+          errors.push({
+            path: `${position}.${op}.${field}`,
+            code: 'not_visible',
+            message: `'${v}' is not visible (not allowed by the inherited enum narrowing)`,
+          });
     }
-
-    const modelLayers = [...ancestorDefaultsForModel];
-    if (sameLayerDefaultsForModel) modelLayers.push(sameLayerDefaultsForModel);
-    for (const dflt of modelLayers) {
-      const p = own(dflt.enumPicks, fieldName);
-      const o = own(dflt.enumOmits, fieldName);
-      if (p) addPicks(p);
-      if (o) addOmits(o);
-    }
-
-    for (const anc of ancestorChainAtSamePosition) {
-      const p = own(anc.enumPicks, fieldName);
-      const o = own(anc.enumOmits, fieldName);
-      if (p) addPicks(p);
-      if (o) addOmits(o);
-    }
-
-    for (const v of values) {
-      if (state.omits.has(v)) {
-        errors.push({
-          path: `${position}.${op}.${fieldName}`,
-          code: 'not_visible',
-          message: `'${v}' already excluded by inherited enum narrowing`,
-        });
-      } else if (state.picks && !state.picks.has(v)) {
-        errors.push({
-          path: `${position}.${op}.${fieldName}`,
-          code: 'invalid_source',
-          message: `'${v}' not allowed by inherited enum narrowing`,
-        });
-      }
-    }
-  };
-  for (const [f, vals] of Object.entries(narrowing.enumPicks ?? {})) check('enumPicks', f, vals);
-  for (const [f, vals] of Object.entries(narrowing.enumOmits ?? {})) check('enumOmits', f, vals);
 };
 
 const validatePathNarrowing = (
@@ -457,11 +411,11 @@ const validatePathNarrowing = (
   const ancestorDefaultsForModel = chain
     .map((a) => own(own(a.mapDefaults, mapName)?.models, modelName))
     .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-  const sameLayerDefaultsEnums: Record<string, EnumNarrowing> | undefined = own(
+  const _sameLayerDefaultsEnums: Record<string, EnumNarrowing> | undefined = own(
     current.mapDefaults,
     mapName,
   )?.enums;
-  const ancestorDefaultsEnums: Record<string, EnumNarrowing>[] = chain
+  const _ancestorDefaultsEnums: Record<string, EnumNarrowing>[] = chain
     .map((a) => own(a.mapDefaults, mapName)?.enums)
     .filter((x): x is Record<string, EnumNarrowing> => x !== undefined);
 
@@ -486,14 +440,15 @@ const validatePathNarrowing = (
     false,
   );
 
-  validateEnumFieldAgainstChain(
-    model.fields,
+  validateEnumInheritance(
     narrowing,
-    sameLayerDefaultsEnums,
-    ancestorDefaultsEnums,
-    sameLayerDefaultsForModel,
-    ancestorDefaultsForModel,
-    ancestorChain,
+    {
+      lens: parentPolicy.lens,
+      chain: [...parentPolicy.chain, { parent: current.parent, mapDefaults: current.mapDefaults }],
+    },
+    { mapName, modelName, relPath },
+    model.fields,
+    fieldMap?.enums,
     position,
     errors,
   );
@@ -608,14 +563,12 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
         whereVisits,
         true,
       );
-      validateEnumFieldAgainstChain(
-        model.fields,
+      validateEnumInheritance(
         dflt,
-        undefined,
-        ancestorDefaultsEnums,
-        undefined,
-        ancestorDefaultsForModel,
-        [],
+        parentPolicy,
+        { mapName, modelName, relPath: OFF_PATH },
+        model.fields,
+        fieldMap.enums,
         `mapDefaults.${mapName}.models.${modelName}`,
         errors,
       );

@@ -72,6 +72,10 @@ export const buildJsonComparison = (
       return like(`${escapeLikePattern(String(value))}%`);
     case Operator.endsWith:
       return like(`%${escapeLikePattern(String(value))}`);
+    case Operator.notStartsWith:
+      return not(like(`${escapeLikePattern(String(value))}%`));
+    case Operator.notEndsWith:
+      return not(like(`%${escapeLikePattern(String(value))}`));
     case Operator.matches:
     case Operator.notMatches: {
       const pattern = nextParam(state, readPattern(value as string | RegExp).source);

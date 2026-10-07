@@ -140,6 +140,16 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     case Operator.endsWith:
       return `${lc(field)} LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}`))}`;
 
+    case Operator.notStartsWith:
+      return orNull(
+        `${lc(field)} NOT LIKE ${lc(nextParam(state, `${escapeLikePattern(String(rhsVal))}%`))}`,
+      );
+
+    case Operator.notEndsWith:
+      return orNull(
+        `${lc(field)} NOT LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}`))}`,
+      );
+
     case Operator.matches:
       return `${field} ~ ${nextParam(state, sqlPattern(rhsVal))}`;
 

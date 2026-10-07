@@ -121,6 +121,9 @@ reads off the generated client.
   a missing column and an invalid filter).
 - **Empty is `null`, `''`, or `[]`** on every rail: a list or a Json array with no elements is
   empty, as `isEmpty` / `notEmpty` and the array operators read it.
+- **`notStartsWith` / `notEndsWith`** complete the negated operators: every operator now has an
+  exact complement, which Prisma uses for an implication's antecedent and a relation `all`
+  (an implication or `all` over `startsWith` / `endsWith` threw on Prisma).
 - **`caseInsensitive` applies to `in` / `notIn`** on every rail (all three ignored it).
 - **Values compare as JSON does**: by value (a list or an object deeply — `check()` compared them
   by reference) and never across types. `"3"` never equals `3`, and an ordered comparison or a

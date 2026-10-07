@@ -11,9 +11,11 @@ import { hasNoOperand, isExistenceTest } from '../field';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
+  COMPLEMENT_OPERATORS,
   comparatorOf,
   NEGATED_OPERATORS,
   NEGATED_RANGE_OPERATORS,
+  NEGATED_STRING_OPERATORS,
   ORDERED_OPERATORS,
   SET_OPERATORS,
 } from '../operatorCatalog';
@@ -222,34 +224,33 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return hasNull ? andWhere([listed, at({ not: nullOf(shape) })]) : orWhere([listed, ...arms()]);
   }
 
-  // A Json value contains a string's substring, or a member of an array.
-  const contains = (): PrismaWhere =>
-    isJson(shape)
+  // A string operator's positive form; a Json value contains a string's substring, or a
+  // member of an array.
+  const positive = (operator: string): PrismaWhere =>
+    isJson(shape) && operator === Operator.contains
       ? orWhere([
-          at(comparisonFilter({ ...rule, operator: Operator.contains }, options)),
+          at(comparisonFilter({ ...rule, operator }, options)),
           at({ array_contains: [value] }),
         ])
-      : at(comparisonFilter({ ...rule, operator: Operator.contains }, options));
-  if (rule.operator === Operator.contains) return contains();
+      : at(comparisonFilter({ ...rule, operator: operator as Operator }, options));
+  if (rule.operator === Operator.contains) return positive(Operator.contains);
 
-  // Prisma's Json filters can't test a value's type — a range or a containment test is NULL for
-  // the other types — so a complement, which keeps those values, has no form.
-  if (
-    isJson(shape) &&
-    (NEGATED_RANGE_OPERATORS.includes(rule.operator) || rule.operator === Operator.notContains)
-  )
-    throw new Error(
-      `'${rule.operator}' on the Json value '${rule.field}' has no Prisma form (it keeps values of other types); use toSql() or check().`,
-    );
-
-  // A negation no field filter can carry — a two-sided range, or containment on a Json value or
-  // a list — negates its positive form at the WHERE level.
-  if (rule.operator === Operator.notContains) return orWhere([notLeaf(contains()), ...arms()]);
-  if (NEGATED_RANGE_OPERATORS.includes(rule.operator))
-    return orWhere([
-      notLeaf(at(comparisonFilter({ ...rule, operator: Operator.between }, options))),
-      ...arms(),
-    ]);
+  // A negated string operator or range negates its positive form at the WHERE level: no field
+  // filter carries it on Json or a list. Prisma's Json filters can't test a value's type — the
+  // positive is NULL for the other types — so on Json the complement, which keeps them, has no
+  // form.
+  const complemented = NEGATED_STRING_OPERATORS.includes(rule.operator)
+    ? COMPLEMENT_OPERATORS[rule.operator]
+    : NEGATED_RANGE_OPERATORS.includes(rule.operator)
+      ? Operator.between
+      : undefined;
+  if (complemented) {
+    if (isJson(shape))
+      throw new Error(
+        `'${rule.operator}' on the Json value '${rule.field}' has no Prisma form (it keeps values of other types); use toSql() or check().`,
+      );
+    return orWhere([notLeaf(positive(complemented)), ...arms()]);
+  }
 
   const filter = at(comparisonFilter(rule, options));
   // `equals null` is the is-null sentinel: a path through an absent relation is null too.
@@ -335,7 +336,7 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
       return { gte: min, lte: max };
     }
     default:
-      // notContains / emptiness / existence are built at the WHERE level.
+      // Negated string operators / emptiness / existence are built at the WHERE level.
       throw new Error(`Operator '${rule.operator}' is built by buildFieldRule`);
   }
 };

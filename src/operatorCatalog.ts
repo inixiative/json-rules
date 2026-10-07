@@ -107,7 +107,9 @@ export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
   [Operator.contains]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
   [Operator.notContains]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
   [Operator.startsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notStartsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
   [Operator.endsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notEndsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
   [Operator.matches]: { kinds: STRINGY_KINDS, targets: NON_PRISMA_TARGETS, valueShape: 'pattern' },
   [Operator.notMatches]: {
     kinds: STRINGY_KINDS,
@@ -364,6 +366,8 @@ export const NEGATED_OPERATORS: readonly string[] = [
   Operator.notEquals,
   Operator.notIn,
   Operator.notContains,
+  Operator.notStartsWith,
+  Operator.notEndsWith,
   Operator.notMatches,
   Operator.notBetween,
   DateOperator.notBefore,
@@ -372,6 +376,10 @@ export const NEGATED_OPERATORS: readonly string[] = [
   DateOperator.notBetween,
   DateOperator.dayNotIn,
 ];
+/** Negations of a string operator: `notContains`, `notStartsWith`, `notEndsWith`. */
+export const NEGATED_STRING_OPERATORS = NEGATED_OPERATORS.filter((op) =>
+  withShape('string').includes(op),
+);
 /** Negations of a two-ended range. */
 export const NEGATED_RANGE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
   RANGE_OPERATORS.includes(op),
@@ -474,6 +482,10 @@ export const COMPLEMENT_OPERATORS: Readonly<Record<string, string>> = {
   [Operator.notIn]: Operator.in,
   [Operator.contains]: Operator.notContains,
   [Operator.notContains]: Operator.contains,
+  [Operator.startsWith]: Operator.notStartsWith,
+  [Operator.notStartsWith]: Operator.startsWith,
+  [Operator.endsWith]: Operator.notEndsWith,
+  [Operator.notEndsWith]: Operator.endsWith,
   [Operator.matches]: Operator.notMatches,
   [Operator.notMatches]: Operator.matches,
   [Operator.between]: Operator.notBetween,

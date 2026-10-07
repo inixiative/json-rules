@@ -131,7 +131,9 @@ export type StrictPatternRule =
 
 export type StrictStringBoundaryRule =
   | (RuleBase<OperatorValues['startsWith']> & ValueSource<string>)
-  | (RuleBase<OperatorValues['endsWith']> & ValueSource<string>);
+  | (RuleBase<OperatorValues['notStartsWith']> & ValueSource<string>)
+  | (RuleBase<OperatorValues['endsWith']> & ValueSource<string>)
+  | (RuleBase<OperatorValues['notEndsWith']> & ValueSource<string>);
 
 export type StrictRangeRule =
   | (RuleBase<OperatorValues['between']> &

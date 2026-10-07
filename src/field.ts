@@ -254,6 +254,16 @@ export const checkField = (
         (typeof lhs === 'string' && typeof rhs === 'string' && lhs.endsWith(rhs)) ||
         getError(`must end with`)
       );
+    case Operator.notStartsWith:
+      return (
+        !(typeof lhs === 'string' && typeof rhs === 'string' && lhs.startsWith(rhs)) ||
+        getError(`must not start with`)
+      );
+    case Operator.notEndsWith:
+      return (
+        !(typeof lhs === 'string' && typeof rhs === 'string' && lhs.endsWith(rhs)) ||
+        getError(`must not end with`)
+      );
     default:
       throw new Error('Unknown operator');
   }

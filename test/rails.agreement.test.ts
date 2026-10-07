@@ -308,6 +308,35 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'meta.a.b', operator: 'contains', value: '%' },
     ids: [],
   },
+  'an implication whose if ends with': {
+    rule: {
+      if: { field: 'name', operator: 'endsWith', value: 'n' },
+      then: { field: 'age', operator: 'greaterThan', value: 100 },
+    },
+    ids: [2, 3, 4, 5],
+  },
+  'a relation all over startsWith': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'all',
+      condition: { field: 'title', operator: 'startsWith', value: 'h' },
+    },
+    ids: [2, 4, 5],
+    refuses: { sql: RELATION_ARRAYS },
+  },
+  'notStartsWith keeps NULL': {
+    rule: { field: 'name', operator: 'notStartsWith', value: 'b' },
+    ids: [1, 3, 4, 5],
+  },
+  'notEndsWith, case-insensitive': {
+    rule: { field: 'name', operator: 'notEndsWith', value: 'E', caseInsensitive: true },
+    ids: [1, 2, 3],
+  },
+  'notStartsWith on a Json path keeps other types; Prisma has no form': {
+    rule: { field: 'meta.a.b', operator: 'notStartsWith', value: 'x' },
+    ids: [2, 3, 4, 5],
+    refuses: { prisma: 'has no Prisma form' },
+  },
   'a list isEmpty': { rule: { field: 'tags', operator: 'isEmpty' }, ids: [2, 3, 5] },
   'a list notEmpty': { rule: { field: 'tags', operator: 'notEmpty' }, ids: [1, 4] },
   'a relation exists': { rule: { field: 'org', operator: 'exists' }, ids: [1, 2, 3] },

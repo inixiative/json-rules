@@ -18,7 +18,9 @@ export const Operator = {
   exists: 'exists',
   notExists: 'notExists',
   startsWith: 'startsWith',
+  notStartsWith: 'notStartsWith',
   endsWith: 'endsWith',
+  notEndsWith: 'notEndsWith',
 } as const;
 
 export type Operator = (typeof Operator)[keyof typeof Operator];

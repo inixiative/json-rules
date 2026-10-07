@@ -1,6 +1,6 @@
 import { type CheckOptions, check } from '../check.ts';
+import type { SourceOption } from '../fieldMap/types';
 import { readOwnPath } from '../scope';
-import type { SourceOption } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
 import type { Row } from '../types';
 import type { SourceValues } from './projectPaths.ts';

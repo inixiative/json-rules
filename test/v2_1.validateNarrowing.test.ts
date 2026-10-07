@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Strict narrowing validation rules (v2.1):
 // Each narrowing layer can only mention fields/enum-values that remain visible

@@ -8,7 +8,7 @@ import {
   projectLens,
   validateRuleInLens,
 } from '../index';
-import type { FieldMap } from '../src/toPrisma/types';
+import type { FieldMap } from '../src/fieldMap/types';
 
 const map: FieldMap = {
   models: {

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { indexBridges } from '../src/fieldMap/indexBridges';
-import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
-import type { FieldMap } from '../src/toPrisma/types';
+import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
 
 const prismaMap: FieldMap = {
   models: {

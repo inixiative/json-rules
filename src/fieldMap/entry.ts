@@ -1,4 +1,4 @@
-import type { FieldMapEntry } from '../toPrisma/types';
+import type { FieldMapEntry } from './types';
 
 /**
  * A Json column. It declares no sub-fields, so a dotted sub-path into it is open-ended —

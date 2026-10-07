@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma, toSql, validateRule } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
+import { walkFieldPath } from '../src/fieldMap/walk';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import { walkFieldPath } from '../src/toPrisma/mapWalk';
-import type { FieldMap } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
 // Field maps are plain object literals, so a bare `fields[name]` resolves every

@@ -1,4 +1,4 @@
-import type { SourceOption } from '../toPrisma/types.ts';
+import type { SourceOption } from '../fieldMap/types';
 import type { Row } from '../types';
 import type { SourceValues } from './projectPaths.ts';
 import { accumulateRow, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';

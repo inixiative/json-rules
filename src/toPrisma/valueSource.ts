@@ -1,12 +1,13 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
+import { ruleShape } from '../fieldMap/shape';
+import type { FieldMap } from '../fieldMap/types';
 import { type Settle, settleLiteral } from '../negate';
 import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
-import { ruleShape } from './mapWalk';
-import type { BuildOptions, FieldMap } from './types';
+import type { BuildOptions } from './types';
 
 /** A path on the Prisma rail: a context read. Prisma WHERE has no column-to-column comparison
  *  or arithmetic, so a row (`$.`) ref has no form here. */

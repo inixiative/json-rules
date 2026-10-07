@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
 // A condition that crosses a bridge is unknown to Prisma. Where a matching child can make the

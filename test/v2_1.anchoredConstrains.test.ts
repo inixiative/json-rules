@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 // CRITICAL: where are anchored to the model they describe, not always to the root.

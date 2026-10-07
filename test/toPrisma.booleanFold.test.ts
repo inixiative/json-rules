@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { ArrayOperator, check, Operator, toPrisma } from '../index';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
-import type { FieldMap, GroupByStep } from '../src/toPrisma/types';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { GroupByStep } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
 // `true` compiles to `{}`, which Prisma only reads as match-all at the top level and

@@ -1,4 +1,6 @@
 import { ambiguousCondition } from '../errors';
+import { refuseRelationsValue } from '../fieldMap/shape';
+import type { FieldMap } from '../fieldMap/types';
 import { rejectScopedField } from '../scope';
 import { conditionShape } from '../traverse';
 import type { Condition } from '../types';
@@ -7,9 +9,8 @@ import { buildArrayRule } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
 import { buildAll, buildAny, buildIfThenElse, matchNothing } from './logical';
-import { refuseRelationsValue } from './mapWalk';
 import { setConditionBuilder } from './recurse';
-import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 
 export const buildCondition = (
   condition: Condition,

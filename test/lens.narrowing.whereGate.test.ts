@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Every `where` a layer declares is a grant its author gets to filter rows by. `root.where`
 // has always been validated against the PARENT surface (a child may not filter on a column an

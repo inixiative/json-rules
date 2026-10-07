@@ -1,4 +1,5 @@
 import { check } from '../check';
+import { compileFieldLiteral } from '../compileLiteral';
 import {
   engineGlobals,
   type PrismaProvider,
@@ -6,8 +7,17 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { fuzzyNotCompiled, relationNotValue, unorderedOperand } from '../errors';
+import {
+  fuzzyNotCompiled,
+  pastScalarError,
+  relationNotValue,
+  toManyHopError,
+  unorderedOperand,
+} from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
+import { acceptsEmptyString, comparesText, type FieldShape, ruleShape } from '../fieldMap/shape';
+import type { FieldMap } from '../fieldMap/types';
+import { fieldEntry, optionalToOneHops, walkFieldPath, walkWith } from '../fieldMap/walk';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
@@ -23,21 +33,8 @@ import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
 import { prismaAnyNull } from './anyNull';
 import { andWhere, notLeaf, orWhere, overFetch } from './logical';
-import {
-  acceptsEmptyString,
-  comparesText,
-  compileFieldLiteral,
-  type FieldShape,
-  fieldEntry,
-  optionalToOneHops,
-  pastScalarError,
-  ruleShape,
-  toManyHopError,
-  walkFieldPath,
-  walkWith,
-} from './mapWalk';
 import { offsetNumber } from './offset';
-import type { BuildOptions, FieldMap, PrismaWhere } from './types';
+import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 import { dateConfigOf, readSource } from './valueSource';
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { ArrayOperator, check, executePrismaPlan, Operator, toPrisma } from '../index';
-import type { FieldMap, GroupByStep, WhereStep } from '../src/toPrisma/types';
+import type { FieldMap } from '../src/fieldMap/types';
+import type { GroupByStep, WhereStep } from '../src/toPrisma/types';
 
 // atMost/exactly compiled to `id IN (groupBy having …)` — but a root with ZERO matching
 // related rows produces no group, so it vanished from the IN and the plan silently

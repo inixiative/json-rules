@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { projectModels } from '../src/lens/projectModels';
 import { projectPaths, type SourceValues } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
-import type { FieldMap } from '../src/toPrisma/types';
 import { enumOptions } from './fixtures/helpers';
 
 const map: FieldMap = {

@@ -1,6 +1,7 @@
 import { ambiguousCondition } from '../errors';
+import { refuseRelationsValue } from '../fieldMap/shape';
+import { hitsBridge } from '../fieldMap/walk';
 import { rejectScopedField } from '../scope';
-import { hitsBridge, refuseRelationsValue } from '../toPrisma/mapWalk';
 import { conditionShape } from '../traverse';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';

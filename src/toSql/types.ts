@@ -1,7 +1,5 @@
-import type { FieldMap } from '../toPrisma/types';
+import type { FieldMap } from '../fieldMap/types';
 import type { DateConfig } from '../types';
-
-export type { FieldMap } from '../toPrisma/types';
 
 export type SqlResult = {
   sql: string;

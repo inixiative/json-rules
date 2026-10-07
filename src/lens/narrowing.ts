@@ -1,7 +1,7 @@
 import { isRelationEntry } from '../fieldMap/entry.ts';
+import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
-import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import {
   throwIfInvalid,

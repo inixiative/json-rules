@@ -1,8 +1,8 @@
 import { isJsonEntry } from '../fieldMap/entry.ts';
+import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
-import { fieldOf, modelOf, own } from '../own';
+import { modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
-import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
@@ -261,7 +261,7 @@ export const allowedEnumValues = (
 
 export type LensPathHop = {
   field: string;
-  entry: import('../toPrisma/types.ts').FieldMapEntry;
+  entry: FieldMapEntry;
   mapName: string;
   modelName: string;
   /** The relation path from the lens anchor to the model this hop reads. */
@@ -336,7 +336,7 @@ export const lensPathEnd = (
   mapName: string;
   modelName: string;
   relPath: string[];
-  entry: import('../toPrisma/types.ts').FieldMapEntry;
+  entry: FieldMapEntry;
   hopEffects: VisitEffect[];
   terminalEffect: VisitEffect;
   terminalFieldName: string;

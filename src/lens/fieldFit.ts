@@ -1,5 +1,8 @@
+import { instantMs } from '../compileLiteral';
 import { applyCoercion } from '../field';
 import { isJsonEntry, isRelationEntry } from '../fieldMap/entry.ts';
+import { entryKind } from '../fieldMap/shape';
+import type { FieldMapEntry } from '../fieldMap/types';
 import {
   type CatalogEntry,
   catalogEntry,
@@ -7,8 +10,6 @@ import {
   NUMERIC_KINDS,
   SINGLE_VALUE_SHAPES,
 } from '../operatorCatalog';
-import { entryKind, instantMs } from '../toPrisma/mapWalk';
-import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';
 import type { ValidationIssue } from '../validate';
 

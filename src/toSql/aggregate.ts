@@ -1,5 +1,6 @@
 import { windowUnsupported } from '../errors';
-import { fieldEntry, ruleShape } from '../toPrisma/mapWalk';
+import { ruleShape } from '../fieldMap/shape';
+import { fieldEntry } from '../fieldMap/walk';
 import type { AggregateRule, Rule } from '../types';
 import { hasWindow } from '../window';
 import { buildFieldRule } from './field';

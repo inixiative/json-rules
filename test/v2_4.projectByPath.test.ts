@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import { at, enumOptions, sortedOptions } from './fixtures/helpers';
 import { multiRelMap } from './fixtures/multiRelMap';
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma, toSql, validateRule } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { DateOperator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 const map: FieldMap = {
   models: {

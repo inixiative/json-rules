@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { coerceRule } from '../src/lens/coerceRule';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
@@ -6,7 +7,6 @@ import { describeRuleSources } from '../src/lens/describeRuleSources';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 const map: FieldMap = {

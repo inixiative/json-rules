@@ -13,8 +13,12 @@ export {
   type BridgeCardinality,
   type BridgeDictionary,
   type BridgeEndpoint,
+  type FieldMap,
+  type FieldMapEntry,
   type FieldMapSet,
   indexBridges,
+  type ModelEntry,
+  type SourceOption,
   stitchFieldMaps,
   validateFieldMaps,
 } from './src/fieldMap';
@@ -81,12 +85,9 @@ export {
 } from './src/scope';
 export type {
   BuildOptions,
-  FieldMap,
-  FieldMapEntry,
   GroupByStep,
   PrismaStep,
   PrismaWhere,
-  SourceOption,
   StepRef,
   ToPrismaResult,
   WhereStep,

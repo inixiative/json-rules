@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
+import type { FieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 import type { Condition } from '../src/types';
 import { getWhere } from './fixtures/helpers';

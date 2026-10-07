@@ -1,9 +1,9 @@
 import { isExistenceTest } from '../field';
 import { isRelationEntry } from '../fieldMap/entry.ts';
+import { entryKind } from '../fieldMap/shape';
+import type { FieldMapEntry } from '../fieldMap/types';
 import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
-import { entryKind } from '../toPrisma/mapWalk';
-import type { FieldMapEntry } from '../toPrisma/types.ts';
 import { conditionShape, isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { Condition, DateRule, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';

@@ -1,8 +1,8 @@
 import { resolveCaseInsensitive } from './engineGlobals';
+import type { FieldMap, FieldMapEntry } from './fieldMap/types';
 import { splitNull } from './number';
 import { EQUALITY_OPERATORS, EXACT_OPERATORS, NEGATED_OPERATORS } from './operatorCatalog';
 import { own } from './own';
-import type { FieldMap, FieldMapEntry } from './toPrisma/types';
 import type { Rule } from './types';
 
 // An enum column compares exactly: a case-insensitive equality or membership compiles to the

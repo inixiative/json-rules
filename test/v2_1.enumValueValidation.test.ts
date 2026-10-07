@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // validateRuleInLens should validate that enum field values used in rules are
 // in the allowed set, considering:

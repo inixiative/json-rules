@@ -8,8 +8,8 @@ import {
   projectLens,
   toSourceQueries,
 } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Composite groupBy: a source may partition by SEVERAL axes at once — the
 // (source, field, value) triple that powers a 3-level cascade. Options carry

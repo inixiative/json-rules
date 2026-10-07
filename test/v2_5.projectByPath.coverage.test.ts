@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import { at } from './fixtures/helpers';
 
 const withParent = (

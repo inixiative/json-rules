@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
+import type { FieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 // An `all` grant must be FILTER-FIRST: out-of-scope rows are dropped before the window

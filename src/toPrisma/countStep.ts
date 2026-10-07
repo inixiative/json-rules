@@ -1,4 +1,5 @@
 import { conditionRequired } from '../errors';
+import type { FieldMap } from '../fieldMap/types';
 import { ArrayOperator } from '../operator';
 import { comparatorOf } from '../operatorCatalog';
 import type { ArrayRule } from '../types';
@@ -6,7 +7,7 @@ import { holdsForEmpty } from './array';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll } from './logical';
 import { buildCondition } from './recurse';
-import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 
 /**
  * Generate a multi-step groupBy plan for count-based relation filtering.

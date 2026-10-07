@@ -1,8 +1,9 @@
+import type { FieldMap } from '../fieldMap/types';
+import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
 import type { All, Any, Condition, IfThenElse } from '../types';
-import { conditionTouchesBridge } from './mapWalk';
 import { buildCondition } from './recurse';
-import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
 /**

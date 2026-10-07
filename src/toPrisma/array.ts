@@ -1,5 +1,8 @@
 import { check } from '../check';
 import { fieldlessArrayError, windowUnsupported } from '../errors';
+import { type FieldShape, ruleShape } from '../fieldMap/shape';
+import type { FieldMap } from '../fieldMap/types';
+import { conditionTouchesBridge, relationTarget } from '../fieldMap/walk';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
 import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
@@ -8,9 +11,8 @@ import { hasWindow, windowRewrite } from '../window';
 import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, emptinessWhere, hopArms } from './field';
 import { orWhere, overFetch } from './logical';
-import { conditionTouchesBridge, type FieldShape, relationTarget, ruleShape } from './mapWalk';
 import { buildCondition } from './recurse';
-import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
 /** A rule over an array, which check() reads as empty when a to-one relation on its path is

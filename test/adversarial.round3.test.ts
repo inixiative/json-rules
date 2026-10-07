@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import type { Bridge } from '../src/fieldMap/types';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
 import { narrowRule } from '../src/lens/narrowRule';
@@ -12,7 +12,6 @@ import {
   getValueShape,
   isOperatorSupportedForTarget,
 } from '../src/operatorCatalog';
-import type { FieldMap } from '../src/toPrisma/types';
 import { validateRule } from '../src/validate';
 import { at } from './fixtures/helpers';
 

@@ -9,8 +9,8 @@ import {
   type SourceValues,
   toSourceQueries,
 } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // EAV shape: one physical `value` column whose vocabulary is partitioned by a
 // related definition label — the case a flat DISTINCT source cannot serve.

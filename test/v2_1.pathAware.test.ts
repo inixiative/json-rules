@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 // P1.1 from Codex review: same model reached via different paths can have

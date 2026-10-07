@@ -1,7 +1,10 @@
+import { compileFieldLiteral } from '../compileLiteral';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
 import { fuzzyNotCompiled, relationNotValue } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
+import { acceptsEmptyString, comparesText, readsText } from '../fieldMap/shape';
+import { fieldEntry, walkWith } from '../fieldMap/walk';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
@@ -13,14 +16,6 @@ import {
   RANGE_OPERATORS,
 } from '../operatorCatalog';
 import { readPattern } from '../pattern';
-import {
-  acceptsEmptyString,
-  comparesText,
-  compileFieldLiteral,
-  fieldEntry,
-  readsText,
-  walkWith,
-} from '../toPrisma/mapWalk';
 import type { Rule } from '../types';
 import { compareSql, noOperandSql, orderedSql, orNull as orNullSql, rangeSql } from './compare';
 import { type FieldSql, resolveField, resolveFieldSql } from './join';

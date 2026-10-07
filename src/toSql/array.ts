@@ -1,6 +1,7 @@
 import { fieldlessArrayError, windowUnsupported } from '../errors';
+import { ruleShape } from '../fieldMap/shape';
+import { fieldEntry } from '../fieldMap/walk';
 import { ArrayOperator } from '../operator';
-import { fieldEntry, ruleShape } from '../toPrisma/mapWalk';
 import type { ArrayRule } from '../types';
 import { hasWindow } from '../window';
 import { emptinessSql } from './field';

@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
+import type { FieldMap } from '../src/fieldMap/types';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
 import { ArrayOperator, DateOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 const db: FieldMap = {

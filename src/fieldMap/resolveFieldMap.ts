@@ -1,6 +1,5 @@
 import { own } from '../own';
-import type { FieldMap } from '../toPrisma/types';
-import type { FieldMapSet } from './types';
+import type { FieldMap, FieldMapSet } from './types';
 
 /** The FieldMap a compile reads: the map itself, or `mapName`'s map in a set — a set without a
  *  `mapName` is refused rather than read as a map (no Json paths, no bridges). */

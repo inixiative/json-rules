@@ -1,4 +1,4 @@
-import { conditionTouchesBridge } from '../toPrisma/mapWalk';
+import { conditionTouchesBridge } from '../fieldMap/walk';
 import type { All, Any, Condition, IfThenElse } from '../types';
 import { buildCondition } from './recurse';
 import type { BuilderState } from './types';

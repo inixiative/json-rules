@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 
 // The toSql twin of test/toPrisma.isEmpty.kinds.test.ts (2.18.3, ZLT-3899): the

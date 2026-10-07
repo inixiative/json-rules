@@ -9,8 +9,8 @@ import {
   type SourceSpec,
   toSourceQueries,
 } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Same EAV shape the groupBy suite uses: the display name of an Enrichment's map
 // lives two to-one hops away, on FieldDef.label — a label the option picker needs

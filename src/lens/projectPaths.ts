@@ -1,6 +1,6 @@
+import type { FieldMapEntry, ModelEntry, SourceOption } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { own } from '../own';
-import type { FieldMapEntry, ModelEntry, SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import {
   isFieldVisible,

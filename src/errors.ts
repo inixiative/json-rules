@@ -1,4 +1,5 @@
 import { resolveFuzzy } from './engineGlobals';
+import type { MapHop } from './fieldMap/walk';
 import type { FuzzyConfig } from './fuzzy';
 import { CONTAINS_OPERATORS, ORDERED_OPERATORS, RANGE_OPERATORS } from './operatorCatalog';
 // Error texts every rail raises the same way.
@@ -58,3 +59,13 @@ export const windowUnsupported = (target: 'toSql' | 'toPrisma'): Error =>
   new Error(
     `Windowing (filter/orderBy/take/skip) is not supported by ${target}() for this rule; evaluate with check()${target === 'toPrisma' ? ' — toPrisma compiles a filter alone and an extremal take: 1' : ''}.`,
   );
+
+/** A to-many relation inside a plain field path: which child it reads is undefined. */
+export const toManyHopError = (field: string, hop: MapHop): Error =>
+  new Error(
+    `'${field}' reads through the to-many relation '${hop.prefix}'; compare its rows with an arrayOperator rule on '${hop.prefix}'.`,
+  );
+
+/** The error for a path that continues past a non-Json column. */
+export const pastScalarError = (field: string, column: string): Error =>
+  new Error(`'${field}' continues past '${column}', which is not a Json column`);

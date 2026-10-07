@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 import type { Rule } from '../src/types';
 import { getWhere } from './fixtures/helpers';

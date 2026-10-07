@@ -1,17 +1,12 @@
+import { pastScalarError, toManyHopError } from '../errors';
+import { type FieldShape, fieldShape } from '../fieldMap/shape';
+import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import { type MapHop, walkFieldPath } from '../fieldMap/walk';
 import { modelOf } from '../own';
-import {
-  type FieldShape,
-  fieldShape,
-  type MapHop,
-  pastScalarError,
-  toManyHopError,
-  walkFieldPath,
-} from '../toPrisma/mapWalk';
 import { relationKeys } from '../toPrisma/relationUtils';
-import type { FieldMapEntry } from '../toPrisma/types';
 import { escapeIdentifier } from './escape';
 import { quoteField } from './quoting';
-import type { BuilderState, FieldMap } from './types';
+import type { BuilderState } from './types';
 
 /** A field's SQL and what it reads (a JSON path reads text unless `jsonb`). */
 export type FieldSql = { sql: string; shape: FieldShape };

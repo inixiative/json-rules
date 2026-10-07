@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import { check } from '../src/check';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 import type { Condition } from '../src/types';
 

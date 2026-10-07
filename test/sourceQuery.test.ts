@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { toSourceQueries } from '../src/lens/toSourceQueries';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap, PrismaWhere } from '../src/toPrisma/types';
+import type { PrismaWhere } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 const map: FieldMap = {

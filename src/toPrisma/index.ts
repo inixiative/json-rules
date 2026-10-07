@@ -11,12 +11,9 @@ const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined =>
 export { executePrismaPlan } from './execute';
 export type {
   BuildOptions,
-  FieldMap,
-  FieldMapEntry,
   GroupByStep,
   PrismaStep,
   PrismaWhere,
-  SourceOption,
   StepRef,
   ToPrismaResult,
   WhereStep,

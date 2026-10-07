@@ -1,7 +1,7 @@
+import type { SourceOption } from '../fieldMap/types';
 import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
-import type { SourceOption } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
 import { visitCondition } from '../traverse.ts';
 import type { Row } from '../types';

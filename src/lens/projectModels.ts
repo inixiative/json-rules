@@ -1,9 +1,9 @@
 import { endpointKey } from '../fieldMap/endpointKey.ts';
 import { isRelationEntry } from '../fieldMap/entry.ts';
+import type { FieldMap, FieldMapEntry, SourceOption } from '../fieldMap/types';
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
-import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import { type ProjectOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';

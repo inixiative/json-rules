@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { engineGlobals } from '../src/engineGlobals';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
 // isEmpty/notEmpty used to emit the `equals: ''` branch for EVERY column kind.

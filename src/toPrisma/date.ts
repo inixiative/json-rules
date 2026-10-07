@@ -1,15 +1,16 @@
 import { resolveExpr } from '../amount';
 import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
+import { ruleShape } from '../fieldMap/shape';
+import type { FieldMap } from '../fieldMap/types';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
 import { comparatorOf, NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import type { DateRule } from '../types';
 import { absentArms, buildMapAwareFilter } from './field';
 import { notLeaf, orWhere } from './logical';
-import { ruleShape } from './mapWalk';
 import { offsetDate } from './offset';
-import type { BuildOptions, FieldMap, PrismaWhere } from './types';
+import type { BuildOptions, PrismaWhere } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
 // The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the

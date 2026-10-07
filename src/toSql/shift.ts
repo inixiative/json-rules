@@ -1,13 +1,13 @@
 import dayjs from 'dayjs';
 import { resolveMagnitude, resolveUnits } from '../amount';
 import { shiftByUnits } from '../dateExpr';
+import type { FieldShape } from '../fieldMap/shape';
 import {
   INTERVAL_FIELDS,
   isCalendarUnit,
   RELATIVE_UNITS,
   type RelativeUnit,
 } from '../operatorCatalog';
-import type { FieldShape } from '../toPrisma/mapWalk';
 import type { Magnitude, RelativeUnits } from '../types';
 import { rowRef } from '../valueSource';
 import type { FieldSql } from './join';

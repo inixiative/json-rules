@@ -1,8 +1,9 @@
+import type { FieldMap } from '../fieldMap/types';
+import { walkFieldPath } from '../fieldMap/walk';
 import { modelOf } from '../own';
 import { notLeaf } from './logical';
-import { walkFieldPath } from './mapWalk';
 import { relationKeys } from './relationUtils';
-import type { FieldMap, GroupByStep, PrismaBuildState, PrismaWhere } from './types';
+import type { GroupByStep, PrismaBuildState, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
 // A count or aggregate over a relation compiles to a groupBy step on the related model and a

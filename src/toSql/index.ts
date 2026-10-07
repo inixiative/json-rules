@@ -1,10 +1,10 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { FieldMapSet } from '../fieldMap/types';
+import type { FieldMap, FieldMapSet } from '../fieldMap/types';
 import type { Condition, DateConfig } from '../types';
 import { buildCondition } from './condition';
-import type { BuilderState, FieldMap, SqlResult } from './types';
+import type { BuilderState, SqlResult } from './types';
 
-export type { FieldMap, SqlResult } from './types';
+export type { SqlResult } from './types';
 
 export type SqlBuildOptions = {
   /** A FieldMap, or a FieldMapSet with `mapName`. */

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import { projectModels } from '../src/lens/projectModels';
 import type { SourceValues } from '../src/lens/projectPaths';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // The hydrated-source gate: a consumer (e.g. rules-builder) folds fetched sourceValues
 // onto `field.options` via projectModels, then re-feeds the exposed surface back into

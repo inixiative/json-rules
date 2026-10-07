@@ -1,7 +1,7 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
+import type { FieldShape } from '../fieldMap/shape';
 import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
-import type { FieldShape } from '../toPrisma/mapWalk';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
 import { resolveField } from './join';

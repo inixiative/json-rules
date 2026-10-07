@@ -1,6 +1,8 @@
 import { windowUnsupported } from '../errors';
 import { checkField } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
+import type { FieldMap } from '../fieldMap/types';
+import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
 import { NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import { fieldOf } from '../own';
@@ -9,9 +11,8 @@ import { hasWindow, windowRewrite } from '../window';
 import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
-import { conditionTouchesBridge } from './mapWalk';
 import { buildCondition } from './recurse';
-import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
 export const buildAggregateRule = (

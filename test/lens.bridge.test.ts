@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma } from '../index';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
   models: {

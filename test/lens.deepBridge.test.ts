@@ -2,9 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import { indexBridges } from '../src/fieldMap/indexBridges';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Three sources, two bridges deep:
 //   prisma:FanUser  --(1-1)--  salesforce:Contact  --(1-1)--  billing:Account

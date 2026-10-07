@@ -41,14 +41,7 @@ import {
 import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { conditionShape } from './traverse';
-import type {
-  AggregateMode,
-  ArrayRule,
-  Condition,
-  DateExpr,
-  OrderedRuleValue,
-  WindowFields,
-} from './types';
+import type { AggregateMode, ArrayRule, Condition, DateExpr, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
 
@@ -645,7 +638,7 @@ const validateArrayRule = (
         context,
         `${path}.condition`,
         'missing_condition',
-        `Array operator '${operator}' requires condition for check()`,
+        conditionRequired(operator).message,
       );
   }
 };

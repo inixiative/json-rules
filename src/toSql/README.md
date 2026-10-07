@@ -28,7 +28,7 @@ rather than compile something else.
 - `contains`, `notContains`, `startsWith`, `endsWith`, `notStartsWith`, `notEndsWith` (LIKE,
   escaped)
 - `matches`, `notMatches` — the pattern runs in RE2's dialect, translated for Postgres (`.` stops
-  at a newline, `\b` is `\y`, classes are ASCII); what Postgres can't express is refused
+  at a newline, classes and word boundaries are ASCII); what Postgres can't express is refused
 - `between`, `notBetween`
 - `isEmpty`, `notEmpty`, `exists`, `notExists`
 - `caseInsensitive` lowers text, `in` / `notIn` members and list members

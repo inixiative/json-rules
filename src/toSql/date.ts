@@ -7,7 +7,7 @@ import {
   resolvePointForOperator,
   rollingShift,
 } from '../dateExpr';
-import { rangeExprRequired, unknownOperator } from '../errors';
+import { noCompiledForm, rangeExprRequired, unknownOperator } from '../errors';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
 import { NEGATED_OPERATORS } from '../operatorCatalog';
@@ -38,7 +38,7 @@ const asOperand = (rhs: ResolvedRhs, state: BuilderState): ResolvedRhs =>
 // A date reads from a DateTime column, or text (a String column, a Json path); a number or a
 // boolean column is not one on Postgres.
 const notADate = (field: string): Error =>
-  new Error(`'${field}' is not a date column: a date rule on it has no SQL form; use check().`);
+  noCompiledForm('toSql', `A date rule on '${field}'`, 'it is not a date column');
 
 const sides = (
   field: FieldSql,
@@ -84,9 +84,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       const negated = rule.dateOperator === DateOperator.dayNotIn;
       const source = resolveSource(rule, state);
       if (source.type === 'column')
-        throw new Error(
-          `A weekday list read from the row ('${rule.path}') is not supported by toSql()`,
-        );
+        throw noCompiledForm('toSql', `A weekday list read from the row ('${rule.path}')`);
       const numbers = dayNumbers(source.value);
       if (numbers === null) return noOperandSql(field.sql, negated);
       const zone = nextParam(state, dateConfigOf(state).timeZone);

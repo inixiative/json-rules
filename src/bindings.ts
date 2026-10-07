@@ -16,14 +16,14 @@ const bindTokens = (node: ConditionNode): BindSource[] =>
     typeof source.bind === 'string' ? [source as BindSource] : [],
   );
 
+/** `required`: leave out the names an optional bind (`bindOptional`) may go unsupplied. */
+export type ListBindingsOptions = { required?: boolean };
+
 /**
  * The bind names a rule reads, sorted. With `required`, only those a bindings map must cover —
  * not `bindOptional` (unsupplied, it reads null); a name optional at one leaf and required at
  * another is required.
  */
-/** `required`: leave out the names an optional bind (`bindOptional`) may go unsupplied. */
-export type ListBindingsOptions = { required?: boolean };
-
 export const listBindings = (
   condition: Condition,
   { required = false }: ListBindingsOptions = {},

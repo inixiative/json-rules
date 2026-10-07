@@ -1,5 +1,6 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
+import { noCompiledForm } from '../errors';
 import { ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
 import { type Settle, settleLiteral } from '../negate';
@@ -68,8 +69,10 @@ export const settleLeaf =
       typeof leaf.operator === 'string' &&
       ORDERED_OPERATORS.includes(leaf.operator)
     )
-      throw new Error(
-        `The complement of '${leaf.operator}' on the Json value '${leaf.field}' has no Prisma form (it keeps values of other types); use toSql() or check().`,
+      throw noCompiledForm(
+        'toPrisma',
+        `The complement of '${leaf.operator}' on the Json value '${leaf.field}'`,
+        'it keeps values of other types',
       );
     const value = readSource(leaf, options);
     const offset =

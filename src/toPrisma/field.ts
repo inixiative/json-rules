@@ -9,6 +9,7 @@ import {
 import { enumMatches } from '../enumMatch';
 import {
   fuzzyNotCompiled,
+  noCompiledForm,
   pastScalarError,
   relationNotValue,
   toManyHopError,
@@ -93,15 +94,18 @@ const equalityFilter = (
   shape: FieldShape,
 ): PrismaWhere => {
   if (mode.mode && isJson(shape) && Array.isArray(value))
-    throw new Error(
-      `A case-insensitive comparison of a Json value with the list ${JSON.stringify(value)} has no Prisma form; use toSql() or check().`,
+    throw noCompiledForm(
+      'toPrisma',
+      `A case-insensitive comparison of a Json value with the list ${JSON.stringify(value)}`,
     );
   if (!mode.mode || typeof value !== 'string') return { [key]: value, ...mode };
   if (!isJson(shape)) return { [key]: escapeLikePattern(value), ...mode };
   // biome-ignore lint/suspicious/noControlCharactersInRegex: JSON text escapes them.
   if (/[%_\\"\u0000-\u001f]/.test(value))
-    throw new Error(
-      `A case-insensitive equality on Json against '${value}' has no Prisma form (Prisma matches the JSON text, where %, _, a backslash, a quote or a control character doesn't read as itself); use toSql() or check().`,
+    throw noCompiledForm(
+      'toPrisma',
+      `A case-insensitive equality on Json against '${value}'`,
+      `Prisma matches the JSON text, where %, _, a backslash, a quote or a control character doesn't read as itself`,
     );
   return { [key]: value, ...mode };
 };
@@ -217,9 +221,7 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
     return buildCondition(listMembership(rule, value), options);
   // Prisma's list filters take no null element.
   if (shape === 'list' && Array.isArray(value) && value.includes(null))
-    throw new Error(
-      `A list holding null in '${rule.field}' has no Prisma form; use toSql() or check().`,
-    );
+    throw noCompiledForm('toPrisma', `A list holding null in '${rule.field}'`);
 
   // Prisma's list filters have no case-insensitive mode.
   if (
@@ -227,9 +229,7 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
     resolveCaseInsensitive(rule.caseInsensitive) &&
     comparesText('text', value)
   )
-    throw new Error(
-      `A case-insensitive comparison on the list '${rule.field}' has no Prisma form; use toSql() or check().`,
-    );
+    throw noCompiledForm('toPrisma', `A case-insensitive comparison on the list '${rule.field}'`);
 
   // An enum compares against its declared values (see enumMatches).
   const enumEntry =
@@ -283,8 +283,10 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
       : undefined;
   if (complemented) {
     if (isJson(shape))
-      throw new Error(
-        `'${rule.operator}' on the Json value '${rule.field}' has no Prisma form (it keeps values of other types); use toSql() or check().`,
+      throw noCompiledForm(
+        'toPrisma',
+        `'${rule.operator}' on the Json value '${rule.field}'`,
+        `it keeps values of other types`,
       );
     return orWhere([notLeaf(positive(complemented)), ...arms()]);
   }
@@ -362,9 +364,7 @@ export const comparisonFilter = (rule: Rule, options?: ToPrismaOptions): unknown
       return match('endsWith');
     case Operator.matches:
     case Operator.notMatches:
-      throw new Error(
-        `Operator '${rule.operator}' has no Prisma equivalent. Use prisma.$queryRaw for regex filtering.`,
-      );
+      throw noCompiledForm('toPrisma', `'${rule.operator}'`, 'Prisma has no pattern filter');
     // The POSITIVE range for both: `buildFieldRule` negates the whole clause for notBetween,
     // because a field filter cannot carry a two-sided negation.
     case Operator.between:
@@ -392,9 +392,7 @@ const jsonMember = (
       `Membership of an object or a list in the Json array '${rule.field}' has no exact Prisma form; use toSql() or check().`,
     );
   if (queryMode(rule, options, shape, value).mode)
-    throw new Error(
-      `A case-insensitive member of the Json array '${rule.field}' has no Prisma form; use toSql() or check().`,
-    );
+    throw noCompiledForm('toPrisma', `A case-insensitive member of the Json array '${rule.field}'`);
   return value;
 };
 

@@ -76,6 +76,13 @@ export const ambiguousCondition = (): Error =>
     'A condition is exactly one of: a field, date, array or aggregate rule, all, any, or if/then[/else]',
   );
 
+/** A rule a compiler can't express as check() reads it: refused, never compiled to something
+ *  else. `why` says what the target would do instead. */
+export const noCompiledForm = (target: 'toSql' | 'toPrisma', what: string, why?: string): Error =>
+  new Error(
+    `${what} has no ${target === 'toSql' ? 'SQL' : 'Prisma'} form${why ? ` (${why})` : ''}; use ${target === 'toSql' ? 'check()' : 'toSql() or check()'}.`,
+  );
+
 /** A window (filter / orderBy / take / skip) a compiler has no form for. */
 export const windowUnsupported = (target: 'toSql' | 'toPrisma'): Error =>
   new Error(

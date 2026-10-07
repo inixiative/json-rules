@@ -57,7 +57,8 @@ form that throws. Lens issues carry codes (`not_in_lens`, `operator_kind_mismatc
 `conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`, `invalid_binding`, and
 the lens gate's own codes for a `where`). `toSql` takes a FieldMapSet with `mapName`, as `toPrisma`
 does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `ToSqlOptions`, `CompileOptions`,
-`ModelEntry`, `SourceSelect`, `ValidateRuleOptions`. `assertValidRule` labels its error
+`ModelEntry`, `SourceSelect`, `ValidateRuleOptions`, `ListBindingsOptions`,
+`MaterializeSourceQueryOptions`. `assertValidRule` labels its error
 `validateRule:` like the other asserts.
 
 `getAggregateOperators()` takes no target: every target compiles every aggregate comparison

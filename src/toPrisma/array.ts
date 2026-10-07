@@ -2,6 +2,7 @@ import { check } from '../check';
 import {
   conditionRequired,
   fieldlessArrayError,
+  noCompiledForm,
   unknownOperator,
   windowUnsupported,
 } from '../errors';
@@ -116,8 +117,10 @@ const buildValueArrayRule = (
         options,
       );
     default:
-      throw new Error(
-        `ArrayOperator '${rule.arrayOperator}' over the ${shape === 'list' ? 'list' : 'Json array'} '${field}' has no Prisma equivalent; evaluate it with check()${shape === 'list' ? ", or test membership with 'contains'" : ''}.`,
+      throw noCompiledForm(
+        'toPrisma',
+        `'${rule.arrayOperator}' over the ${shape === 'list' ? 'list' : 'Json array'} '${field}'`,
+        shape === 'list' ? "test a list's membership with 'contains'" : undefined,
       );
   }
 };

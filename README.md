@@ -782,6 +782,7 @@ Rules:
 - `validateRule`, `assertValidRule`, `bindRule`, `listBindings`
 - `Operator`, `ArrayOperator`, `DateOperator`
 - `Condition`, `StrictCondition`, `Rule`, `AggregateRule`, `AggregateMode`, `ArrayRule`, `DateRule`, `Row`, `CheckData`
+- `GroupByStep`, `WhereStep`, `PrismaStep`, `PrismaWhere`, `StepRef` (a Prisma plan's steps); `ScopeRef`, `ScopedRef`, `ScopeOutOfBounds` (scope refs)
 - `CheckOptions`, `CompileOptions`, `ToPrismaOptions`, `ToSqlOptions`, `ToSqlResult`, `ToPrismaResult`, `ValidateRuleOptions`, `ListBindingsOptions`, `ValidationIssue`, `ValidationResult`
 - every rule-shape type in `src/types.ts` (`StrictRule`, `DateExpr`, `RelativeUnits`, …), listed in `index.ts`
 - `engineGlobals`, `EngineGlobalsState`, `PrismaProvider`, `FuzzyConfig`

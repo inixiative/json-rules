@@ -1,7 +1,7 @@
 import { resolveExpr } from '../amount';
 import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
-import { rangeExprRequired, unknownOperator } from '../errors';
+import { noCompiledForm, rangeExprRequired, unknownOperator } from '../errors';
 import { isRelationEntry } from '../fieldMap/entry';
 import { entryKind, ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
@@ -30,13 +30,17 @@ export const buildDateRule = (rule: DateRule, options?: ToPrismaOptions): Prisma
   const map = options?.map as FieldMap | undefined;
   const shape = ruleShape({ field: rule.field }, map, options?.model);
   if (shape === 'json' || shape === 'json-path')
-    throw new Error(
-      `A date rule on the Json value '${rule.field}' has no Prisma form (Prisma compares Json text); use toSql() or check().`,
+    throw noCompiledForm(
+      'toPrisma',
+      `A date rule on the Json value '${rule.field}'`,
+      'Prisma compares Json text',
     );
   const entry = fieldEntry(rule.field, map, options?.model);
   if (entry && !isRelationEntry(entry) && entryKind(entry) !== FieldKind.DateTime)
-    throw new Error(
-      `A date rule on the ${entry.type} field '${rule.field}' has no Prisma form (Prisma compares it as ${entry.type}, not as an instant); use toSql() or check().`,
+    throw noCompiledForm(
+      'toPrisma',
+      `A date rule on the ${entry.type} field '${rule.field}'`,
+      `Prisma compares it as ${entry.type}, not as an instant`,
     );
   const arms = NEGATED_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
   const filter = buildDateLeafFilter(rule, options);
@@ -98,9 +102,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
 
     case DateOperator.dayIn:
     case DateOperator.dayNotIn:
-      throw new Error(
-        `DateOperator '${rule.dateOperator}' has no Prisma equivalent; use toSql() or check().`,
-      );
+      throw noCompiledForm('toPrisma', `'${rule.dateOperator}'`);
 
     default:
       throw unknownOperator((rule as DateRule).dateOperator, 'date');

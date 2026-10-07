@@ -1,5 +1,5 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
-import { unorderedOperand } from '../errors';
+import { noCompiledForm, unorderedOperand } from '../errors';
 import { hasNoOperand, lowerStrings } from '../field';
 import { splitNull } from '../number';
 import { Operator } from '../operator';
@@ -46,8 +46,9 @@ export const buildJsonComparison = (
   // differs in type anyway.
   const lowered = (v: unknown[]): string => {
     if (holdsObject(v))
-      throw new Error(
-        `A case-insensitive comparison of '${rule.field}' with a list holding objects has no SQL form; use check().`,
+      throw noCompiledForm(
+        'toSql',
+        `A case-insensitive comparison of '${rule.field}' with a list holding objects`,
       );
     return json(lowerStrings(v));
   };

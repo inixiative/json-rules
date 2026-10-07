@@ -128,7 +128,7 @@ type Case = {
 const RELATION_ARRAYS = 'relation arrays are not supported in SQL';
 const RELATION_AGGREGATES = 'cannot aggregate relation lists';
 const NO_COLUMN_COMPARE = 'no column-to-column comparison';
-const NO_WEEKDAY = 'has no Prisma equivalent';
+const NO_WEEKDAY = 'has no Prisma form';
 const NY = { timeZone: 'America/New_York' };
 const NOT_FOR_ENUMS = 'does not apply to the enum';
 
@@ -365,7 +365,7 @@ const MATRIX: Record<string, Case> = {
   'matches, case-insensitive': {
     rule: { field: 'name', operator: 'matches', value: /^d/i },
     ids: [4],
-    refuses: { prisma: 'no Prisma equivalent' },
+    refuses: { prisma: 'has no Prisma form' },
   },
   'an enum value the enum does not declare matches nothing': {
     rule: { field: 'role', operator: 'in', value: ['admin', 'superuser'] },

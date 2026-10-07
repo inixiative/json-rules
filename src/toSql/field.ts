@@ -1,7 +1,7 @@
 import { compileFieldLiteral } from '../compileLiteral';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { fuzzyNotCompiled, relationNotValue } from '../errors';
+import { fuzzyNotCompiled, noCompiledForm, relationNotValue } from '../errors';
 import { hasNoOperand, isExistenceTest, listMembership, lowerStrings } from '../field';
 import { acceptsEmptyString, comparesText, readsText } from '../fieldMap/shape';
 import { fieldEntry, walkWith } from '../fieldMap/walk';
@@ -79,8 +79,10 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
       !operand.computed &&
       (operand.shape === 'json' || operand.shape === 'json-path')
     )
-      throw new Error(
-        `'${rule.field}' compared with a Json value read per row has no SQL form; use check().`,
+      throw noCompiledForm(
+        'toSql',
+        `'${rule.field}' compared with a Json value read per row`,
+        'SQL would compare its text',
       );
   };
   if (RANGE_OPERATORS.includes(rule.operator)) {
@@ -154,8 +156,9 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     rhsCol !== undefined &&
     (SET_OPERATORS.includes(rule.operator) || getValueShape(rule.operator, 'field') === 'pattern')
   )
-    throw new Error(
-      `'${rule.operator}' against an operand read per row ('${rule.path}') has no SQL form; use check().`,
+    throw noCompiledForm(
+      'toSql',
+      `'${rule.operator}' against an operand read per row ('${rule.path}')`,
     );
 
   // Every negation carries the NULL rows explicitly (see ./compare).

@@ -122,6 +122,9 @@ reads off the generated client.
   a missing column and an invalid filter).
 - **Empty is `null`, `''`, or `[]`** on every rail: a list or a Json array with no elements is
   empty, as `isEmpty` / `notEmpty` and the array operators read it.
+- **Fuzzy containment is refused by the compilers whether the rule or the engine-global default
+  sets it** (a global default made `check()` match fuzzily while both compilers compiled an exact
+  match).
 - **`notStartsWith` / `notEndsWith`** complete the negated operators: every operator now has an
   exact complement, which Prisma uses for an implication's antecedent and a relation `all`
   (an implication or `all` over `startsWith` / `endsWith` threw on Prisma).

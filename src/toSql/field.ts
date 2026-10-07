@@ -1,6 +1,6 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { relationNotValue } from '../errors';
+import { fuzzyNotCompiled, relationNotValue } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
@@ -26,8 +26,8 @@ import { dateConfigOf, type ResolvedRhs, resolveSource } from './valueSource';
 
 /** A field rule as SQL; `lhs` compiles a computed left-hand side (an aggregate) in the column's place. */
 export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): string => {
-  if (rule.fuzzy)
-    throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
+  const fuzzy = fuzzyNotCompiled(rule);
+  if (fuzzy) throw fuzzy;
   const resolved: FieldSql =
     lhs === undefined ? resolveField(rule.field, state) : { sql: lhs, shape: 'scalar' };
   // A to-one relation as a field exists or not: its key is not a value to compare.

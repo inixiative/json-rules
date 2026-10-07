@@ -6,7 +6,7 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { relationNotValue } from '../errors';
+import { fuzzyNotCompiled, relationNotValue } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
@@ -280,10 +280,8 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
 /** A leaf's comparison as a Prisma field filter, in the form its field's shape takes (a negated
  *  range is its positive form; the caller negates the clause). */
 export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown => {
-  if (rule.fuzzy)
-    throw new Error(
-      'Fuzzy matching has no Prisma equivalent — evaluate it in memory with check().',
-    );
+  const fuzzy = fuzzyNotCompiled(rule);
+  if (fuzzy) throw fuzzy;
   const shape = shapeOf(rule, options);
   const val = () => resolveRuleValue(rule, options);
   const ci = (value: unknown) => queryMode(rule, options, shape, value);

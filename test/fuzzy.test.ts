@@ -101,15 +101,26 @@ describe('fuzzy — engine-global default via with()', () => {
 });
 
 describe('fuzzy — unsupported in compilers', () => {
+  test('a global fuzzy default is refused too, where check() would apply it', () => {
+    engineGlobals.with({ string: { fuzzy: true } }, () => {
+      const rule = { field: 'name', operator: Operator.contains, value: 'x' };
+      expect(() => toSql(rule)).toThrow(/no compiled form/);
+      expect(() => toPrisma(rule)).toThrow(/no compiled form/);
+      expect(toSql({ field: 'name', operator: Operator.equals, value: 'x' }).sql).toBe(
+        '"name" = $1',
+      );
+    });
+  });
+
   test('toPrisma throws on a fuzzy rule', () => {
     expect(() =>
       toPrisma({ field: 'name', operator: Operator.contains, value: 'x', fuzzy: true }),
-    ).toThrow(/no Prisma equivalent/);
+    ).toThrow(/no compiled form/);
   });
 
   test('toSql throws on a fuzzy rule', () => {
     expect(() =>
       toSql({ field: 'name', operator: Operator.contains, value: 'x', fuzzy: true }),
-    ).toThrow(/no SQL equivalent/);
+    ).toThrow(/no compiled form/);
   });
 });

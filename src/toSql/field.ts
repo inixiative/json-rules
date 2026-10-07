@@ -5,7 +5,7 @@ import { fuzzyNotCompiled, noCompiledForm, relationNotValue } from '../errors';
 import { hasNoOperand, isExistenceTest, listMembership, lowerStrings } from '../field';
 import { acceptsEmptyString, comparesText, readsText } from '../fieldMap/shape';
 import { fieldEntry, walkWith } from '../fieldMap/walk';
-import { orderPair, readPair, splitNull } from '../number';
+import { isOrderedValue, orderPair, readOrderedPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
   CONTAINS_OPERATORS,
@@ -92,6 +92,20 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   }
   const rhs = resolveComparison(rule, state);
   refuseJsonOperand(rhs);
+  // A string operator reads text; a value moved by an offset is a number or a date.
+  if (
+    rhs.type === 'column' &&
+    getValueShape(rule.operator, 'field') === 'string' &&
+    !readsText(resolved.shape) &&
+    resolved.shape !== 'list'
+  )
+    throw noCompiledForm('toSql', `'${rule.operator}' on '${rule.field}'`, 'it is not text');
+  if (rhs.type === 'column' && rhs.computed && resolved.shape === 'text' && lhs === undefined)
+    throw noCompiledForm(
+      'toSql',
+      `'${rule.field}' against a value moved by an offset`,
+      'an offset moves a number or a date',
+    );
   const field = compared.sql;
   const ordered = orderedSql(rule.operator, 'field');
   if (ordered) return compareSql(field, ordered.symbol, rhs, false, state);
@@ -108,11 +122,21 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const lowered = (values: unknown[]): unknown => (lower ? lowerStrings(values) : values);
 
   // A member read per row: a NULL one is nothing to look for, so only a NULL list is without it.
+  // Postgres matches it only against a list of its own type: a text member in a String list.
   if (
     resolved.shape === 'list' &&
     rhs.type === 'column' &&
     CONTAINS_OPERATORS.includes(rule.operator)
   ) {
+    if (
+      fieldEntry(rule.field, state.map, state.currentModel)?.type !== 'String' ||
+      !readsText(rhs.shape)
+    )
+      throw noCompiledForm(
+        'toSql',
+        `'${rule.operator}' on the list '${rule.field}' with a member read per row ('${rule.path}')`,
+        "Postgres matches a member of the list's own type only",
+      );
     const has =
       resolveCaseInsensitive(rule.caseInsensitive) && readsText(rhs.shape)
         ? `EXISTS (SELECT 1 FROM unnest(${field}) AS e WHERE LOWER(e) = LOWER(${rhs.sql}))`
@@ -268,7 +292,11 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
   const rhs = coerce(rule, resolveSource(rule, state), state);
   const range = rhs.type === 'value' ? rhs.value : undefined;
   if (range === null || range === undefined) return null;
-  return orderPair(readPair(range, rule.operator)).map((value) => {
+  // A missing end matches nothing (see rangeSql); a present one must order.
+  const ends = readPair(range, rule.operator);
+  if (ends.some((end) => end != null && !isOrderedValue(end)))
+    readOrderedPair(range, rule.operator);
+  return orderPair(ends).map((value) => {
     const end: ResolvedRhs = { type: 'value', value };
     return rule.offset === undefined ? end : offsetNumber(end, rule.offset, state);
   }) as [ResolvedRhs, ResolvedRhs];

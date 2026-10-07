@@ -169,7 +169,12 @@ test.each([
   { field: 'age', dateOperator: 'before', value: '2026-10-03' },
   { field: 'age', dateOperator: 'dayIn', value: ['monday'] },
   { field: 'createdAt', dateOperator: 'before', path: '$.age' },
-])('a date rule on a number column has no SQL form: %j', async (rule) => {
+  { field: 'role', dateOperator: 'before', value: '2026-10-03' },
+  { field: 'role', dateOperator: 'dayIn', value: ['monday'] },
+  { field: 'tags', dateOperator: 'before', value: '2026-10-03' },
+  { field: 'meta', dateOperator: 'before', value: '2026-10-03' },
+  { field: 'createdAt', dateOperator: 'before', path: '$.role' },
+])('a date rule on a column that holds no date has no SQL form: %j', async (rule) => {
   const result = await rails.run(rule as Condition, { now: new Date('2026-10-06T12:00:00Z') });
   expect(result.sql).toEqual(expect.stringContaining('is not a date column'));
 });
@@ -188,6 +193,24 @@ test.each([
   { field: 'name', operator: 'matches', path: '$.name' },
 ])('a set or pattern read per row has no SQL form: %j', async (rule) => {
   expect((await rails.run(rule as Condition)).sql).toEqual(expect.stringContaining('read per row'));
+});
+
+test.each([
+  '$.age',
+  '$.tags',
+  '$.role',
+  '$.createdAt',
+])('a list contains a member of another type read per row: %s', async (path) => {
+  const result = await rails.run({ field: 'tags', operator: 'contains', path } as Condition);
+  expect(result.sql).toEqual(expect.stringContaining('has no SQL form'));
+});
+
+test.each([
+  [{ field: 'age', operator: 'contains', path: '$.name' }, 'it is not text'],
+  [{ field: 'name', operator: 'equals', path: '$.age', offset: { value: 1 } }, 'an offset moves'],
+  [{ field: 'name', operator: 'between', value: [{ path: '$.name' }, 'z'] }, 'two ends that order'],
+])('a clear SQL refusal, not a Postgres error: %j', async (rule, message) => {
+  expect((await rails.run(rule as Condition)).sql).toEqual(expect.stringContaining(message));
 });
 
 test.each(['contains', 'notContains'])('a list %s a member read per row', async (operator) => {

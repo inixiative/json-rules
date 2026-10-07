@@ -8,6 +8,7 @@ import {
   rollingShift,
 } from '../dateExpr';
 import { noCompiledForm, rangeExprRequired, unknownOperator } from '../errors';
+import type { FieldShape } from '../fieldMap/shape';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
 import { NEGATED_OPERATORS } from '../operatorCatalog';
@@ -35,8 +36,14 @@ const asOperand = (rhs: ResolvedRhs, state: BuilderState): ResolvedRhs =>
     ? { type: 'column', sql: asInstant(rhs, state), computed: true }
     : rhs;
 
-// A date reads from a DateTime column, or text (a String column, a Json path); a number or a
-// boolean column is not one on Postgres.
+// A date reads from a DateTime column, or text (a String column, a Json path), or a field the map
+// doesn't declare; a number, an enum, a list or a whole Json column is not one on Postgres.
+const readsDate = (shape: FieldShape | undefined): boolean =>
+  shape === undefined ||
+  shape === 'instant' ||
+  shape === 'text' ||
+  shape === 'json-path' ||
+  shape === 'unknown';
 const notADate = (field: string): Error =>
   noCompiledForm('toSql', `A date rule on '${field}'`, 'it is not a date column');
 
@@ -54,9 +61,9 @@ const sides = (
 
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveField(rule.field, state);
-  if (field.shape === 'scalar') throw notADate(rule.field);
+  if (!readsDate(field.shape)) throw notADate(rule.field);
   const operand = resolveSource(rule, state);
-  if (operand.type === 'column' && operand.shape === 'scalar')
+  if (operand.type === 'column' && !readsDate(operand.shape))
     throw notADate(String(rule.path ?? rule.field));
   const ordered = orderedSql(rule.dateOperator, 'date');
   if (ordered) {

@@ -215,7 +215,7 @@ describe('validateNarrowing — chain rules', () => {
   test('child cannot omit field already invisible (not in ancestor picks)', () => {
     const parent = parentPicksOnRoot(['email']);
     expect(() => assertValidNarrowing(withParent(parent, { root: { omits: ['name'] } }))).toThrow(
-      /'name' not in ancestor's picks \(already invisible\)/,
+      /'name' not in ancestor's picks/,
     );
   });
 

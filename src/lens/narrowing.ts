@@ -13,6 +13,7 @@ import {
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getRoot } from './chain.ts';
 import {
+  augmentPicksWithRelations,
   intersectStringSet,
   normalizeGroupBy,
   normalizeSource,
@@ -24,7 +25,12 @@ import {
   sourceReadsVisible,
 } from './policy.ts';
 import { projectPaths } from './projectPaths.ts';
-import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
+import type {
+  EnumNarrowing,
+  LensNarrowing,
+  ModelDefaultNarrowing,
+  ModelNarrowing,
+} from './types.ts';
 import { checkConditionAtVisit } from './validateRuleInLens.ts';
 
 /** A visit of the PARENT surface a `where` is validated at: the where's own model, reached
@@ -111,6 +117,23 @@ const toOnePathError = (
   return hops.length === segments.length - 1 ? null : `${kind} segment '${seg}' is not a relation`;
 };
 
+// Why a field a layer names is already hidden: an ancestor's picks leave it out (a relation it
+// narrows counts as picked) or its omits drop it, or a path node's own-layer defaults do.
+const hiddenBy = (
+  field: string,
+  ancestors: readonly ModelNarrowing[],
+  defaults: ModelDefaultNarrowing | undefined,
+): string | null => {
+  for (const anc of ancestors) {
+    const picks = augmentPicksWithRelations(anc);
+    if (picks && !picks.includes(field)) return "not in ancestor's picks";
+    if (anc.omits?.includes(field)) return 'was omitted by ancestor';
+  }
+  if (defaults?.picks && !defaults.picks.includes(field)) return 'not visible from defaults.picks';
+  if (defaults?.omits?.includes(field)) return 'already excluded by defaults';
+  return null;
+};
+
 const validateModelNode = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: ModelNarrowing[],
@@ -142,101 +165,24 @@ const validateModelNode = (
     });
   }
 
-  for (const f of narrowing.picks ?? []) {
-    if (!own(modelFields, f)) {
-      errors.push({
-        path: `${position}.picks`,
-        code: 'not_in_lens',
-        message: `field '${f}' not on model`,
-      });
-      continue;
-    }
-    let stopped = false;
-    for (const anc of ancestorChain) {
-      if (anc.picks && !anc.picks.includes(f)) {
+  for (const kind of ['picks', 'omits'] as const)
+    for (const f of narrowing[kind] ?? []) {
+      if (!own(modelFields, f)) {
         errors.push({
-          path: `${position}.picks`,
-          code: 'not_visible',
-          message: `'${f}' not in ancestor's picks`,
+          path: `${position}.${kind}`,
+          code: 'not_in_lens',
+          message: `field '${f}' not on model`,
         });
-        stopped = true;
-        break;
+        continue;
       }
-      if (anc.omits?.includes(f)) {
+      const hidden = hiddenBy(f, ancestorChain, isDefault ? undefined : sameLayerDefaults);
+      if (hidden)
         errors.push({
-          path: `${position}.picks`,
+          path: `${position}.${kind}`,
           code: 'not_visible',
-          message: `'${f}' was omitted by ancestor`,
+          message: `'${f}' ${hidden}`,
         });
-        stopped = true;
-        break;
-      }
     }
-    if (stopped) continue;
-    if (!isDefault && sameLayerDefaults) {
-      if (sameLayerDefaults.picks && !sameLayerDefaults.picks.includes(f)) {
-        errors.push({
-          path: `${position}.picks`,
-          code: 'not_visible',
-          message: `'${f}' not visible from defaults.picks`,
-        });
-      } else if (sameLayerDefaults.omits?.includes(f)) {
-        errors.push({
-          path: `${position}.picks`,
-          code: 'not_visible',
-          message: `'${f}' not visible (already excluded by defaults.omits)`,
-        });
-      }
-    }
-  }
-
-  for (const f of narrowing.omits ?? []) {
-    if (!own(modelFields, f)) {
-      errors.push({
-        path: `${position}.omits`,
-        code: 'not_in_lens',
-        message: `field '${f}' not on model`,
-      });
-      continue;
-    }
-    let stopped = false;
-    for (const anc of ancestorChain) {
-      if (anc.picks && !anc.picks.includes(f)) {
-        errors.push({
-          path: `${position}.omits`,
-          code: 'not_visible',
-          message: `'${f}' not in ancestor's picks (already invisible)`,
-        });
-        stopped = true;
-        break;
-      }
-      if (anc.omits?.includes(f)) {
-        errors.push({
-          path: `${position}.omits`,
-          code: 'not_visible',
-          message: `'${f}' already excluded by ancestor`,
-        });
-        stopped = true;
-        break;
-      }
-    }
-    if (stopped) continue;
-    if (!isDefault && sameLayerDefaults) {
-      if (sameLayerDefaults.picks && !sameLayerDefaults.picks.includes(f)) {
-        errors.push({
-          path: `${position}.omits`,
-          code: 'not_visible',
-          message: `'${f}' not visible from defaults.picks`,
-        });
-      } else if (sameLayerDefaults.omits?.includes(f)) {
-        errors.push({
-          path: `${position}.omits`,
-          code: 'not_visible',
-          message: `'${f}' already excluded by defaults`,
-        });
-      }
-    }
-  }
 
   const validateEnumOp = (
     op: 'enumPicks' | 'enumOmits',
@@ -353,11 +299,9 @@ const validateModelNode = (
 
 const validateDefaultsEnums = (
   mapName: string,
-  defaultsEnums: Record<string, { picks?: readonly string[]; omits?: readonly string[] }>,
+  defaultsEnums: Record<string, EnumNarrowing>,
   enumRegistry: Record<string, readonly string[]> | undefined,
-  ancestorEnumNarrowings: Array<
-    Record<string, { picks?: readonly string[]; omits?: readonly string[] }>
-  >,
+  ancestorEnumNarrowings: Array<Record<string, EnumNarrowing>>,
   errors: ValidationIssue[],
 ): void => {
   for (const [enumName, enumN] of Object.entries(defaultsEnums)) {
@@ -419,12 +363,8 @@ const validateDefaultsEnums = (
 const validateEnumFieldAgainstChain = (
   modelFields: Record<string, FieldMapEntry>,
   narrowing: ModelDefaultNarrowing | ModelNarrowing,
-  sameLayerDefaultsEnums:
-    | Record<string, { picks?: readonly string[]; omits?: readonly string[] }>
-    | undefined,
-  ancestorDefaultsEnums: Array<
-    Record<string, { picks?: readonly string[]; omits?: readonly string[] }>
-  >,
+  sameLayerDefaultsEnums: Record<string, EnumNarrowing> | undefined,
+  ancestorDefaultsEnums: Array<Record<string, EnumNarrowing>>,
   sameLayerDefaultsForModel: ModelDefaultNarrowing | undefined,
   ancestorDefaultsForModel: ModelDefaultNarrowing[],
   ancestorChainAtSamePosition: ModelNarrowing[],
@@ -496,8 +436,6 @@ const validateEnumFieldAgainstChain = (
   for (const [f, vals] of Object.entries(narrowing.enumOmits ?? {})) check('enumOmits', f, vals);
 };
 
-type TypeEnumMap = Record<string, { picks?: readonly string[]; omits?: readonly string[] }>;
-
 const validatePathNarrowing = (
   narrowing: ModelNarrowing,
   ancestorChain: ModelNarrowing[],
@@ -519,10 +457,13 @@ const validatePathNarrowing = (
   const ancestorDefaultsForModel = chain
     .map((a) => own(own(a.mapDefaults, mapName)?.models, modelName))
     .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-  const sameLayerDefaultsEnums: TypeEnumMap | undefined = own(current.mapDefaults, mapName)?.enums;
-  const ancestorDefaultsEnums: TypeEnumMap[] = chain
+  const sameLayerDefaultsEnums: Record<string, EnumNarrowing> | undefined = own(
+    current.mapDefaults,
+    mapName,
+  )?.enums;
+  const ancestorDefaultsEnums: Record<string, EnumNarrowing>[] = chain
     .map((a) => own(a.mapDefaults, mapName)?.enums)
-    .filter((x): x is TypeEnumMap => x !== undefined);
+    .filter((x): x is Record<string, EnumNarrowing> => x !== undefined);
 
   const synthAncestors = [
     ...ancestorDefaultsForModel.map((d) => d as ModelNarrowing),
@@ -576,7 +517,7 @@ const validatePathNarrowing = (
       });
       continue;
     }
-    if (entry.kind !== 'object' && entry.kind !== 'bridge') {
+    if (!isRelationEntry(entry)) {
       errors.push({
         path: `${position}.relations`,
         code: 'wrong_kind',

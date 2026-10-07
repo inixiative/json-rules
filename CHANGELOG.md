@@ -90,6 +90,17 @@ reads all three as null. Prisma matches them together only with its `AnyNull` in
   backreference, a lookaround, a flag other than `i` — is refused on every rail; `validateRule`
   reports `unsupported_pattern`. A RegExp's `i` flag compiles to `~*` / `!~*`.
 
+- **A layer can't revive what a layer above it hid.** A source `label` or `groupBy` axis reads
+  only what every layer but its earliest declaration shows. A grandchild re-declaring an ancestor's
+  label on a column a layer in between omitted shipped that column's values as option labels;
+  `projectLens` and `validateNarrowing` now drop and report it through one check.
+- **A value ref ending on a bridge relation** is refused, as one on a local relation is.
+- **A missing related row is not a hidden one.** `narrowRule` AND-ed a to-one relation's grant
+  onto every rule through it, so `author notExists` could never hold and a negation through the
+  hop lost its NULL rows. A row outside the grant still fails the rule; a relation that isn't
+  there reads as absent.
+- A sourced field named after an `Object.prototype` key no longer inherits a label or axes.
+
 ### Breaking: the rails agree
 
 `check()`, `toSql` on Postgres, and `toPrisma` on Prisma 7 now agree on every rule they all
@@ -205,6 +216,30 @@ On the SQL rail:
   epoch, which a `timestamp` column holding UTC wall time and a `timestamptz` share; it was cast
   `::timestamptz` through the session zone.
 
+- **A case-insensitive equality matches only its value.** Prisma compiles one to ILIKE and passed
+  `%` and `_` through as wildcards; String columns escape them, and on Json, which Prisma matches
+  as JSON text where an escape is itself escaped, a value with `%`, `_` or a backslash is refused.
+- **`contains` on Json:** a string holds only a string (SQL matched `"a1b" contains 1`); an array
+  holds a member, case-insensitively under the flag (SQL lowers each element; Prisma, whose
+  `array_contains` can't, refuses). A number or boolean compiles to `array_contains` alone.
+- **Patterns mean the same on Postgres.** `toSql` translates RE2's dialect: `.` stops at a
+  newline, `\b` / `\B` / `\z` become `\y` / `\Y` / `\Z`, `\d` `\w` `\s` and POSIX classes stay
+  ASCII, `\x41` and octal escapes are characters (not Postgres's longer hex or a backreference),
+  `\Q…\E` and named groups translate. A Unicode class, a flag group or a repeat past 255 is
+  refused, and `validateRule(…, { target: 'toSql' })` reports it.
+- **A list `in` / `notIn` a set of lists** compiles as the equalities it means (both compilers
+  threw).
+- **A date rule on a non-DateTime column** (String, a number) is refused on Prisma, which sent it
+  a `Date`; a Json epoch with a fraction reads on SQL.
+- **An unknown aggregate mode** is refused on every rail; `toSql` computed it as AVG.
+
+Two differences remain, both outside the rules' control:
+
+- Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
+  Postgres's `LOWER` under the database collation can differ on letters like `İ`.
+- An array or aggregate rule on a Json value that isn't an array is a data error: `check()`
+  reports it, and SQL, which can't raise per row, reads it as empty.
+
 ### Fixed
 
 - **`narrowRule` (was `applyLens`) skipped grants on a relation node with no `condition`**
@@ -227,6 +262,12 @@ On the SQL rail:
   (`check()` failed to match).
 - **`describeRuleSources`** marks a leaf dynamic when an offset or a read amount moves its value.
 - `validateRule` treats an empty `orderBy` as no window, like the compilers.
+- **`describeRule`'s `supportedTargets`** are the targets `validateRule` passes (a bridge still
+  limits it to `check`); its own copy of those checks missed an aggregate's `condition` on SQL.
+- **`validateNarrowing` reads inheritance the way the lens resolves it.** An enum value an
+  inherited narrowing hides is `not_visible` (the not-picked case was `invalid_source`), and a
+  relation an ancestor narrows counts as picked for a child's picks / omits, as `projectLens`
+  already read it.
 
 ### Output changes
 

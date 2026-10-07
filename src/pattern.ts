@@ -57,9 +57,9 @@ const codePoint = (code: number): string =>
 const literal = (char: string): string => (PG_SPECIAL.test(char) ? `\\${char}` : char);
 
 /**
- * The pattern in Postgres's dialect, matching what RE2 matches: `.` stops at a newline, `\b` is a
- * word boundary, and classes are ASCII. A construct Postgres can't express — a Unicode class, a
- * flag group, a repeat past 255 — is refused. `source` is one RE2 already compiled.
+ * The pattern in Postgres's dialect, matching what RE2 matches: `.` stops at a newline, and
+ * classes and word boundaries are ASCII. A construct Postgres can't express — a Unicode class,
+ * a flag group, a repeat past 255 — is refused. `source` is one RE2 already compiled.
  */
 export const postgresSource = (source: string): string => {
   const refuse = (what: string): never => {
@@ -91,7 +91,13 @@ export const postgresSource = (source: string): string => {
       while (oct.length < 3 && source[i] >= '0' && source[i] <= '7') oct += source[i++];
       return codePoint(Number.parseInt(oct, 8));
     }
-    if (!inClass && (c === 'b' || c === 'B')) return c === 'b' ? '\\y' : '\\Y';
+    // RE2's word boundary is between ASCII word characters; Postgres's \y reads the locale's.
+    if (!inClass && (c === 'b' || c === 'B')) {
+      const w = `[${CLASSES.w}]`;
+      return c === 'b'
+        ? `(?:(?<=${w})(?!${w})|(?<!${w})(?=${w}))`
+        : `(?:(?<=${w})(?=${w})|(?<!${w})(?!${w}))`;
+    }
     if (!inClass && c === 'z') return '\\Z';
     if (!inClass && c === 'A') return '\\A';
     if (c === 'Q') {

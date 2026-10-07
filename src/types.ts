@@ -15,24 +15,38 @@ export type OrderedRuleValue = string | number | Date;
 
 export type DateInputValue = string | number | Date;
 
-// A value read at evaluation: `$.`-prefixed from the row (or an enclosing scope), bare from
-// context — the same ref a `path` value source takes.
-export type PathRef = { path: string };
+// Where a value comes from: a literal, a path read (`$.` from the row or an enclosing scope,
+// bare from context), or a bound value. Every slot that reads a value takes this one shape: a
+// comparison value, an offset, a unit amount, the evaluation's time zone.
+export type ValueSourceOf<TValue> =
+  | { value: TValue; path?: never; bind?: never; bindOptional?: never }
+  | { path: string; value?: never; bind?: never; bindOptional?: never }
+  | { bind: string; bindOptional?: boolean; value?: never; path?: never };
 
-// An amount that is a literal or read from a path.
-export type Magnitude = number | PathRef;
+// The same slot on the loose rule types; validateRule enforces exactly one. An unsupplied
+// binding is a caller bug unless `bindOptional`, which reads an absent name as `null`.
+export type ValueSourceFields<TValue> = {
+  value?: TValue;
+  path?: string;
+  bind?: string;
+  bindOptional?: boolean;
+};
+
+// A unit amount: a literal number, or a value source that reads one.
+export type Magnitude = number | ValueSourceOf<number>;
 
 // --- Relative & calendar date expressions (v2.6.0) ---
 // Positive magnitudes only; direction lives in the keyword. Units are dayjs words.
-export type RelativeUnits = {
-  years?: Magnitude;
-  quarters?: Magnitude;
-  months?: Magnitude;
-  weeks?: Magnitude;
-  days?: Magnitude;
-  hours?: Magnitude;
-  minutes?: Magnitude;
-  seconds?: Magnitude;
+// `TAmount` is `Magnitude` as authored, `number` once every amount is read.
+export type RelativeUnits<TAmount = Magnitude> = {
+  years?: TAmount;
+  quarters?: TAmount;
+  months?: TAmount;
+  weeks?: TAmount;
+  days?: TAmount;
+  hours?: TAmount;
+  minutes?: TAmount;
+  seconds?: TAmount;
 };
 export type PeriodUnit =
   | 'year'
@@ -46,12 +60,14 @@ export type PeriodUnit =
   | 'second';
 
 // Point expressions — resolve to a single instant.
-export type RollingExpr = { ago: RelativeUnits } | { ahead: RelativeUnits };
+export type RollingExpr<TAmount = Magnitude> =
+  | { ago: RelativeUnits<TAmount> }
+  | { ahead: RelativeUnits<TAmount> };
 export type PeriodExpr = { this: PeriodUnit } | { last: PeriodUnit } | { next: PeriodUnit };
 export type EdgeExpr = { start: PeriodExpr } | { end: PeriodExpr };
 
 // A date expression is either a point (rolling/edge) or a range (period/rolling).
-export type DateExpr = RollingExpr | PeriodExpr | EdgeExpr;
+export type DateExpr<TAmount = Magnitude> = RollingExpr<TAmount> | PeriodExpr | EdgeExpr;
 
 export type DateInputOrExpr = DateInputValue | DateExpr;
 
@@ -62,22 +78,15 @@ export type DateRuleValue =
   | string[];
 
 export type WeekStart = 'monday' | 'sunday';
-// The anchoring timezone for naive datetimes. Either a literal IANA zone string, or a
-// bound reference resolved from the evaluation's `bindings` (same bind mechanism as rule
-// values). Stays ONE zone per evaluation; absolute instants never consult it.
-export type TimeZoneConfig = string | { bind: string };
+// The anchoring timezone for naive datetimes: an IANA zone, or a value source that reads one
+// from context or the evaluation's `bindings`. ONE zone per evaluation; absolute instants
+// never consult it.
+export type TimeZoneConfig = string | ValueSourceOf<string>;
 export type DateConfig = {
   now?: DateInputValue;
   timeZone?: TimeZoneConfig;
   weekStart?: WeekStart;
 };
-
-// Where a comparison value comes from: a literal, a path read, or a bound value. An `offset`
-// is a value source of its own that moves the comparison value.
-export type ValueSourceOf<TValue> =
-  | { value: TValue; path?: never; bind?: never; bindOptional?: never }
-  | { path: string; value?: never; bind?: never; bindOptional?: never }
-  | { bind: string; bindOptional?: boolean; value?: never; path?: never };
 
 type ValueSource<TValue, TOffset = never> = ValueSourceOf<TValue> & { offset?: TOffset };
 
@@ -85,7 +94,13 @@ type ValueSource<TValue, TOffset = never> = ValueSourceOf<TValue> & { offset?: T
 // (`{ ago }` / `{ ahead }`) anchored on the comparison value instead of now.
 export type NumberOffset = ValueSourceOf<number>;
 export type DateOffset = ValueSourceOf<RollingExpr>;
-type NoValueSource = { value?: never; path?: never };
+type NoValueSource = {
+  value?: never;
+  path?: never;
+  bind?: never;
+  bindOptional?: never;
+  offset?: never;
+};
 type RuleBase<TOperator extends Operator> = {
   field: string;
   operator: TOperator;
@@ -211,8 +226,8 @@ export type StrictDateRangeRule =
       ValueSource<[DateInputValue, DateInputValue], DateOffset>);
 
 export type StrictDateDayRule =
-  | (DateRuleBase<DateOperatorValues['dayIn']> & { value: string[]; path?: never })
-  | (DateRuleBase<DateOperatorValues['dayNotIn']> & { value: string[]; path?: never });
+  | (DateRuleBase<DateOperatorValues['dayIn']> & ValueSource<string[]>)
+  | (DateRuleBase<DateOperatorValues['dayNotIn']> & ValueSource<string[]>);
 
 export type StrictDateRule = StrictDateComparisonRule | StrictDateRangeRule | StrictDateDayRule;
 
@@ -257,22 +272,12 @@ export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = 
   aggregate: { mode: AggregateMode; field?: string };
   condition?: Condition<TRuleValue, TDateValue>;
   operator: Operator;
-  value?: number | [number, number];
-  path?: string;
-  bind?: string;
-  bindOptional?: boolean;
   error?: string;
-};
+} & ValueSourceFields<number | [number, number]>;
 
-export type Rule<TValue = RuleValue> = {
+export type Rule<TValue = RuleValue> = ValueSourceFields<TValue> & {
   field: string;
   operator: Operator;
-  value?: TValue;
-  path?: string;
-  bind?: string;
-  // An unsupplied binding is a caller bug unless the rule says otherwise: with
-  // `bindOptional` an absent name evaluates and compiles as `null`, never throws.
-  bindOptional?: boolean;
   offset?: NumberOffset;
   error?: string;
   caseInsensitive?: boolean;
@@ -290,13 +295,9 @@ export type ArrayRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = Wind
   error?: string;
 };
 
-export type DateRule<TValue = DateRuleValue> = {
+export type DateRule<TValue = DateRuleValue> = ValueSourceFields<TValue> & {
   field: string;
   dateOperator: DateOperator;
-  value?: TValue;
-  path?: string;
-  bind?: string;
-  bindOptional?: boolean;
   offset?: DateOffset;
   error?: string;
 };

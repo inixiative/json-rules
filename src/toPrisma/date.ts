@@ -1,29 +1,18 @@
-import dayjs from 'dayjs';
-import { isDateInputValue, parseDateValue, resolveTimeZone } from '../date';
-import {
-  isDateExpr,
-  resolveDateExprRange,
-  resolvePointForOperator,
-  shiftByUnits,
-} from '../dateExpr';
+import { resolveExpr } from '../amount';
+import { coerceDateLiteral, NEGATED_DATE_OPERATORS } from '../date';
+import { isDateExpr, resolveDateExprRange, resolvePointForOperator, zoneOf } from '../dateExpr';
+import { orderPair } from '../number';
 import { DateOperator } from '../operator';
-import type { DateConfig, DateRule } from '../types';
-import { offsetShift, resolveExpr, resolveUnits } from '../valueSource';
+import type { DateRule } from '../types';
 import { absentArms } from './field';
 import { matchNothing } from './logical';
+import { offsetDate } from './offset';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
-import { amountReader, readOffset, readPathValue } from './valueSource';
+import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
 // The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the
 // column-nullability licensing is the same as the scalar negations in ./field.ts.
-const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
-  DateOperator.notBefore,
-  DateOperator.notAfter,
-  DateOperator.notWithin,
-  DateOperator.notBetween,
-];
-
 // The two range complements, hoisted to the WHERE level for the same reason as ./field.ts's
 // RANGE_COMPLEMENT: Prisma distributes a field-level `not` over the nested filter's keys, so
 // `{ col: { not: { gte, lte } } }` asks for `NOT(col >= a) AND NOT(col <= b)` — no row satisfies
@@ -33,23 +22,6 @@ const RANGE_COMPLEMENT_DATE_OPERATORS: readonly DateOperator[] = [
   DateOperator.notWithin,
   DateOperator.notBetween,
 ];
-
-const dateConfigOf = (options?: BuildOptions): DateConfig => ({
-  now: options?.now,
-  timeZone: options?.timeZone,
-  weekStart: options?.weekStart,
-});
-
-// Literal/path date values compile through the same parse-and-anchor seam check()
-// uses (naive strings → midnight in the resolved zone; instants as-is), emitted as
-// concrete Dates — a raw 'YYYY-MM-DD' in a Prisma where is rejected by Prisma and
-// would carry different zone semantics than check().
-const coerceDateLiteral = (value: unknown, config: DateConfig): unknown => {
-  if (value === undefined || !isDateInputValue(value)) return value;
-  const parsed = parseDateValue(value, resolveTimeZone(config));
-  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
-  return parsed.toDate();
-};
 
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
   const arms = NEGATED_DATE_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
@@ -68,61 +40,33 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
   return nested;
 };
 
-/** The comparison value before any offset: a literal or expression, a context path, a bind. */
-const resolveDateValue = (rule: DateRule, options?: BuildOptions): unknown => {
-  if (rule.value !== undefined) return rule.value;
-  if (rule.path) return readPathValue(rule.path, options);
-  if (rule.bind !== undefined) {
-    if (rule.bindOptional === true) return null;
-    throw new Error(
-      `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
-    );
-  }
-  if (rule.dateOperator === DateOperator.dayIn || rule.dateOperator === DateOperator.dayNotIn)
-    return undefined;
-  throw new Error('No value or path specified for date comparison');
-};
-
 const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown => {
   const config = dateConfigOf(options);
-  const read = amountReader(options);
-
-  const shift = (instant: Date | null): Date | null => {
-    if (instant === null || rule.offset === undefined) return instant;
-    const move = offsetShift(readOffset(rule.offset, rule.field, options));
-    if (move === null) return null;
-    const [raw, direction] = move;
-    const units = resolveUnits(raw, read);
-    return (
-      units && shiftByUnits(dayjs(instant), units, direction, resolveTimeZone(config)).toDate()
-    );
-  };
-  const instantOf = (value: unknown, operator: string): Date | null => {
+  const read = prismaRead(options);
+  const shift = (instant: Date | null): Date | null =>
+    rule.offset === undefined ? instant : offsetDate(instant, rule.offset, options);
+  const instantOf = (value: unknown): Date | null => {
     if (value === null || value === undefined) return null;
-    if (isDateExpr(value)) {
-      const expr = resolveExpr(value, read);
-      return expr && resolvePointForOperator(expr, operator, config).toDate();
-    }
-    return coerceDateLiteral(value, config) as Date;
+    if (!isDateExpr(value)) return coerceDateLiteral(value, zoneOf(config));
+    const expr = resolveExpr(value, read);
+    return expr && resolvePointForOperator(expr, rule.dateOperator, config).toDate();
   };
-  const point = (): Date | null =>
-    shift(instantOf(resolveDateValue(rule, options), rule.dateOperator));
+  const source = () => readSource(rule, options);
+  const point = (): Date | null => shift(instantOf(source()));
   const range = (): [Date, Date] | null => {
-    const v = resolveDateValue(rule, options);
-    if (v === null) return null;
+    const v = source();
+    if (v === null || v === undefined) return null;
     if (!Array.isArray(v) || v.length !== 2) {
       throw new Error(`${rule.dateOperator} date operator requires an array of two values`);
     }
-    const ends = v.map((el) => instantOf(el, rule.dateOperator));
+    const ends = v.map(instantOf);
     if (ends[0] === null || ends[1] === null) return null;
-    const [start, end] = normalizeDateRange(ends) as [Date, Date];
-    const shiftedStart = shift(start);
-    const shiftedEnd = shift(end);
-    return shiftedStart && shiftedEnd ? [shiftedStart, shiftedEnd] : null;
+    const [start, end] = orderPair(ends as Date[]).map(shift);
+    return start && end ? [start, end] : null;
   };
   const window = (): [Date, Date] | null => {
-    const v = resolveDateValue(rule, options);
-    if (v === null) return null;
+    const v = source();
+    if (v === null || v === undefined) return null;
     if (!isDateExpr(v))
       throw new Error(`${rule.dateOperator} date operator requires a range date expression`);
     const expr = resolveExpr(v, read);
@@ -176,21 +120,4 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
     default:
       throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
   }
-};
-
-const normalizeDateRange = (value: unknown[]): [unknown, unknown] => {
-  const [first, second] = value;
-  return compareDateValues(first, second) <= 0 ? [first, second] : [second, first];
-};
-
-const compareDateValues = (left: unknown, right: unknown): number => {
-  const lhs = normalizeComparableDateValue(left);
-  const rhs = normalizeComparableDateValue(right);
-  return lhs < rhs ? -1 : lhs > rhs ? 1 : 0;
-};
-
-const normalizeComparableDateValue = (value: unknown): string | number => {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'number' || typeof value === 'string') return value;
-  return String(value);
 };

@@ -1,7 +1,7 @@
 import { isOperatorSupportedForTarget, type RuleTarget } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
+import { valueRefRoles, valueRefs } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
-import { valueRefRoles, valueRefs } from '../valueSource';
 import { extremalRewrite, hasWindow } from '../window';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, walkLensPath } from './policy.ts';

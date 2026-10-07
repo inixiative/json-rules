@@ -52,11 +52,17 @@ describe('validateRule — offset', () => {
   });
 
   test('an offset is one value source', () => {
-    for (const offset of [5, { value: 1, path: 'x' }, { bind: 'b', value: 1 }, {}, { days: 1 }]) {
-      expect(codes({ field: 'score', operator: 'equals', path: 'a', offset })).toEqual([
-        'invalid_offset',
-      ]);
-    }
+    const cases: [unknown, string][] = [
+      [5, 'invalid_offset'],
+      [{ value: 1, path: 'x' }, 'ambiguous_value_source'],
+      [{ bind: 'b', value: 1 }, 'ambiguous_value_source'],
+      [{}, 'missing_value_source'],
+      [{ days: 1 }, 'missing_value_source'],
+      [{ path: 'x', bindOptional: true }, 'invalid_value_source'],
+      [{ bind: 3 }, 'invalid_value_source'],
+    ];
+    for (const [offset, code] of cases)
+      expect(codes({ field: 'score', operator: 'equals', path: 'a', offset })).toEqual([code]);
     expect(codes({ field: 'score', operator: 'equals', path: 'a', offset: { bind: 'b' } })).toEqual(
       [],
     );
@@ -144,16 +150,26 @@ describe('validateRule — offset', () => {
 });
 
 describe('validateRule — path magnitudes', () => {
-  test('a magnitude is a non-negative number or { path }', () => {
+  test('a magnitude is a non-negative number or a value source', () => {
     expect(
       codes({ field: 'ts', dateOperator: 'before', value: { ago: { seconds: { path: '$.s' } } } }),
     ).toEqual([]);
     expect(
       codes({ field: 'ts', dateOperator: 'before', value: { ago: { seconds: { path: 3 } } } }),
-    ).toEqual(['invalid_relative_magnitude']);
+    ).toEqual(['invalid_value_source']);
     expect(
       codes({ field: 'ts', dateOperator: 'before', value: { ago: { seconds: { bind: 's' } } } }),
+    ).toEqual([]);
+    expect(
+      codes({ field: 'ts', dateOperator: 'before', value: { ago: { days: { value: 1.5 } } } }),
     ).toEqual(['invalid_relative_magnitude']);
+    expect(
+      codes({
+        field: 'ts',
+        dateOperator: 'before',
+        value: { ago: { days: { value: 2, bind: 'd' } } },
+      }),
+    ).toEqual(['ambiguous_value_source']);
   });
 
   test('a row ref in an offset or magnitude is gated per target like path', () => {

@@ -3,30 +3,29 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
+import { resolveExpr, resolveUnits } from './amount';
 import {
   isDateExpr,
+  type ResolvedDateConfig,
   resolveDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
   shiftByUnits,
+  zoneOf,
 } from './dateExpr';
+import { orderPair } from './number';
+import { offsetShift } from './offset';
 import { DateOperator } from './operator';
-import { readField, readPath, type Scopes } from './scope';
+import { parseScopeRef, readField, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
-import {
-  offsetShift,
-  type ReadRef,
-  readValueSource,
-  resolveExpr,
-  resolveUnits,
-} from './valueSource';
+import { type ReadSource, readValueSource } from './valueSource';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
-const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
+export const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
   DateOperator.notBefore,
   DateOperator.notAfter,
   DateOperator.notWithin,
@@ -62,12 +61,12 @@ export const checkDate = (
   if (!isDateInputValue(fieldValue))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
-  // Resolve the anchoring zone ONCE (bind → literal → UTC) and normalize the config the
-  // date-expression layer sees: honor a resolved zone when the caller set one, but leave
-  // it unset otherwise so expression `now` resolution keeps its prior behavior.
-  const tz = resolveTimeZone(config, bindings);
-  const exprConfig: DateConfig =
-    config.timeZone !== undefined ? { ...config, timeZone: tz } : config;
+  // Read the zone ONCE. Left unset when the caller set none, so expression `now` keeps its
+  // prior behavior; anchoring and shifts default to UTC.
+  const exprConfig = resolveDateConfig(config, (source) =>
+    readValueSource(source, scopes, context, bindings),
+  );
+  const tz = zoneOf(exprConfig);
 
   // A naive field string is anchored in the resolved zone (default UTC); an absolute
   // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
@@ -176,7 +175,7 @@ const parseCompareDates = (
   condition: DateRule,
   scopes: Scopes,
   context: unknown,
-  config: DateConfig,
+  config: ResolvedDateConfig,
   tz: string,
   bindings?: Record<string, RuleValue>,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] | null => {
@@ -184,13 +183,10 @@ const parseCompareDates = (
   if (operator === DateOperator.dayIn || operator === DateOperator.dayNotIn)
     return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
 
-  const read: ReadRef = (ref) => readPath(ref, scopes, context);
+  const read: ReadSource = (source) => readValueSource(source, scopes, context, bindings);
   const raw = readValueSource(condition, scopes, context, bindings);
   if (raw === null || raw === undefined) return null;
-  const move =
-    condition.offset === undefined
-      ? undefined
-      : offsetShift(readValueSource(condition.offset, scopes, context, bindings));
+  const move = condition.offset === undefined ? undefined : offsetShift(read(condition.offset));
   if (move === null) return null;
   const shift = (point: dayjs.Dayjs): dayjs.Dayjs | null => {
     if (move === undefined) return point;
@@ -221,8 +217,7 @@ const parseCompareDates = (
     const date1 = toPoint(raw[0], 'start date');
     const date2 = toPoint(raw[1], 'end date');
     if (!date1 || !date2) return null;
-    // Auto-sort: ensure startDate <= endDate
-    const [start, end] = date1.isAfter(date2) ? [date2, date1] : [date1, date2];
+    const [start, end] = orderPair([date1, date2]);
     const shiftedStart = shift(start);
     const shiftedEnd = shift(end);
     return shiftedStart && shiftedEnd ? [shiftedStart, shiftedEnd] : null;
@@ -242,22 +237,21 @@ const parseCompareDates = (
 };
 
 /**
- * The single seam that decides which timezone anchors a NAIVE (zoneless) value and frames
- * the dayIn/dayNotIn weekday, for ONE evaluation. Precedence: a zone bound from the
- * evaluation's `bindings` → a literal `config.timeZone` → 'UTC'. A future extension can
- * source a per-record zone here (see docs/TIMEZONE.md) without touching call sites.
- * Absolute instants never reach this seam — they bypass anchoring entirely.
+ * The evaluation's date config with its zone read — the single seam that decides which zone
+ * anchors a NAIVE (zoneless) value, frames dayIn/dayNotIn and runs shifts, for ONE evaluation.
+ * A zone is a string or a value source read from context or bindings; one that reads nothing
+ * is UTC. It is one zone per evaluation, so a row (`$.`) path has no meaning here. Absolute
+ * instants never consult it.
  */
-export const resolveTimeZone = (
-  config: DateConfig,
-  bindings?: Record<string, RuleValue>,
-): string => {
+export const resolveDateConfig = (config: DateConfig, read: ReadSource): ResolvedDateConfig => {
   const zone = config.timeZone;
-  if (zone && typeof zone === 'object' && 'bind' in zone) {
-    const bound = bindings?.[zone.bind];
-    return typeof bound === 'string' ? bound : 'UTC';
-  }
-  return zone ?? 'UTC';
+  if (zone === undefined || typeof zone === 'string') return { ...config, timeZone: zone };
+  if (zone.path !== undefined && parseScopeRef(zone.path))
+    throw new Error(`timeZone is one per evaluation; read it from context, not '${zone.path}'`);
+  const read_ = read(zone);
+  if (read_ !== null && read_ !== undefined && typeof read_ !== 'string')
+    throw new Error(`timeZone reads a zone name (got ${String(read_)})`);
+  return { ...config, timeZone: read_ ?? 'UTC' };
 };
 
 // Detects an explicit zone on a date STRING only (never String(Date), whose render is
@@ -286,3 +280,12 @@ export const parseDateValue = (value: DateInputValue | undefined, tz: string): d
 
 export const isDateInputValue = (value: unknown): value is DateInputValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;
+
+// Literal and context date values compile to concrete Dates through the same parse-and-anchor
+// seam check() uses (naive strings → midnight in the zone; instants as-is): a raw 'YYYY-MM-DD'
+// is rejected by Prisma and would carry different zone semantics than check().
+export const coerceDateLiteral = (value: unknown, zone: string): Date => {
+  const parsed = isDateInputValue(value) ? parseDateValue(value, zone) : dayjs(Number.NaN);
+  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
+  return parsed.toDate();
+};

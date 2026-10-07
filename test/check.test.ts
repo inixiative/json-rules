@@ -516,7 +516,7 @@ describe('Error Handling', () => {
         },
         { age: 25 },
       ),
-    ).toThrow('No value or path specified');
+    ).toThrow('No value, path or bind specified');
   });
 });
 

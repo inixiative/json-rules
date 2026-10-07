@@ -1,5 +1,8 @@
+import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
+import { isCalendarUnit } from './amount';
 import { isDateInputValue, isRangeOperator, parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
+import { OFFSET_OPERATORS } from './offset';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
@@ -16,7 +19,6 @@ import {
 } from './operatorCatalog';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
-import { isCalendarUnit, isPathRef, magnitudeRefs, OFFSET_OPERATORS } from './valueSource';
 import { extremalRewrite } from './window';
 
 const PERIOD_UNITS = new Set([
@@ -186,16 +188,14 @@ const validateLogicalArray = (
   });
 };
 
-const validateScopeRef = (
+const validateField = (
   rule: Record<string, unknown>,
-  key: 'field' | 'path',
   path: string,
   context: ValidationContext,
   depth: number,
 ): void => {
-  const ref = rule[key];
-  if (typeof ref !== 'string') return;
-  validateRef(ref, key, `${path}.${key}`, context, depth);
+  if (typeof rule.field === 'string')
+    validateRef(rule.field, 'field', `${path}.field`, context, depth);
 };
 
 const validateRef = (
@@ -233,25 +233,48 @@ const validateRef = (
   }
 };
 
-// Offset and magnitude `{ path }` refs are read like `path`, so they are gated like it.
-const validateAmountRefs = (
-  rule: Record<string, unknown>,
-  path: string,
+const SOURCE_FORMS = ['value', 'path', 'bind'] as const;
+type SourceForm = (typeof SOURCE_FORMS)[number];
+
+// One value source — `{ value } | { path } | { bind }` — wherever it appears: a rule's comparison
+// value, an offset, a unit amount. Exactly one form; `bindOptional` only beside `bind`; a path is
+// gated like any ref. Returns the form, or null when it is malformed.
+const validateSource = (
+  source: Record<string, unknown>,
+  at: string,
   context: ValidationContext,
   depth: number,
-): void => {
-  const offset = isPlainObject(rule.offset) ? rule.offset.value : undefined;
-  for (const ref of magnitudeRefs({ value: offset }))
-    validateRef(ref, 'path', `${path}.offset.value`, context, depth);
-  for (const ref of magnitudeRefs({ value: rule.value }))
-    validateRef(ref, 'path', `${path}.value`, context, depth);
+): SourceForm | null => {
+  const forms = SOURCE_FORMS.filter((form) => source[form] !== undefined);
+  if (forms.length > 1) {
+    pushIssue(context, at, 'ambiguous_value_source', 'Takes one of value, path or bind');
+    return null;
+  }
+  if (forms.length === 0) {
+    pushIssue(context, at, 'missing_value_source', 'Requires value, path or bind');
+    return null;
+  }
+  const [form] = forms;
+  if (form !== 'value' && typeof source[form] !== 'string') {
+    pushIssue(context, `${at}.${form}`, 'invalid_value_source', `${form} is a string`);
+    return null;
+  }
+  if (
+    source.bindOptional !== undefined &&
+    (form !== 'bind' || typeof source.bindOptional !== 'boolean')
+  )
+    pushIssue(
+      context,
+      `${at}.bindOptional`,
+      'invalid_value_source',
+      'bindOptional is a boolean beside bind',
+    );
+  if (form === 'path') validateRef(source.path as string, 'path', `${at}.path`, context, depth);
+  return form;
 };
 
-const OFFSET_SOURCES = ['value', 'path', 'bind'];
-
-// An offset is a value source of its own — `{ value }`, `{ path }` or `{ bind }` (with
-// `bindOptional`) — that moves the comparison value: a number for a field rule, a rolling
-// `{ ago }` / `{ ahead }` for a date rule. A date offset read per row is check-only.
+// An offset moves the comparison value by what its own value source reads: a number on a field
+// rule, a rolling `{ ago }` / `{ ahead }` on a date rule. A date offset read per row is check-only.
 const validateOffset = (
   rule: Record<string, unknown>,
   kind: 'field' | 'date',
@@ -272,23 +295,13 @@ const validateOffset = (
     );
     return;
   }
-  const keys = isPlainObject(offset) ? Object.keys(offset) : [];
-  const sources = keys.filter((key) => OFFSET_SOURCES.includes(key));
-  const source = sources[0];
-  const wellFormed =
-    isPlainObject(offset) &&
-    sources.length === 1 &&
-    keys.every(
-      (key) => OFFSET_SOURCES.includes(key) || (key === 'bindOptional' && source === 'bind'),
-    ) &&
-    (source === 'value' || typeof offset[source] === 'string');
-  if (!wellFormed) {
+  if (!isPlainObject(offset)) {
     pushIssue(context, at, 'invalid_offset', 'An offset is one of { value }, { path } or { bind }');
     return;
   }
-  if (source === 'path') {
+  const form = validateSource(offset, at, context, depth);
+  if (form === 'path') {
     const ref = offset.path as string;
-    validateRef(ref, 'path', `${at}.path`, context, depth);
     const scoped = parseScopeRef(ref);
     if (kind === 'date' && scoped && scoped.depth <= 1 && context.target === 'toSql')
       pushIssue(
@@ -299,7 +312,7 @@ const validateOffset = (
       );
     return;
   }
-  if (source !== 'value') return;
+  if (form !== 'value') return;
   const value = offset.value;
   if (kind === 'field') {
     if (typeof value !== 'number' || !Number.isFinite(value))
@@ -320,6 +333,7 @@ const validateOffset = (
     (value as Record<string, unknown>)[units[0]],
     `${at}.value.${units[0]}`,
     context,
+    depth,
   );
 };
 
@@ -332,12 +346,10 @@ const validateFieldRule = (
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Field rule requires a string field');
   }
-  validateScopeRef(rule, 'field', path, context, depth);
-  validateScopeRef(rule, 'path', path, context, depth);
+  validateField(rule, path, context, depth);
   if (rule.offset !== undefined && 'aggregate' in rule) {
     pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
   }
-  validateAmountRefs(rule, path, context, depth);
 
   if (typeof rule.operator !== 'string' || !FIELD_OPERATORS.has(rule.operator)) {
     pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
@@ -375,7 +387,7 @@ const validateFieldRule = (
     return;
   }
 
-  if (!requireValueOrPath(rule, path, context)) return;
+  if (validateSource(rule, path, context, depth) === null) return;
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   validateValueShape(shape, rule.value, operator, `${path}.value`, context);
@@ -454,8 +466,7 @@ const validateAggregateRule = (
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Aggregate rule requires a string field');
   }
-  validateScopeRef(rule, 'field', path, context, depth);
-  validateScopeRef(rule, 'path', path, context, depth);
+  validateField(rule, path, context, depth);
 
   if (!isPlainObject(rule.aggregate)) {
     pushIssue(context, `${path}.aggregate`, 'invalid_aggregate', 'aggregate must be an object');
@@ -526,7 +537,7 @@ const validateAggregateRule = (
     validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
   }
 
-  if (!requireValueOrPath(rule, path, context)) return;
+  if (validateSource(rule, path, context, depth) === null) return;
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   const value = rule.value;
@@ -567,7 +578,7 @@ const validateArrayRule = (
       );
     }
   }
-  validateScopeRef(rule, 'field', path, context, depth);
+  validateField(rule, path, context, depth);
 
   validateWindow(rule, path, context, depth);
 
@@ -665,9 +676,7 @@ const validateDateRule = (
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Date rule requires a string field');
   }
-  validateScopeRef(rule, 'field', path, context, depth);
-  validateScopeRef(rule, 'path', path, context, depth);
-  validateAmountRefs(rule, path, context, depth);
+  validateField(rule, path, context, depth);
 
   if (typeof rule.dateOperator !== 'string' || !DATE_OPERATORS.has(rule.dateOperator)) {
     pushIssue(context, `${path}.dateOperator`, 'invalid_date_operator', 'Unknown date operator');
@@ -708,12 +717,12 @@ const validateDateRule = (
     return;
   }
 
-  if (!requireValueOrPath(rule, path, context)) return;
+  if (validateSource(rule, path, context, depth) === null) return;
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
   if (isDateExpr(rule.value)) {
-    validateDateExpr(rule.value, operator, `${path}.value`, context);
+    validateDateExpr(rule.value, operator, `${path}.value`, context, depth);
     return;
   }
 
@@ -740,7 +749,7 @@ const validateDateRule = (
     }
     (rule.value as unknown[]).forEach((item, i) => {
       if (isDateExpr(item)) {
-        validateDateExpr(item, operator, `${path}.value[${i}]`, context);
+        validateDateExpr(item, operator, `${path}.value[${i}]`, context, depth);
       } else if (isDateInputValue(item) && !parseDateValue(item, 'UTC').isValid()) {
         pushIssue(
           context,
@@ -776,7 +785,12 @@ const validateDateRule = (
 };
 
 // --- v2.6 date-expression validation ---
-const validateRelativeUnits = (units: unknown, path: string, context: ValidationContext): void => {
+const validateRelativeUnits = (
+  units: unknown,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
   if (!isPlainObject(units) || Object.keys(units).length === 0) {
     pushIssue(
       context,
@@ -796,18 +810,23 @@ const validateRelativeUnits = (units: unknown, path: string, context: Validation
       );
       continue;
     }
-    if (isPathRef(magnitude)) continue;
+    // An amount is a literal number or a value source; a `{ value }` is checked like a literal.
+    const form = isPlainObject(magnitude)
+      ? validateSource(magnitude, `${path}.${key}`, context, depth)
+      : 'literal';
+    if (form === null || form === 'path' || form === 'bind') continue;
+    const amount = form === 'value' ? (magnitude as Record<string, unknown>).value : magnitude;
     if (
-      typeof magnitude !== 'number' ||
-      !Number.isFinite(magnitude) ||
-      magnitude < 0 ||
-      (isCalendarUnit(key) && !Number.isInteger(magnitude))
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      amount < 0 ||
+      (isCalendarUnit(key) && !Number.isInteger(amount))
     ) {
       pushIssue(
         context,
         `${path}.${key}`,
         'invalid_relative_magnitude',
-        `Relative magnitudes must be positive numbers (got ${String(magnitude)})`,
+        `Relative magnitudes must be positive numbers (got ${String(amount)})`,
       );
     }
   }
@@ -824,11 +843,12 @@ const validateDateExpr = (
   operator: DateOperator,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
   const isRange = isRangeOperator(operator);
 
   if (isRollingExpr(expr)) {
-    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context);
+    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context, depth);
     return;
   }
 
@@ -861,30 +881,6 @@ const validateDateExpr = (
   pushIssue(context, path, 'invalid_date_expression', 'Unrecognized date expression');
 };
 
-const requireValueOrPath = (
-  rule: Record<string, unknown>,
-  path: string,
-  context: ValidationContext,
-): boolean => {
-  const sources = [
-    'value' in rule && rule.value !== undefined,
-    typeof rule.path === 'string',
-    typeof rule.bind === 'string',
-  ].filter(Boolean).length;
-
-  if (sources > 1) {
-    pushIssue(context, path, 'ambiguous_value_source', 'Rule takes one of value, path or bind');
-    return false;
-  }
-
-  if (sources === 0) {
-    pushIssue(context, path, 'missing_value_source', 'Rule requires value, path or bind');
-    return false;
-  }
-
-  return true;
-};
-
 const forbidValueAndPath = (
   rule: Record<string, unknown>,
   path: string,
@@ -905,7 +901,7 @@ const targetSlug = (target: RuleTarget): string =>
   target === 'toPrisma' ? 'prisma' : target === 'toSql' ? 'sql' : 'check';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+  isPlainObjectLodash(value);
 
 const isOrderedRuleValue = (value: unknown): value is OrderedRuleValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;

@@ -1,17 +1,20 @@
 import { get } from 'lodash-es';
+import { resolveDateConfig } from '../date';
+import type { ResolvedDateConfig } from '../dateExpr';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
-import type { ValueSourceOf } from '../types';
-import type { ReadRef } from '../valueSource';
+import type { ValueSourceFields } from '../types';
+import { compileBinding, matchSource, type ReadSource } from '../valueSource';
 import type { BuildOptions } from './types';
 
-/** A `path` comparison value: a context read. Prisma WHERE has no column-to-column comparison. */
-export const readPathValue = (ref: string, options?: BuildOptions): unknown => {
+/** A path on the Prisma rail: a context read. Prisma WHERE has no column-to-column comparison
+ *  or arithmetic, so a row (`$.`) ref has no form here. */
+const readPathValue = (ref: string, options?: BuildOptions): unknown => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toPrisma'));
     throw new Error(
-      `Prisma WHERE has no column-to-column comparison for path '${ref}'. ` +
-        `Use prisma.$queryRaw for field-to-field filtering.`,
+      `Path '${ref}' is not supported by toPrisma(): Prisma WHERE has no column-to-column ` +
+        `comparison or arithmetic. Use toSql() or prisma.$queryRaw.`,
     );
   }
   if (!options?.context) {
@@ -22,31 +25,21 @@ export const readPathValue = (ref: string, options?: BuildOptions): unknown => {
   return get(options.context, ref);
 };
 
-/** Reads an offset or magnitude `{ path }`: context only — Prisma WHERE has no arithmetic. */
-export const amountReader =
-  (options?: BuildOptions): ReadRef =>
-  (ref) => {
-    if (parseScopeRef(ref))
-      throw new Error(
-        `Row ref '${ref}' in an offset or magnitude is not supported by toPrisma(); ` +
-          `evaluate with check() or compile with toSql()`,
-      );
-    return readPathValue(ref, options);
-  };
+/** A value source on the Prisma rail: its value, a context read, or an unresolved bind. */
+export const readSource = (source: ValueSourceFields<unknown>, options?: BuildOptions): unknown =>
+  matchSource<unknown>(source, {
+    value: (value) => value,
+    path: (ref) => readPathValue(ref, options),
+    bind: (name, optional) => compileBinding(name, optional, 'toPrisma'),
+  });
 
-/** An offset's source: its value, a context read, or an unresolved bind — null when optional,
- *  an error otherwise. A row (`$.`) read has no Prisma form. */
-export const readOffset = (
-  offset: ValueSourceOf<unknown>,
-  field: string,
-  options?: BuildOptions,
-): unknown => {
-  if (offset.value !== undefined) return offset.value;
-  if (offset.bind !== undefined) {
-    if (offset.bindOptional === true) return null;
-    throw new Error(
-      `Unresolved binding '${offset.bind}' for the offset on '${field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
-    );
-  }
-  return amountReader(options)(offset.path as string);
-};
+export const prismaRead =
+  (options?: BuildOptions): ReadSource =>
+  (source) =>
+    readSource(source, options);
+
+export const dateConfigOf = (options?: BuildOptions): ResolvedDateConfig =>
+  resolveDateConfig(
+    { now: options?.now, timeZone: options?.timeZone, weekStart: options?.weekStart },
+    prismaRead(options),
+  );

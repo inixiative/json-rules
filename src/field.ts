@@ -1,10 +1,12 @@
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
+import { bigIntToNumber } from './number';
+import { addOffset, isNegatedOffsetOperator, offsetAmount } from './offset';
 import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
 import { readField, type Scopes } from './scope';
 import type { Rule, RuleValue } from './types';
-import { addOffset, bigIntToNumber, offsetAmount, readValueSource } from './valueSource';
+import { readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
 // SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
@@ -110,9 +112,11 @@ export const checkField = (
   // An offset moved nothing: the comparison fails closed, as SQL's NULL arithmetic does. A
   // negation still keeps a null field (the 2.19.0 ruling).
   if (condition.offset !== undefined && (value === null || value === undefined)) {
-    const negated =
-      condition.operator === Operator.notEquals || condition.operator === Operator.notBetween;
-    if (negated && (fieldValue === null || fieldValue === undefined)) return true;
+    if (
+      isNegatedOffsetOperator(condition.operator) &&
+      (fieldValue === null || fieldValue === undefined)
+    )
+      return true;
     return condition.error || `${condition.field} has no comparison value`;
   }
 

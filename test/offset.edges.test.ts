@@ -233,8 +233,8 @@ describe('float offsets add as JS doubles on every rail', () => {
 describe('toPrisma refuses a date rule with no comparison source', () => {
   test('throws like toSql', () => {
     const r = rule({ field: 'ts', dateOperator: 'before' });
-    expect(() => toSql(r)).toThrow('No value or path');
-    expect(() => toPrisma(r)).toThrow('No value or path');
+    expect(() => toSql(r)).toThrow('No value, path or bind');
+    expect(() => toPrisma(r)).toThrow('No value, path or bind');
   });
 });
 

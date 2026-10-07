@@ -4,14 +4,16 @@ import {
   resolveCaseInsensitive,
   supportsQueryMode,
 } from '../engineGlobals';
+import { orderPair } from '../number';
+import { isNegatedOffsetOperator } from '../offset';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
-import { addOffset, offsetAmount } from '../valueSource';
 import { matchNothing } from './logical';
 import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
+import { offsetNumber } from './offset';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
-import { readOffset, readPathValue } from './valueSource';
+import { readSource } from './valueSource';
 
 /**
  * Whether the emptiness operators may compare this column against `''`. Only a
@@ -138,8 +140,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   // An offset moved nothing: no row matches, as SQL's NULL arithmetic; a negation keeps the
   // absent rows only.
   if (rule.offset !== undefined && resolveRuleValue(rule, options) === null) {
-    const negated = rule.operator === Operator.notEquals || rule.operator === Operator.notBetween;
-    if (!negated || !arms.length) return matchNothing();
+    if (!isNegatedOffsetOperator(rule.operator) || !arms.length) return matchNothing();
     return arms.length === 1 ? arms[0] : { OR: arms };
   }
 
@@ -155,34 +156,15 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   return filter;
 };
 
-/**
- * Resolve the comparison value for a rule.
- * - rule.value → use literal value
- * - rule.path starting with '$.' → throw: Prisma WHERE has no column-to-column comparison
- * - rule.path (context ref) → look up from options.context via lodash get
- */
+/** The comparison value: the rule's value source, coerced to the field, moved by its offset. */
 const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
   const value = compileFieldLiteral(
     rule,
-    resolveRawValue(rule, options),
+    readSource(rule, options),
     fieldWalk(rule, options),
     'toPrisma',
   );
-  if (rule.offset === undefined) return value;
-  const amount = offsetAmount(readOffset(rule.offset, rule.field, options));
-  return amount === null ? null : addOffset(value, amount);
-};
-
-const resolveRawValue = (rule: Rule, options?: BuildOptions): unknown => {
-  if (rule.value !== undefined) return rule.value;
-  if (rule.bind !== undefined) {
-    if (rule.bindOptional === true) return null;
-    throw new Error(
-      `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
-    );
-  }
-  if (rule.path) return readPathValue(rule.path, options);
-  throw new Error(`Rule for field '${rule.field}' has neither value nor path set`);
+  return rule.offset === undefined ? value : offsetNumber(value, rule.offset, options);
 };
 
 const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
@@ -247,23 +229,15 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
         `Operator 'notMatches' has no Prisma equivalent. Use prisma.$queryRaw for regex filtering.`,
       );
 
-    case Operator.between: {
-      const v = val();
-      if (!Array.isArray(v) || v.length !== 2) {
-        throw new Error('between operator requires an array of two values');
-      }
-      const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
-      return { gte: min, lte: max };
-    }
-
-    // The POSITIVE range: `buildFieldRule` negates the whole clause (see RANGE_COMPLEMENT),
-    // because a field filter cannot carry the negation of a two-sided range.
+    // The POSITIVE range for both: `buildFieldRule` negates the whole clause for notBetween
+    // (see RANGE_COMPLEMENT), because a field filter cannot carry a two-sided negation.
+    case Operator.between:
     case Operator.notBetween: {
       const v = val();
       if (!Array.isArray(v) || v.length !== 2) {
-        throw new Error('notBetween operator requires an array of two values');
+        throw new Error(`${rule.operator} operator requires an array of two values`);
       }
-      const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
+      const [min, max] = orderPair(v);
       return { gte: min, lte: max };
     }
 

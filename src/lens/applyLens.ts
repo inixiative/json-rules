@@ -1,8 +1,8 @@
 import { ArrayOperator } from '../operator.ts';
 import { own } from '../own';
 import { parseScopeRef, resolveScopeRef } from '../scope';
+import { valueRefs } from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
-import { valueRefs } from '../valueSource';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import { resolvePolicy, resolveVisit } from './policy.ts';

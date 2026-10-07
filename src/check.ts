@@ -5,7 +5,6 @@ import { checkField } from './field';
 import { ArrayOperator } from './operator';
 import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
-import { assertConditionDepth } from './traverse';
 import type {
   AggregateRule,
   ArrayRule,
@@ -46,7 +45,6 @@ export const check = <TData extends CheckData>(
   data: TData,
   options?: CheckOptions,
 ): boolean | string => {
-  assertConditionDepth(conditions);
   if (Array.isArray(data)) validateRootArrayShape(conditions);
   return evaluate(conditions, data, {
     ...options,

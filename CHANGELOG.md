@@ -73,8 +73,7 @@ on Json, and every negation on a Json path (which keeps absent paths).
 
 - **A value ref must read a column.** A `path` (or offset / amount ref) ending on a relation
   passed the lens gate, and `check()` printed the whole related row — hidden columns included —
-  in its error text. The gate rejects it, `toSql` refuses it, and error text names an object
-  operand instead of printing it.
+  in its error text. The gate rejects it and `toSql` refuses it.
 - **A to-many relation takes array operators only.** `posts contains { … }` (or `equals`, `in`) passed
   the gate and compared whole child rows in `check()` — hidden columns included; the gate, `toSql`
   and `toPrisma` now refuse a field or date rule on a to-many relation.
@@ -85,9 +84,6 @@ on Json, and every negation on a Json path (which keeps absent paths).
   model's rows with only its own visit's `where`; the grants above it (the root `where`, a
   parent relation's) now carry down through the inverse relation, and a grant no inverse can
   carry offers nothing.
-- **A condition nests at most 256 levels deep** on every entry point (`check`, `toSql`,
-  `toPrisma`, `narrowRule`, `validateRuleInLens`; `validateRule` reports `condition_too_deep`): a
-  deeper one overflowed the stack mid-evaluation.
 - **The lens gate refuses a node of two kinds** (`operator` and `dateOperator`, `arrayOperator`
   and `aggregate`, logical and leaf), as `validateRule` does — one shape detector serves both.
 - **`matches` refuses patterns that backtrack exponentially** (`(a+)+`, `(a|aa)*`) on every rail;

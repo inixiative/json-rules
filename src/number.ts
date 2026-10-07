@@ -1,4 +1,3 @@
-import { showValue } from './showValue';
 import type { OrderedRuleValue } from './types';
 
 // BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
@@ -44,7 +43,7 @@ export const readPair = (value: unknown, operator: string): [unknown, unknown] =
 /** A set operand: a list, or an error — a scalar is not a set. */
 export const readSet = (value: unknown): unknown[] => {
   if (!Array.isArray(value))
-    throw new Error(`in / notIn requires a list (got ${showValue(value)})`);
+    throw new Error(`in / notIn requires a list (got ${JSON.stringify(value)})`);
   return value;
 };
 

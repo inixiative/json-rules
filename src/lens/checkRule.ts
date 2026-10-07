@@ -4,13 +4,7 @@ import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
-import {
-  assertConditionDepth,
-  conditionShape,
-  isLogicalNode,
-  valueRefRoles,
-  visitCondition,
-} from '../traverse';
+import { conditionShape, isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { Condition, DateRule, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
@@ -268,7 +262,6 @@ export const validateRuleInLens = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
 ): ValidationResult => {
-  assertConditionDepth(rule);
   const policy = resolvePolicy(lensOrNarrowing);
   return validationResult(
     checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),

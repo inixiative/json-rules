@@ -267,12 +267,6 @@ describe('a relation is never read as a value', () => {
       toSql(rule({ field: 'title', operator: 'equals', path: '$.author' }), opts),
     ).toThrow('is a relation');
   });
-
-  test("check()'s error text never prints an object operand", () => {
-    const row = { title: 'x', author: { id: 'u1', salary: 424242 } };
-    const result = check(rule({ field: 'title', operator: 'equals', path: '$.author' }), row);
-    expect(result).toBe('title must equal an object');
-  });
 });
 
 describe("an option list on a relation reads only the rows under its ancestors' grants", () => {

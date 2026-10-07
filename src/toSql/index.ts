@@ -1,6 +1,5 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { FieldMapSet } from '../fieldMap/types';
-import { assertConditionDepth } from '../traverse';
 import type { Condition, DateConfig } from '../types';
 import { buildCondition } from './condition';
 import type { BuilderState, FieldMap, SqlResult } from './types';
@@ -37,7 +36,6 @@ export const builderState = (options?: SqlBuildOptions): BuilderState => {
 };
 
 export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResult => {
-  assertConditionDepth(condition);
   const state = builderState(options);
   const sql = buildCondition(condition, state);
   return { sql, params: state.params, joins: state.joins ?? [] };

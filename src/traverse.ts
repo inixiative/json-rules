@@ -37,23 +37,6 @@ const childSlots = (node: ConditionNode): Slot[] => [
   ),
 ];
 
-/** The deepest a condition may nest: every rail recurses through it, so a deeper one (an
- *  untrusted rule can be any depth) would overflow the stack mid-evaluation. */
-export const MAX_CONDITION_DEPTH = 256;
-
-/** Throws when a condition nests deeper than MAX_CONDITION_DEPTH. Iterative, so measuring it
- *  can't overflow either. */
-export const assertConditionDepth = (condition: Condition): void => {
-  const stack: [Condition, number][] = [[condition, 1]];
-  while (stack.length) {
-    const [node, depth] = stack.pop() as [Condition, number];
-    if (!isObjCondition(node)) continue;
-    if (depth > MAX_CONDITION_DEPTH)
-      throw new Error(`A condition may nest at most ${MAX_CONDITION_DEPTH} levels deep`);
-    for (const { child } of childSlots(node as ConditionNode)) stack.push([child, depth + 1]);
-  }
-};
-
 export const isLogicalNode = (node: ConditionNode): boolean =>
   'all' in node || 'any' in node || 'if' in node;
 

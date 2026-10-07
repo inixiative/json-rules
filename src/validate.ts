@@ -32,7 +32,7 @@ import {
 } from './operatorCatalog';
 import { unsafePattern } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
-import { assertConditionDepth, conditionShape } from './traverse';
+import { conditionShape } from './traverse';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { extremalRewrite, hasWindow } from './window';
@@ -78,12 +78,6 @@ export const validateRule = (
     errors: [],
   };
 
-  try {
-    assertConditionDepth(condition as Condition);
-  } catch (error) {
-    pushIssue(context, '$', 'condition_too_deep', (error as Error).message);
-    return validationResult(context.errors);
-  }
   validateCondition(condition, '$', context, 1);
   return validationResult(context.errors);
 };

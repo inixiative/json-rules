@@ -17,7 +17,6 @@ import {
 } from './operatorCatalog';
 import { readPattern } from './pattern';
 import { readField, type Scopes } from './scope';
-import { showValue } from './showValue';
 import type { DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
@@ -159,7 +158,7 @@ export const checkField = (
   }
 
   const getError = (op: string) =>
-    condition.error || `${condition.field} ${op}${needsValue ? ` ${showValue(value)}` : ''}`;
+    condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
   const lower = (v: unknown): unknown => (ci && typeof v === 'string' ? v.toLowerCase() : v);

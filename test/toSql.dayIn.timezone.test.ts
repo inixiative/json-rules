@@ -46,7 +46,9 @@ describe('toSql dayIn/dayNotIn honor the timezone policy', () => {
       { field: 'ts', dateOperator: 'dayIn', value: ['sunday'] } as never,
       { timeZone: 'America/New_York' },
     );
-    expect(sql).toBe(`EXTRACT(DOW FROM (("ts")::timestamptz AT TIME ZONE $1)) = ANY($2)`);
+    expect(sql).toBe(
+      `EXTRACT(DOW FROM (to_timestamp(EXTRACT(EPOCH FROM "ts")) AT TIME ZONE $1)) = ANY($2)`,
+    );
     expect(params).toEqual(['America/New_York', [0]]);
   });
 

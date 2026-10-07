@@ -11,7 +11,7 @@ import { orderPair } from '../number';
 import { DateOperator } from '../operator';
 import type { DateExpr, DateRule } from '../types';
 import { compareSql, noOperandSql, ORDERED_SQL, orNull, rangeSql } from './compare';
-import { resolveFieldSql } from './join';
+import { type FieldSql, resolveField } from './join';
 import { offsetDate } from './offset';
 import { nextParam } from './params';
 import { asInstant, readsRow, shiftDate } from './shift';
@@ -25,30 +25,44 @@ import {
   resolveSource,
 } from './valueSource';
 
+// A known bound binds as an ISO instant, which compares against the column as stored. A bound
+// read per row, or a date stored as text, compares as instants on both sides — independent of
+// the column types and the session zone.
+const asOperand = (rhs: ResolvedRhs): ResolvedRhs =>
+  rhs.type === 'column' && !rhs.computed
+    ? { type: 'column', sql: asInstant(rhs), computed: true }
+    : rhs;
+
+const sides = (field: FieldSql, ends: ResolvedRhs[]): { lhs: string; ends: ResolvedRhs[] } => {
+  const perRow = ends.some((end) => end.type === 'column');
+  const text = field.shape === 'json-path' || field.shape === 'text';
+  return perRow || text
+    ? { lhs: asInstant(field), ends: ends.map(asOperand) }
+    : { lhs: field.sql, ends };
+};
+
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
-  const field = resolveFieldSql(rule.field, state);
+  const field = resolveField(rule.field, state);
   const ordered = ORDERED_SQL[rule.dateOperator];
-  if (ordered)
-    return compareSql(field, ordered.symbol, resolvePoint(rule, state), !!ordered.negated, state);
+  if (ordered) {
+    const { lhs, ends } = sides(field, [resolvePoint(rule, state)]);
+    return compareSql(lhs, ordered.symbol, ends[0], !!ordered.negated, state);
+  }
+
+  const range = (pair: [ResolvedRhs, ResolvedRhs] | null, negated: boolean): string => {
+    if (!pair) return rangeSql(field.sql, null, negated, state);
+    const { lhs, ends } = sides(field, pair);
+    return rangeSql(lhs, ends as [ResolvedRhs, ResolvedRhs], negated, state);
+  };
 
   switch (rule.dateOperator) {
     case DateOperator.within:
     case DateOperator.notWithin:
-      return rangeSql(
-        field,
-        resolveWindow(rule, state),
-        rule.dateOperator === DateOperator.notWithin,
-        state,
-      );
+      return range(resolveWindow(rule, state), rule.dateOperator === DateOperator.notWithin);
 
     case DateOperator.between:
     case DateOperator.notBetween:
-      return rangeSql(
-        field,
-        resolveRange(rule, state),
-        rule.dateOperator === DateOperator.notBetween,
-        state,
-      );
+      return range(resolveRange(rule, state), rule.dateOperator === DateOperator.notBetween);
 
     case DateOperator.dayIn:
     case DateOperator.dayNotIn: {
@@ -59,13 +73,13 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
           `A weekday list read from the row ('${rule.path}') is not supported by toSql()`,
         );
       const numbers = dayNumbers(source.value);
-      if (numbers === null) return noOperandSql(field, negated);
+      if (numbers === null) return noOperandSql(field.sql, negated);
       const zone = nextParam(state, dateConfigOf(state).timeZone);
       const days = nextParam(state, numbers);
       const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
       return rule.dateOperator === DateOperator.dayIn
         ? `${dow} = ANY(${days})`
-        : orNull(field, `${dow} <> ALL(${days})`);
+        : orNull(field.sql, `${dow} <> ALL(${days})`);
     }
 
     default:

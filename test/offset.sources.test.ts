@@ -172,7 +172,7 @@ describe('a date offset from each source', () => {
     expect(getWhere(toPrisma(fifth, { now: NOW }))).toEqual({
       ts: { gte: d('2026-10-05T00:00:00Z') },
     });
-    expect(toSql(fifth, { now: NOW }).params).toEqual([d('2026-10-05T00:00:00Z')]);
+    expect(toSql(fifth, { now: NOW }).params).toEqual([d('2026-10-05T00:00:00Z').toISOString()]);
   });
 
   test('bind', () => {
@@ -202,7 +202,7 @@ describe('a date offset from each source', () => {
     });
     const context = { anchor: '2026-10-10T00:00:00Z', grace: { ago: { days: 3 } } };
     expect(check(r, ts, { context })).toBe(true);
-    expect(toSql(r, { context }).params).toEqual([d('2026-10-07T00:00:00Z')]);
+    expect(toSql(r, { context }).params).toEqual([d('2026-10-07T00:00:00Z').toISOString()]);
   });
 
   test('a row path is check-only', () => {

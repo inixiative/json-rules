@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+datasource db {
+  provider = "postgresql"
+}
+model User {
+  id        Int       @id
+  name      String?
+  age       Int?
+  score     Float?
+  createdAt DateTime?
+  meta      Json?
+  tags      String[]
+  orgId     Int?
+  org       Org?      @relation(fields: [orgId], references: [id])
+  posts     Post[]
+  @@map("users")
+}
+model Org {
+  id        Int       @id
+  name      String?
+  plan      String?
+  seats     Int?
+  foundedAt DateTime?
+  settings  Json?
+  parentId  Int?
+  parent    Org?      @relation("tree", fields: [parentId], references: [id])
+  children  Org[]     @relation("tree")
+  users     User[]
+  @@map("orgs")
+}
+model Post {
+  id       Int     @id
+  authorId Int
+  views    Int?
+  title    String?
+  author   User    @relation(fields: [authorId], references: [id])
+  @@map("posts")
+}

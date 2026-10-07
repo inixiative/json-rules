@@ -37,6 +37,71 @@ Every validator returns `{ ok, errors: { path, message, code }[] }` and has an `
 form that throws. Lens violations carry codes (`not_in_lens`, `operator_kind_mismatch`,
 `invalid_value`, `value_not_allowed`, …).
 
+`getAggregateOperators()` takes no target: every target compiles every aggregate comparison
+(`toPrisma` gained `notBetween`), and the `unsupported_prisma_aggregate_operator` code is gone.
+
+### Breaking: Json null checks on Prisma need `Prisma.AnyNull`
+
+A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent; `check()`
+reads all three as null. Prisma matches them together only with its `AnyNull` instance, which is
+not plain data, so you hand it to the engine once, beside your client:
+
+```ts
+import { engineGlobals } from '@inixiative/json-rules';
+import { Prisma } from './generated/client';
+
+engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
+```
+
+`toPrisma` throws when a rule needs it and it is not set: null checks, emptiness and existence
+on Json, and every negation on a Json path (which keeps absent paths).
+
+### Breaking: the rails agree
+
+`check()`, `toSql` on Postgres, and `toPrisma` on Prisma 7 now agree on every rule they all
+compile. `test/rails.agreement.test.ts` runs all three against one database: PGlite for SQL,
+and real Prisma through PGlite's socket server with a FieldMap that `@inixiative/prisma-map`
+reads off the generated client.
+
+- **An absent path reads as NULL in `check()`**, as a column does in SQL: a missing key or a
+  path through an absent to-one relation. `org.name equals null` matches a user with no org;
+  `notIn [null]` no longer does. `toPrisma` adds the relation's `{ is: null }` arm to
+  `equals null`.
+- **A NULL or absent array is empty** in `check()` (it threw "must be an array"), and an
+  aggregate skips NULL items, as SQL's `SUM` / `AVG` and Prisma's `_sum` / `_avg` do (it threw).
+- **A string or set operator with nothing to compare against** (a context path or optional bind
+  that reads nothing) matches no row, and its negation keeps the NULL fields only — as ordered
+  comparisons already did. `toSql` bound the string `'null'` (so `contains` matched "nullable")
+  and `toPrisma` emitted `contains: null`, which Prisma rejects.
+- **A to-many relation inside a plain field path is an error** on both compilers
+  (`posts.title equals …`): `toSql` matched any child and `toPrisma` emitted an invalid filter.
+  Compare its rows with an array rule on `posts`.
+- **Prisma relation aggregates keep parents with no children** (their sum and average are 0).
+- **An implication with a NULL antecedent** holds on every rail (`NOT(if)` was NULL in SQL).
+
+Prisma filters by column kind, from the map (a stamped `coerceType` is the fallback):
+
+- **Json**: `contains` / `startsWith` / `endsWith` compile to `string_contains` / … ; `in` /
+  `notIn` to one `equals` / `not` per value; negations on a path keep absent paths.
+- **Scalar lists**: `contains` compiles to `has`; `empty` / `notEmpty` to `isEmpty` (a NULL list
+  is empty). Element conditions over a list or a Json array have no Prisma form and throw.
+- **`caseInsensitive`** applies to text only; `mode: 'insensitive'` on an Int column was a
+  Prisma error, and `toSql` no longer emits `LOWER()` on a non-text column.
+
+On the SQL rail:
+
+- **A whole Json column's JSON `null` is NULL** (`NULLIF(col, 'null'::jsonb)`): `meta exists` no
+  longer matches it.
+- **A Json path compared against a number compares numerically**; it compared `->>` text, so
+  `'3' > '25'`.
+- **A scalar list `contains`** compiles to `array_position(col, $n) IS NOT NULL` (it emitted
+  `LIKE` on an array).
+- **No session-zone dependence.** A `Date` parameter binds as its ISO-8601 instant (drivers
+  serialize a `Date` in the host zone, which a `timestamp` column then reads as wall time). A
+  date compared against a per-row operand, or a weekday, reads a DateTime column through its
+  epoch, which a `timestamp` column holding UTC wall time and a `timestamptz` share; it was cast
+  `::timestamptz` through the session zone.
+
 ### Fixed
 
 - **`narrowRule` (was `applyLens`) skipped grants on a relation node with no `condition`**
@@ -63,6 +128,8 @@ form that throws. Lens violations carry codes (`not_in_lens`, `operator_kind_mis
 ### Output changes
 
 - `toPrisma` leaves a single-arm OR unwrapped (`{ a: … }`, not `{ OR: [{ a: … }] }`).
+- `toPrisma` writes `notContains` as `{ NOT: { f: { contains } } }` for every column kind.
+- `toSql` binds `Date` parameters as ISO strings.
 - A `toSql` array or aggregate column is alias-qualified when a map is given.
 
 ## 2.27.0 — one value-source type in every slot; `offset`; amounts and `timeZone` read any source

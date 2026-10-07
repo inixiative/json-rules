@@ -176,3 +176,6 @@ dist
 
 # Local drafts / scratch
 .scratch/
+
+# Prisma client and DDL generated for the rail tests (bun run generate:rails)
+test/rails/generated/

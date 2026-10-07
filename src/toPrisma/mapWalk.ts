@@ -109,6 +109,41 @@ export const optionalToOneHops = (field: string, map: FieldMap, rootModel: strin
     .hops.filter((hop) => !hop.entry.isList && hop.entry.isRequired === false)
     .map((hop) => hop.prefix);
 
+/**
+ * What a field reads, for the operators whose form depends on it: `text` (a String column),
+ * `json` (a whole Json column), `json-path` (inside one), `list` (a scalar list), `scalar` (any
+ * other column), or `unknown` (no map, or a path the map doesn't declare).
+ */
+export type FieldShape = 'text' | 'json' | 'json-path' | 'list' | 'scalar' | 'unknown';
+
+export const fieldShape = (walk: MapWalkResult | undefined): FieldShape => {
+  if (walk?.kind === 'json-path') return 'json-path';
+  if (walk?.kind !== 'direct' || walk.entry.kind === 'object') return 'unknown';
+  if (walk.entry.isList) return 'list';
+  return kindShape(walk.entry.type);
+};
+
+const kindShape = (kind: string): FieldShape => {
+  if (kind === FieldKind.Json) return 'json';
+  return kind === FieldKind.String ? 'text' : 'scalar';
+};
+
+/** A rule's field shape: the map's authority, a stamped `coerceType` the fallback. */
+export const ruleShape = (
+  rule: Pick<Rule, 'field' | 'coerceType'>,
+  map: FieldMap | undefined,
+  model: string | undefined,
+): FieldShape => {
+  const shape = fieldShape(walkWith(rule.field, map, model));
+  return shape === 'unknown' && rule.coerceType !== undefined ? kindShape(rule.coerceType) : shape;
+};
+
+/** A to-many relation inside a plain field path: which child it reads is undefined. */
+export const toManyHopError = (field: string, hop: MapHop): Error =>
+  new Error(
+    `'${field}' reads through the to-many relation '${hop.prefix}'; compare its rows with an arrayOperator rule on '${hop.prefix}'.`,
+  );
+
 /** The error for a path that continues past a non-Json column. */
 export const pastScalarError = (field: string, column: string): Error =>
   new Error(`'${field}' continues past '${column}', which is not a Json column`);

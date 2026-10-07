@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { engineGlobals } from '../src/engineGlobals';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -9,6 +10,11 @@ import { getWhere } from './fixtures/helpers';
 // `equals`: premature end of input. Expected ISO-8601 DateTime."), so an authored
 // `sourceUpdatedAt isEmpty` was a guaranteed runtime 500. The ''-branch belongs to
 // String (and Json) columns only; everything typed compiles to a pure null check.
+// Stands in for a client's Prisma.AnyNull: Prisma knows it by identity.
+const AnyNull = new (class AnyNull {})();
+beforeAll(() => engineGlobals.set('prismaOptions.anyNull', AnyNull));
+afterAll(() => engineGlobals.reset());
+
 const map: FieldMap = {
   models: {
     Enrichment: {
@@ -65,7 +71,9 @@ describe('toPrisma isEmpty/notEmpty — the ""-branch is String-only', () => {
 
   test('Json keeps the two-branch shape ("" is a representable JSON value)', () => {
     const where = getWhere(toPrisma({ field: 'metadata', operator: Operator.isEmpty }, opts));
-    expect(where).toEqual({ OR: [{ metadata: { equals: null } }, { metadata: { equals: '' } }] });
+    expect(where).toEqual({
+      OR: [{ metadata: { equals: AnyNull } }, { metadata: { equals: '' } }],
+    });
   });
 
   test('a to-one relation path resolves the LEAF column type', () => {
@@ -86,7 +94,9 @@ describe('toPrisma isEmpty/notEmpty — the ""-branch is String-only', () => {
     const where = getWhere(
       toPrisma({ field: 'metadata', operator: Operator.isEmpty, coerceType: 'Json' }),
     );
-    expect(where).toEqual({ OR: [{ metadata: { equals: null } }, { metadata: { equals: '' } }] });
+    expect(where).toEqual({
+      OR: [{ metadata: { equals: AnyNull } }, { metadata: { equals: '' } }],
+    });
   });
 
   test('with no type information at all, the legacy two-branch shape survives', () => {

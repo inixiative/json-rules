@@ -63,7 +63,7 @@ describe('toSql — notWithin keeps NULL rows', () => {
   it('negates BETWEEN and ORs an IS NULL arm', () => {
     const { sql, params } = toSql(notWithin as never, opts);
     expect(sql).toBe('("lastLoginAt" NOT BETWEEN $1 AND $2 OR "lastLoginAt" IS NULL)');
-    expect(params).toEqual([new Date('2026-07-26T00:00:00.000Z'), NOW]);
+    expect(params).toEqual(['2026-07-26T00:00:00.000Z', NOW.toISOString()]);
   });
 });
 

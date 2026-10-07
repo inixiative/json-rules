@@ -94,7 +94,7 @@ describe('toPrisma scalar operators', () => {
   it('notContains', () => {
     expect(
       getWhere(toPrisma({ field: 'email', operator: Operator.notContains, value: 'spam' })),
-    ).toEqual({ email: { not: { contains: 'spam' } } });
+    ).toEqual({ NOT: { email: { contains: 'spam' } } });
   });
 
   it('startsWith', () => {
@@ -285,12 +285,13 @@ describe('toPrisma map-aware traversal', () => {
     });
   });
 
-  it('json field after relation traversal', () => {
-    const result = toPrisma(
-      { field: 'posts.settings.theme', operator: Operator.equals, value: 'dark' },
-      { map: blogMap, model: 'User' },
-    );
-    expect(getWhere(result)).toEqual({ posts: { settings: { path: ['theme'], equals: 'dark' } } });
+  it('a json field through a to-many relation is an array rule', () => {
+    expect(() =>
+      toPrisma(
+        { field: 'posts.settings.theme', operator: Operator.equals, value: 'dark' },
+        { map: blogMap, model: 'User' },
+      ),
+    ).toThrow("reads through the to-many relation 'posts'");
   });
 
   it('relation traversal → nested relation filter (not JSON path)', () => {

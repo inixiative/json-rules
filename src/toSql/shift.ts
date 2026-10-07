@@ -7,8 +7,10 @@ import {
   RELATIVE_UNITS,
   type RelativeUnit,
 } from '../operatorCatalog';
+import type { FieldShape } from '../toPrisma/mapWalk';
 import type { Magnitude, RelativeUnits } from '../types';
 import { rowRef } from '../valueSource';
+import type { FieldSql } from './join';
 import { nextParam } from './params';
 import type { BuilderState } from './types';
 import {
@@ -27,11 +29,17 @@ const isRowRef = (magnitude: Magnitude | undefined): boolean =>
   typeof magnitude === 'object' && rowRef(magnitude) !== null;
 
 /**
- * A DateTime column as an instant. The SQL rail treats DateTime as `timestamptz`; a plain
- * `timestamp` column (Prisma's default) casts through the session zone, which Prisma keeps at
- * UTC — the zone it writes in — so both column types read the same instant.
+ * A date read from the row as an instant, whatever the session zone. A DateTime column goes
+ * through its epoch, which a `timestamp` column (UTC wall time, as Prisma writes it) and a
+ * `timestamptz` share; text — a JSON path — parses as `timestamptz`.
  */
-export const asInstant = (sql: string): string => `(${sql})::timestamptz`;
+export const asInstant = ({
+  sql,
+  shape,
+}: Pick<FieldSql, 'sql'> & { shape?: FieldShape }): string =>
+  shape === 'json-path' || shape === 'text'
+    ? `(${sql})::timestamptz`
+    : `to_timestamp(EXTRACT(EPOCH FROM ${sql}))`;
 
 /** True when any unit is read per row — so the shift must compile to SQL. */
 export const readsRow = (units: RelativeUnits): boolean => Object.values(units).some(isRowRef);
@@ -85,7 +93,9 @@ export const shiftDate = (
   }
   const base =
     rhs.type === 'column'
-      ? asInstant(rhs.sql)
+      ? rhs.computed
+        ? rhs.sql
+        : asInstant(rhs)
       : `${nextParam(state, rhs.value ?? null)}::timestamptz`;
   const z = nextParam(state, zone);
   const sign = direction === 1 ? '+' : '-';

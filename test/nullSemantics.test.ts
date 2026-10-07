@@ -189,7 +189,7 @@ describe('NULL semantics — toPrisma adds a null arm on nullable columns', () =
     expect(
       getWhere(toPrisma({ field: 'company', operator: Operator.notContains, value: 'ac' }, opts)),
     ).toEqual({
-      OR: [{ company: { not: { contains: 'ac' } } }, { company: { equals: null } }],
+      OR: [{ NOT: { company: { contains: 'ac' } } }, { company: { equals: null } }],
     });
   });
 

@@ -21,7 +21,7 @@ describe('toSql anchors context-path date values', () => {
     });
     expect(viaPath.sql).toBe(literal.sql);
     expect(viaPath.params).toEqual(literal.params);
-    expect(viaPath.params[0]).toBeInstanceOf(Date);
+    expect(viaPath.params[0]).toBe('2024-06-17T00:00:00.000Z');
   });
 
   it('between endpoints from a context path anchor per element', () => {

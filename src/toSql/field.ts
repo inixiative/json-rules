@@ -1,49 +1,69 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
+import { hasNoOperand } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
+import { NEGATED_OPERATORS, NO_VALUE_OPERATORS, RANGE_OPERATORS } from '../operatorCatalog';
 import {
-  NEGATED_COMPARISON_OPERATORS,
-  NO_VALUE_OPERATORS,
-  RANGE_OPERATORS,
-} from '../operatorCatalog';
-import { acceptsEmptyString, compileFieldLiteral, walkWith } from '../toPrisma/mapWalk';
+  acceptsEmptyString,
+  compileFieldLiteral,
+  type FieldShape,
+  walkWith,
+} from '../toPrisma/mapWalk';
 import type { Rule } from '../types';
 import { compareSql, noOperandSql, ORDERED_SQL, orNull as orNullSql, rangeSql } from './compare';
-import { resolveFieldSql } from './join';
+import { type FieldSql, resolveField, resolveFieldSql } from './join';
 import { offsetNumber } from './offset';
 import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
-import { dateConfigOf, isMissing, type ResolvedRhs, resolveSource } from './valueSource';
+import { dateConfigOf, type ResolvedRhs, resolveSource } from './valueSource';
 
 /** A field rule as SQL; `lhs` compiles a computed left-hand side (an aggregate) in the column's place. */
 export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): string => {
   if (rule.fuzzy)
     throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
-  const field = lhs ?? resolveFieldSql(rule.field, state);
+  const resolved: FieldSql =
+    lhs === undefined ? resolveField(rule.field, state) : { sql: lhs, shape: 'scalar' };
+  // A JSON value compared against a number compares as a number, as check() compares it; one
+  // that isn't a number reads NULL.
+  const fieldFor = (operand: unknown): string =>
+    resolved.shape === 'json-path' && isNumeric(operand)
+      ? `CASE WHEN jsonb_typeof(${resolveFieldSql(rule.field, state, { jsonb: true })}) = 'number' THEN (${resolved.sql})::numeric END`
+      : resolved.sql;
   // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
   const nullable = lhs === undefined;
-  if (RANGE_OPERATORS.includes(rule.operator))
+  if (RANGE_OPERATORS.includes(rule.operator)) {
+    const ends = resolveRange(rule, state);
     return rangeSql(
-      field,
-      resolveRange(rule, state),
+      fieldFor(ends?.map((end) => (end.type === 'value' ? end.value : undefined))),
+      ends,
       rule.operator === Operator.notBetween,
       state,
       nullable,
     );
+  }
   const rhs = resolveComparison(rule, state);
+  const field = fieldFor(rhs.type === 'value' ? rhs.value : undefined);
   const ordered = ORDERED_SQL[rule.operator];
   if (ordered) return compareSql(field, ordered.symbol, rhs, false, state);
-  // An offset compares against arithmetic: NULL there is nothing to compare against, never
-  // the is-null sentinel.
-  if (rule.offset !== undefined && isMissing(rhs))
-    return noOperandSql(field, NEGATED_COMPARISON_OPERATORS.includes(rule.operator), nullable);
+  // Nothing to compare against (see hasNoOperand): no row, or the NULL fields for a negation.
+  if (rhs.type === 'value' && hasNoOperand(rule, rhs.value))
+    return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator), nullable);
   const arithmetic = rhs.type === 'column' && rhs.computed === true;
-  // Case-insensitive compares strings, as check() lowercases only strings.
+  // Case-insensitive compares text, as check() lowercases only strings.
+  const text = (shape: FieldShape | undefined) => shape !== 'scalar' && shape !== 'list';
   const lower =
     resolveCaseInsensitive(rule.caseInsensitive) &&
-    (rhs.type === 'column' ? !arithmetic : typeof rhs.value === 'string');
+    text(resolved.shape) &&
+    (rhs.type === 'column' ? !arithmetic && text(rhs.shape) : typeof rhs.value === 'string');
   const lc = (expr: string): string => (lower ? `LOWER(${expr})` : expr);
+
+  // A scalar list contains a member, as check() reads a list; NULL elements and a NULL list
+  // contain nothing.
+  if (resolved.shape === 'list' && rule.operator === Operator.contains)
+    return `array_position(${field}, ${nextParam(state, rhs.type === 'value' ? rhs.value : null)}) IS NOT NULL`;
+  if (resolved.shape === 'list' && rule.operator === Operator.notContains)
+    return `array_position(${field}, ${nextParam(state, rhs.type === 'value' ? rhs.value : null)}) IS NULL`;
 
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
@@ -151,3 +171,9 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
     return rule.offset === undefined ? end : offsetNumber(end, rule.offset, state);
   }) as [ResolvedRhs, ResolvedRhs];
 };
+
+const isNumeric = (operand: unknown): boolean =>
+  typeof operand === 'number' ||
+  (Array.isArray(operand) &&
+    operand.some((item) => typeof item === 'number') &&
+    operand.every((item) => typeof item === 'number' || item === null || item === undefined));

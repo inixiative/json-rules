@@ -255,7 +255,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"createdAt" < $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('after', () => {
@@ -266,7 +266,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"updatedAt" > $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('onOrBefore', () => {
@@ -277,7 +277,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"expiresAt" <= $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('onOrAfter', () => {
@@ -288,7 +288,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"startDate" >= $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('between dates', () => {
@@ -300,7 +300,7 @@ describe('toSql', () => {
         value: [start, end],
       });
       expect(sql).toBe('"eventDate" BETWEEN $1 AND $2');
-      expect(params).toEqual([start, end]);
+      expect(params).toEqual([start.toISOString(), end.toISOString()]);
     });
 
     it('[P2] between dates auto-sorts reversed range', () => {
@@ -312,7 +312,7 @@ describe('toSql', () => {
         value: [end, start],
       });
       expect(sql).toBe('"eventDate" BETWEEN $1 AND $2');
-      expect(params).toEqual([start, end]);
+      expect(params).toEqual([start.toISOString(), end.toISOString()]);
     });
 
     it('[P2] notBetween dates auto-sorts reversed range', () => {
@@ -324,7 +324,7 @@ describe('toSql', () => {
         value: [end, start],
       });
       expect(sql).toBe('("eventDate" NOT BETWEEN $1 AND $2 OR "eventDate" IS NULL)');
-      expect(params).toEqual([start, end]);
+      expect(params).toEqual([start.toISOString(), end.toISOString()]);
     });
 
     it('dayIn', () => {
@@ -334,7 +334,7 @@ describe('toSql', () => {
         value: ['monday', 'wednesday', 'friday'],
       });
       expect(sql).toBe(
-        `EXTRACT(DOW FROM (("scheduledAt")::timestamptz AT TIME ZONE $1)) = ANY($2)`,
+        `EXTRACT(DOW FROM (to_timestamp(EXTRACT(EPOCH FROM "scheduledAt")) AT TIME ZONE $1)) = ANY($2)`,
       );
       expect(params).toEqual(['UTC', [1, 3, 5]]);
     });
@@ -346,7 +346,7 @@ describe('toSql', () => {
         value: ['saturday', 'sunday'],
       });
       expect(sql).toBe(
-        `(EXTRACT(DOW FROM (("deliveryDate")::timestamptz AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
+        `(EXTRACT(DOW FROM (to_timestamp(EXTRACT(EPOCH FROM "deliveryDate")) AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
       );
       expect(params).toEqual(['UTC', [6, 0]]);
     });

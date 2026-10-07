@@ -49,7 +49,7 @@ describe('toSql — date expressions', () => {
       cfg,
     );
     expect(r.sql).toBe('"completedAt" < $1');
-    expect(r.params).toEqual([new Date('2026-05-12T00:00:00.000Z')]);
+    expect(r.params).toEqual(['2026-05-12T00:00:00.000Z']);
   });
 
   test('within { this: month } emits BETWEEN with two bounds', () => {
@@ -58,9 +58,6 @@ describe('toSql — date expressions', () => {
       cfg,
     );
     expect(r.sql).toBe('"completedAt" BETWEEN $1 AND $2');
-    expect(r.params).toEqual([
-      new Date('2026-06-01T00:00:00.000Z'),
-      new Date('2026-06-30T23:59:59.999Z'),
-    ]);
+    expect(r.params).toEqual(['2026-06-01T00:00:00.000Z', '2026-06-30T23:59:59.999Z']);
   });
 });

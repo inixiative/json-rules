@@ -1004,7 +1004,7 @@ describe('validateRule() aggregate rules', () => {
     expect(result.errors[0].code).toBe('invalid_range_value');
   });
 
-  it('toPrisma rejects notBetween', () => {
+  it('toPrisma accepts notBetween', () => {
     const result = validateRule(
       {
         field: 'scores',
@@ -1014,8 +1014,7 @@ describe('validateRule() aggregate rules', () => {
       },
       { target: 'toPrisma' },
     );
-    expect(result.ok).toBe(false);
-    expect(result.errors[0].code).toBe('unsupported_prisma_aggregate_operator');
+    expect(result.ok).toBe(true);
   });
 
   it('toPrisma rejects path', () => {

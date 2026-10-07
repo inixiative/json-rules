@@ -7,10 +7,10 @@ import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
   type FieldKind,
-  NEGATED_COMPARISON_OPERATORS,
+  NEGATED_OPERATORS,
   NO_VALUE_OPERATORS,
   NUMERIC_KINDS,
-  ORDERED_OPERATORS,
+  OPERAND_OPERATORS,
   RANGE_OPERATORS,
 } from './operatorCatalog';
 import { readField, type Scopes } from './scope';
@@ -30,13 +30,13 @@ const isEmptyValue = (value: unknown): boolean =>
 // fails with the rule's normal error instead of throwing on one dirty row.
 /**
  * Nothing to compare against — no row matches on any rail, as SQL's NULL comparison and
- * arithmetic never do: an ordered comparison or a range that reads nothing (or a range missing
- * an end), or an offset that moved nothing. `equals` / `notEquals` against a plain null stay the
- * is-null sentinel.
+ * arithmetic never do: an ordered, string, pattern or set comparison or a range that reads
+ * nothing (or a range missing an end), or an offset that moved nothing. `equals` / `notEquals`
+ * against a plain null stay the is-null sentinel.
  */
 export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unknown): boolean => {
   const missing = value === null || value === undefined;
-  if (missing && (rule.offset !== undefined || ORDERED_OPERATORS.includes(rule.operator)))
+  if (missing && (rule.offset !== undefined || OPERAND_OPERATORS.includes(rule.operator)))
     return true;
   if (!RANGE_OPERATORS.includes(rule.operator)) return false;
   return (
@@ -115,8 +115,9 @@ export const checkField = (
       ? resolveDateConfig(config, (source) => readValueSource(source, scopes, context, bindings))
           .timeZone
       : DEFAULT_ZONE;
+  // An absent path reads as NULL, as a column does on the compiled rails.
   const fieldValue = applyCoercion(
-    fromBigInt(computed ? computed.value : readField(condition.field, scopes)),
+    fromBigInt(computed ? computed.value : (readField(condition.field, scopes) ?? null)),
     condition.coerceType,
     zone,
   );
@@ -126,7 +127,7 @@ export const checkField = (
   const value = needsValue
     ? shift(
         applyCoercion(
-          fromBigInt(readValueSource(condition, scopes, context, bindings)),
+          fromBigInt(readValueSource(condition, scopes, context, bindings) ?? null),
           condition.coerceType,
           zone,
         ),
@@ -138,8 +139,7 @@ export const checkField = (
     : undefined;
 
   if (needsValue && hasNoOperand(condition, value)) {
-    if (NEGATED_COMPARISON_OPERATORS.includes(condition.operator) && fieldValue == null)
-      return true;
+    if (NEGATED_OPERATORS.includes(condition.operator) && fieldValue == null) return true;
     return condition.error || `${condition.field} has no comparison value`;
   }
 

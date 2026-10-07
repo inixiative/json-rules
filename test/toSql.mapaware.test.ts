@@ -59,7 +59,9 @@ describe('toSql path ref: $.field', () => {
       dateOperator: DateOperator.after,
       path: '$.startDate',
     });
-    expect(sql).toBe('"endDate" > "startDate"');
+    expect(sql).toBe(
+      'to_timestamp(EXTRACT(EPOCH FROM "endDate")) > to_timestamp(EXTRACT(EPOCH FROM "startDate"))',
+    );
     expect(params).toEqual([]);
   });
 
@@ -100,7 +102,7 @@ describe('toSql path ref: context.path', () => {
       { context: { filters: { since } } },
     );
     expect(sql).toBe('"createdAt" > $1');
-    expect(params).toEqual([since]);
+    expect(params).toEqual([since.toISOString()]);
   });
 
   it('context.path without context → throws', () => {
@@ -135,13 +137,13 @@ describe('toSql map-aware JOINs (forward relation)', () => {
 
 // ─── Map-aware: back-relation JOIN ───────────────────────────────────────────
 describe('toSql map-aware JOINs (back-relation)', () => {
-  it('traverses back-relation by finding reverse FK on target', () => {
-    const { sql, joins } = toSql(
-      { field: 'posts.title', operator: Operator.contains, value: 'Hello' },
-      { map: blogMap, model: 'User', alias: 't0' },
-    );
-    expect(sql).toBe('"t1"."title" LIKE $1');
-    expect(joins[0]).toBe('LEFT JOIN "Post" AS "t1" ON "t1"."authorId" = "t0"."id"');
+  it('a field path through a to-many relation is an array rule', () => {
+    expect(() =>
+      toSql(
+        { field: 'posts.title', operator: Operator.contains, value: 'Hello' },
+        { map: blogMap, model: 'User', alias: 't0' },
+      ),
+    ).toThrow("reads through the to-many relation 'posts'");
   });
 });
 

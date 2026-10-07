@@ -16,7 +16,6 @@ import {
   DAY_NAMES,
   FIELD_OPERATOR_CATALOG,
   FieldKind,
-  getAggregateOperators,
   getValueShape,
   isAggregateRangeOperator,
   isAggregateSingleOperator,
@@ -515,15 +514,6 @@ const validateAggregateRule = (
       `Aggregate rules only support: equals, notEquals, lessThan, lessThanEquals, greaterThan, greaterThanEquals, between, notBetween`,
     );
     return;
-  }
-
-  if (!getAggregateOperators(context.target).includes(rule.operator as Operator)) {
-    pushIssue(
-      context,
-      `${path}.operator`,
-      `unsupported_${targetSlug(context.target)}_aggregate_operator`,
-      `Operator '${rule.operator}' is not supported by ${context.target}() for aggregate rules`,
-    );
   }
 
   if (context.target === 'toPrisma' && typeof rule.path === 'string') {

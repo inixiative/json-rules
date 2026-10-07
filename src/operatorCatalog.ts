@@ -211,22 +211,8 @@ export const AGGREGATE_OPERATORS: readonly Operator[] = [
   Operator.notBetween,
 ];
 
-/** Aggregate threshold comparisons a target cannot compile. `toPrisma()` builds the
- *  threshold as a Prisma `having` filter, which has no complement for a range, so
- *  `notBetween` is unavailable there — `check()` and `toSql()` both handle it. */
-const AGGREGATE_UNSUPPORTED: Partial<Record<RuleTarget, readonly Operator[]>> = {
-  toPrisma: [Operator.notBetween],
-};
-
-/** The aggregate threshold comparisons `target` can compile — all of them when no
- *  target is given. The one source for both the validator's rejection and a builder's
- *  threshold picker, so neither has to restate which target drops which operator. */
-export const getAggregateOperators = (target?: RuleTarget): readonly Operator[] => {
-  const unsupported = target === undefined ? undefined : AGGREGATE_UNSUPPORTED[target];
-  return unsupported === undefined
-    ? AGGREGATE_OPERATORS
-    : AGGREGATE_OPERATORS.filter((op) => !unsupported.includes(op));
-};
+/** The threshold comparisons an aggregate takes; every target compiles all of them. */
+export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
 
 export const isAggregateSingleOperator = (operator: Operator): boolean => {
   const entry = FIELD_OPERATOR_CATALOG[operator];
@@ -315,6 +301,9 @@ export const ORDERED_OPERATORS = withShape('ordered');
 export const WINDOW_OPERATORS = withShape('dateWindow');
 /** Operators that compare against two ends. */
 export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
+/** Operators a null operand leaves with nothing to compare against — unlike `equals` /
+ *  `notEquals`, where null is the is-null sentinel. */
+export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'array');
 /** Operators with a point to move: the comparisons and both ends of a pair. */
 export const OFFSET_OPERATORS = withShape('scalar', 'ordered', 'range', 'dateValue', 'dateRange');
 
@@ -344,15 +333,6 @@ export const NEGATED_OPERATORS: readonly string[] = [
 /** Negations of a two-ended range. */
 export const NEGATED_RANGE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
   RANGE_OPERATORS.includes(op),
-);
-/** Negated comparisons an offset can move; with nothing to compare against they still keep a
- *  null field. */
-export const NEGATED_COMPARISON_OPERATORS = NEGATED_OPERATORS.filter((op) =>
-  OFFSET_OPERATORS.includes(op),
-);
-/** Negations of one literal (`notEquals`, `notContains`). */
-export const NEGATED_SINGLE_VALUE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
-  withShape('scalar', 'string').includes(op),
 );
 
 /** Comparisons that bound a field from above / below — what a window's extremal rewrite reads. */

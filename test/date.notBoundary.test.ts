@@ -78,7 +78,7 @@ describe('toSql — notBefore / notAfter keep NULL rows', () => {
   it('notAfter is <= with an IS NULL arm', () => {
     const { sql, params } = toSql(notAfter as never, opts);
     expect(sql).toBe('("lastLoginAt" <= $1 OR "lastLoginAt" IS NULL)');
-    expect(params).toEqual([CUTOFF]);
+    expect(params).toEqual([CUTOFF.toISOString()]);
   });
 
   it('notBefore is >= with an IS NULL arm', () => {
@@ -90,7 +90,7 @@ describe('toSql — notBefore / notAfter keep NULL rows', () => {
   it('a same-row path compares columns and still carries the arm', () => {
     const rule = { field: 'completedAt', dateOperator: 'notAfter', path: '$.dueAt' };
     expect(toSql(rule as never, opts).sql).toBe(
-      '("completedAt" <= "dueAt" OR "completedAt" IS NULL)',
+      '(to_timestamp(EXTRACT(EPOCH FROM "completedAt")) <= to_timestamp(EXTRACT(EPOCH FROM "dueAt")) OR to_timestamp(EXTRACT(EPOCH FROM "completedAt")) IS NULL)',
     );
   });
 });

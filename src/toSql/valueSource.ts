@@ -1,9 +1,10 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
 import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
+import type { FieldShape } from '../toPrisma/mapWalk';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
-import { resolveFieldSql } from './join';
+import { resolveField } from './join';
 import type { BuilderState } from './types';
 
 /**
@@ -13,7 +14,7 @@ import type { BuilderState } from './types';
  */
 export type ResolvedRhs =
   | { type: 'value'; value: unknown }
-  | { type: 'column'; sql: string; computed?: true };
+  | { type: 'column'; sql: string; shape?: FieldShape; computed?: true };
 
 export const NO_VALUE: ResolvedRhs = { type: 'value', value: null };
 
@@ -26,7 +27,7 @@ export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
-    return { type: 'column', sql: resolveFieldSql(scoped.path, state) };
+    return { type: 'column', ...resolveField(scoped.path, state) };
   }
   return { type: 'value', value: readContextRef(ref, state.context, 'toSql') };
 };

@@ -127,9 +127,15 @@ const checkIfThenElse = <TData extends CheckData>(
   return condition.else !== undefined ? evaluate(condition.else, data, opts) : true;
 };
 
+/** The array a rule reads; an absent or NULL one is empty, as on the compiled rails. */
+const readArray = (value: unknown, field: string): unknown[] => {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array`);
+  return value;
+};
+
 const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
-  const rawArray = readField(condition.field, opts.scopes);
-  if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
+  const rawArray = readArray(readField(condition.field, opts.scopes), condition.field);
   const windowFilter = condition.filter;
   const arrayValue = applyWindow(
     rawArray,
@@ -151,13 +157,15 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
       )
     : arrayValue;
 
-  const numbers: number[] = filtered.map((item, index) => {
+  // NULL items are skipped, as SQL's SUM and AVG skip them.
+  const numbers: number[] = filtered.flatMap((item, index) => {
     const raw = itemField ? readOwnPath(item, itemField) : item;
+    if (raw === null || raw === undefined) return [];
     if (typeof raw !== 'number' || !Number.isFinite(raw)) {
       const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
       throw new Error(`${loc} must be a finite number`);
     }
-    return raw;
+    return [raw];
   });
 
   // An aggregate compares like a field whose value it computes; the sum and the average of
@@ -169,11 +177,10 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
 };
 
 const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string => {
-  const rawArray = condition.field
-    ? readField(condition.field, opts.scopes)
-    : opts.scopes[opts.scopes.length - 1];
-
-  if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
+  const rawArray = readArray(
+    condition.field ? readField(condition.field, opts.scopes) : opts.scopes[opts.scopes.length - 1],
+    condition.field || '(root)',
+  );
   const windowFilter = condition.filter;
   const arrayValue = applyWindow(
     rawArray,

@@ -2,8 +2,9 @@ import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
-import { buildMapAwareFilter } from './field';
-import { relationTarget } from './mapWalk';
+import { buildMapAwareFilter, nullOf } from './field';
+import { orWhere } from './logical';
+import { type FieldShape, relationTarget, ruleShape } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 
 const WINDOW_UNSUPPORTED =
@@ -57,8 +58,36 @@ export const buildArrayRule = (
   if (!rule.field) {
     throw new Error('toPrisma: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }
+  const { field } = rule;
+  const shape = ruleShape({ field }, options?.map as FieldMap | undefined, options?.model);
+  if (shape === 'list' || shape === 'json' || shape === 'json-path')
+    return buildValueArrayRule(rule, field, shape, options);
   const filter = buildArrayLeafFilter(rule, options, state);
   return buildMapAwareFilter(rule.field, filter, options);
+};
+
+/** An array held in a column — a scalar list or a Json array. An absent or NULL one is empty,
+ *  as in check(); Prisma has no filter over its elements. */
+const buildValueArrayRule = (
+  rule: ArrayRule,
+  field: string,
+  shape: FieldShape,
+  options?: BuildOptions,
+): PrismaWhere => {
+  const at = (filter: unknown) => buildMapAwareFilter(field, filter, options);
+  const absent = at({ equals: nullOf(shape) });
+  switch (rule.arrayOperator) {
+    case ArrayOperator.empty:
+      return orWhere([at(shape === 'list' ? { isEmpty: true } : { equals: [] }), absent]);
+    case ArrayOperator.notEmpty:
+      return shape === 'list'
+        ? at({ isEmpty: false })
+        : { AND: [at({ not: [] }), at({ not: nullOf(shape) })] };
+    default:
+      throw new Error(
+        `ArrayOperator '${rule.arrayOperator}' over the ${shape === 'list' ? 'list' : 'Json array'} '${field}' has no Prisma equivalent; evaluate it with check()${shape === 'list' ? ", or test membership with 'contains'" : ''}.`,
+      );
+  }
 };
 
 const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions | undefined => {

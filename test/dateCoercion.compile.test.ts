@@ -150,7 +150,7 @@ describe('toSql — literal date values compile to the anchored instant', () => 
       { map, model: 'User', alias: 't0', timeZone: 'America/New_York' },
     );
     expect(sql).toContain('>');
-    expect(params).toEqual([new Date('2026-01-01T05:00:00.000Z')]);
+    expect(params).toEqual(['2026-01-01T05:00:00.000Z']);
   });
 });
 

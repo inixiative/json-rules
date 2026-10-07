@@ -2,11 +2,12 @@ import { own } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere } from '../toPrisma/types.ts';
 import { buildCondition } from '../toSql/condition.ts';
-import { toSql } from '../toSql/index.ts';
+import { escapeIdentifier } from '../toSql/escape.ts';
+import { builderState } from '../toSql/index.ts';
 import { resolveFieldSql } from '../toSql/join.ts';
-import type { BuilderState } from '../toSql/types.ts';
+import { allOf } from '../traverse';
 import type { Condition } from '../types.ts';
-import { allOf, resolvePolicy } from './policy.ts';
+import { resolvePolicy } from './policy.ts';
 import { sourcePlans } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -45,8 +46,6 @@ export type SourceQuery = {
   prisma: SourcePrismaQuery;
   sql: SourceSqlQuery;
 };
-
-const q = (s: string): string => `"${s.replace(/"/g, '""')}"`;
 
 // 'map.definition.label' → { map: { select: { definition: { select: { label: true } } } } };
 // axes sharing a prefix merge into one nested select tree.
@@ -99,43 +98,29 @@ const compileOne = (
 
   let sqlQuery: SourceSqlQuery;
   try {
-    let sql: string;
-    let params: unknown[];
-    let joins: string[];
-    let groupCols: string[] | undefined;
-    let labelCol: string | undefined;
-    // Any materialization path — a groupBy axis or a dotted label — needs the state
-    // the where is built against, so its column resolves through the same joins.
-    if (groupBy || labelPath) {
-      // Build the where and the materialized columns against one state so the
-      // paths reuse (and extend) the where's join registry.
-      const state: BuilderState = {
-        params: [],
-        paramIndex: 0,
-        map: own(lens.maps, mapName),
-        currentModel: model,
-        currentAlias: 't0',
-        joinCounter: { n: 0 },
-        joins: [],
-        joinRegistry: new Map(),
-      };
-      sql = buildCondition(where, state);
-      if (labelPath) labelCol = resolveFieldSql(labelPath, state);
-      groupCols = groupBy?.map((axis) => resolveFieldSql(axis, state));
-      params = state.params;
-      joins = state.joins ?? [];
-    } else {
-      ({ sql, params, joins } = toSql(where, { map: own(lens.maps, mapName), model, alias: 't0' }));
-    }
+    // The where and the materialized columns resolve against one state, so a label or axis
+    // path reuses (and extends) the where's joins.
+    const state = builderState({ map: own(lens.maps, mapName), model, alias: 't0' });
+    const sql = buildCondition(where, state);
+    const labelCol = labelPath ? resolveFieldSql(labelPath, state) : undefined;
+    const groupCols = groupBy?.map((axis) => resolveFieldSql(axis, state));
+    const joins = state.joins ?? [];
     const joinSql = joins.length ? ` ${joins.join(' ')}` : '';
     const whereSql = sql?.trim() ? ` WHERE ${sql}` : '';
+    const root = escapeIdentifier('t0');
     const cols = [
-      `${q('t0')}.${q(field)}`,
-      ...(labelCol ? [`${labelCol} AS ${q('__label')}`] : label ? [`${q('t0')}.${q(label)}`] : []),
-      ...(groupCols ? groupCols.map((col, i) => `${col} AS ${q(`__group_${i}`)}`) : []),
+      `${root}.${escapeIdentifier(field)}`,
+      ...(labelCol
+        ? [`${labelCol} AS ${escapeIdentifier('__label')}`]
+        : label
+          ? [`${root}.${escapeIdentifier(label)}`]
+          : []),
+      ...(groupCols
+        ? groupCols.map((col, i) => `${col} AS ${escapeIdentifier(`__group_${i}`)}`)
+        : []),
     ].join(', ');
-    const statement = `SELECT DISTINCT ${cols} FROM ${q(model)} AS ${q('t0')}${joinSql}${whereSql}`;
-    sqlQuery = { sql: statement, params };
+    const statement = `SELECT DISTINCT ${cols} FROM ${escapeIdentifier(model)} AS ${root}${joinSql}${whereSql}`;
+    sqlQuery = { sql: statement, params: state.params };
   } catch (err) {
     sqlQuery = { sql: null, params: [], error: err instanceof Error ? err.message : String(err) };
   }

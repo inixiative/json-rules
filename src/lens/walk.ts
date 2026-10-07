@@ -1,3 +1,4 @@
+import { parseEndpointKey } from '../fieldMap/endpointKey.ts';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -33,9 +34,6 @@ export const resolveRelationTarget = (
   currentMap: string,
 ): { mapName: string; modelName: string } | null => {
   if (entry.kind === 'object') return { mapName: currentMap, modelName: entry.type };
-  if (entry.kind === 'bridge') {
-    const [m, n] = entry.type.includes(':') ? entry.type.split(':') : [currentMap, entry.type];
-    return { mapName: m, modelName: n };
-  }
+  if (entry.kind === 'bridge') return parseEndpointKey(entry.type, currentMap);
   return null;
 };

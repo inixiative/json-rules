@@ -1,3 +1,4 @@
+import { endpointKey } from '../fieldMap/endpointKey.ts';
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
@@ -172,8 +173,8 @@ export const exposedSurface = (
   // touches unexposed surface and its `on` keys would leak).
   const bridges: Bridge[] | undefined = lens.bridges?.filter((b) => {
     const [a, bb] = b.endpoints;
-    const aExposesB = fieldOf(own(maps, a.fieldMap), a.model, `${bb.fieldMap}:${bb.model}`);
-    const bExposesA = fieldOf(own(maps, bb.fieldMap), bb.model, `${a.fieldMap}:${a.model}`);
+    const aExposesB = fieldOf(own(maps, a.fieldMap), a.model, endpointKey(bb));
+    const bExposesA = fieldOf(own(maps, bb.fieldMap), bb.model, endpointKey(a));
     return aExposesB !== undefined || bExposesA !== undefined;
   });
 

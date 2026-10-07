@@ -6,6 +6,7 @@ import {
   NEGATED_OPERATORS,
   OPPOSITE_OPERATORS,
 } from './operatorCatalog';
+import { anyOf } from './traverse';
 import type { Condition, Rule } from './types';
 
 type Node = Record<string, unknown>;
@@ -14,8 +15,6 @@ type Node = Record<string, unknown>;
 export type Settle = (leaf: Node) => Node | null;
 
 const absent = (field: unknown): Condition => ({ field, operator: 'notExists' }) as Condition;
-const anyOf = (conditions: Condition[]): Condition =>
-  conditions.length === 1 ? conditions[0] : { any: conditions };
 
 const negateLeaf = (node: Node, settle: Settle): Condition => {
   const leaf = settle(node);

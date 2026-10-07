@@ -1,4 +1,5 @@
 import { throwIfInvalid, type ValidationResult, validationResult } from '../validate';
+import { endpointKey } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
 const FORBIDDEN_FIELD_CHARS = /[.:]/;
@@ -11,7 +12,7 @@ export const validateFieldMaps = (set: FieldMapSet): ValidationResult => {
       for (const [fieldName, entry] of Object.entries(model.fields))
         if (entry.kind !== 'bridge' && FORBIDDEN_FIELD_CHARS.test(fieldName))
           errors.push({
-            path: `${mapName}:${modelName}.${fieldName}`,
+            path: `${endpointKey({ fieldMap: mapName, model: modelName })}.${fieldName}`,
             message: 'contains forbidden character . or :',
             code: 'invalid_field_name',
           });

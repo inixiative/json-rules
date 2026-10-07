@@ -5,19 +5,19 @@ import type { BuilderState, FieldMap, SqlResult } from './types';
 
 export type { FieldMap, SqlResult } from './types';
 
-type SqlBuildOptions = {
+export type SqlBuildOptions = {
   map?: FieldMap;
   model?: string;
   alias?: string; // root table alias, defaults to 't0' when map is provided
   context?: Record<string, unknown>;
 } & DateConfig;
 
-export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResult => {
-  assertConditionDepth(condition);
+/** A fresh compile: the root alias (`t0` with a map), parameters, and the join registry every
+ *  field resolved against it shares. */
+export const builderState = (options?: SqlBuildOptions): BuilderState => {
   const hasMap = !!(options?.map && options?.model);
   const rootAlias = options?.alias ?? (hasMap ? 't0' : undefined);
-
-  const state: BuilderState = {
+  return {
     params: [],
     paramIndex: 0,
     context: options?.context,
@@ -29,7 +29,11 @@ export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResul
     joins: hasMap ? [] : undefined,
     joinRegistry: hasMap ? new Map() : undefined,
   };
+};
 
+export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResult => {
+  assertConditionDepth(condition);
+  const state = builderState(options);
   const sql = buildCondition(condition, state);
   return { sql, params: state.params, joins: state.joins ?? [] };
 };

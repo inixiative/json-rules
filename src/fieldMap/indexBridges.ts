@@ -1,5 +1,6 @@
 import { groupBy } from 'lodash-es';
 import { own, ownEntry } from '../own';
+import { endpointKey } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
 type Row = Record<string, unknown>;
@@ -44,8 +45,8 @@ export const indexBridges = (
   const out: BridgeDictionary = {};
   for (const bridge of set.bridges ?? []) {
     const [a, b] = bridge.endpoints;
-    const aKey = `${a.fieldMap}:${a.model}`;
-    const bKey = `${b.fieldMap}:${b.model}`;
+    const aKey = endpointKey(a);
+    const bKey = endpointKey(b);
     const aSide = bridge.cardinality === 'oneToMany' ? 'one' : 'oneToOne';
     const endpoint = (
       fieldMap: string,

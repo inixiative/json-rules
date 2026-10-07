@@ -1,6 +1,7 @@
 import { ArrayOperator } from '../operator.ts';
 import { parseScopeRef, readScopeRef } from '../scope';
 import {
+  allOf,
   assertConditionDepth,
   isLogicalNode,
   isRelationNode,
@@ -10,7 +11,7 @@ import {
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
-import { allOf, type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import { type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 // Composes a user rule with the lens's narrowing where-clauses, injecting each

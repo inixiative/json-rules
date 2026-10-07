@@ -57,6 +57,11 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
     owners: ['src/operatorCatalog.ts'],
   },
   {
+    verb: 'name a bridge endpoint (map:Model)',
+    pattern: /\$\{[\w.]*fieldMap\}:\$\{|split\(':'\)/,
+    owners: ['src/fieldMap/endpointKey.ts'],
+  },
+  {
     verb: 'recurse into a child condition (one forward declaration per rail)',
     pattern: /type BuildConditionFn|let (?:dispatch|buildCondition)\b/,
     owners: ['src/toPrisma/recurse.ts', 'src/toSql/recurse.ts'],

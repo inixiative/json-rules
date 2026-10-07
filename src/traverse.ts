@@ -227,3 +227,19 @@ export const conditionShape = (node: Record<string, unknown>): ConditionShape | 
   else if ('operator' in node) shapes.add('field');
   return shapes.size === 1 ? [...shapes][0] : null;
 };
+
+/** Conditions AND-ed together: `true` for none, the condition itself for one. */
+export const allOf = (conditions: readonly Condition[]): Condition =>
+  conditions.length === 0
+    ? true
+    : conditions.length === 1
+      ? conditions[0]
+      : { all: [...conditions] };
+
+/** Conditions OR-ed together: `false` for none, the condition itself for one. */
+export const anyOf = (conditions: readonly Condition[]): Condition =>
+  conditions.length === 0
+    ? false
+    : conditions.length === 1
+      ? conditions[0]
+      : { any: [...conditions] };

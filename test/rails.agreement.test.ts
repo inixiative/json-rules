@@ -337,6 +337,34 @@ const MATRIX: Record<string, Case> = {
     ids: [1],
     refuses: { sql: RELATION_ARRAYS },
   },
+  'all under an absent relation holds': {
+    rule: {
+      field: 'org.users',
+      arrayOperator: 'all',
+      condition: { field: 'age', operator: 'greaterThan', value: 10 },
+    },
+    ids: [1, 4, 5],
+    refuses: { sql: RELATION_ARRAYS },
+  },
+  'empty under an absent relation': {
+    rule: { field: 'org.users', arrayOperator: 'empty' },
+    ids: [4, 5],
+    refuses: { sql: RELATION_ARRAYS },
+  },
+  'a Json array under an absent relation is empty': {
+    rule: { field: 'org.settings.nums', arrayOperator: 'empty' },
+    ids: [2, 3, 4, 5],
+  },
+  'an aggregate under an absent relation is 0': {
+    rule: {
+      field: 'org.users',
+      aggregate: { mode: 'avg', field: 'age' },
+      operator: 'lessThan',
+      value: 20,
+    },
+    ids: [2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
   'relation avg': {
     rule: {
       field: 'posts',

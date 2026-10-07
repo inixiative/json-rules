@@ -4,9 +4,10 @@ import { Operator } from '../operator';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasWindow } from '../window';
-import { comparisonFilter } from './field';
+import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
-import { matchNothing } from './logical';
+import { matchNothing, orWhere } from './logical';
+import { conditionTouchesBridge } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
@@ -58,6 +59,9 @@ const buildAggregateStep = (
   state: PrismaBuildState,
 ): PrismaWhere => {
   const path = groupPath(rule.field, options.map, options.model, 'Aggregate rules');
+  // A condition that crosses a bridge is unknown here: the step would aggregate every child.
+  // Over-fetch and let check() decide.
+  if (rule.condition && conditionTouchesBridge(rule.condition, options.map, path.target)) return {};
   const itemField = rule.aggregate.field ?? '';
   const item = fieldOf(options.map, path.target, itemField);
   if (!item)
@@ -87,5 +91,7 @@ const buildAggregateStep = (
   const where = rule.condition
     ? buildConditionRef(rule.condition, { ...options, model: path.target }, state)
     : {};
-  return groupMembership(state, path, where, having, holdsEmpty);
+  const membership = groupMembership(state, path, where, having, holdsEmpty);
+  // check() reads the array under an absent to-one relation as empty.
+  return holdsEmpty ? orWhere([membership, ...hopArms(rule.field, options)]) : membership;
 };

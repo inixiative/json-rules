@@ -1,10 +1,11 @@
+import { check } from '../check';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
 import { ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
-import type { ArrayRule, Condition } from '../types';
+import type { AggregateRule, ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
-import { buildMapAwareFilter, nullOf } from './field';
+import { buildMapAwareFilter, hopArms, nullOf } from './field';
 import { orWhere } from './logical';
 import { conditionTouchesBridge, type FieldShape, relationTarget, ruleShape } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
@@ -27,7 +28,24 @@ export const setConditionBuilderForArray = (fn: BuildConditionFn) => {
   buildCondition = fn;
 };
 
+/** A rule over an array, which check() reads as empty when a to-one relation on its path is
+ *  absent: where the rule holds for an empty array, so does the row with no such relation. */
 export const buildArrayRule = (
+  rule: ArrayRule,
+  options?: BuildOptions,
+  state?: PrismaBuildState,
+): PrismaWhere => {
+  const where = compileArrayRule(rule, options, state);
+  return rule.field && holdsForEmpty(rule)
+    ? orWhere([where, ...hopArms(rule.field, options)])
+    : where;
+};
+
+/** Whether a rule holds over an empty array — check() answers, as it reads one. */
+export const holdsForEmpty = (rule: ArrayRule | AggregateRule): boolean =>
+  check({ ...rule, field: 'items' } as Condition, { items: [] }) === true;
+
+const compileArrayRule = (
   rule: ArrayRule,
   options?: BuildOptions,
   state?: PrismaBuildState,
@@ -35,7 +53,7 @@ export const buildArrayRule = (
   if (hasWindow(rule)) {
     const rewritten = extremalRewrite(rule);
     if (!rewritten) throw new Error(WINDOW_UNSUPPORTED);
-    return buildArrayRule(rewritten, options, state);
+    return compileArrayRule(rewritten, options, state);
   }
 
   // A condition that crosses a bridge is unknown here: unless a broader condition only widens the

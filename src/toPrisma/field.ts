@@ -46,7 +46,7 @@ export const nullOf = (shape: FieldShape): unknown => {
 
 /** Each optional to-one hop on the path NULL: `{ rel: { col: { equals: null } } }` requires the
  *  relation to exist, so a row without it needs its own arm. */
-const hopArms = (field: string, options?: BuildOptions): PrismaWhere[] =>
+export const hopArms = (field: string, options?: BuildOptions): PrismaWhere[] =>
   options?.map && options?.model
     ? optionalToOneHops(field, options.map as FieldMap, options.model).map((hop) =>
         buildNestedFilter(hop, { is: null }),

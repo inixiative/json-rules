@@ -84,7 +84,8 @@ export const absentArms = (
 
 /** An equality filter. Prisma compiles an insensitive one to ILIKE and passes %, _ and backslash
  *  through: escape them, so the value matches only itself. On Json it matches the JSON text, which
- *  doubles any escape, so a %, _ or backslash there has no Prisma form. */
+ *  escapes quotes and control characters and doubles any escape, so a value holding one of those,
+ *  or a % or _, has no Prisma form. */
 const equalityFilter = (
   key: 'equals' | 'not',
   value: unknown,
@@ -93,9 +94,10 @@ const equalityFilter = (
 ): PrismaWhere => {
   if (!mode.mode || typeof value !== 'string') return { [key]: value, ...mode };
   if (!isJson(shape)) return { [key]: escapeLikePattern(value), ...mode };
-  if (/[%_\\]/.test(value))
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: JSON text escapes them.
+  if (/[%_\\"\u0000-\u001f]/.test(value))
     throw new Error(
-      `A case-insensitive equality on Json against '${value}' has no Prisma form (Prisma matches %, _ and backslash as LIKE syntax); use toSql() or check().`,
+      `A case-insensitive equality on Json against '${value}' has no Prisma form (Prisma matches the JSON text, where %, _, a backslash, a quote or a control character doesn't read as itself); use toSql() or check().`,
     );
   return { [key]: value, ...mode };
 };

@@ -59,6 +59,15 @@ describe('a case-insensitive equality matches only its own value', () => {
       { field: 'meta.s', operator: 'equals', value: 'a\\b', caseInsensitive: true },
       refusedOnPrisma([22]),
     ));
+  test.each([
+    'A"B',
+    'LINE1\nLINE2',
+    'tab\tx',
+  ])('a quote or control character on a Json path: %j', (value) =>
+    expectRails(
+      { field: 'meta.s', operator: 'equals', value, caseInsensitive: true },
+      refusedOnPrisma(value === 'LINE1\nLINE2' ? [25] : []),
+    ));
   test('a Json value with no LIKE syntax compiles', () =>
     expectRails(
       { field: 'meta.s', operator: 'equals', value: 'a%b', caseInsensitive: false },

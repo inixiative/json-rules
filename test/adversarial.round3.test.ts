@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import type { Bridge, FieldMap } from '../src/fieldMap/types';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 import {
   FIELD_OPERATOR_CATALOG,

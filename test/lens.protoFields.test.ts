@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { check, toPrisma, toSql, validateRule } from '../index';
 import type { FieldMap } from '../src/fieldMap/types';
 import { walkFieldPath } from '../src/fieldMap/walk';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 import { getWhere } from './fixtures/helpers';
 

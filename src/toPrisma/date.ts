@@ -13,13 +13,9 @@ import { offsetDate } from './offset';
 import type { PrismaBuildOptions, PrismaWhere } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
-// The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the
-// column-nullability licensing is the same as the scalar negations in ./field.ts.
-// The two range complements, hoisted to the WHERE level for the same reason as ./field.ts's
-// NEGATED_RANGE_OPERATORS: Prisma distributes a field-level `not` over the nested filter's keys, so
-// `{ col: { not: { gte, lte } } }` asks for `NOT(col >= a) AND NOT(col <= b)` — no row satisfies
-// it, and nothing complains. The single-boundary complements (notBefore/notAfter) compile to a
-// plain `gte`/`lte` and need no negation at all.
+// Negated date operators keep NULL rows, as the scalar negations in ./field.ts do. A range
+// complement is a WHERE-level NOT: a field-level `not` over `{ gte, lte }` distributes over both
+// keys and matches nothing.
 export const buildDateRule = (rule: DateRule, options?: PrismaBuildOptions): PrismaWhere => {
   // A date in Json is text, which Prisma's Json filters compare as text, not as an instant.
   const shape = ruleShape(

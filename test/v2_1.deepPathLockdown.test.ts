@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 
 // Lockdown: validateRuleInLens must reject rules whose path goes through

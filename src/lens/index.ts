@@ -1,5 +1,4 @@
 export { bindLens, listLensBindings } from './bindings';
-export { validateRuleInLens } from './checkRule';
 export { coerceRule } from './coerceRule';
 export type { CreateLensInput } from './createLens';
 export { createLens } from './createLens';
@@ -31,5 +30,6 @@ export type {
   SourceSpec,
   SourceValue,
 } from './types';
+export { validateRuleInLens } from './validateRuleInLens';
 export type { LensPathHop, LensPathResolution } from './walkLensPath';
 export { walkLensPath } from './walkLensPath';

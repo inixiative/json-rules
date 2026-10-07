@@ -24,7 +24,7 @@ const visit = (
   rule: Condition,
   policy: Policy,
   root: VisitScope,
-  violations: ValidationIssue[],
+  issues: ValidationIssue[],
 ): void =>
   visitCondition<readonly VisitScope[]>(
     rule,
@@ -32,7 +32,7 @@ const visit = (
       // A node of two kinds evaluates as one or the other depending on the rail; the gate
       // refuses it rather than vouch for half of it.
       if (conditionShape(node as Record<string, unknown>) === null) {
-        violations.push({
+        issues.push({
           path: typeof node.field === 'string' ? node.field : '',
           code: 'ambiguous_condition',
           message:
@@ -47,7 +47,7 @@ const visit = (
       const scopeFor = (ref: string): { scope: VisitScope; field: string } | null => {
         const target = readScopeRef(ref, scopes);
         if ('outOfBounds' in target) {
-          violations.push({ path: ref, code: 'scope_out_of_bounds', message: target.outOfBounds });
+          issues.push({ path: ref, code: 'scope_out_of_bounds', message: target.outOfBounds });
           return null;
         }
         return { scope: target.scope, field: target.path };
@@ -58,12 +58,8 @@ const visit = (
       let walked: LensWalk | null = null;
       if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
         const step = stepIntoField(policy, scopes, cond.field);
-        if ('violation' in step) {
-          violations.push({
-            path: cond.field,
-            code: step.violation.startsWith('Scope ref') ? 'scope_out_of_bounds' : 'not_in_lens',
-            message: step.violation,
-          });
+        if ('issue' in step) {
+          issues.push({ path: cond.field, ...step.issue });
           fieldOk = false;
         } else {
           ({ next, walked } = step);
@@ -94,7 +90,7 @@ const visit = (
         const { mapName, modelName, relPath } = target.scope;
         const walked = lensPathEnd(policy, mapName, modelName, relPath, target.field);
         if (!walked) {
-          violations.push({
+          issues.push({
             path: ref,
             code: 'not_in_lens',
             message:
@@ -107,7 +103,7 @@ const visit = (
         // A ref reads a column; a relation is rows, which the grant and the field's picks don't
         // scope.
         if (walked.entry.kind === 'object') {
-          violations.push({
+          issues.push({
             path: ref,
             code: 'not_in_lens',
             message: 'a value ref reads a column, not a relation',
@@ -118,7 +114,7 @@ const visit = (
         if (role === 'value' || role === 'shift' || kind === undefined) continue;
         const fits = role === 'whole' ? INTEGER_KINDS.includes(kind) : NUMERIC_KINDS.includes(kind);
         if (!fits)
-          violations.push({
+          issues.push({
             path: ref,
             code: 'not_in_lens',
             message: `${role === 'whole' ? 'a calendar unit reads a whole number' : 'an offset or magnitude reads a number'}, not ${kind}`,
@@ -132,7 +128,7 @@ const visit = (
       if ('arrayOperator' in cond && typeof cond.field === 'string' && terminalEntry) {
         const misfit = arrayFitViolation(cond.field, cond.arrayOperator, terminalEntry);
         if (misfit) {
-          violations.push(misfit);
+          issues.push(misfit);
           return false;
         }
       }
@@ -147,7 +143,7 @@ const visit = (
         (terminalEntry.isList || !isExistenceTest(cond as Rule))
       ) {
         const field = (cond as Rule).field;
-        violations.push({
+        issues.push({
           path: field,
           code: 'operator_kind_mismatch',
           message: terminalEntry.isList
@@ -162,7 +158,7 @@ const visit = (
       // A scalar list's elements carry the kind (a stamp names it), but its operators test the list.
       const leafShape = conditionShape(cond as Record<string, unknown>);
       if (!terminalEntry?.isList && (leafShape === 'field' || leafShape === 'date')) {
-        violations.push(
+        issues.push(
           ...leafFitViolations(
             cond as Rule | DateRule,
             terminalEntry ? entryKind(terminalEntry) : undefined,
@@ -181,7 +177,7 @@ const visit = (
               entry.field,
             );
             if (!walkedOrder) {
-              violations.push({
+              issues.push({
                 path: entry.field,
                 code: 'not_in_lens',
                 message: 'orderBy field does not resolve through the narrowed lens',
@@ -203,7 +199,7 @@ const visit = (
             : `field '${terminalFieldName}'`;
           for (const v of literals) {
             if (typeof v === 'string' && !allowed.has(v)) {
-              violations.push({
+              issues.push({
                 path: terminalFieldName,
                 code: 'value_not_allowed',
                 message: `value '${v}' is not in the allowed set for ${scope} (allowed: ${[...allowed].join(', ')})`,
@@ -225,7 +221,7 @@ const visit = (
         const aggField = cond.aggregate.field;
         const aggWalked = lensPathEnd(policy, next.mapName, next.modelName, next.relPath, aggField);
         if (!aggWalked) {
-          violations.push({
+          issues.push({
             path: aggField,
             code: 'not_in_lens',
             message: 'aggregate.field does not resolve through the narrowed lens',
@@ -251,9 +247,9 @@ export const checkConditionAtVisit = (
   modelName: string,
   relPath: readonly string[],
 ): ValidationIssue[] => {
-  const violations: ValidationIssue[] = [];
-  visit(cond, policy, { mapName, modelName, relPath, open: false }, violations);
-  return violations;
+  const issues: ValidationIssue[] = [];
+  visit(cond, policy, { mapName, modelName, relPath, open: false }, issues);
+  return issues;
 };
 
 /** Gate a rule against a lens: every field and value-side ref resolves through it, and every

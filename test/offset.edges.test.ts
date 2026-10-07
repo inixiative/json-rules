@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
 import { check, toPrisma, toSql, validateRule } from '../index';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { getWhere } from './fixtures/helpers';
 
 // Edges where the rails could part: amounts that aren't whole or are negative, a range with one

@@ -23,7 +23,7 @@ export const coerceRule = (
       rewrite: (node, scopes) => {
         if (conditionShape(node) !== 'field' || node.coerceType) return node;
         const at = step(node.field, scopes);
-        if (!at || 'violation' in at || !at.walked || at.walked.jsonSubPath.length) return node;
+        if (!at || 'issue' in at || !at.walked || at.walked.jsonSubPath.length) return node;
         const { entry } = at.walked;
         return entry.kind === 'scalar' && COERCIBLE_KINDS.includes(entry.type as FieldKind)
           ? { ...node, coerceType: entry.type }
@@ -32,8 +32,8 @@ export const coerceRule = (
       below: (node, scopes) => {
         if (!isRelationNode(node)) return false;
         const at = step(node.field, scopes);
-        const entry = at && !('violation' in at) ? at.walked?.entry : undefined;
-        return at && !('violation' in at) && entry && isRelationEntry(entry)
+        const entry = at && !('issue' in at) ? at.walked?.entry : undefined;
+        return at && !('issue' in at) && entry && isRelationEntry(entry)
           ? [...scopes, at.next]
           : false;
       },

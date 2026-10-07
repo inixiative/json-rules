@@ -1,5 +1,6 @@
 import { bindRule, listBindings } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
+import { collectChain, isLens } from './chain.ts';
 import { isSourceSpec } from './policy.ts';
 import type {
   Lens,
@@ -9,7 +10,6 @@ import type {
   NarrowingDefaults,
   SourceValue,
 } from './types.ts';
-import { collectChain, isLens } from './walk.ts';
 
 const PARENT_PREFIX = 'parent:';
 const isParentRef = (name: string): boolean => name.startsWith(PARENT_PREFIX);
@@ -120,7 +120,7 @@ export const bindLens = (
  * Bind names are unique across a composed chain: a layer may not re-declare a name
  * an ancestor already declares — rename it, or reference the inherited one read-only
  * as `parent:name`. A `parent:name` reference must point at a name some ancestor
- * actually declares. Returns the violation messages (folded into `validateNarrowing`).
+ * actually declares. Returns the problems as messages (folded into `validateNarrowing`).
  */
 export const validateBindNames = (narrowing: LensNarrowing): string[] => {
   const errors: string[] = [];

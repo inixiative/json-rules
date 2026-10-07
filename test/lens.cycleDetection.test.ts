@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
+import { getRoot } from '../src/lens/chain';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
-import { getRoot } from '../src/lens/walk';
 import { Operator } from '../src/operator';
 
 const map: FieldMap = {

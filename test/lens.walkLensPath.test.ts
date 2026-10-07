@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMapSet } from '../src/fieldMap/types';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { walkLensPath } from '../src/lens/walkLensPath';
 import { Operator } from '../src/operator';
 

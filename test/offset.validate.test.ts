@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '../index';
 import { validateRule } from '../index';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
 import { prefixConditionFields } from '../src/lens/narrowRule';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 
 // The grammar gates an offset where it can mean something, and the lens gates every ref an
 // offset or magnitude names exactly as it gates `path`.

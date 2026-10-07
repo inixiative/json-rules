@@ -10,7 +10,7 @@ import {
   validationResult,
 } from '../validate';
 import { validateBindNames } from './bindings.ts';
-import { checkConditionAtVisit } from './checkRule.ts';
+import { collectChain, getRoot } from './chain.ts';
 import {
   augmentPicksWithRelations,
   intersectStringSet,
@@ -23,7 +23,7 @@ import {
 } from './policy.ts';
 import { projectPaths } from './projectPaths.ts';
 import type { LensNarrowing, ModelDefaultNarrowing, ModelNarrowing } from './types.ts';
-import { collectChain, getRoot } from './walk.ts';
+import { checkConditionAtVisit } from './validateRuleInLens.ts';
 
 /** A visit of the PARENT surface a `where` is validated at: the where's own model, reached
  * at `relPath` (a declared path, `[]` for the anchor, or `OFF_PATH` for the model-intrinsic

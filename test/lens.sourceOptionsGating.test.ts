@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import { projectModels } from '../src/lens/projectModels';
 import type { SourceValues } from '../src/lens/projectPaths';
 import type { Lens } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 
 // The hydrated-source gate: a consumer (e.g. rules-builder) folds fetched sourceValues

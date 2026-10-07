@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 
 // Investigation: can constraints reference fields the user has been narrowed away from?

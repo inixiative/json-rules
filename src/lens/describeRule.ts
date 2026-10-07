@@ -9,10 +9,10 @@ import { isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
 import type { ValidationIssue } from '../validate';
 import { hasWindow, windowRewrite } from '../window';
-import { validateRuleInLens } from './checkRule.ts';
 import type { Policy } from './policy.ts';
 import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
+import { validateRuleInLens } from './validateRuleInLens.ts';
 
 export type RuleDescription = {
   sources: string[];
@@ -74,7 +74,7 @@ const visit = (rule: Condition, acc: Acc): void =>
 
       if (typeof node.field !== 'string' || node.field === '') return;
       const step = stepIntoField(acc.policy, scopes, node.field);
-      if ('violation' in step) return false;
+      if ('issue' in step) return false;
       if (step.walked) {
         acc.sources.add(step.walked.mapName);
         if (step.walked.entry.kind === 'bridge' || step.walked.mapName !== step.from.mapName)

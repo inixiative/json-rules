@@ -4,6 +4,7 @@ import { relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { Condition } from '../types.ts';
+import { collectChain, getRoot } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
   Lens,
@@ -13,7 +14,6 @@ import type {
   SourceSpec,
   SourceValue,
 } from './types.ts';
-import { collectChain, getRoot } from './walk.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;
@@ -383,20 +383,26 @@ export type LensWalk = NonNullable<ReturnType<typeof lensPathEnd>>;
 
 /**
  * The scope a node's `field` leads into — where its `condition` / `filter` resolve — with the
- * scope the walk started from and the walk that reached it (none inside an open Json scope), or why it doesn't resolve. A `$`-prefixed
+ * scope the walk started from and the walk that reached it (none inside an open Json scope), or the issue that stops it. A `$`-prefixed
  * field counts scopes up the stack as check() does.
  */
 export const stepIntoField = (
   policy: Policy,
   scopes: readonly VisitScope[],
   field: string,
-): { from: VisitScope; next: VisitScope; walked: LensWalk | null } | { violation: string } => {
+):
+  | { from: VisitScope; next: VisitScope; walked: LensWalk | null }
+  | { issue: { code: 'scope_out_of_bounds' | 'not_in_lens'; message: string } } => {
   const target = readScopeRef(field, scopes);
-  if ('outOfBounds' in target) return { violation: target.outOfBounds };
+  if ('outOfBounds' in target)
+    return { issue: { code: 'scope_out_of_bounds', message: target.outOfBounds } };
   if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
   const { mapName, modelName, relPath } = target.scope;
   const walked = lensPathEnd(policy, mapName, modelName, relPath, target.path);
-  if (!walked) return { violation: 'path does not resolve through the narrowed lens' };
+  if (!walked)
+    return {
+      issue: { code: 'not_in_lens', message: 'path does not resolve through the narrowed lens' },
+    };
   const open = isJsonEntry(walked.entry);
   const relation = relationTargetOf(walked.entry, walked.mapName);
   const next = relation

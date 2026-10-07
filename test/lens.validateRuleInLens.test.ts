@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge, FieldMap } from '../src/fieldMap/types';
-import { validateRuleInLens } from '../src/lens/checkRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 
 const prismaMap: FieldMap = {

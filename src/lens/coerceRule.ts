@@ -1,6 +1,6 @@
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import { COERCIBLE_KINDS, type FieldKind } from '../operatorCatalog.ts';
-import { isRelationNode, mapCondition } from '../traverse';
+import { conditionShape, isRelationNode, mapCondition } from '../traverse';
 import type { Condition } from '../types.ts';
 import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -21,7 +21,7 @@ export const coerceRule = (
     condition,
     {
       rewrite: (node, scopes) => {
-        if (!('operator' in node) || 'aggregate' in node || node.coerceType) return node;
+        if (conditionShape(node) !== 'field' || node.coerceType) return node;
         const at = step(node.field, scopes);
         if (!at || 'violation' in at || !at.walked || at.walked.jsonSubPath.length) return node;
         const { entry } = at.walked;

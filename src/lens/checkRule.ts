@@ -10,7 +10,7 @@ import {
   valueRefRoles,
   visitCondition,
 } from '../traverse';
-import type { Condition, Rule } from '../types';
+import type { Condition, DateRule, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
@@ -161,13 +161,13 @@ const visit = (
       // Operator and literal against the field's kind (an aggregate's operator compares the
       // aggregate, not the field).
       // A scalar list's elements carry the kind (a stamp names it), but its operators test the list.
-      if (
-        !('aggregate' in cond) &&
-        !terminalEntry?.isList &&
-        ('operator' in cond || 'dateOperator' in cond)
-      ) {
+      const leafShape = conditionShape(cond as Record<string, unknown>);
+      if (!terminalEntry?.isList && (leafShape === 'field' || leafShape === 'date')) {
         violations.push(
-          ...leafFitViolations(cond, terminalEntry ? entryKind(terminalEntry) : undefined),
+          ...leafFitViolations(
+            cond as Rule | DateRule,
+            terminalEntry ? entryKind(terminalEntry) : undefined,
+          ),
         );
       }
 

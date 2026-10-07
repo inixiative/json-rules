@@ -6,7 +6,7 @@ import {
   NEGATED_OPERATORS,
   OPPOSITE_OPERATORS,
 } from './operatorCatalog';
-import { anyOf } from './traverse';
+import { anyOf, conditionShape } from './traverse';
 import type { Condition, Rule } from './types';
 
 type Node = Record<string, unknown>;
@@ -108,8 +108,7 @@ export const negate = (condition: Condition, settle: Settle = (leaf) => leaf): C
 /** check()'s settle: a leaf's literal operand reads nothing when it's null or a range misses an
  *  end — the compilers read paths and offsets into literals before negating. */
 export const settleLiteral: Settle = (leaf) =>
-  typeof leaf.operator === 'string' &&
-  !('aggregate' in leaf) &&
+  conditionShape(leaf) === 'field' &&
   leaf.value !== undefined &&
   hasNoOperand(leaf as Rule, leaf.value)
     ? null

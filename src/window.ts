@@ -1,5 +1,6 @@
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import { readOwnPath } from './scope';
+import { conditionShape } from './traverse';
 import type { ArrayRule, Condition, WindowFields } from './types';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
@@ -12,11 +13,9 @@ export const hasWindow = (rule: WindowFields): boolean =>
 const conditionOpAndField = (condition: unknown): { op: string; field: string } | null => {
   if (typeof condition !== 'object' || condition === null) return null;
   const c = condition as Record<string, unknown>;
-  if ('aggregate' in c) return null; // not a leaf comparison
-  if (typeof c.field !== 'string') return null;
-  if (typeof c.dateOperator === 'string') return { op: c.dateOperator, field: c.field };
-  if (typeof c.operator === 'string') return { op: c.operator, field: c.field };
-  return null;
+  const shape = conditionShape(c);
+  if ((shape !== 'field' && shape !== 'date') || typeof c.field !== 'string') return null;
+  return { op: String(shape === 'date' ? c.dateOperator : c.operator), field: c.field };
 };
 
 /**

@@ -1,13 +1,14 @@
 import { check } from '../check';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
-import { ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
+import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
 import type { AggregateRule, ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, hopArms, nullOf } from './field';
-import { orWhere } from './logical';
+import { andWhere, orWhere, overFetch } from './logical';
 import { conditionTouchesBridge, type FieldShape, relationTarget, ruleShape } from './mapWalk';
+import { buildCondition } from './recurse';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
@@ -15,18 +16,6 @@ const WINDOW_UNSUPPORTED =
   'Windowing (orderBy/take/skip) is not supported by toPrisma() for this rule; ' +
   'only extremal (take:1, single orderBy on the compared field, aligned direction) ' +
   'rewrites to every/some. Evaluate other windowed rules with check().';
-
-// Forward declaration - provided by condition.ts to avoid circular import
-type BuildConditionFn = (
-  condition: Condition,
-  options?: BuildOptions,
-  state?: PrismaBuildState,
-) => PrismaWhere;
-let buildCondition: BuildConditionFn;
-
-export const setConditionBuilderForArray = (fn: BuildConditionFn) => {
-  buildCondition = fn;
-};
 
 /** A rule over an array, which check() reads as empty when a to-one relation on its path is
  *  absent: where the rule holds for an empty array, so does the row with no such relation. */
@@ -67,20 +56,15 @@ const compileArrayRule = (
       childOptionsFor(rule, options)?.model,
     )
   )
-    return {};
+    return overFetch();
 
   // Count operators generate a full WHERE clause (step ref) — skip the nested-filter wrapper
-  if (
-    rule.arrayOperator === ArrayOperator.atLeast ||
-    rule.arrayOperator === ArrayOperator.atMost ||
-    rule.arrayOperator === ArrayOperator.exactly
-  ) {
+  if (ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator)) {
     if (options?.map && options?.model && state) {
       return buildCountStep(
         rule,
         options as BuildOptions & { map: FieldMap; model: string },
         state,
-        buildCondition,
       );
     }
     throw new Error(
@@ -116,7 +100,7 @@ const buildValueArrayRule = (
     case ArrayOperator.notEmpty:
       return shape === 'list'
         ? at({ isEmpty: false })
-        : { AND: [at({ not: [] }), at({ not: nullOf(shape) })] };
+        : andWhere([at({ not: [] }), at({ not: nullOf(shape) })]);
     default:
       throw new Error(
         `ArrayOperator '${rule.arrayOperator}' over the ${shape === 'list' ? 'list' : 'Json array'} '${field}' has no Prisma equivalent; evaluate it with check()${shape === 'list' ? ", or test membership with 'contains'" : ''}.`,

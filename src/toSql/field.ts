@@ -1,6 +1,6 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { hasNoOperand } from '../field';
+import { hasNoOperand, isExistenceTest, relationNotValue } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS, NO_VALUE_OPERATORS, RANGE_OPERATORS } from '../operatorCatalog';
@@ -29,13 +29,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const resolved: FieldSql =
     lhs === undefined ? resolveField(rule.field, state) : { sql: lhs, shape: 'scalar' };
   // A to-one relation as a field exists or not: its key is not a value to compare.
-  if (resolved.shape === 'relation' && !NO_VALUE_OPERATORS.includes(rule.operator)) {
-    const rhs = resolveSource(rule, state);
-    if (!(rhs.type === 'value' && rhs.value === null && EQUALITY.includes(rule.operator)))
-      throw new Error(
-        `'${rule.field}' is a relation: it exists or not; compare its fields with '${rule.field}.<field>'.`,
-      );
-  }
+  if (resolved.shape === 'relation' && !isExistenceTest(rule)) throw relationNotValue(rule.field);
   // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
   const nullable = lhs === undefined;
   // An enum compares against its declared values (see enumMatches).
@@ -206,8 +200,6 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
     return rule.offset === undefined ? end : offsetNumber(end, rule.offset, state);
   }) as [ResolvedRhs, ResolvedRhs];
 };
-
-const EQUALITY: readonly string[] = [Operator.equals, Operator.notEquals];
 
 const hasString = (operand: unknown): boolean =>
   Array.isArray(operand)

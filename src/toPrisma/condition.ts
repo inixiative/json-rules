@@ -1,10 +1,11 @@
 import { rejectScopedField } from '../scope';
 import type { Condition } from '../types';
-import { buildAggregateRule, setConditionBuilderForAggregate } from './aggregate';
-import { buildArrayRule, setConditionBuilderForArray } from './array';
+import { buildAggregateRule } from './aggregate';
+import { buildArrayRule } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
-import { buildAll, buildAny, buildIfThenElse, setConditionBuilder } from './logical';
+import { buildAll, buildAny, buildIfThenElse, matchNothing } from './logical';
+import { setConditionBuilder } from './recurse';
 import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
 
 export const buildCondition = (
@@ -16,7 +17,7 @@ export const buildCondition = (
   // match-all only at the top level and under AND; the logical builders fold both
   // constants so neither ever lands under OR or NOT (see logical.ts).
   if (typeof condition === 'boolean') {
-    return condition ? {} : { OR: [] };
+    return condition ? {} : matchNothing();
   }
   rejectScopedField(condition, 'toPrisma');
 
@@ -31,7 +32,4 @@ export const buildCondition = (
   throw new Error('Unknown condition type');
 };
 
-// Wire up circular dependencies
 setConditionBuilder(buildCondition);
-setConditionBuilderForArray(buildCondition);
-setConditionBuilderForAggregate(buildCondition);

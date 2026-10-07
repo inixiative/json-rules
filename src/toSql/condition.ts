@@ -5,7 +5,8 @@ import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
-import { buildAll, buildAny, buildIfThenElse, setConditionBuilder } from './logical';
+import { buildAll, buildAny, buildIfThenElse } from './logical';
+import { setConditionBuilder } from './recurse';
 import type { BuilderState } from './types';
 
 export const buildCondition = (condition: Condition, state: BuilderState): string => {
@@ -35,5 +36,4 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
   throw new Error('Unknown condition type');
 };
 
-// Wire up circular dependency
 setConditionBuilder(buildCondition);

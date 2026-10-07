@@ -1,13 +1,10 @@
 import { ArrayOperator } from '../operator';
 import type { ArrayRule, Condition } from '../types';
+import { holdsForEmpty } from './array';
 import { groupMembership, groupPath } from './groupStep';
+import { matchAll } from './logical';
+import { buildCondition } from './recurse';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
-
-type BuildConditionFn = (
-  condition: Condition,
-  options?: BuildOptions,
-  state?: PrismaBuildState,
-) => PrismaWhere;
 
 /**
  * Generate a multi-step groupBy plan for count-based relation filtering.
@@ -22,7 +19,6 @@ export const buildCountStep = (
   rule: ArrayRule,
   options: BuildOptions & { map: FieldMap; model: string },
   state: PrismaBuildState,
-  buildCondition: BuildConditionFn,
 ): PrismaWhere => {
   if (!rule.field) throw new Error('toPrisma: count-based ArrayRule requires a field path');
   const path = groupPath(rule.field, options.map, options.model, 'Count operators');
@@ -33,14 +29,12 @@ export const buildCountStep = (
     throw new Error(`${rule.arrayOperator} requires a condition to check against array elements`);
   if (rule.count === undefined) throw new Error(`${rule.arrayOperator} requires a count`);
   const count = rule.count;
-  if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return {};
+  if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return matchAll();
 
   const where = buildCondition(rule.condition, { ...options, model: path.target }, state);
   // The zero-inclusive operators hold for a parent with no matching children, which no group
   // carries: atMost N = NOT(atLeast N+1), exactly 0 = NOT(atLeast 1).
-  const complement =
-    rule.arrayOperator === ArrayOperator.atMost ||
-    (rule.arrayOperator === ArrayOperator.exactly && count === 0);
+  const complement = holdsForEmpty(rule);
   const having = complement
     ? countHaving(
         ArrayOperator.atLeast,

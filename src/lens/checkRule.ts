@@ -1,5 +1,5 @@
-import { Operator } from '../operator';
-import { INTEGER_KINDS, NO_VALUE_OPERATORS, NUMERIC_KINDS } from '../operatorCatalog';
+import { isExistenceTest } from '../field';
+import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
@@ -10,7 +10,7 @@ import {
   valueRefRoles,
   visitCondition,
 } from '../traverse';
-import type { Condition } from '../types';
+import type { Condition, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import type { Policy } from './policy.ts';
@@ -148,7 +148,7 @@ const visit = (
         !terminalEntry.isList &&
         ('operator' in cond || 'dateOperator' in cond) &&
         !('aggregate' in cond) &&
-        !isExistenceTest(cond as Record<string, unknown>)
+        !isExistenceTest(cond as Rule)
       ) {
         violations.push({
           path: cond.field as string,
@@ -268,12 +268,4 @@ export const validateRuleInLens = (
   return validationResult(
     checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),
   );
-};
-
-/** A leaf that only asks whether its field is there. */
-const isExistenceTest = (cond: Record<string, unknown>): boolean => {
-  if (NO_VALUE_OPERATORS.includes(cond.operator as string)) return true;
-  const nullLiteral =
-    'value' in cond && cond.value === null && cond.path === undefined && cond.bind === undefined;
-  return (cond.operator === Operator.equals || cond.operator === Operator.notEquals) && nullLiteral;
 };

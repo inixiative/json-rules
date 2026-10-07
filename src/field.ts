@@ -7,6 +7,7 @@ import { bigIntToNumber, isOrderedValue, orderPair, readSet } from './number';
 import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
+  EQUALITY_OPERATORS,
   type FieldKind,
   NEGATED_OPERATORS,
   NO_VALUE_OPERATORS,
@@ -48,6 +49,23 @@ export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unk
     missing || (Array.isArray(value) && value.some((end) => end === null || end === undefined))
   );
 };
+
+/** A field rule that only asks whether its field is there: existence or emptiness, or equality
+ *  with a null literal. */
+export const isExistenceTest = (
+  rule: Pick<Rule, 'operator' | 'value' | 'path' | 'bind'>,
+): boolean =>
+  NO_VALUE_OPERATORS.includes(rule.operator) ||
+  (EQUALITY_OPERATORS.includes(rule.operator) &&
+    rule.value === null &&
+    rule.path === undefined &&
+    rule.bind === undefined);
+
+/** The error for comparing a to-one relation as a value. */
+export const relationNotValue = (field: string): Error =>
+  new Error(
+    `'${field}' is a relation: it exists or not; compare its fields with '${field}.<field>'.`,
+  );
 
 // A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
 const fromBigInt = (value: unknown): unknown => {

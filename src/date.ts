@@ -16,7 +16,13 @@ import {
 import { isOrderedValue, orderPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
-import { DAY_NAMES, NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
+import {
+  DATE_RANGE_OPERATORS,
+  DAY_LIST_OPERATORS,
+  DAY_NAMES,
+  NEGATED_OPERATORS,
+  WINDOW_OPERATORS,
+} from './operatorCatalog';
 import { readField, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
 import { type ReadSource, readValueSource, rowRef } from './valueSource';
@@ -159,8 +165,7 @@ const parseCompareDates = (
   bindings?: Record<string, RuleValue>,
 ): [dayjs.Dayjs, dayjs.Dayjs | undefined] | null => {
   const operator = condition.dateOperator;
-  if (operator === DateOperator.dayIn || operator === DateOperator.dayNotIn)
-    return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+  if (DAY_LIST_OPERATORS.includes(operator)) return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
 
   const read: ReadSource = (source) => readValueSource(source, scopes, context, bindings);
   const raw = readValueSource(condition, scopes, context, bindings);
@@ -190,7 +195,7 @@ const parseCompareDates = (
     return date;
   };
 
-  if (operator === DateOperator.between || operator === DateOperator.notBetween) {
+  if (DATE_RANGE_OPERATORS.includes(operator)) {
     if (!Array.isArray(raw) || raw.length !== 2)
       throw new Error(`${operator} operator requires an array of two dates`);
     const date1 = toPoint(raw[0], 'start date');

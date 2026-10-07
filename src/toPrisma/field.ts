@@ -1,3 +1,4 @@
+import { check } from '../check';
 import {
   engineGlobals,
   type PrismaProvider,
@@ -5,13 +6,13 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { hasNoOperand } from '../field';
+import { hasNoOperand, isExistenceTest, relationNotValue } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
-import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS, NO_VALUE_OPERATORS } from '../operatorCatalog';
+import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS, SET_OPERATORS } from '../operatorCatalog';
 import { escapeLikePattern } from '../toSql/quoting';
-import type { Rule } from '../types';
-import { andWhere, notLeaf, orWhere } from './logical';
+import type { Condition, Rule } from '../types';
+import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import {
   acceptsEmptyString,
   compileFieldLiteral,
@@ -111,21 +112,12 @@ const notEmpty = (empty: Record<string, unknown>): Record<string, unknown> =>
 
 /** A to-one relation as a field: it exists or it doesn't. */
 const buildRelationRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+  if (!isExistenceTest(rule)) throw relationNotValue(rule.field);
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
-  const value = NO_VALUE_OPERATORS.includes(rule.operator) ? null : readSource(rule, options);
-  const absent =
-    rule.operator === Operator.notExists ||
-    rule.operator === Operator.isEmpty ||
-    (rule.operator === Operator.equals && value === null);
-  const present =
-    rule.operator === Operator.exists ||
-    rule.operator === Operator.notEmpty ||
-    (rule.operator === Operator.notEquals && value === null);
-  if (absent) return orWhere([at({ is: null }), ...hopArms(rule.field, options)]);
-  if (present) return at({ isNot: null });
-  throw new Error(
-    `'${rule.field}' is a relation: it exists or not; compare its fields with '${rule.field}.<field>'.`,
-  );
+  // check() answers which way it asks: for a missing relation, or a present one.
+  return check({ ...rule, field: 'relation' } as Condition, { relation: null }) === true
+    ? orWhere([at({ is: null }), ...hopArms(rule.field, options)])
+    : at({ isNot: null });
 };
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
@@ -185,7 +177,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   // Prisma's `not` / `notIn` compile to SQL `<>` / `NOT IN`, which drop NULL rows under
   // three-valued logic; a negation is the complement of its positive form in check(), so it
   // carries the absent arms.
-  if (rule.operator === Operator.in || rule.operator === Operator.notIn) {
+  if (SET_OPERATORS.includes(rule.operator)) {
     const { values, hasNull } = splitNull(value);
     // Json has no `in`: one `equals` per value.
     const ci = queryMode(rule, options, shape, values);
@@ -195,7 +187,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
         : andWhere(values.map((v) => at({ not: v, ...ci })))
       : at({ [rule.operator]: values, ...ci });
     if (rule.operator === Operator.in) return hasNull ? orWhere([listed, ...arms()]) : listed;
-    return hasNull ? { AND: [listed, at({ not: nullOf(shape) })] } : orWhere([listed, ...arms()]);
+    return hasNull ? andWhere([listed, at({ not: nullOf(shape) })]) : orWhere([listed, ...arms()]);
   }
 
   // A Json value contains a string's substring, or a member of an array.
@@ -357,7 +349,7 @@ export const buildMapAwareFilter = (
       return buildNestedFilter(field, filter);
 
     case 'bridge':
-      return {};
+      return overFetch();
 
     case 'past-scalar':
       throw pastScalarError(field, walkResult.column);

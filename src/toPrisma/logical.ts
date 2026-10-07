@@ -1,20 +1,9 @@
 import { negate } from '../negate';
 import type { All, Any, Condition, IfThenElse } from '../types';
 import { conditionTouchesBridge } from './mapWalk';
+import { buildCondition } from './recurse';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
-
-// Forward declaration - provided by condition.ts to avoid circular import
-type BuildConditionFn = (
-  condition: Condition,
-  options?: BuildOptions,
-  state?: PrismaBuildState,
-) => PrismaWhere;
-let buildCondition: BuildConditionFn;
-
-export const setConditionBuilder = (fn: BuildConditionFn) => {
-  buildCondition = fn;
-};
 
 /**
  * The two boolean constants and how Prisma reads them.
@@ -36,7 +25,10 @@ export const setConditionBuilder = (fn: BuildConditionFn) => {
  * behind — harmless (an unreferenced step is executed and ignored) and necessary: step refs
  * are positional, so nothing may be rebuilt or renumbered.
  */
-const matchAll = (): PrismaWhere => ({});
+export const matchAll = (): PrismaWhere => ({});
+/** Unknown here — a condition across a bridge: over-fetch, and let check() decide. Prisma reads
+ *  it as match-all, and so does every fold. */
+export const overFetch = matchAll;
 export const matchNothing = (): PrismaWhere => ({ OR: [] });
 const isMatchAll = (where: PrismaWhere): boolean => Object.keys(where).length === 0;
 const isMatchNothing = (where: PrismaWhere): boolean => {
@@ -89,7 +81,7 @@ export const buildIfThenElse = (
   if (
     conditionTouchesBridge(cond as Condition, options?.map as FieldMap | undefined, options?.model)
   ) {
-    return {};
+    return overFetch();
   }
 
   // Each clause is built exactly once: a count-based array operator in `if` pushes a

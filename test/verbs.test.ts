@@ -52,8 +52,19 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
   },
   {
     verb: 'define an operator set',
-    pattern: /\[\s*(?:(?:Array|Date)?Operator\.\w+\s*,\s*){2,}/,
+    pattern:
+      /\[\s*(?:(?:Array|Date)?Operator\.\w+\s*,\s*){1,}|=== (?:Array|Date)?Operator\.\w+ \|\|[^|]*=== (?:Array|Date)?Operator\./,
     owners: ['src/operatorCatalog.ts'],
+  },
+  {
+    verb: 'recurse into a child condition (one forward declaration per rail)',
+    pattern: /type BuildConditionFn|let (?:dispatch|buildCondition)\b/,
+    owners: ['src/toPrisma/recurse.ts', 'src/toSql/recurse.ts'],
+  },
+  {
+    verb: 'build a Prisma logical constant',
+    pattern: /\{ OR: \[\] \}|\{ AND: \[|\{ NOT: |return \{\};/,
+    owners: ['src/toPrisma/logical.ts'],
   },
   {
     verb: 'default the time zone',

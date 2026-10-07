@@ -1,14 +1,7 @@
 import { conditionTouchesBridge } from '../toPrisma/mapWalk';
 import type { All, Any, Condition, IfThenElse } from '../types';
+import { buildCondition } from './recurse';
 import type { BuilderState } from './types';
-
-// Forward declaration - will be provided by condition.ts
-type BuildConditionFn = (condition: Condition, state: BuilderState) => string;
-let buildCondition: BuildConditionFn;
-
-export const setConditionBuilder = (fn: BuildConditionFn) => {
-  buildCondition = fn;
-};
 
 export const buildAll = (all: All, state: BuilderState): string => {
   if (all.all.length === 0) return 'TRUE';

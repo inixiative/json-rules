@@ -1,4 +1,5 @@
 import { ArrayOperator, DateOperator, Operator } from './operator';
+import type { AggregateMode } from './types';
 
 export const FieldKind = {
   String: 'String',
@@ -313,6 +314,9 @@ export const CONTAINS_OPERATORS: readonly string[] = [Operator.contains, Operato
 /** The threshold comparisons an aggregate takes — equality, order and ranges; every target
  *  compiles all of them. */
 export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];
+
+/** What an aggregate computes over its items. */
+export const AGGREGATE_MODES: readonly AggregateMode[] = ['sum', 'avg'];
 
 export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
 

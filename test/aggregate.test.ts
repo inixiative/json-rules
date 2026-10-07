@@ -972,6 +972,17 @@ describe('validateRule() aggregate rules', () => {
     expect(result.errors[0].code).toBe('invalid_aggregate_mode');
   });
 
+  it('an unknown mode is refused on every rail, never read as another', () => {
+    const rule = {
+      field: 'scores',
+      aggregate: { mode: 'max' },
+      operator: Operator.greaterThan,
+      value: 0,
+    } as never;
+    expect(check(rule, { scores: [1] })).toContain('aggregate.mode must be one of sum / avg');
+    expect(() => toSql(rule)).toThrow('aggregate.mode must be one of sum / avg');
+  });
+
   it('unsupported operator', () => {
     const result = validateRule({
       field: 'scores',

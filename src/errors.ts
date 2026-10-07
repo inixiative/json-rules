@@ -1,7 +1,12 @@
 import { resolveFuzzy } from './engineGlobals';
 import type { MapHop } from './fieldMap/walk';
 import type { FuzzyConfig } from './fuzzy';
-import { CONTAINS_OPERATORS, ORDERED_OPERATORS, RANGE_OPERATORS } from './operatorCatalog';
+import {
+  AGGREGATE_MODES,
+  CONTAINS_OPERATORS,
+  ORDERED_OPERATORS,
+  RANGE_OPERATORS,
+} from './operatorCatalog';
 // Error texts every rail raises the same way.
 
 /** A rule kind a compiler compiles only with a field (check() also takes a root array). */
@@ -47,6 +52,10 @@ export const unorderedOperand = (operator: string, value: unknown): Error | null
       )
     : null;
 };
+
+/** An aggregate mode outside AGGREGATE_MODES. */
+export const unknownAggregateMode = (mode: unknown): Error =>
+  new Error(`aggregate.mode must be one of ${AGGREGATE_MODES.join(' / ')}, not '${String(mode)}'`);
 
 /** A node that is not exactly one kind of condition. */
 export const ambiguousCondition = (): Error =>

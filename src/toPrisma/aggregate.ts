@@ -1,10 +1,10 @@
-import { windowUnsupported } from '../errors';
+import { unknownAggregateMode, windowUnsupported } from '../errors';
 import { checkField } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import type { FieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
-import { NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
+import { AGGREGATE_MODES, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasWindow, windowRewrite } from '../window';
@@ -33,8 +33,8 @@ export const buildAggregateRule = (
     );
   }
 
-  if (rule.aggregate.mode !== 'sum' && rule.aggregate.mode !== 'avg')
-    throw new Error(`aggregate.mode '${String(rule.aggregate.mode)}' is not one of sum / avg`);
+  if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
+    throw unknownAggregateMode(rule.aggregate.mode);
   if (!rule.aggregate.field) {
     throw new Error(
       `Prisma aggregate rules require aggregate.field to specify the numeric field on the related model.`,

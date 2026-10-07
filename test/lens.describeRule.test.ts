@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../index';
-import { ArrayOperator, createLens, DateOperator, describeRule, Operator } from '../index';
+import {
+  ArrayOperator,
+  createLens,
+  DateOperator,
+  describeRule,
+  Operator,
+  validateRule,
+} from '../index';
 
 const prisma: FieldMap = {
   models: {
@@ -146,5 +153,22 @@ describe('describeRule — windowing restricts targets', () => {
       singleSource,
     );
     expect(d.supportedTargets).toEqual(['check', 'toPrisma']);
+  });
+
+  test('the targets are the ones validateRule passes — an aggregate with a condition is not toSql', () => {
+    const rule = {
+      field: 'posts',
+      aggregate: { mode: 'sum', field: 'views' },
+      condition: { field: 'title', operator: Operator.equals, value: 'x' },
+      operator: Operator.greaterThan,
+      value: 1,
+    } as never;
+    const d = describeRule(rule, singleSource);
+    expect(d.supportedTargets).toEqual(
+      (['check', 'toPrisma', 'toSql'] as const).filter(
+        (target) => validateRule(rule, { target }).ok,
+      ),
+    );
+    expect(d.supportedTargets).not.toContain('toSql');
   });
 });

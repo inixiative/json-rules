@@ -8,9 +8,11 @@ import {
   namedPeriod,
   rollingShift,
 } from './dateExpr';
+import { unknownAggregateMode } from './errors';
 import { isOrderedValue } from './number';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
+  AGGREGATE_MODES,
   AGGREGATE_OPERATORS,
   catalogEntry,
   DAY_NAMES,
@@ -31,7 +33,14 @@ import {
 import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { conditionShape } from './traverse';
-import type { ArrayRule, Condition, DateExpr, OrderedRuleValue, WindowFields } from './types';
+import type {
+  AggregateMode,
+  ArrayRule,
+  Condition,
+  DateExpr,
+  OrderedRuleValue,
+  WindowFields,
+} from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
 
@@ -466,14 +475,13 @@ const validateAggregateRule = (
   }
 
   const agg = rule.aggregate as Record<string, unknown>;
-  if (agg.mode !== 'sum' && agg.mode !== 'avg') {
+  if (!AGGREGATE_MODES.includes(agg.mode as AggregateMode))
     pushIssue(
       context,
       `${path}.aggregate.mode`,
       'invalid_aggregate_mode',
-      "aggregate.mode must be 'sum' or 'avg'",
+      unknownAggregateMode(agg.mode).message,
     );
-  }
 
   if ('field' in agg && agg.field !== undefined && typeof agg.field !== 'string') {
     pushIssue(

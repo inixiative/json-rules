@@ -1,6 +1,7 @@
-import { windowUnsupported } from '../errors';
+import { unknownAggregateMode, windowUnsupported } from '../errors';
 import { ruleShape } from '../fieldMap/shape';
 import { fieldEntry } from '../fieldMap/walk';
+import { AGGREGATE_MODES } from '../operatorCatalog';
 import type { AggregateRule, Rule } from '../types';
 import { hasWindow } from '../window';
 import { buildFieldRule } from './field';
@@ -25,6 +26,7 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {
   const { mode, field: itemField } = rule.aggregate;
   // check() reads the sum and the average of nothing as 0.
+  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
 
   const shape = ruleShape({ field: rule.field }, state.map, state.currentModel);

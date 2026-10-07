@@ -1,9 +1,13 @@
 import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
-import { ambiguousCondition, conditionRequired } from './errors';
+import { ambiguousCondition, conditionRequired, unknownAggregateMode } from './errors';
 import { checkField } from './field';
 import { ArrayOperator } from './operator';
-import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
+import {
+  AGGREGATE_MODES,
+  ARRAY_CONDITION_OPERATORS,
+  ARRAY_COUNT_OPERATORS,
+} from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
 import { conditionShape } from './traverse';
 import type {
@@ -162,9 +166,8 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   );
 
   const { mode, field: itemField } = condition.aggregate;
-  if (mode !== 'sum' && mode !== 'avg') {
-    return condition.error || `${condition.field} aggregate.mode must be 'sum' or 'avg'`;
-  }
+  if (!AGGREGATE_MODES.includes(mode))
+    return condition.error || `${condition.field} ${unknownAggregateMode(mode).message}`;
 
   const nestedCondition = condition.condition;
   const filtered = nestedCondition

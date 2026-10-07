@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assertValidFieldMaps, validateFieldMaps } from '../src/fieldMap/validate';
+import { assertValidFieldMaps } from '../src/fieldMap/validate';
 import type { FieldMap } from '../src/toPrisma/types';
 
 describe('validateFieldMaps', () => {

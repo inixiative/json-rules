@@ -44,7 +44,7 @@ export const isLogicalNode = (node: ConditionNode): boolean =>
  *  `condition` / `filter` (nothing for the same, `false` to stop there). */
 export const visitCondition = <S = undefined>(
   condition: Condition,
-  enter: (node: ConditionNode, scope: S) => S | false | void,
+  enter: (node: ConditionNode, scope: S) => S | false | undefined,
   scope?: S,
 ): void => {
   if (!isObjCondition(condition)) return;

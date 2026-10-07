@@ -35,7 +35,7 @@ export const extremalRewrite = (rule: ArrayRule): ArrayRule | null => {
   if (rule.filter !== undefined) return null;
   if (rule.skip !== undefined && rule.skip !== 0) return null;
   if (rule.take !== 1) return null;
-  if (!rule.orderBy || rule.orderBy.length !== 1) return null;
+  if (rule.orderBy?.length !== 1) return null;
   const { field: orderField, dir } = rule.orderBy[0];
   if (dir !== 'asc' && dir !== 'desc') return null;
 

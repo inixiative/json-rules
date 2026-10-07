@@ -139,7 +139,7 @@ describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
         },
       ],
     });
-    expect(proj['User']?.fields.tier.options).toEqual([{ value: 'a' }]);
+    expect(proj.User?.fields.tier.options).toEqual([{ value: 'a' }]);
     expect(proj['User.region']?.fields.code.options).toEqual([{ value: 'b', label: 'Bee' }]);
   });
 
@@ -155,7 +155,7 @@ describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
         },
       ],
     });
-    expect(proj['User']?.fields.tier.options).toBeUndefined();
+    expect(proj.User?.fields.tier.options).toBeUndefined();
   });
 
   test('a bare (label-less) source folds pairs without labels', () => {
@@ -170,6 +170,6 @@ describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
         },
       ],
     });
-    expect(proj['User']?.fields.tier.options).toEqual([{ value: 'gold' }]);
+    expect(proj.User?.fields.tier.options).toEqual([{ value: 'gold' }]);
   });
 });

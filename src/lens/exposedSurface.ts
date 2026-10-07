@@ -1,7 +1,7 @@
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
-import { isFieldVisible, OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
+import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import { type ProjectOptions, projectFields } from './projectByPath.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';

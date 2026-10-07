@@ -1,5 +1,4 @@
 import { type CatalogEntry, catalogEntry, ValueShape } from '../operatorCatalog';
-import { own } from '../own';
 import { readScopeRef } from '../scope';
 import {
   type ConditionNode,

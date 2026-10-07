@@ -1,12 +1,10 @@
 import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
-import { orderPair } from './number';
-import { ArrayOperator, Operator } from './operator';
+import { ArrayOperator } from './operator';
 import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
 import type { AggregateRule, ArrayRule, Condition, DateConfig, Rule, RuleValue } from './types';
-import { readValueSource } from './valueSource';
 import { applyWindow } from './window';
 
 type Row = Record<string, unknown>;

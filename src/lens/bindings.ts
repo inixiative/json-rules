@@ -1,6 +1,6 @@
 import { listBindings, bindRule as resolveConditionBindings } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
-import { isSourceSpec, normalizeSource } from './policy.ts';
+import { isSourceSpec } from './policy.ts';
 import type {
   Lens,
   LensNarrowing,

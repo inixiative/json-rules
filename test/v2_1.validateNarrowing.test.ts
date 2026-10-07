@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import type { FieldMap } from '../src/toPrisma/types';

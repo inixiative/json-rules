@@ -314,14 +314,12 @@ describe('projection — the Json column is the leaf it already is', () => {
   test('projectByPath exposes the column and keys no path below it', () => {
     const proj = projectLens(lens);
     expect(Object.keys(proj)).toEqual(['User']);
-    expect(proj['User']?.fields.metadata).toEqual({ kind: 'scalar', type: 'Json' });
+    expect(proj.User?.fields.metadata).toEqual({ kind: 'scalar', type: 'Json' });
   });
 
   test('picks and omits compose on the column itself', () => {
     expect(
-      Object.keys(
-        projectLens({ parent: lens, root: { omits: ['metadata'] } })['User']?.fields ?? {},
-      ),
+      Object.keys(projectLens({ parent: lens, root: { omits: ['metadata'] } }).User?.fields ?? {}),
     ).not.toContain('metadata');
     expect(
       Object.keys(

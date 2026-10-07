@@ -1,7 +1,6 @@
 import { type CheckOptions, check } from '../check.ts';
 import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
-import type { Condition } from '../types.ts';
 import { allOf } from './policy.ts';
 import type { SourceValues } from './projectByPath.ts';
 import {

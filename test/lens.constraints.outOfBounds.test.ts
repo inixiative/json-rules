@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { validateRuleInLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
-import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';

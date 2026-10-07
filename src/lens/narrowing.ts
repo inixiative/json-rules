@@ -390,7 +390,7 @@ const validateEnumFieldAgainstChain = (
     values: readonly string[],
   ): void => {
     const entry = own(modelFields, fieldName);
-    if (!entry || entry.kind !== 'enum') return;
+    if (entry?.kind !== 'enum') return;
     const enumType = entry.type;
 
     const state: { picks: Set<string> | null; omits: Set<string> } = {

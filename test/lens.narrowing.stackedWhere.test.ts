@@ -94,7 +94,7 @@ const attachment = (deletedAt: string | null, tag: Record<string, unknown>) => (
 describe("stacked narrowings — every layer's where reaches the projection and the composed rule", () => {
   test('projectByPath carries the where of each layer at the visit it narrows', () => {
     const byPath = projectByPath(targeted);
-    expect(byPath['User']?.whereClauses).toEqual([
+    expect(byPath.User?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
     ]);
     expect(byPath['User.tagAttachments']?.whereClauses).toEqual([
@@ -110,7 +110,7 @@ describe("stacked narrowings — every layer's where reaches the projection and 
       parent: targeted,
       root: { where: { field: 'name', operator: Operator.equals, value: 'Ann' } },
     };
-    expect(projectByPath(twice)['User']?.whereClauses).toEqual([
+    expect(projectByPath(twice).User?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
       { field: 'name', operator: Operator.equals, value: 'Ann' },
     ]);

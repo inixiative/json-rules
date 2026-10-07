@@ -76,8 +76,8 @@ const passing = async (rule: Record<string, unknown>): Promise<string[]> => {
   const plan = toPrisma(rule as never, { map, model: 'User' });
   const where = await executePrismaPlan(plan, { post: fakePost as never });
   const clause = where as { id?: { in: string[] }; NOT?: { id: { in: string[] } } };
-  if (clause.NOT) return USERS.filter((u) => !clause.NOT!.id.in.includes(u.id)).map((u) => u.id);
-  if (clause.id) return USERS.filter((u) => clause.id!.in.includes(u.id)).map((u) => u.id);
+  if (clause.NOT) return USERS.filter((u) => !clause.NOT?.id.in.includes(u.id)).map((u) => u.id);
+  if (clause.id) return USERS.filter((u) => clause.id?.in.includes(u.id)).map((u) => u.id);
   return USERS.map((u) => u.id);
 };
 

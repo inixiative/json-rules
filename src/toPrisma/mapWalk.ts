@@ -1,3 +1,4 @@
+import { relationsNotValue } from '../errors';
 import { applyCoercion } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import { COMPILE_COERCED_KINDS, FieldKind, NUMERIC_KINDS } from '../operatorCatalog';
@@ -113,10 +114,11 @@ export const optionalToOneHops = (field: string, map: FieldMap, rootModel: strin
 /**
  * What a field reads, for the operators whose form depends on it: `text` (a String column),
  * `json` (a whole Json column), `json-path` (inside one), `list` (a scalar list), `relation` (a
- * to-one relation, which exists or not), `scalar` (any other column), or `unknown` (no map, a
- * path the map doesn't declare, or a to-many relation).
+ * to-one relation, which exists or not), `relations` (a to-many one, which only array operators
+ * read), `scalar` (any other column), or `unknown` (no map, or a path the map doesn't declare).
  */
 export type FieldShape =
+  | 'relations'
   | 'enum'
   | 'text'
   | 'json'
@@ -129,7 +131,7 @@ export type FieldShape =
 export const fieldShape = (walk: MapWalkResult | undefined): FieldShape => {
   if (walk?.kind === 'json-path') return 'json-path';
   if (walk?.kind !== 'direct') return 'unknown';
-  if (walk.entry.kind === 'object') return walk.entry.isList ? 'unknown' : 'relation';
+  if (walk.entry.kind === 'object') return walk.entry.isList ? 'relations' : 'relation';
   if (walk.entry.isList) return 'list';
   if (walk.entry.kind === 'enum') return 'enum';
   return kindShape(walk.entry.type);
@@ -141,9 +143,22 @@ const kindShape = (kind: string): FieldShape => {
   return kind === FieldKind.String ? 'text' : 'scalar';
 };
 
+/** A field or date rule on a to-many relation: rows, which an array operator reads. */
+export const refuseRelationsValue = (
+  field: string,
+  map: FieldMap | undefined,
+  model: string | undefined,
+): void => {
+  if (fieldShape(walkWith(field, map, model)) === 'relations') throw relationsNotValue(field);
+};
+
 /** A shape whose values read as text (an undeclared field may). */
 export const readsText = (shape: FieldShape | undefined): boolean =>
-  shape !== 'scalar' && shape !== 'list' && shape !== 'enum' && shape !== 'relation';
+  shape !== 'scalar' &&
+  shape !== 'list' &&
+  shape !== 'enum' &&
+  shape !== 'relation' &&
+  shape !== 'relations';
 
 /** Whether a case-insensitive comparison applies — text against a string operand (or a list
  *  holding one), as check() lowercases only strings. */

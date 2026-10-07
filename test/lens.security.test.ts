@@ -5,6 +5,7 @@ import {
   materializeSources,
   narrowRule,
   projectLens,
+  toPrisma,
   toSourceQueries,
   toSql,
   validateRuleInLens,
@@ -231,6 +232,23 @@ describe('a relation is never read as a value', () => {
       value: 1,
       offset: { path: '$.author' },
     });
+  });
+
+  test('a to-many relation takes an array operator, never a value', () => {
+    const hiddenChild: LensNarrowing = {
+      parent: lens,
+      root: { relations: { comments: { omits: ['votes'] } } },
+    };
+    const asValue = { field: 'comments', operator: 'contains', value: { id: 'c1', votes: 7 } };
+    expect(validateRuleInLens(rule(asValue), hiddenChild).errors[0].code).toBe(
+      'operator_kind_mismatch',
+    );
+    expect(
+      validateRuleInLens(rule({ field: 'comments', operator: 'exists' }), hiddenChild).ok,
+    ).toBe(false);
+    const opts = { map, model: 'Article' };
+    expect(() => toSql(rule(asValue), opts)).toThrow('is a list of rows');
+    expect(() => toPrisma(rule(asValue), opts)).toThrow('is a list of rows');
   });
 
   test('a relation as a field only exists or not', () => {

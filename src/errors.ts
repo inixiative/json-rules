@@ -13,3 +13,9 @@ export const relationNotValue = (field: string): Error =>
   new Error(
     `'${field}' is a relation: it exists or not; compare its fields with '${field}.<field>'.`,
   );
+
+/** A to-many relation compared as a value: it is rows, which an array operator reads. */
+export const relationsNotValue = (field: string): Error =>
+  new Error(
+    `'${field}' is a list of rows: compare it with an arrayOperator (any / all / none / empty / atLeast …).`,
+  );

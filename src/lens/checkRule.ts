@@ -1,4 +1,5 @@
 import { isExistenceTest } from '../field';
+import { isRelationEntry } from '../fieldMap/entry.ts';
 import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
@@ -142,18 +143,22 @@ const visit = (
         }
       }
 
-      // A to-one relation as a field exists or doesn't; nothing else compares against it.
+      // A relation is rows, not a value: a to-many one takes an array operator, a to-one one
+      // exists or doesn't.
+      const kind = conditionShape(cond as Record<string, unknown>);
       if (
-        terminalEntry?.kind === 'object' &&
-        !terminalEntry.isList &&
-        ('operator' in cond || 'dateOperator' in cond) &&
-        !('aggregate' in cond) &&
-        !isExistenceTest(cond as Rule)
+        terminalEntry &&
+        isRelationEntry(terminalEntry) &&
+        (kind === 'field' || kind === 'date') &&
+        (terminalEntry.isList || !isExistenceTest(cond as Rule))
       ) {
+        const field = (cond as Rule).field;
         violations.push({
-          path: cond.field as string,
+          path: field,
           code: 'operator_kind_mismatch',
-          message: `'${cond.field}' is a relation: it takes exists / notExists / isEmpty / notEmpty, or equals / notEquals null`,
+          message: terminalEntry.isList
+            ? `'${field}' is a list of rows: compare it with an arrayOperator (any / all / none / empty / atLeast …)`
+            : `'${field}' is a relation: it takes exists / notExists / isEmpty / notEmpty, or equals / notEquals null`,
         });
         return false;
       }

@@ -75,6 +75,9 @@ on Json, and every negation on a Json path (which keeps absent paths).
   passed the lens gate, and `check()` printed the whole related row — hidden columns included —
   in its error text. The gate rejects it, `toSql` refuses it, and error text names an object
   operand instead of printing it.
+- **A to-many relation takes array operators only.** `posts contains { … }` (or `equals`, `in`) passed
+  the gate and compared whole child rows in `check()` — hidden columns included; the gate, `toSql`
+  and `toPrisma` now refuse a field or date rule on a to-many relation.
 - **A to-one relation as a field only exists or not.** Ordered and range comparisons on one
   passed the gate and `toSql` compiled them against the relation's key, which a narrowing can
   hide.

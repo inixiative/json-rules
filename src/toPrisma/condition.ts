@@ -5,8 +5,9 @@ import { buildArrayRule } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
 import { buildAll, buildAny, buildIfThenElse, matchNothing } from './logical';
+import { refuseRelationsValue } from './mapWalk';
 import { setConditionBuilder } from './recurse';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 
 export const buildCondition = (
   condition: Condition,
@@ -25,6 +26,8 @@ export const buildCondition = (
   if ('any' in condition) return buildAny(condition, options, state);
   if ('if' in condition) return buildIfThenElse(condition, options, state);
   if ('arrayOperator' in condition) return buildArrayRule(condition, options, state);
+  if (('dateOperator' in condition || 'operator' in condition) && !('aggregate' in condition))
+    refuseRelationsValue(condition.field, options?.map as FieldMap | undefined, options?.model);
   if ('dateOperator' in condition) return buildDateRule(condition, options);
   if ('aggregate' in condition) return buildAggregateRule(condition, options, state);
   if ('field' in condition) return buildFieldRule(condition, options);

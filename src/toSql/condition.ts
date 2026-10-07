@@ -1,5 +1,5 @@
 import { rejectScopedField } from '../scope';
-import { hitsBridge } from '../toPrisma/mapWalk';
+import { hitsBridge, refuseRelationsValue } from '../toPrisma/mapWalk';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
@@ -29,6 +29,8 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
   if ('any' in condition) return buildAny(condition, state);
   if ('if' in condition) return buildIfThenElse(condition, state);
   if ('arrayOperator' in condition) return buildArrayRule(condition, state);
+  if (('dateOperator' in condition || 'operator' in condition) && !('aggregate' in condition))
+    refuseRelationsValue(condition.field, state.map, state.currentModel);
   if ('dateOperator' in condition) return buildDateRule(condition, state);
   if ('aggregate' in condition) return buildAggregateRule(condition, state);
   if ('field' in condition) return buildFieldRule(condition, state);

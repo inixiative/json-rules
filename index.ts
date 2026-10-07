@@ -1,19 +1,166 @@
-export * from './src/bindings';
-export * from './src/check';
-export * from './src/engineGlobals';
-export * from './src/fieldMap';
-export * from './src/fuzzy';
-export * from './src/lens';
-export * from './src/operator';
-export * from './src/operatorCatalog';
+// The public API: one name per operation, grouped by verb in docs/VERBS.md.
+
+export { bindRule, type ListBindingsOptions, listBindings } from './src/bindings';
+export { type CheckOptions, check } from './src/check';
+export {
+  type EngineGlobalsState,
+  engineGlobals,
+  type PrismaProvider,
+} from './src/engineGlobals';
+export {
+  assertValidFieldMaps,
+  type Bridge,
+  type BridgeCardinality,
+  type BridgeDictionary,
+  type BridgeEndpoint,
+  type FieldMap,
+  type FieldMapEntry,
+  type FieldMapSet,
+  indexBridges,
+  type ModelEntry,
+  type SourceOption,
+  stitchFieldMaps,
+  validateFieldMaps,
+} from './src/fieldMap';
+export type { FuzzyConfig } from './src/fuzzy';
+export type {
+  EnumNarrowing,
+  Lens,
+  LensNarrowing,
+  ModelDefaultNarrowing,
+  ModelNarrowing,
+  NarrowingDefaults,
+  SourceEntry,
+  SourceSpec,
+} from './src/lens';
+export {
+  assertValidNarrowing,
+  bindLens,
+  coerceRule,
+  composeLens,
+  createLens,
+  describeRule,
+  describeRuleSources,
+  type LensPathHop,
+  type LensPathResolution,
+  listLensBindings,
+  type MaterializeSourceQueryOptions,
+  materializeSourceQuery,
+  materializeSources,
+  narrowRule,
+  type PathProjection,
+  type ProjectedVisit,
+  type ProjectLensOptions,
+  projectLens,
+  type RuleDescription,
+  type RuleSourceDescription,
+  type SourcePrismaQuery,
+  type SourceQuery,
+  type SourceRowShape,
+  type SourceSelect,
+  type SourceSqlQuery,
+  type SourceValues,
+  type StoredLens,
+  storeLens,
+  toSourceQueries,
+  validateNarrowing,
+  validateRuleInLens,
+  walkLensPath,
+} from './src/lens';
+export { ArrayOperator, DateOperator, Operator } from './src/operator';
+export {
+  ALL_KINDS,
+  FieldKind,
+  getAggregateOperators,
+  getArrayOperators,
+  getOperatorsForKind,
+  getValueShape,
+  NUMERIC_KINDS,
+  type OperatorFamily,
+  RuleTarget,
+  ValueShape,
+} from './src/operatorCatalog';
 export {
   parseScopeRef,
-  resolveScopeRef,
+  readScopeRef,
   type ScopedRef,
   type ScopeOutOfBounds,
   type ScopeRef,
 } from './src/scope';
-export * from './src/toPrisma';
-export * from './src/toSql';
-export type * from './src/types';
-export * from './src/validate';
+export type {
+  GroupByStep,
+  PrismaStep,
+  PrismaWhere,
+  StepRef,
+  ToPrismaOptions,
+  ToPrismaResult,
+  WhereStep,
+} from './src/toPrisma';
+export { executePrismaPlan, toPrisma } from './src/toPrisma';
+export { type ToSqlOptions, type ToSqlResult, toSql } from './src/toSql';
+export type {
+  AggregateMode,
+  AggregateRule,
+  All,
+  Any,
+  ArrayRule,
+  CheckData,
+  CompileOptions,
+  Condition,
+  DateConfig,
+  DateExpr,
+  DateInputOrExpr,
+  DateInputValue,
+  DateOffset,
+  DateRule,
+  DateRuleValue,
+  EdgeExpr,
+  IfThenElse,
+  Magnitude,
+  NumberOffset,
+  OrderBy,
+  OrderedRuleValue,
+  PeriodExpr,
+  PeriodUnit,
+  RelativeUnits,
+  RollingExpr,
+  Row,
+  Rule,
+  RuleScalar,
+  RuleValue,
+  SortDir,
+  StrictAggregateRule,
+  StrictAll,
+  StrictAny,
+  StrictArrayCountRule,
+  StrictArrayPredicateRule,
+  StrictArrayPresenceRule,
+  StrictArrayRule,
+  StrictCondition,
+  StrictContainsRule,
+  StrictDateComparisonRule,
+  StrictDateDayRule,
+  StrictDateRangeRule,
+  StrictDateRule,
+  StrictEqualityRule,
+  StrictIfThenElse,
+  StrictMembershipRule,
+  StrictOrderedComparisonRule,
+  StrictPatternRule,
+  StrictPresenceRule,
+  StrictRangeRule,
+  StrictRule,
+  StrictStringBoundaryRule,
+  TimeZoneConfig,
+  ValueSourceFields,
+  ValueSourceOf,
+  WeekStart,
+  WindowFields,
+} from './src/types';
+export {
+  assertValidRule,
+  type ValidateRuleOptions,
+  type ValidationIssue,
+  type ValidationResult,
+  validateRule,
+} from './src/validate';

@@ -1,15 +1,34 @@
-import { get, isObject, some } from 'lodash-es';
+import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
+import {
+  ambiguousCondition,
+  conditionRequired,
+  countRequired,
+  unknownAggregateMode,
+  unknownOperator,
+} from './errors';
 import { checkField } from './field';
-import { orderPair } from './number';
-import { ArrayOperator, Operator } from './operator';
-import { readField, type Scopes } from './scope';
-import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
-import { readValueSource } from './valueSource';
+import { ArrayOperator } from './operator';
+import {
+  AGGREGATE_MODES,
+  ARRAY_CONDITION_OPERATORS,
+  ARRAY_COUNT_OPERATORS,
+} from './operatorCatalog';
+import { readField, readOwnPath, type Scopes } from './scope';
+import { conditionShape, visitCondition } from './traverse';
+import type {
+  AggregateRule,
+  All,
+  Any,
+  ArrayRule,
+  CheckData,
+  Condition,
+  DateConfig,
+  Row,
+  Rule,
+  RuleValue,
+} from './types';
 import { applyWindow } from './window';
-
-type Row = Record<string, unknown>;
-type CheckData = Row | unknown[];
 
 export type CheckOptions = {
   context?: CheckData;
@@ -18,21 +37,16 @@ export type CheckOptions = {
 
 type EvalOptions = CheckOptions & { context: CheckData; scopes: Scopes };
 
-const validateRootArrayShape = (rule: Condition): void => {
-  if (typeof rule === 'boolean') return;
-  if ('all' in rule) {
-    for (const c of rule.all) validateRootArrayShape(c);
-    return;
-  }
-  if ('any' in rule) {
-    for (const c of rule.any) validateRootArrayShape(c);
-    return;
-  }
-  if ('arrayOperator' in rule && !('field' in rule)) return;
-  throw new Error(
-    'check: when data is an array, every leaf must be a fieldless arrayOperator (composable with all/any)',
-  );
-};
+// Over a root array, every leaf is a fieldless array rule, composed with all / any only.
+const validateRootArrayShape = (rule: Condition): void =>
+  visitCondition(rule, (node) => {
+    const shape = conditionShape(node as Record<string, unknown>);
+    if (shape === 'all' || shape === 'any') return;
+    if (shape === 'array' && !('field' in node)) return false;
+    throw new Error(
+      'check: when data is an array, every leaf must be a fieldless arrayOperator (composable with all/any)',
+    );
+  });
 
 export const check = <TData extends CheckData>(
   conditions: Condition,
@@ -54,17 +68,25 @@ const evaluate = <TData extends CheckData>(
 ): boolean | string => {
   if (typeof conditions === 'boolean') return conditions;
 
-  if ('all' in conditions) return all(conditions.all, data, opts, conditions.error);
-  if ('any' in conditions) return any(conditions.any, data, opts, conditions.error);
-  if ('arrayOperator' in conditions) return checkArray(conditions, opts);
-  if ('dateOperator' in conditions)
-    return checkDate(conditions, opts.scopes, opts.context as Row, opts, opts.bindings);
-  if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, opts);
-  if ('field' in conditions)
-    return checkField(conditions, opts.scopes, opts.context as Row, opts.bindings);
-  if ('if' in conditions) return checkIfThenElse(conditions, data, opts);
-
-  return false;
+  const node = conditions as never;
+  switch (conditionShape(conditions as Record<string, unknown>)) {
+    case 'all':
+      return all((node as All).all, data, opts, (node as All).error);
+    case 'any':
+      return any((node as Any).any, data, opts, (node as Any).error);
+    case 'if':
+      return checkIfThenElse(node, data, opts);
+    case 'array':
+      return checkArray(node, opts);
+    case 'aggregate':
+      return checkAggregate(node, opts);
+    case 'date':
+      return checkDate(node, opts.scopes, opts.context as Row, opts, opts.bindings);
+    case 'field':
+      return checkField(node, opts.scopes, opts.context as Row, opts.bindings, opts);
+    default:
+      throw ambiguousCondition();
+  }
 };
 
 const enter = (opts: EvalOptions, item: unknown): EvalOptions => ({
@@ -128,9 +150,15 @@ const checkIfThenElse = <TData extends CheckData>(
   return condition.else !== undefined ? evaluate(condition.else, data, opts) : true;
 };
 
+/** The array a rule reads; an absent or NULL one is empty, as on the compiled rails. */
+const readArray = (value: unknown, field: string): unknown[] => {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array`);
+  return value;
+};
+
 const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
-  const rawArray = readField(condition.field, opts.scopes);
-  if (!Array.isArray(rawArray)) throw new Error(`${condition.field} must be an array`);
+  const rawArray = readArray(readField(condition.field, opts.scopes), condition.field);
   const windowFilter = condition.filter;
   const arrayValue = applyWindow(
     rawArray,
@@ -141,9 +169,8 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   );
 
   const { mode, field: itemField } = condition.aggregate;
-  if (mode !== 'sum' && mode !== 'avg') {
-    return condition.error || `${condition.field} aggregate.mode must be 'sum' or 'avg'`;
-  }
+  // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
+  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
 
   const nestedCondition = condition.condition;
   const filtered = nestedCondition
@@ -152,63 +179,30 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
       )
     : arrayValue;
 
-  const numbers: number[] = filtered.map((item, index) => {
-    const raw = itemField ? get(item as Row, itemField) : item;
+  // NULL items are skipped, as SQL's SUM and AVG skip them.
+  const numbers: number[] = filtered.flatMap((item, index) => {
+    const raw = itemField ? readOwnPath(item, itemField) : item;
+    if (raw === null || raw === undefined) return [];
     if (typeof raw !== 'number' || !Number.isFinite(raw)) {
       const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
       throw new Error(`${loc} must be a finite number`);
     }
-    return raw;
+    return [raw];
   });
 
-  const sum = numbers.reduce((s, n) => s + n, 0);
-  const result = mode === 'sum' ? sum : numbers.length === 0 ? 0 : sum / numbers.length;
-
-  const rhs = readValueSource(condition, opts.scopes, opts.context, opts.bindings);
-
-  const getError = (msg: string) =>
-    condition.error || `${condition.field} ${mode} ${msg} ${JSON.stringify(rhs)}`;
-
-  switch (condition.operator) {
-    case Operator.equals:
-      return result === rhs || getError('must equal');
-    case Operator.notEquals:
-      return result !== rhs || getError('must not equal');
-    case Operator.lessThan:
-      return (typeof rhs === 'number' && result < rhs) || getError('must be less than');
-    case Operator.lessThanEquals:
-      return (
-        (typeof rhs === 'number' && result <= rhs) || getError('must be less than or equal to')
-      );
-    case Operator.greaterThan:
-      return (typeof rhs === 'number' && result > rhs) || getError('must be greater than');
-    case Operator.greaterThanEquals:
-      return (
-        (typeof rhs === 'number' && result >= rhs) || getError('must be greater than or equal to')
-      );
-    case Operator.between: {
-      if (!Array.isArray(rhs) || rhs.length !== 2)
-        throw new Error('between requires a two-element array');
-      const [min, max] = orderPair(rhs as number[]);
-      return (result >= min && result <= max) || getError('must be between');
-    }
-    case Operator.notBetween: {
-      if (!Array.isArray(rhs) || rhs.length !== 2)
-        throw new Error('notBetween requires a two-element array');
-      const [min, max] = orderPair(rhs as number[]);
-      return result < min || result > max || getError('must not be between');
-    }
-    default:
-      throw new Error(`Operator '${condition.operator}' is not supported for aggregate rules`);
-  }
+  // An aggregate compares like a field whose value it computes; the sum and the average of
+  // nothing are 0 (the compilers coalesce to match).
+  const sum = numbers.reduce((total, n) => total + n, 0);
+  const result = mode === 'sum' || numbers.length === 0 ? sum : sum / numbers.length;
+  const labelled = { ...condition, field: `${condition.field} ${mode}` } as unknown as Rule;
+  return checkField(labelled, opts.scopes, opts.context, opts.bindings, opts, { value: result });
 };
 
 const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string => {
-  const rawArray = condition.field
-    ? readField(condition.field, opts.scopes)
-    : opts.scopes[opts.scopes.length - 1];
-
-  if (!Array.isArray(rawArray)) throw new Error(`${condition.field || '(root)'} must be an array`);
+  const rawArray = readArray(
+    condition.field ? readField(condition.field, opts.scopes) : opts.scopes[opts.scopes.length - 1],
+    condition.field || '(root)',
+  );
   const windowFilter = condition.filter;
   const arrayValue = applyWindow(
     rawArray,
@@ -220,41 +214,18 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
 
   const getError = (defaultMsg: string) => condition.error || `${condition.field} ${defaultMsg}`;
 
-  const requiresCondition: ArrayOperator[] = [
-    ArrayOperator.all,
-    ArrayOperator.any,
-    ArrayOperator.none,
-    ArrayOperator.atLeast,
-    ArrayOperator.atMost,
-    ArrayOperator.exactly,
-  ];
-
-  const requiresCount: ArrayOperator[] = [
-    ArrayOperator.atLeast,
-    ArrayOperator.atMost,
-    ArrayOperator.exactly,
-  ];
-
   const itemCondition = condition.condition;
-  if (requiresCondition.includes(condition.arrayOperator) && itemCondition === undefined)
-    throw new Error(
-      `${condition.arrayOperator} requires a condition to check against array elements`,
-    );
+  const elementwise = ARRAY_CONDITION_OPERATORS.includes(condition.arrayOperator);
+  if (elementwise && itemCondition === undefined) throw conditionRequired(condition.arrayOperator);
 
-  const count = condition.count;
-  if (requiresCount.includes(condition.arrayOperator) && count === undefined)
-    throw new Error(`${condition.arrayOperator} requires a count`);
+  const count = condition.count ?? 0;
+  if (ARRAY_COUNT_OPERATORS.includes(condition.arrayOperator) && condition.count === undefined)
+    throw countRequired(condition.arrayOperator);
 
   let matches = 0;
   let failures = 0;
 
-  if (requiresCondition.includes(condition.arrayOperator)) {
-    if (itemCondition === undefined) {
-      throw new Error(
-        `${condition.arrayOperator} requires a condition to check against array elements`,
-      );
-    }
-
+  if (elementwise && itemCondition !== undefined) {
     if (arrayValue.length > 0 && !some(arrayValue, isObject))
       return getError(
         `contains only primitive values; use 'in' or 'contains' instead of array operators on primitive arrays`,
@@ -286,24 +257,21 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
       return !matches || getError(`no elements should match (${matches} matched)`);
 
     case ArrayOperator.atLeast:
-      if (count === undefined) throw new Error(`${condition.arrayOperator} requires a count`);
       return (
         matches >= count || getError(`at least ${count} elements must match (${matches} matched)`)
       );
 
     case ArrayOperator.atMost:
-      if (count === undefined) throw new Error(`${condition.arrayOperator} requires a count`);
       return (
         matches <= count || getError(`at most ${count} elements must match (${matches} matched)`)
       );
 
     case ArrayOperator.exactly:
-      if (count === undefined) throw new Error(`${condition.arrayOperator} requires a count`);
       return (
         matches === count || getError(`exactly ${count} elements must match (${matches} matched)`)
       );
 
     default:
-      throw new Error(`Unknown array operator: ${(condition as ArrayRule).arrayOperator}`);
+      throw unknownOperator((condition as ArrayRule).arrayOperator, 'array');
   }
 };

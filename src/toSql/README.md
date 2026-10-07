@@ -18,69 +18,71 @@ await db.query(`SELECT * FROM users WHERE ${sql}`, params);
 
 ## Supported Features
 
+`toSql` agrees with `check()`: where it can't express a rule as `check()` reads it, it throws
+rather than compile something else.
+
 ### Field Operators
-- `equals`, `notEquals` (handles NULL correctly)
+- `equals`, `notEquals` — a negation keeps NULL rows
 - `lessThan`, `lessThanEquals`, `greaterThan`, `greaterThanEquals`
-- `in`, `notIn` (uses PostgreSQL's `= ANY()` / `<> ALL()`)
-- `contains`, `notContains`, `startsWith`, `endsWith` (LIKE patterns, escaped)
-- `matches`, `notMatches` (PostgreSQL regex `~` / `!~`)
+- `in`, `notIn` (`= ANY($1)` / `<> ALL($1)`, with the NULL arm)
+- `contains`, `notContains`, `startsWith`, `endsWith`, `notStartsWith`, `notEndsWith` (LIKE,
+  escaped)
+- `matches`, `notMatches` — the pattern runs in RE2's dialect, translated for Postgres (`.` stops
+  at a newline, classes and word boundaries are ASCII); what Postgres can't express is refused
 - `between`, `notBetween`
 - `isEmpty`, `notEmpty`, `exists`, `notExists`
+- `caseInsensitive` lowers text, `in` / `notIn` members and list members
 
-### JSON Path Fields
-Dot notation accesses JSONB fields:
+### Json
+A Json column, or a dotted path into one, compares as JSON — by type, as `check()` does:
 ```typescript
 { field: 'settings.theme', operator: Operator.equals, value: 'dark' }
-// → "settings"->>'theme' = $1
+// → NULLIF("settings"->'theme', 'null'::jsonb) = $1::jsonb   params: ['"dark"']
 ```
 
 ### Date Operators
 - `before`, `after`, `onOrBefore`, `onOrAfter`
-- `notBefore`, `notAfter` (null-carrying complements)
-- `within`, `notWithin` (range expressions: a period or rolling window)
+- `notBefore`, `notAfter` (NULL-keeping complements)
+- `within`, `notWithin` (a period or a rolling window)
 - `between`, `notBetween`
-- `dayIn`, `dayNotIn` (day of week filtering)
+- `dayIn`, `dayNotIn` (day of week)
+
+A date in Json or text reads as `check()` reads it: a number is epoch milliseconds, a zoned string
+that instant, a zoneless one wall time in the evaluation's zone.
 
 ### Array Operators
-Array storage type (JSONB vs native `TEXT[]`, `INT[]`, etc.) is derived automatically
-from the FieldMap when `map` and `model` options are provided. JSONB is assumed otherwise.
+The storage (a native list or a Json array) comes from the FieldMap when `map` and `model` are
+given; Json otherwise.
 
 ```typescript
-// Derived from map — no arrayType annotation needed
 { field: 'tags', arrayOperator: ArrayOperator.empty }
-// JSONB  → ("tags" IS NULL OR jsonb_array_length("tags") = 0)
-// native → ("tags" IS NULL OR array_length("tags", 1) IS NULL)
+// native → ("t0"."tags" IS NULL OR cardinality("t0"."tags") = 0)
+// Json   → ("tags" IS NULL OR "tags" IN ('null'::jsonb, '[]'::jsonb))
 ```
 
 ### Aggregate Rules
 
-Computes `sum` or `avg` of a stored array and produces a scalar comparison.
+`sum` or `avg` over a stored array, compared as a scalar. The sum and the average of nothing are 0.
 
 ```typescript
-// JSONB primitive array
-{ field: 'scores', aggregate: { mode: 'avg' }, operator: Operator.greaterThanEquals, value: 80 }
-// → (SELECT AVG(elem::numeric) FROM jsonb_array_elements_text("scores") AS elem) >= $1
-
-// JSONB object array
-{ field: 'orders', aggregate: { mode: 'sum', field: 'total' }, operator: Operator.greaterThan, value: 1000 }
-// → (SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements("orders") AS elem) > $1
-
-// Native array (inferred from map: isList: true on a scalar field)
 { field: 'scores', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 200 }
-// → (SELECT COALESCE(SUM(elem), 0) FROM unnest("scores") AS elem) > $1
+// native → (SELECT COALESCE(SUM(elem), 0) FROM unnest("t0"."scores") AS elem) > $1
+
+{ field: 'items', aggregate: { mode: 'sum', field: 'total' }, operator: Operator.greaterThan, value: 1000 }
+// Json → (SELECT COALESCE(SUM((elem->>'total')::numeric), 0)
+//          FROM jsonb_array_elements((CASE WHEN jsonb_typeof("items") = 'array' THEN "items" END)) AS elem) > $1
 ```
 
-Relation list fields are not supported in `toSql()` — use `toPrisma()` for those.
+A relation list (a to-many relation) takes no array or aggregate rule in `toSql()` — use
+`toPrisma()`. Windows (`filter` / `orderBy` / `take` / `skip`) are refused.
 
 ### Logical Operators
 - `all` (AND), `any` (OR)
-- `if/then/else` (conditional logic)
-- Nested combinations
+- `if` / `then` / `else`
 
 ## Security
 
-- Field names escaped via inline identifier quoting (no `pg` runtime dep)
-- LIKE patterns escaped (%, _, \)
-- JSON keys escaped (single quotes)
-- All values parameterized ($1, $2, etc.)
-
+- Identifiers quoted inline (no `pg` runtime dependency)
+- LIKE patterns escaped (`%`, `_`, `\`)
+- Json keys escaped
+- Every value a parameter (`$1`, `$2`, …)

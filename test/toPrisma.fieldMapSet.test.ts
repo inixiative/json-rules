@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import type { FieldMapSet } from '../src/fieldMap/types';
+import type { FieldMap, FieldMapSet } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
 const prismaMap: FieldMap = {

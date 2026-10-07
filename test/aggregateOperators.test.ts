@@ -11,33 +11,20 @@ const aggRule = (operator: Operator, value: unknown) => ({
 });
 
 describe('getAggregateOperators', () => {
-  test('no target offers every threshold comparison', () => {
+  test('offers every threshold comparison', () => {
     expect(getAggregateOperators()).toEqual(AGGREGATE_OPERATORS);
-  });
-
-  test('toPrisma drops notBetween — its having filter has no range complement', () => {
-    expect(getAggregateOperators('toPrisma')).not.toContain(Operator.notBetween);
-    expect(getAggregateOperators('toPrisma')).toContain(Operator.between);
-  });
-
-  test('check and toSql keep it', () => {
-    expect(getAggregateOperators('check')).toContain(Operator.notBetween);
-    expect(getAggregateOperators('toSql')).toContain(Operator.notBetween);
+    expect(getAggregateOperators()).toContain(Operator.notBetween);
   });
 });
 
-describe('the validator rejects on the same list', () => {
-  test('toPrisma rejects notBetween', () => {
-    const result = validateRule(aggRule(Operator.notBetween, [0, 100]), { target: 'toPrisma' });
-    expect(result.ok).toBe(false);
-    expect(result.errors[0].code).toBe('unsupported_prisma_aggregate_operator');
-  });
+describe('every target compiles every aggregate comparison', () => {
+  for (const target of ['check', 'toSql', 'toPrisma'] as const)
+    test(target, () => {
+      expect(validateRule(aggRule(Operator.notBetween, [0, 100]), { target }).ok).toBe(true);
+    });
 
-  test('toSql accepts it', () => {
-    expect(validateRule(aggRule(Operator.notBetween, [0, 100]), { target: 'toSql' }).ok).toBe(true);
-  });
-
-  test('check accepts it', () => {
-    expect(validateRule(aggRule(Operator.notBetween, [0, 100]), { target: 'check' }).ok).toBe(true);
+  test('a non-aggregate operator is rejected', () => {
+    const result = validateRule(aggRule(Operator.contains, 'x'), { target: 'toPrisma' });
+    expect(result.errors[0].code).toBe('invalid_aggregate_operator');
   });
 });

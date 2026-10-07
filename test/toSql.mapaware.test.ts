@@ -59,7 +59,9 @@ describe('toSql path ref: $.field', () => {
       dateOperator: DateOperator.after,
       path: '$.startDate',
     });
-    expect(sql).toBe('"endDate" > "startDate"');
+    expect(sql).toBe(
+      'to_timestamp(EXTRACT(EPOCH FROM "endDate")) > to_timestamp(EXTRACT(EPOCH FROM "startDate"))',
+    );
     expect(params).toEqual([]);
   });
 
@@ -100,7 +102,7 @@ describe('toSql path ref: context.path', () => {
       { context: { filters: { since } } },
     );
     expect(sql).toBe('"createdAt" > $1');
-    expect(params).toEqual([since]);
+    expect(params).toEqual([since.toISOString()]);
   });
 
   it('context.path without context → throws', () => {
@@ -135,13 +137,13 @@ describe('toSql map-aware JOINs (forward relation)', () => {
 
 // ─── Map-aware: back-relation JOIN ───────────────────────────────────────────
 describe('toSql map-aware JOINs (back-relation)', () => {
-  it('traverses back-relation by finding reverse FK on target', () => {
-    const { sql, joins } = toSql(
-      { field: 'posts.title', operator: Operator.contains, value: 'Hello' },
-      { map: blogMap, model: 'User', alias: 't0' },
-    );
-    expect(sql).toBe('"t1"."title" LIKE $1');
-    expect(joins[0]).toBe('LEFT JOIN "Post" AS "t1" ON "t1"."authorId" = "t0"."id"');
+  it('a field path through a to-many relation is an array rule', () => {
+    expect(() =>
+      toSql(
+        { field: 'posts.title', operator: Operator.contains, value: 'Hello' },
+        { map: blogMap, model: 'User', alias: 't0' },
+      ),
+    ).toThrow("reads through the to-many relation 'posts'");
   });
 });
 
@@ -170,8 +172,8 @@ describe('toSql map-aware JSON path with alias', () => {
       { field: 'metadata.theme', operator: Operator.equals, value: 'dark' },
       { map: blogMap, model: 'User', alias: 't0' },
     );
-    expect(sql).toBe(`"t0"."metadata"->>'theme' = $1`);
-    expect(params).toEqual(['dark']);
+    expect(sql).toBe(`NULLIF("t0"."metadata"->'theme', 'null'::jsonb) = $1::jsonb`);
+    expect(params).toEqual(['"dark"']);
     expect(joins).toHaveLength(0);
   });
 
@@ -180,7 +182,7 @@ describe('toSql map-aware JSON path with alias', () => {
       { field: 'settings.display.mode', operator: Operator.equals, value: 'compact' },
       { map: blogMap, model: 'Post', alias: 't0' },
     );
-    expect(sql).toBe(`"t0"."settings"->'display'->>'mode' = $1`);
+    expect(sql).toBe(`NULLIF("t0"."settings"->'display'->'mode', 'null'::jsonb) = $1::jsonb`);
   });
 
   it('json field after relation → joined alias + JSON path', () => {
@@ -190,7 +192,7 @@ describe('toSql map-aware JSON path with alias', () => {
     );
     expect(joins).toHaveLength(1);
     expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
-    expect(sql).toBe(`"t1"."metadata"->>'theme' = $1`);
+    expect(sql).toBe(`NULLIF("t1"."metadata"->'theme', 'null'::jsonb) = $1::jsonb`);
   });
 });
 
@@ -250,7 +252,7 @@ describe('toSql composite FK JOINs', () => {
 describe('toSql without map falls back to existing behavior', () => {
   it('dot path treated as JSON path (original behavior)', () => {
     const { sql } = toSql({ field: 'data.theme', operator: Operator.equals, value: 'dark' });
-    expect(sql).toBe(`"data"->>'theme' = $1`);
+    expect(sql).toBe(`NULLIF("data"->'theme', 'null'::jsonb) = $1::jsonb`);
   });
 
   it('nested dot path treated as JSON path', () => {
@@ -259,6 +261,28 @@ describe('toSql without map falls back to existing behavior', () => {
       operator: Operator.equals,
       value: 'compact',
     });
-    expect(sql).toBe(`"settings"->'display'->>'mode' = $1`);
+    expect(sql).toBe(`NULLIF("settings"->'display'->'mode', 'null'::jsonb) = $1::jsonb`);
+  });
+});
+
+describe('toSql takes a FieldMapSet with mapName, as toPrisma does', () => {
+  it('resolves the named map', () => {
+    const { sql } = toSql(
+      { field: 'author.email', operator: Operator.equals, value: 'a@b.com' },
+      { map: { maps: { app: blogMap } }, mapName: 'app', model: 'Post' },
+    );
+    expect(sql).toBe('"t1"."email" = $1');
+  });
+
+  it('refuses a set without mapName', () => {
+    expect(() =>
+      toSql(
+        { field: 'title', operator: Operator.equals, value: 'x' },
+        {
+          map: { maps: { app: blogMap } },
+          model: 'Post',
+        },
+      ),
+    ).toThrow("'mapName' is required");
   });
 });

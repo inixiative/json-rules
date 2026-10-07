@@ -1,31 +1,24 @@
+import { instantMs } from '../compileLiteral';
 import { applyCoercion } from '../field';
+import { isJsonEntry, isRelationEntry } from '../fieldMap/entry.ts';
+import { entryKind } from '../fieldMap/shape';
+import type { FieldMapEntry } from '../fieldMap/types';
 import {
-  type CatalogEntry,
-  DATE_OPERATOR_CATALOG,
-  FIELD_OPERATOR_CATALOG,
   FieldKind,
+  leafCatalogEntry,
   NUMERIC_KINDS,
   SINGLE_VALUE_SHAPES,
 } from '../operatorCatalog';
-import { own } from '../own';
-import { entryKind, instantMs } from '../toPrisma/mapWalk';
-import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';
-import type { RuleLensViolation } from './checkRule.ts';
-import { isJsonEntry } from './walk.ts';
+import type { ValidationIssue } from '../validate';
 
-/** A leaf's literal operands — the elements for in/notIn/between. Null when the comparison
- *  value is a `path` ref or a `bind` token: a runtime value, unknown at gate time. */
-export const ruleLiterals = (cond: {
-  value?: unknown;
-  path?: unknown;
-}): readonly unknown[] | null => {
-  if (cond.path !== undefined) return null;
-  const v = cond.value;
-  if (v === undefined) return null;
-  if (Array.isArray(v)) return v;
-  return [v];
-};
+const flatten = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value.flatMap(flatten) : [value];
+
+/** A leaf's literal operands, lists flattened. Null when the comparison value is read at
+ *  evaluation (a `path` or `bind`), unknown at gate time. */
+export const ruleLiterals = (cond: { value?: unknown }): readonly unknown[] | null =>
+  cond.value === undefined ? null : flatten(cond.value);
 
 // A date the compilers can turn into an instant — the seam compileFieldLiteral emits from, so the
 // gate accepts exactly what compiles.
@@ -62,8 +55,6 @@ const show = (v: unknown): string =>
       ? JSON.stringify(v)
       : String(v);
 
-// Operators that compare one value: a list literal is a value no rail can compare.
-
 /**
  * Operator ⇄ kind, then literal ⇄ kind, for a field or date leaf. The kind is the rule's
  * `coerceType` when set, else the declared entry's; unknown means nothing to gate. With a
@@ -73,14 +64,13 @@ const show = (v: unknown): string =>
 export const leafFitViolations = (
   cond: Rule | DateRule,
   declared: FieldKind | undefined,
-): RuleLensViolation[] => {
+): ValidationIssue[] => {
   const coerceType = 'coerceType' in cond ? cond.coerceType : undefined;
   const kind = coerceType ?? declared;
   if (kind === undefined || kind === FieldKind.Json) return [];
 
   const op = 'operator' in cond ? cond.operator : cond.dateOperator;
-  const entry: CatalogEntry | undefined =
-    'operator' in cond ? own(FIELD_OPERATOR_CATALOG, op) : own(DATE_OPERATOR_CATALOG, op);
+  const entry = leafCatalogEntry(cond);
   if (!entry) return [];
 
   const coerced = coerceType !== undefined && coerceType !== declared;
@@ -92,7 +82,8 @@ export const leafFitViolations = (
     return [
       {
         path: cond.field,
-        reason: `operator '${op}' does not apply to ${label} (applies to: ${entry.kinds.join(', ')})`,
+        code: 'operator_kind_mismatch',
+        message: `operator '${op}' does not apply to ${label} (applies to: ${entry.kinds.join(', ')})`,
       },
     ];
   }
@@ -102,7 +93,14 @@ export const leafFitViolations = (
   if (cond.offset !== undefined) {
     const shiftable =
       'dateOperator' in cond ? kind === FieldKind.DateTime : NUMERIC_KINDS.includes(kind);
-    if (!shiftable) return [{ path: cond.field, reason: `an offset does not apply to ${label}` }];
+    if (!shiftable)
+      return [
+        {
+          path: cond.field,
+          code: 'invalid_offset',
+          message: `an offset does not apply to ${label}`,
+        },
+      ];
   }
 
   // Date-rule values are validateRule's (grammar-level, kind-independent); a regex pattern is
@@ -114,7 +112,8 @@ export const leafFitViolations = (
     return [
       {
         path: cond.field,
-        reason: `operator '${op}' compares one value, but ${label} was given a list`,
+        code: 'invalid_value_shape',
+        message: `operator '${op}' compares one value, but ${label} was given a list`,
       },
     ];
   }
@@ -134,7 +133,8 @@ export const leafFitViolations = (
     .filter((v) => v !== null && !fitsAsCompiled(v))
     .map((v) => ({
       path: cond.field,
-      reason: `value ${show(v)} does not fit ${label} (expected ${expected})`,
+      code: 'invalid_value',
+      message: `value ${show(v)} does not fit ${label} (expected ${expected})`,
     }));
 };
 
@@ -144,11 +144,10 @@ export const arrayFitViolation = (
   field: string,
   arrayOperator: string,
   entry: FieldMapEntry,
-): RuleLensViolation | null => {
+): ValidationIssue | null => {
   if (entry.isList === true || isJsonEntry(entry)) return null;
-  const reason =
-    entry.kind === 'object' || entry.kind === 'bridge'
-      ? `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a to-one relation — a single related record; address its fields directly (e.g. '${field}.<field>')`
-      : `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a single ${entryKind(entry) ?? entry.type} value`;
-  return { path: field, reason };
+  const message = isRelationEntry(entry)
+    ? `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a to-one relation — a single related record; address its fields directly (e.g. '${field}.<field>')`
+    : `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a single ${entryKind(entry) ?? entry.type} value`;
+  return { path: field, code: 'invalid_array_operator', message };
 };

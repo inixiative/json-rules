@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { projectByPath } from '../src/lens/projectByPath';
+import type { FieldMap } from '../src/fieldMap/types';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
-import type { FieldMap } from '../src/toPrisma/types';
 
 const map: FieldMap = {
   models: {
@@ -31,9 +31,9 @@ const withParent = (parent: Lens | LensNarrowing, rest: Omit<LensNarrowing, 'par
 });
 
 const fieldsAt = (l: Lens | LensNarrowing, path: string): string[] =>
-  Object.keys(projectByPath(l).get(path)?.fields ?? {}).sort();
+  Object.keys(projectPaths(l)[path]?.fields ?? {}).sort();
 
-describe('projectByPath — picks/omits composition', () => {
+describe('projectPaths — picks/omits composition', () => {
   test('pure picks at root', () => {
     expect(fieldsAt(withParent(lens, { root: { picks: ['title'] } }), 'Post')).toEqual(['title']);
   });
@@ -113,5 +113,15 @@ describe('projectByPath — picks/omits composition', () => {
       mapDefaults: { prisma: { models: { Post: { omits: ['title'] } } } },
     });
     expect(fieldsAt(n2, 'Post')).toEqual(['author', 'id']);
+  });
+});
+
+describe('projectPaths — a relation the visit hides is not projected', () => {
+  test('a child layer omits a relation the parent declared', () => {
+    const parent = withParent(lens, { root: { relations: { author: { picks: ['name'] } } } });
+    expect(Object.hasOwn(projectPaths(parent), 'Post.author')).toBe(true);
+    const child = withParent(parent, { root: { omits: ['author'] } });
+    expect(Object.hasOwn(projectPaths(child), 'Post.author')).toBe(false);
+    expect(fieldsAt(child, 'Post')).toEqual(['id', 'secret', 'title']);
   });
 });

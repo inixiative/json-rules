@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { check, resolveBindings, toPrisma, toSql, validateRule } from '../index';
+import { bindRule, check, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // One reader for every rule kind: a `bind` resolves on check() for field, date and aggregate
@@ -88,7 +88,7 @@ describe('an optional or null date bind fails closed on every rail', () => {
     const inMemory = rows
       .filter((row) => check(r, row, { now: NOW, bindings: bindings as never }) === true)
       .map((row) => row.id);
-    const { sql, params } = toSql(resolveBindings(r, bindings as never), { now: NOW });
+    const { sql, params } = toSql(bindRule(r, bindings as never), { now: NOW });
     const viaSql = (
       await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
     ).rows.map((row) => row.id);
@@ -124,7 +124,7 @@ describe('an optional or null date bind fails closed on every rail', () => {
 
   test('toPrisma compiles a resolved date bind', () => {
     const r = rule({ field: 'ts', dateOperator: 'before', bind: 'x' });
-    expect(getWhere(toPrisma(resolveBindings(r, { x: '2026-10-06T10:00:00Z' })))).toEqual({
+    expect(getWhere(toPrisma(bindRule(r, { x: '2026-10-06T10:00:00Z' })))).toEqual({
       ts: { lt: new Date('2026-10-06T10:00:00Z') },
     });
   });

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import { resolveMagnitude, resolveUnits } from '../amount';
-import { shiftByUnits, zoneOf } from '../dateExpr';
+import { shiftByUnits } from '../dateExpr';
+import type { FieldShape } from '../fieldMap/shape';
 import {
   INTERVAL_FIELDS,
   isCalendarUnit,
@@ -9,6 +10,7 @@ import {
 } from '../operatorCatalog';
 import type { Magnitude, RelativeUnits } from '../types';
 import { rowRef } from '../valueSource';
+import type { FieldSql } from './join';
 import { nextParam } from './params';
 import type { BuilderState } from './types';
 import {
@@ -27,11 +29,25 @@ const isRowRef = (magnitude: Magnitude | undefined): boolean =>
   typeof magnitude === 'object' && rowRef(magnitude) !== null;
 
 /**
- * A DateTime column as an instant. The SQL rail treats DateTime as `timestamptz`; a plain
- * `timestamp` column (Prisma's default) casts through the session zone, which Prisma keeps at
- * UTC — the zone it writes in — so both column types read the same instant.
+ * A date read from the row as an instant, whatever the session zone. A DateTime column goes
+ * through its epoch, which a `timestamp` column (UTC wall time, as Prisma writes it) and a
+ * `timestamptz` share. Text — a JSON path — reads as check() reads it: a number is epoch
+ * milliseconds, a string with a zone is that instant, and a zoneless one is wall time in the
+ * evaluation's zone.
  */
-export const asInstant = (sql: string): string => `(${sql})::timestamptz`;
+export const asInstant = (
+  { sql, shape }: Pick<FieldSql, 'sql'> & { shape?: FieldShape },
+  state: BuilderState,
+): string => {
+  if (shape !== 'json-path' && shape !== 'text') return `to_timestamp(EXTRACT(EPOCH FROM ${sql}))`;
+  const zone = nextParam(state, dateConfigOf(state).timeZone);
+  return (
+    `(CASE WHEN btrim(${sql}) ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN to_timestamp(btrim(${sql})::numeric / 1000)` +
+    ` WHEN ${sql} ~* '[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?\\s*(z|[+-][0-9]{2}(:?[0-9]{2})?)\\s*$'` +
+    ` OR ${sql} ~* '\\m(gmt|utc)\\M' THEN (${sql})::timestamptz` +
+    ` ELSE (${sql})::timestamp AT TIME ZONE ${zone} END)`
+  );
+};
 
 /** True when any unit is read per row — so the shift must compile to SQL. */
 export const readsRow = (units: RelativeUnits): boolean => Object.values(units).some(isRowRef);
@@ -74,7 +90,7 @@ export const shiftDate = (
   direction: 1 | -1,
   state: BuilderState,
 ): ResolvedRhs => {
-  const zone = zoneOf(dateConfigOf(state));
+  const zone = dateConfigOf(state).timeZone;
   if (rhs.type === 'value' && !readsRow(units)) {
     const resolved = resolveUnits(units, compileTimeRead(state));
     if (rhs.value === null || rhs.value === undefined || resolved === null) return NO_VALUE;
@@ -85,7 +101,9 @@ export const shiftDate = (
   }
   const base =
     rhs.type === 'column'
-      ? asInstant(rhs.sql)
+      ? rhs.computed
+        ? rhs.sql
+        : asInstant(rhs, state)
       : `${nextParam(state, rhs.value ?? null)}::timestamptz`;
   const z = nextParam(state, zone);
   const sign = direction === 1 ? '+' : '-';

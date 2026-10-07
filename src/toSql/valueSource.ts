@@ -1,10 +1,10 @@
-import { get } from 'lodash-es';
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
+import type { FieldShape } from '../fieldMap/shape';
+import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
-import { resolveFieldSql } from './join';
+import { resolveField } from './join';
 import type { BuilderState } from './types';
 
 /**
@@ -14,7 +14,7 @@ import type { BuilderState } from './types';
  */
 export type ResolvedRhs =
   | { type: 'value'; value: unknown }
-  | { type: 'column'; sql: string; computed?: true };
+  | { type: 'column'; sql: string; shape?: FieldShape; computed?: true };
 
 export const NO_VALUE: ResolvedRhs = { type: 'value', value: null };
 
@@ -23,19 +23,16 @@ export const isMissing = (rhs: ResolvedRhs): boolean =>
 
 /** A ref on the SQL rail: `$.x` reads the current row the way a `field` does — relation hops
  *  join, a Json column's tail is a JSON path; a bare ref reads context. */
-export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
+const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
-    return { type: 'column', sql: resolveFieldSql(scoped.path, state) };
+    const column = resolveField(scoped.path, state);
+    if (column.shape === 'relation')
+      throw new Error(`'${ref}' is a relation; a value ref reads a column`);
+    return { type: 'column', ...column };
   }
-  if (!state.context) {
-    throw new Error(
-      `BuilderState.context is required to resolve path '${ref}'. ` +
-        `Pass context in options when calling toSql().`,
-    );
-  }
-  return { type: 'value', value: get(state.context, ref) ?? null };
+  return { type: 'value', value: readContextRef(ref, state.context, 'toSql') };
 };
 
 /** A value source on the SQL rail: a parameter, or a `$.` column. */

@@ -526,7 +526,7 @@ describe('toSql() aggregate rules', () => {
       value: 100,
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text("tags") AS elem) > $1`,
+      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("tags") = 'array' THEN "tags" END)) AS elem) > $1`,
     );
     expect(params).toEqual([100]);
   });
@@ -539,7 +539,7 @@ describe('toSql() aggregate rules', () => {
       value: 80,
     });
     expect(sql).toBe(
-      `(SELECT AVG(elem::numeric) FROM jsonb_array_elements_text("scores") AS elem) >= $1`,
+      `(SELECT COALESCE(AVG(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) >= $1`,
     );
     expect(params).toEqual([80]);
   });
@@ -549,7 +549,7 @@ describe('toSql() aggregate rules', () => {
       { field: 'scores', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 200 },
       { map: orderMap, model: 'User' },
     );
-    expect(sql).toBe(`(SELECT COALESCE(SUM(elem), 0) FROM unnest("scores") AS elem) > $1`);
+    expect(sql).toBe(`(SELECT COALESCE(SUM(elem), 0) FROM unnest("t0"."scores") AS elem) > $1`);
     expect(params).toEqual([200]);
   });
 
@@ -561,7 +561,7 @@ describe('toSql() aggregate rules', () => {
       value: 1000,
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements("orders") AS elem) > $1`,
+      `(SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements((CASE WHEN jsonb_typeof("orders") = 'array' THEN "orders" END)) AS elem) > $1`,
     );
     expect(params).toEqual([1000]);
   });
@@ -574,7 +574,7 @@ describe('toSql() aggregate rules', () => {
       value: [100, 300],
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text("scores") AS elem) BETWEEN $1 AND $2`,
+      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) BETWEEN $1 AND $2`,
     );
     expect(params).toEqual([100, 300]);
   });
@@ -587,7 +587,7 @@ describe('toSql() aggregate rules', () => {
       value: [100, 300],
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text("scores") AS elem) NOT BETWEEN $1 AND $2`,
+      `(SELECT COALESCE(SUM(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) NOT BETWEEN $1 AND $2`,
     );
     expect(params).toEqual([100, 300]);
   });
@@ -688,8 +688,10 @@ describe('toPrisma() aggregate rules', () => {
       },
       { map: orderMap, model: 'User' },
     );
+    // An empty avg is 0, which is <= 500: select the parents outside the groups above it.
     const step = result.steps[0] as GroupByStep;
-    expect(step.args.having).toEqual({ total: { _avg: { lte: 500 } } });
+    expect(step.args.having).toEqual({ total: { _avg: { gt: 500 } } });
+    expect(getWhere(result)).toEqual({ NOT: { id: { in: { __step: 0 } } } });
   });
 
   it('between maps to gte/lte in having', () => {
@@ -726,18 +728,34 @@ describe('toPrisma() aggregate rules', () => {
     ).toThrow('aggregate.field');
   });
 
-  it('throws for notBetween', () => {
-    expect(() =>
-      toPrisma(
-        {
-          field: 'orders',
-          aggregate: { mode: 'sum', field: 'total' },
-          operator: Operator.notBetween,
-          value: [0, 100],
-        },
-        { map: orderMap, model: 'User' },
-      ),
-    ).toThrow("'notBetween' is not supported");
+  it('notBetween negates the having clause', () => {
+    const result = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        operator: Operator.notBetween,
+        value: [10, 100],
+      },
+      { map: orderMap, model: 'User' },
+    );
+    // An empty sum (0) is outside [10, 100]: select the parents outside the groups inside it.
+    const step = result.steps[0] as GroupByStep;
+    expect(step.args.having).toEqual({ total: { _sum: { gte: 10, lte: 100 } } });
+    expect(getWhere(result)).toEqual({ NOT: { id: { in: { __step: 0 } } } });
+
+    const holdsOnlyForGroups = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        operator: Operator.notBetween,
+        value: [0, 100],
+      },
+      { map: orderMap, model: 'User' },
+    );
+    expect((holdsOnlyForGroups.steps[0] as GroupByStep).args.having).toEqual({
+      NOT: { total: { _sum: { gte: 0, lte: 100 } } },
+    });
+    expect(getWhere(holdsOnlyForGroups)).toEqual({ id: { in: { __step: 0 } } });
   });
 
   it('throws if field is not a relation', () => {
@@ -779,7 +797,7 @@ describe('toPrisma() aggregate rules', () => {
         },
         { map: orderMap, model: 'User' },
       ),
-    ).toThrow('must be a scalar field');
+    ).toThrow('must be a numeric scalar');
   });
 
   describe('condition filtering', () => {
@@ -954,6 +972,17 @@ describe('validateRule() aggregate rules', () => {
     expect(result.errors[0].code).toBe('invalid_aggregate_mode');
   });
 
+  it('an unknown mode is refused on every rail, never read as another', () => {
+    const rule = {
+      field: 'scores',
+      aggregate: { mode: 'max' },
+      operator: Operator.greaterThan,
+      value: 0,
+    } as never;
+    expect(() => check(rule, { scores: [1] })).toThrow('aggregate.mode must be one of sum / avg');
+    expect(() => toSql(rule)).toThrow('aggregate.mode must be one of sum / avg');
+  });
+
   it('unsupported operator', () => {
     const result = validateRule({
       field: 'scores',
@@ -986,7 +1015,7 @@ describe('validateRule() aggregate rules', () => {
     expect(result.errors[0].code).toBe('invalid_range_value');
   });
 
-  it('toPrisma rejects notBetween', () => {
+  it('toPrisma accepts notBetween', () => {
     const result = validateRule(
       {
         field: 'scores',
@@ -996,8 +1025,7 @@ describe('validateRule() aggregate rules', () => {
       },
       { target: 'toPrisma' },
     );
-    expect(result.ok).toBe(false);
-    expect(result.errors[0].code).toBe('unsupported_prisma_aggregate_operator');
+    expect(result.ok).toBe(true);
   });
 
   it('toPrisma rejects path', () => {

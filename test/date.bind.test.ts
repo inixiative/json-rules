@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { check, resolveBindings, toSql } from '../index';
+import { bindRule, check, toSql } from '../index';
 
 // A date rule's `bind` is its comparison value supplied at evaluation time — a date or a
 // date expression — with the same key-presence contract as a field rule's bind.
@@ -69,12 +69,12 @@ describe('both rails classify the same rows for a bound window', () => {
     await db.close();
   });
 
-  it('check() with bindings matches toSql over resolveBindings', async () => {
+  it('check() with bindings matches toSql over bindRule', async () => {
     const bindings = { quietWindow: { ago: { hours: 2 } } };
     const inMemory = rows
       .filter((r) => check(quietFor, r, { now, bindings }) === true)
       .map((r) => r.id);
-    const { sql, params } = toSql(resolveBindings(quietFor, bindings), { now });
+    const { sql, params } = toSql(bindRule(quietFor, bindings), { now });
     const viaSql = (
       await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
     ).rows.map((r) => r.id);

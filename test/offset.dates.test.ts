@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { check, resolveBindings, toPrisma, toSql } from '../index';
+import { bindRule, check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // A date `offset` is the rolling shape anchored on the resolved value instead of now:
@@ -46,7 +46,7 @@ const ids = async (condition: Condition, opts: Opts = {}) => {
   const inMemory = rows
     .filter((r) => check(condition, r, { now: NOW, ...opts } as never) === true)
     .map((r) => r.id);
-  const compiled = opts.bindings ? resolveBindings(condition, opts.bindings as never) : condition;
+  const compiled = opts.bindings ? bindRule(condition, opts.bindings as never) : condition;
   const { sql, params } = toSql(compiled, { now: NOW, context: opts.context });
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
@@ -220,7 +220,7 @@ describe('toPrisma and date offsets', () => {
       offset: { value: { ago: { days: 7 } } },
     });
     expect(
-      getWhere(toPrisma(resolveBindings(r, { anchor: '2026-10-01T00:00:00Z' }), { now: NOW })),
+      getWhere(toPrisma(bindRule(r, { anchor: '2026-10-01T00:00:00Z' }), { now: NOW })),
     ).toEqual({ ts: { lt: new Date('2026-09-24T00:00:00Z') } });
   });
 

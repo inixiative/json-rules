@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
-import { validateNarrowing } from '../src/lens/narrowing';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import { assertValidNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
   models: {
@@ -65,60 +64,62 @@ const withParent = (
 
 describe('validateNarrowing — structural rules', () => {
   test('empty narrowing passes', () => {
-    expect(() => validateNarrowing(withParent(lens, {}))).not.toThrow();
+    expect(() => assertValidNarrowing(withParent(lens, {}))).not.toThrow();
   });
 
   test('valid picks at root pass', () => {
     expect(() =>
-      validateNarrowing(withParent(lens, { root: { picks: ['email', 'name'] } })),
+      assertValidNarrowing(withParent(lens, { root: { picks: ['email', 'name'] } })),
     ).not.toThrow();
   });
 
   test('picks + omits at same node throws', () => {
     expect(() =>
-      validateNarrowing(withParent(lens, { root: { picks: ['email'], omits: ['name'] } })),
+      assertValidNarrowing(withParent(lens, { root: { picks: ['email'], omits: ['name'] } })),
     ).toThrow(/cannot specify both picks and omits/);
   });
 
   test('pick referencing non-existent field throws', () => {
-    expect(() => validateNarrowing(withParent(lens, { root: { picks: ['nope'] } }))).toThrow(
+    expect(() => assertValidNarrowing(withParent(lens, { root: { picks: ['nope'] } }))).toThrow(
       /'nope' not on model/,
     );
   });
 
   test('omit referencing non-existent field throws', () => {
-    expect(() => validateNarrowing(withParent(lens, { root: { omits: ['nope'] } }))).toThrow(
+    expect(() => assertValidNarrowing(withParent(lens, { root: { omits: ['nope'] } }))).toThrow(
       /'nope' not on model/,
     );
   });
 
   test('relations key not on model throws', () => {
     expect(() =>
-      validateNarrowing(withParent(lens, { root: { relations: { ghost: { picks: ['x'] } } } })),
+      assertValidNarrowing(withParent(lens, { root: { relations: { ghost: { picks: ['x'] } } } })),
     ).toThrow(/'ghost' not on model/);
   });
 
   test('relations key on scalar field throws', () => {
     expect(() =>
-      validateNarrowing(withParent(lens, { root: { relations: { email: {} } } })),
+      assertValidNarrowing(withParent(lens, { root: { relations: { email: {} } } })),
     ).toThrow(/'email' is not a relation/);
   });
 
   test('unknown map name in mapDefaults throws', () => {
     expect(() =>
-      validateNarrowing(withParent(lens, { mapDefaults: { nope: { models: { FanUser: {} } } } })),
+      assertValidNarrowing(
+        withParent(lens, { mapDefaults: { nope: { models: { FanUser: {} } } } }),
+      ),
     ).toThrow(/mapDefaults\.nope: not in lens/);
   });
 
   test('unknown model name in mapDefaults throws', () => {
     expect(() =>
-      validateNarrowing(withParent(lens, { mapDefaults: { prisma: { models: { Nope: {} } } } })),
+      assertValidNarrowing(withParent(lens, { mapDefaults: { prisma: { models: { Nope: {} } } } })),
     ).toThrow(/Nope: not in fieldMap/);
   });
 
   test('recurses into relation, validates against related model', () => {
     expect(() =>
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(lens, {
           root: {
             relations: { fanMissions: { picks: ['missionUuid', 'status'] } },
@@ -130,7 +131,7 @@ describe('validateNarrowing — structural rules', () => {
 
   test('recursion catches invalid field on related model', () => {
     expect(() =>
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(lens, {
           root: { relations: { fanMissions: { picks: ['nope'] } } },
         }),
@@ -140,7 +141,7 @@ describe('validateNarrowing — structural rules', () => {
 
   test('cross-map bridge relation resolves to target map', () => {
     expect(() =>
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(lens, {
           root: {
             relations: { 'salesforce:Contact': { picks: ['industry'] } },
@@ -153,7 +154,7 @@ describe('validateNarrowing — structural rules', () => {
   test('accumulates multiple errors', () => {
     let err: Error | undefined;
     try {
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(lens, {
           root: { picks: ['nope1', 'nope2'], omits: ['alsoNope'] },
         }),
@@ -179,20 +180,20 @@ describe('validateNarrowing — chain rules', () => {
   test('child pick within ancestor picks passes', () => {
     const parent = parentPicksOnRoot(['email', 'name']);
     expect(() =>
-      validateNarrowing(withParent(parent, { root: { picks: ['email'] } })),
+      assertValidNarrowing(withParent(parent, { root: { picks: ['email'] } })),
     ).not.toThrow();
   });
 
   test('child pick outside ancestor picks throws', () => {
     const parent = parentPicksOnRoot(['email']);
-    expect(() => validateNarrowing(withParent(parent, { root: { picks: ['name'] } }))).toThrow(
+    expect(() => assertValidNarrowing(withParent(parent, { root: { picks: ['name'] } }))).toThrow(
       /'name' not in ancestor's picks/,
     );
   });
 
   test('child cannot pick ancestor-omitted field', () => {
     const parent = parentOmitsOnRoot(['email']);
-    expect(() => validateNarrowing(withParent(parent, { root: { picks: ['email'] } }))).toThrow(
+    expect(() => assertValidNarrowing(withParent(parent, { root: { picks: ['email'] } }))).toThrow(
       /'email' was omitted by ancestor/,
     );
   });
@@ -200,21 +201,21 @@ describe('validateNarrowing — chain rules', () => {
   test('child can switch from ancestor-omit context to its own pick (non-omitted field)', () => {
     const parent = parentOmitsOnRoot(['email']);
     expect(() =>
-      validateNarrowing(withParent(parent, { root: { picks: ['name'] } })),
+      assertValidNarrowing(withParent(parent, { root: { picks: ['name'] } })),
     ).not.toThrow();
   });
 
   test('child can omit anything visible in ancestor picks', () => {
     const parent = parentPicksOnRoot(['email', 'name']);
     expect(() =>
-      validateNarrowing(withParent(parent, { root: { omits: ['email'] } })),
+      assertValidNarrowing(withParent(parent, { root: { omits: ['email'] } })),
     ).not.toThrow();
   });
 
   test('child cannot omit field already invisible (not in ancestor picks)', () => {
     const parent = parentPicksOnRoot(['email']);
-    expect(() => validateNarrowing(withParent(parent, { root: { omits: ['name'] } }))).toThrow(
-      /'name' not in ancestor's picks \(already invisible\)/,
+    expect(() => assertValidNarrowing(withParent(parent, { root: { omits: ['name'] } }))).toThrow(
+      /'name' not in ancestor's picks/,
     );
   });
 
@@ -223,7 +224,7 @@ describe('validateNarrowing — chain rules', () => {
       root: { relations: { fanMissions: { picks: ['missionUuid'] } } },
     });
     expect(() =>
-      validateNarrowing(
+      assertValidNarrowing(
         withParent(parent, {
           root: { relations: { fanMissions: { picks: ['status'] } } },
         }),
@@ -235,10 +236,10 @@ describe('validateNarrowing — chain rules', () => {
     const grandparent = parentPicksOnRoot(['email', 'name', 'id']);
     const parent = withParent(grandparent, { root: { picks: ['email', 'name'] } });
     expect(() =>
-      validateNarrowing(withParent(parent, { root: { picks: ['email'] } })),
+      assertValidNarrowing(withParent(parent, { root: { picks: ['email'] } })),
     ).not.toThrow();
 
-    expect(() => validateNarrowing(withParent(parent, { root: { picks: ['id'] } }))).toThrow(
+    expect(() => assertValidNarrowing(withParent(parent, { root: { picks: ['id'] } }))).toThrow(
       /'id' not in ancestor's picks/,
     );
   });
@@ -247,7 +248,7 @@ describe('validateNarrowing — chain rules', () => {
 describe('validateNarrowing — root.where', () => {
   test('root.where referencing visible field passes', () => {
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent: lens,
         root: { where: { field: 'email', operator: Operator.equals, value: 'x' } },
       }),
@@ -256,7 +257,7 @@ describe('validateNarrowing — root.where', () => {
 
   test('root.where referencing a field this narrowing omits is OK (own omit narrows output, not where scope)', () => {
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent: lens,
         root: {
           omits: ['email'],
@@ -268,7 +269,7 @@ describe('validateNarrowing — root.where', () => {
 
   test("root.where referencing a field this narrowing doesn't pick is OK (validated against parent)", () => {
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent: lens,
         root: {
           picks: ['id'],
@@ -284,7 +285,7 @@ describe('validateNarrowing — root.where', () => {
       root: { omits: ['email'] },
     };
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent,
         root: { where: { field: 'email', operator: Operator.equals, value: 'x' } },
       }),

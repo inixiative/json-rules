@@ -231,8 +231,8 @@ describe('toSql', () => {
         operator: Operator.equals,
         value: 'dark',
       });
-      expect(sql).toBe('"data"->>\'theme\' = $1');
-      expect(params).toEqual(['dark']);
+      expect(sql).toBe(`NULLIF("data"->'theme', 'null'::jsonb) = $1::jsonb`);
+      expect(params).toEqual(['"dark"']);
     });
 
     it('nested JSON path', () => {
@@ -241,8 +241,8 @@ describe('toSql', () => {
         operator: Operator.equals,
         value: 'compact',
       });
-      expect(sql).toBe("\"settings\"->'display'->>'mode' = $1");
-      expect(params).toEqual(['compact']);
+      expect(sql).toBe("NULLIF(\"settings\"->'display'->'mode', 'null'::jsonb) = $1::jsonb");
+      expect(params).toEqual(['"compact"']);
     });
   });
 
@@ -255,7 +255,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"createdAt" < $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('after', () => {
@@ -266,7 +266,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"updatedAt" > $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('onOrBefore', () => {
@@ -277,7 +277,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"expiresAt" <= $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('onOrAfter', () => {
@@ -288,7 +288,7 @@ describe('toSql', () => {
         value: date,
       });
       expect(sql).toBe('"startDate" >= $1');
-      expect(params).toEqual([date]);
+      expect(params).toEqual([date.toISOString()]);
     });
 
     it('between dates', () => {
@@ -300,7 +300,7 @@ describe('toSql', () => {
         value: [start, end],
       });
       expect(sql).toBe('"eventDate" BETWEEN $1 AND $2');
-      expect(params).toEqual([start, end]);
+      expect(params).toEqual([start.toISOString(), end.toISOString()]);
     });
 
     it('[P2] between dates auto-sorts reversed range', () => {
@@ -312,7 +312,7 @@ describe('toSql', () => {
         value: [end, start],
       });
       expect(sql).toBe('"eventDate" BETWEEN $1 AND $2');
-      expect(params).toEqual([start, end]);
+      expect(params).toEqual([start.toISOString(), end.toISOString()]);
     });
 
     it('[P2] notBetween dates auto-sorts reversed range', () => {
@@ -324,7 +324,7 @@ describe('toSql', () => {
         value: [end, start],
       });
       expect(sql).toBe('("eventDate" NOT BETWEEN $1 AND $2 OR "eventDate" IS NULL)');
-      expect(params).toEqual([start, end]);
+      expect(params).toEqual([start.toISOString(), end.toISOString()]);
     });
 
     it('dayIn', () => {
@@ -334,7 +334,7 @@ describe('toSql', () => {
         value: ['monday', 'wednesday', 'friday'],
       });
       expect(sql).toBe(
-        `EXTRACT(DOW FROM (("scheduledAt")::timestamptz AT TIME ZONE $1)) = ANY($2)`,
+        `EXTRACT(DOW FROM (to_timestamp(EXTRACT(EPOCH FROM "scheduledAt")) AT TIME ZONE $1)) = ANY($2)`,
       );
       expect(params).toEqual(['UTC', [1, 3, 5]]);
     });
@@ -346,7 +346,7 @@ describe('toSql', () => {
         value: ['saturday', 'sunday'],
       });
       expect(sql).toBe(
-        `(EXTRACT(DOW FROM (("deliveryDate")::timestamptz AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
+        `(EXTRACT(DOW FROM (to_timestamp(EXTRACT(EPOCH FROM "deliveryDate")) AT TIME ZONE $1)) <> ALL($2) OR "deliveryDate" IS NULL)`,
       );
       expect(params).toEqual(['UTC', [6, 0]]);
     });
@@ -356,13 +356,13 @@ describe('toSql', () => {
     describe('jsonb (default)', () => {
       it('empty', () => {
         const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty });
-        expect(sql).toBe('("tags" IS NULL OR jsonb_array_length("tags") = 0)');
+        expect(sql).toBe(`("tags" IS NULL OR "tags" IN ('null'::jsonb, '[]'::jsonb))`);
         expect(params).toEqual([]);
       });
 
       it('notEmpty', () => {
         const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty });
-        expect(sql).toBe('("items" IS NOT NULL AND jsonb_array_length("items") > 0)');
+        expect(sql).toBe(`"items" NOT IN ('null'::jsonb, '[]'::jsonb)`);
         expect(params).toEqual([]);
       });
     });
@@ -373,7 +373,7 @@ describe('toSql', () => {
           { field: 'tags', arrayOperator: ArrayOperator.empty },
           { map: nativeArrayMap, model: 'Test' },
         );
-        expect(sql).toBe('("tags" IS NULL OR array_length("tags", 1) IS NULL)');
+        expect(sql).toBe('("t0"."tags" IS NULL OR cardinality("t0"."tags") = 0)');
         expect(params).toEqual([]);
       });
 
@@ -382,7 +382,7 @@ describe('toSql', () => {
           { field: 'items', arrayOperator: ArrayOperator.notEmpty },
           { map: nativeArrayMap, model: 'Test' },
         );
-        expect(sql).toBe('("items" IS NOT NULL AND array_length("items", 1) IS NOT NULL)');
+        expect(sql).toBe('cardinality("t0"."items") > 0');
         expect(params).toEqual([]);
       });
     });
@@ -438,7 +438,7 @@ describe('toSql', () => {
         if: { field: 'type', operator: Operator.equals, value: 'premium' },
         then: { field: 'credits', operator: Operator.greaterThan, value: 0 },
       });
-      expect(sql).toBe('(NOT("type" = $1) OR "credits" > $2)');
+      expect(sql).toBe('(("type" = $1) IS NOT TRUE OR "credits" > $2)');
       expect(params).toEqual(['premium', 0]);
     });
 
@@ -450,7 +450,7 @@ describe('toSql', () => {
       });
       // Reuses $1 for the if clause in both branches (efficient)
       expect(sql).toBe(
-        '((NOT("type" = $1) OR "daysLeft" > $2) AND ("type" = $1 OR "subscribed" = $3))',
+        '((("type" = $1) IS NOT TRUE OR "daysLeft" > $2) AND (("type" = $1) IS TRUE OR "subscribed" = $3))',
       );
       expect(params).toEqual(['trial', 0, true]);
     });

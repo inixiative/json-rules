@@ -204,7 +204,8 @@ Computes `sum` or `avg` of an array and compares the result to a value.
 }
 ```
 
-Empty-array semantics: `sum([]) = 0`, `avg([]) = null` (comparison fails).
+Empty-array semantics: `sum([]) = 0` and `avg([]) = 0`. A NULL or absent array is empty, and
+NULL items are skipped, as SQL's `SUM` / `AVG` skip them.
 
 ### Date Rule
 
@@ -288,8 +289,9 @@ Compilers resolve expressions to concrete `Date` bounds at compile time, so
 ### Windowing — first/last with `orderBy` / `take` / `skip`
 
 Array and aggregate rules accept an ordered-window selector that runs **before** the
-predicate. Pipeline: order → skip → take. Direction comes from `orderBy.dir`, so
-"the last fanMission" is `order by date desc, take 1`.
+predicate. Pipeline: filter → order → skip → take. Direction comes from `orderBy.dir`, so
+"the last fanMission" is `order by date desc, take 1`. NULLs sort last in both directions, so
+`orderBy views desc, take 1` is the largest non-null value.
 
 ```ts
 // "user whose last fanMission was more than 30 days ago"
@@ -302,7 +304,8 @@ predicate. Pipeline: order → skip → take. Direction comes from `orderBy.dir`
 }
 ```
 
-`orderBy` is a non-empty array of `{ field, dir: 'asc' | 'desc' }` (multi-key);
+`filter` is a condition each element must pass to enter the window (`narrowRule` puts a lens
+grant there under `all`). `orderBy` is a non-empty array of `{ field, dir: 'asc' | 'desc' }` (multi-key);
 `take`/`skip` are non-negative integers. **Empty-window semantics are author-driven**:
 `all` is vacuously true on an empty window, `atLeast: 1` (or `any`) is false. To require
 "the windowed element matches **and** one exists," combine `all` with `notEmpty` / `atLeast: 1`.
@@ -313,7 +316,7 @@ predicate. Pipeline: order → skip → take. Direction comes from `orderBy.dir`
 > It rewrites to `every` / `some` (e.g. the rule above → `{ fanMissions: { every: { completedAt:
 > { lt: <now-30d> } } } }`). Any other windowed rule — `take > 1`, `skip`, multi-key
 > `orderBy`, a different/non-monotonic condition, or a misaligned direction — throws a clear
-> "unsupported" error. `toSql()` does not compile windowing at all (no relation subqueries in
+> "unsupported" error, and so does any `filter`. `toSql()` does not compile windowing at all (no relation subqueries in
 > a `WHERE` fragment). Evaluate the unsupported cases in memory with `check()`.
 
 ## Path Semantics
@@ -362,8 +365,8 @@ bare `path` is always the root context (`options.context`, defaulting to the roo
 ```
 
 A ref deeper than the nesting (`$$.` at the top level, `$$$.` one array deep) throws in
-`check()`, is a `scope_out_of_bounds` issue from `validateRule`, and a violation from
-`checkRuleAgainstLens`. A reachable ancestor that lacks the named key fails the comparison
+`check()`, is a `scope_out_of_bounds` issue from `validateRule`, and an error from
+`validateRuleInLens`. A reachable ancestor that lacks the named key fails the comparison
 like any absent field.
 
 `toSql()` keeps `path: '$.x'` as a same-row column comparison. Every other scope ref — a
@@ -395,8 +398,8 @@ instead of `now`:
   offset: { value: { ahead: { days: 4 } } } }
 ```
 
-`resolveBindings` resolves an offset's bind as it does the comparison value's, and
-`bindingNames` / `requiredBindings` list it. A date offset read per row (a column holding
+`bindRule` resolves an offset's bind as it does the comparison value's, and
+`listBindings` lists it. A date offset read per row (a column holding
 `{ ago: … }`) is check-only; to size a shift from the row, read the amount instead.
 
 Any relative-date unit — in a `value` expression or an offset's rolling shift — is a number or a
@@ -426,7 +429,7 @@ in double precision on every rail.
 | `$.` date offset (a stored `{ ago }`) | yes | throws | throws |
 | `$$.` anything | yes | throws | throws |
 
-`checkRuleAgainstLens` gates offset and magnitude refs like `path` (they must resolve through
+`validateRuleInLens` gates offset and magnitude refs like `path` (they must resolve through
 the lens and read a number), and an offset must fit the field's kind: a number on a numeric
 field, a rolling shift on a DateTime.
 
@@ -438,9 +441,9 @@ format grows a node type, and it goes blind silently.
 
 | Function | Purpose |
 | --- | --- |
-| `requiredBindings(rule)` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`. A name optional at one leaf and required at another is required. |
-| `bindingNames(rule)` | Every `{ bind }` name in the tree, optional or not — what a lens declares. |
-| `resolveBindings(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
+| `listBindings(rule, { required: true })` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`, sorted. A name optional at one leaf and required at another is required. |
+| `listBindings(rule)` | Every `{ bind }` name in the tree, optional or not, sorted — what a lens declares. |
+| `bindRule(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
 
 A leaf may mark its bind optional: `{ field, operator, bind: 'region', bindOptional: true }`. An
 unsupplied required bind is a caller bug — `check()` throws, and both compilers refuse a
@@ -482,6 +485,26 @@ check(rule, {
 }); // true
 ```
 
+### Value Comparison
+
+Values compare as JSON does. Lists and objects compare by value, deeply. Types never cross:
+`"3"` never equals `3`, and an ordered comparison or a range holds only between two numbers, two
+strings or two dates. A `Date` field value compares as a DateTime without help. To compare a
+string literal against a number or Boolean field, stamp the rule's `coerceType` (`coerceRule`
+does it from a lens). The compilers refuse a string literal on a number or Boolean column
+without one.
+
+An enum compares against its declared values. A case-insensitive comparison, a string operator,
+a pattern or an ordered comparison on an enum compiles to a membership test over the declared
+values `check()` would match (plus the NULL arm for a negation). The field map must list the
+values (prisma-map does).
+
+```ts
+// map: { models: { U: { fields: { role: { kind: 'enum', type: 'Role' } } } }, enums: { Role: ['admin', 'member'] } }
+toSql({ field: 'role', operator: Operator.startsWith, value: 'adm' }, { map, model: 'U' });
+// { sql: '"t0"."role"::text = ANY($1)', params: [['admin']], joins: [] }
+```
+
 ### Custom Errors
 
 Every rule can define its own error:
@@ -511,13 +534,13 @@ const plan = toPrisma({
 // plan.steps => [{ operation: 'where', where: { status: { equals: 'active' } } }]
 ```
 
-Aggregate relation filters (`sum`, `avg`) and count-based filters (`atLeast`, `atMost`, `exactly`) can produce multi-step plans. Use `executePrismaQueryPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
+Aggregate relation filters (`sum`, `avg`) and count-based filters (`atLeast`, `atMost`, `exactly`) can produce multi-step plans. Use `executePrismaPlan()` to resolve `groupBy` step references before passing the final `where` into Prisma.
 
 ```ts
 import {
   ArrayOperator,
   Operator,
-  executePrismaQueryPlan,
+  executePrismaPlan,
   toPrisma,
 } from '@inixiative/json-rules';
 
@@ -535,7 +558,7 @@ const plan = toPrisma(
   { map, model: 'User' },
 );
 
-const where = await executePrismaQueryPlan(plan, { post: prisma.post });
+const where = await executePrismaPlan(plan, { post: prisma.post });
 await prisma.user.findMany({ where });
 ```
 
@@ -552,9 +575,52 @@ const plan = toPrisma(
   { map, model: 'User' },
 );
 
-const where = await executePrismaQueryPlan(plan, { order: prisma.order });
+const where = await executePrismaPlan(plan, { order: prisma.order });
 await prisma.user.findMany({ where }); // users whose orders sum to more than 1000
 ```
+
+A user with no orders sums to 0, as in `check()`: a comparison that holds at 0 selects the
+parents outside the groups where it fails, so childless parents stay in.
+
+### Json null checks
+
+A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent — `check()`
+reads all three as null, and Prisma matches them together only with its `AnyNull` instance,
+which it knows by identity. `toPrisma()` takes it from your installed `@prisma/client` (an
+optional peer dependency), so there is nothing to configure; set `prismaOptions.anyNull` only to
+use a different client's. Without `@prisma/client`, a Json null check throws.
+
+Prisma filters follow the column kind the map
+declares: on Json, `contains` / `startsWith` / `endsWith` become `string_contains` / … and `in`
+becomes one `equals` per value; on a scalar list, `contains` becomes `has` and emptiness
+`isEmpty`; `caseInsensitive` adds `mode: 'insensitive'` on text only.
+
+## Engine Globals
+
+`engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object.
+
+| Key | Default | Governs |
+| --- | --- | --- |
+| `string.caseInsensitive` | `false` | Default for a rule's `caseInsensitive`. A rule's own flag wins. Read by `check()`, `toSql()` and `toPrisma()`. |
+| `string.fuzzy` | `false` | Default for a rule's `fuzzy` (`true` or a `FuzzyConfig` `{ maxDistance?, maxRatio? }`): typo-tolerant `contains` / `notContains` on strings. A rule's own flag wins. The compilers have no fuzzy form: they refuse `contains` / `notContains` whenever fuzzy is on, by the rule or by this default. |
+| `prismaOptions.datasource.provider` | `'postgresql'` | The Prisma connector. `toPrisma()` emits `mode: 'insensitive'` only for `postgresql`, `cockroachdb` and `mongodb`; the others are case-insensitive by collation and reject it. `toPrisma(rule, { datasource: { provider } })` overrides it per call. |
+| `prismaOptions.anyNull` | your `@prisma/client`'s | Prisma's `AnyNull` for Json null checks (see above); set it only to use another client's. |
+
+```ts
+import { engineGlobals } from '@inixiative/json-rules';
+
+engineGlobals.set('string.caseInsensitive', true);
+engineGlobals.get('string.caseInsensitive'); // true
+engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
+engineGlobals.reset(); // back to the defaults
+
+// A scoped override: merged over the current state for the duration of a synchronous callback.
+const result = engineGlobals.with({ string: { caseInsensitive: true } }, () => check(rule, data));
+```
+
+`with()` restores the previous state when the callback returns or throws. The callback must be
+synchronous: one that returns a Promise throws. `set()` copies plain data and keeps a class
+instance (like `AnyNull`) as given, since Prisma recognizes it by identity.
 
 ## PostgreSQL SQL Generation
 
@@ -588,6 +654,13 @@ const result = toSql(
 // result.joins => ['LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"']
 ```
 
+`map` is a `FieldMap`, or a `FieldMapSet` (a lens works) with `mapName` naming the map to read,
+as `toPrisma()` takes it. A set without `mapName` throws.
+
+```ts
+toSql(rule, { map: lens, mapName: 'prisma', model: 'Post' });
+```
+
 ## Backend Support Matrix
 
 Not every backend supports every rule shape.
@@ -599,13 +672,13 @@ Not every backend supports every rule shape.
 | Logical operators | Yes | Yes | Yes |
 | Array `all` / `any` / `none` | Yes | Yes | No |
 | Array `atLeast` / `atMost` / `exactly` | Yes | Yes, with `map` + `model` | No |
-| Array `empty` / `notEmpty` | Yes | Yes | Yes |
+| Array `empty` / `notEmpty` | Yes | Yes | Yes (list and Json columns, not relations) |
 | Aggregate `sum` / `avg` — primitive or object array | Yes | No | Yes |
 | Aggregate `sum` / `avg` — relation list | Yes | Yes, with `map` + `model` | No |
 | Date comparisons | Yes | Most | Yes |
 | Date expressions (`ago`/`ahead`/`this`/`last`/`next`/`start`/`end`) + `within` | Yes | Yes | Yes |
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
-| Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
+| Windowing (`filter` / `orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned, no `filter`) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
 | `offset` and unit amounts — value, bind or context | Yes | Yes | Yes |
 | `offset` and unit amounts — `$.` row refs | Yes | No | Yes (not a date offset's) |
@@ -632,7 +705,8 @@ and `{ rel: { col: { equals: null } } }` only matches when the relation exists. 
 also carries `{ rel: { is: null } }` for each optional to-one hop on the path (licensed by the
 relation entry's `isRequired: false`) — `profile.bio notEquals 'x'` compiles to
 `{ OR: [{ profile: { bio: { not: 'x' } } }, { profile: { bio: { equals: null } } }, { profile: { is: null } }] }`,
-matching check() (a missing hop reads as `undefined`) and toSql (LEFT JOIN + `IS NULL`).
+matching check() (a missing hop reads as NULL) and toSql (LEFT JOIN + `IS NULL`). `equals null`
+and `in [null, …]` carry the same hop arms: a user with no profile has a NULL `profile.bio`.
 
 `toPrisma()` can only add the null arm when it knows the column is nullable —
 an `equals: null` on a NOT NULL column is a Prisma validation error. Nullability
@@ -667,8 +741,10 @@ positive operator, ask for them:
 - `dayIn` and `dayNotIn` are not supported by Prisma output
 - `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`; no scope ref (`$$.` path, prefixed `field`) compiles
 - count-based and aggregate relation operators require `{ map, model }`
-- aggregate rules with `notBetween` are not supported by Prisma output
 - aggregate rules on JSON/native stored arrays are not supported by Prisma — use `toSql()` or `check()` for those
+- element conditions (`all` / `any` / `none` / counts) over a scalar list or a Json array are not supported by Prisma; test a list's membership with `contains`
+- a field path through a to-many relation (`posts.title`) is an error on both compilers — compare its rows with an array rule on `posts`
+- Prisma loads a NULL scalar-list column as `[]`, so `check()` over Prisma-loaded rows reads it as an empty list while the compilers read NULL; a list Prisma writes is never NULL, so this only matters for rows written outside Prisma
 
 ### SQL Limitations
 
@@ -697,52 +773,108 @@ type Condition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | boolean;
 ```
 
-Useful exports:
+The public API has one name per operation. [docs/VERBS.md](./docs/VERBS.md) lists every
+exported function by verb.
 
-- `check`
-- `toPrisma`
-- `executePrismaQueryPlan`
-- `toSql`
-- `validateRule`
-- `assertValidRule`
-- `Operator`
-- `ArrayOperator`
-- `DateOperator`
-- `Condition`
-- `StrictCondition`
-- `Rule`
-- `AggregateRule`
-- `AggregateMode`
-- `ArrayRule`
-- `DateRule`
+Rules:
+
+- `check`, `toPrisma`, `executePrismaPlan`, `toSql`
+- `validateRule`, `assertValidRule`, `bindRule`, `listBindings`
+- `Operator`, `ArrayOperator`, `DateOperator`
+- `Condition`, `StrictCondition`, `Rule`, `AggregateRule`, `AggregateMode`, `ArrayRule`, `DateRule`, `Row`, `CheckData`
+- `GroupByStep`, `WhereStep`, `PrismaStep`, `PrismaWhere`, `StepRef` (a Prisma plan's steps); `ScopeRef`, `ScopedRef`, `ScopeOutOfBounds` (scope refs)
+- `CheckOptions`, `CompileOptions`, `ToPrismaOptions`, `ToSqlOptions`, `ToSqlResult`, `ToPrismaResult`, `ValidateRuleOptions`, `ListBindingsOptions`, `ValidationIssue`, `ValidationResult`
+- every rule-shape type in `src/types.ts` (`StrictRule`, `DateExpr`, `RelativeUnits`, …), listed in `index.ts`
+- `engineGlobals`, `EngineGlobalsState`, `PrismaProvider`, `FuzzyConfig`
 
 Lens & bridges:
 
-- `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`
-- `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
-- `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMapSet`
-- `validateNarrowing`, `projectByPath`, `exposedSurface`, `describeRule`, `checkRuleAgainstLens`, `applyLens`
-- `PathProjection`, `ProjectedVisit`, `RuleDescription`
-- `buildBridgeDictionary`
+- `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`, `SourceSpec`, `SourceEntry`
+- `FieldMap`, `FieldMapEntry`, `ModelEntry`, `SourceOption`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
+- `createLens`, `storeLens`, `composeLens`, `StoredLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
+- `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
+- `bindLens`, `listLensBindings`
+- `projectLens`, `walkLensPath`, `describeRule`, `describeRuleSources`
+- `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
+- `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`
 
-Two shapes come out of a lens, and they are different things:
+A lens has three forms, each with its own job:
 
-- **Lens** (maps intact — the navigable graph): `exposedSurface(lensOrNarrowing)`
-  returns the leak-safe total exposed surface *as a Lens* — every reachable model
-  with the full narrowing applied (root + path-specific + `mapDefaults`), unioned
-  per model, `where` stripped. Use it as the server→client builder surface; it
-  never exposes the raw, un-narrowed lens.
-- **Projection** (path-keyed view — graph flattened away): `projectByPath(lens)`
-  returns `Map<dottedPath, ProjectedVisit>` for per-path checks where sibling
-  paths to the same model diverge.
+- **Composed** — a `Lens`, or a `LensNarrowing` whose `parent` holds the layer above it as an
+  object, down to the base lens. Every evaluator takes this form.
+- **Stored** — `StoredLens`, one record per layer: its `id`, `parents` (the ids of every layer it
+  composes with, the base lens first) and its own part. The base lens is the root-most record,
+  stored as itself with no parents. `storeLens(lens, ids)` writes a composed lens out as records;
+  `composeLens(id, records)` reads them back — fetch the layer, then the ids it lists — validating
+  each layer against the ones above it and failing closed on a missing record, a base out of
+  place, or a parent whose own list disagrees.
+- **Projected** — what a lens exposes, which never leads back to the lens:
+  - `projectLens(lens)` returns `Record<dottedPath, ProjectedVisit>` for per-path checks where
+    sibling paths to the same model diverge.
+  - `projectLens(lens, { by: 'model' })` returns the leak-safe total surface *as a Lens* — every
+    reachable model with the full narrowing applied, unioned per model, `where` stripped. Use it as
+    the server→client builder surface; it never exposes the raw lens.
 
-Operator catalog (builder-facing):
+```ts
+const records = storeLens(grantLens, ['user', 'org-acme', 'grant-7']); // persist each record
+// later: fetch 'grant-7', then the ids in its `parents`
+const lens = composeLens('grant-7', { user, 'org-acme': orgAcme, 'grant-7': grant7 });
+```
 
-- `FIELD_OPERATOR_CATALOG`, `DATE_OPERATOR_CATALOG`, `ARRAY_OPERATOR_CATALOG`
-- `FieldKind`, `RuleTarget`, `ValueShape`
-- `NUMERIC_KINDS`, `ORDERABLE_KINDS`, `STRINGY_KINDS`, `EQUATABLE_KINDS`, `ALL_KINDS`
-- `getOperatorsForKind`, `getArrayOperators`, `getValueShape`, `isOperatorSupportedForTarget`
-- `WINDOW_SELECTOR`, `WindowSupport`, `getWindowSupport` (windowing fields + per-ruleType×target support)
+### Operator Catalog
+
+What a rule builder can offer for a field. The catalog's constants are `FieldKind`,
+`RuleTarget`, `ValueShape`, `NUMERIC_KINDS` and `ALL_KINDS`; `getValueShape(operator, family)` takes an
+`OperatorFamily` (`'field' | 'date' | 'array'`).
+
+```ts
+import {
+  getAggregateOperators,
+  getArrayOperators,
+  getOperatorsForKind,
+  getValueShape,
+} from '@inixiative/json-rules';
+
+getOperatorsForKind('Int', 'toPrisma');
+// { field: ['equals', 'notEquals', 'lessThan', …], date: [] } — operators that kind takes on that target
+
+getArrayOperators('toSql'); // ['empty', 'notEmpty']
+getAggregateOperators(); // ['equals', 'notEquals', 'lessThan', …, 'between', 'notBetween']
+
+getValueShape('between', 'field'); // 'range'
+getValueShape('between', 'date'); // 'dateRange'
+```
+
+| Function | Purpose |
+| --- | --- |
+| `getOperatorsForKind(kind, target?)` | `{ field, date }`: the field and date operators a `FieldKind` takes, narrowed to one target when given. |
+| `getArrayOperators(target?)` | The array operators, narrowed to one target when given. |
+| `getAggregateOperators()` | The comparisons an aggregate rule takes. Every target compiles all of them. |
+| `getValueShape(operator, family)` | The operand an operator takes (`'scalar'`, `'range'`, `'dayList'`, …). `family` is `'field'`, `'date'` or `'array'`, since `between` is both a field and a date operator. Throws on an operator the family doesn't have. |
+
+To ask whether a whole rule runs on a target (windows, scope refs and operators together), use
+`validateRule(rule, { target })`.
+
+### Scope Refs
+
+`parseScopeRef` and `readScopeRef` read the `$`-prefixed refs described in
+[Scope References](#scope-references), for code that resolves refs of its own.
+
+```ts
+import { parseScopeRef, readScopeRef } from '@inixiative/json-rules';
+
+parseScopeRef('$$.maxQty'); // { depth: 2, path: 'maxQty' }
+parseScopeRef('maxQty'); // null — a bare ref
+
+// scopes run outermost first; `$.` is the last, `$$.` the one before it
+readScopeRef('$$.maxQty', [rootRow, order, lineItem]); // { scope: order, path: 'maxQty' }
+readScopeRef('maxQty', [rootRow, order]); // { scope: order, path: 'maxQty' }
+readScopeRef('$$$.x', [rootRow, order]);
+// { outOfBounds: "Scope ref '$$$.x' needs depth 3 but only 2 scopes are in reach" }
+```
+
+`readScopeRef` returns the scope a ref names and the path left to read in it. It never throws:
+a ref deeper than the stack comes back as `{ outOfBounds }` with the message.
 
 ## Error Handling
 
@@ -795,7 +927,7 @@ check(
 
 ## Lens & Multi-Source Data
 
-> **For the full v2.2 lens guide — including the three anchor layers for `where`
+> **For the full lens guide — including the three anchor layers for `where`
 > (root, model-default, relation-descent), the `all` operator filter-first
 > trick, per-model enum narrowing, and a validate-then-apply usage pattern —
 > see [docs/LENS.md](./docs/LENS.md).**
@@ -810,10 +942,10 @@ trust boundaries (platform → org → space → subtenant → client). Each lay
 boundary is **enforced, not documented**:
 
 - a rule authored against a lens provably can't reference outside it —
-  `checkRuleAgainstLens`, at author time;
+  `validateRuleInLens`, at author time;
 - the row-scope **`where` is the grant, applied server-side at execution** via
-  `applyLens` — the authored rule never sees it and can't escape it;
-- what reaches an untrusted party reveals nothing hidden — `exposedSurface`.
+  `narrowRule` — the authored rule never sees it and can't escape it;
+- what reaches an untrusted party reveals nothing hidden — `projectLens(…, { by: 'model' })`.
 
 A lens defines a **surface area**, reused for distinct, separately-enforced
 constraints that may **diverge**: the *data-flow* surface (what you receive / pass
@@ -899,17 +1031,104 @@ const narrowing: LensNarrowing = {
 };
 ```
 
-Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. The `all` array operator gets a filter-first rewrite via implication so out-of-scope rows don't fail the user's "every row matches" check. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
+Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. Under the `all` array operator the grant goes into the rule's window `filter`, so out-of-scope rows are dropped before the user's "every row matches" check; `check()` and `toPrisma` run it. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
 
 ### Lens Utilities
 
 | Function | Purpose |
 | --- | --- |
-| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call at narrowing construction. |
-| `projectByPath(lens)` | Returns `Map<dottedPath, ProjectedVisit>` — each declared path keys its own resolved narrowing (path picks/omits/enums chain-intersected ∩ `mapDefaults` for the target model). Sibling paths to the same model stay independent. Use for SDK-contract / OpenAPI emission, search-field enumeration, validation whitelists. See [docs/LENS.md §10](./docs/LENS.md). |
-| `ruleSourceValues(lens, rule)` | The values a rule names at each source the lens declares, keyed like `projectByPath` (`path` + `field`, with the source's `mapName` / `model`). Resolved via `walkLensPath`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
-| `checkRuleAgainstLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, violations }`. The security gate. |
-| `applyLens(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
+| `validateNarrowing(narrowing)` | Returns `{ ok, errors: { path, message, code }[] }` for structural or chain problems, one code each: `not_in_lens`, `not_visible` (an item an ancestor hid), `conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`, `invalid_binding`, plus the lens gate's codes for a `where`. `assertValidNarrowing` throws instead. Call at narrowing construction. |
+| `assertValidFieldMaps(set)` | Throws when a field name in any map holds `.` or `:` (a path step and a bridge marker). `validateFieldMaps(set)` returns `{ ok, errors }` with code `invalid_field_name`. To check a single map, wrap it: `assertValidFieldMaps({ maps: { prisma: map } })`. |
+| `projectLens(lens)` | Returns `Record<dottedPath, ProjectedVisit>` — each declared path keys its own resolved narrowing (path picks/omits/enums chain-intersected ∩ `mapDefaults` for the target model). Sibling paths to the same model stay independent. Use for SDK-contract / OpenAPI emission, search-field enumeration, validation whitelists. See [docs/LENS.md §10](./docs/LENS.md). |
+| `describeRuleSources(rule, lens)` | The values a rule names at each source the lens declares, keyed like `projectLens` (`path` + `field`, with the source's `mapName` / `model`). Resolved through the lens like `walkLensPath`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, an offset or a read amount that moves the value, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
+| `validateRuleInLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, errors: { path, message, code }[] }` like `validateRule` (codes such as `not_in_lens`, `operator_kind_mismatch`, `invalid_value`, `value_not_allowed`). The security gate. |
+| `describeRule(rule, lens)` | `{ sources, bridgesCrossed, supportedTargets, errors }`: the maps a rule reads, whether it crosses a bridge, which of `check` / `toPrisma` / `toSql` can run it (by the rule's shape, as `validateRule` reads it — a compiler may still refuse a field's kind, such as a date rule on a String column on Prisma), and the lens gate's `ValidationIssue`s. For routing and UX; `validateRuleInLens` stays the gate. |
+| `walkLensPath(lens, path)` | Resolves one dotted path through the lens hop by hop: `{ outcome: 'resolved', hops, terminal, jsonSubPath }`, or `hidden` / `missing` / `pastScalar` with the failing `index`. |
+| `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the grant goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
+| `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
+
+```ts
+import { coerceRule } from '@inixiative/json-rules';
+
+// User.age is { kind: 'scalar', type: 'Int' } in the lens's map
+coerceRule({ field: 'age', operator: Operator.equals, value: '3' }, lens);
+// { field: 'age', operator: 'equals', value: '3', coerceType: 'Int' }
+```
+
+### Bindings in a Lens
+
+A narrowing's `where` and `sources` conditions can hold `{ bind }` tokens, filled per request.
+
+```ts
+import { bindLens, listLensBindings } from '@inixiative/json-rules';
+
+const narrowing: LensNarrowing = {
+  parent: lens,
+  root: { where: { field: 'tenantId', operator: Operator.equals, bind: 'tenantId' } },
+};
+
+listLensBindings(narrowing); // ['tenantId']
+const bound = bindLens(narrowing, { tenantId: 't-42' });
+// bound.root.where => { field: 'tenantId', operator: 'equals', value: 't-42' }
+```
+
+| Function | Purpose |
+| --- | --- |
+| `listLensBindings(lensOrNarrowing)` | The bind names the whole narrowing chain requires, sorted. `bindOptional` tokens are left out, and a `parent:name` reference counts as `name`. |
+| `bindLens(lensOrNarrowing, bindings)` | Returns a new narrowing chain with every covered token replaced by its value; uncovered tokens stay, so binding can happen in stages. `parent:name` draws the value of `name`. A bare lens comes back unchanged. The input is not mutated. |
+
+A layer may not re-declare a bind name an ancestor declares; it reads the inherited one as
+`parent:name`. `validateNarrowing` reports a collision or a dangling `parent:` reference as
+`invalid_binding`.
+
+### Option Sources
+
+A narrowing node's `sources` declares where a field's selectable values come from: a bare
+eligibility `Condition`, or a `SourceSpec` `{ where?, label?, groupBy? }`. Two functions turn
+the declarations into option sets, and `projectLens(lens, { sourceValues })` attaches the result
+to each field as `options`.
+
+```ts
+import {
+  materializeSourceQuery,
+  materializeSources,
+  projectLens,
+  toSourceQueries,
+} from '@inixiative/json-rules';
+
+const narrowing: LensNarrowing = {
+  parent: lens,
+  root: {
+    where: { field: 'tenantId', operator: Operator.equals, value: 't-42' },
+    sources: { region: { field: 'active', operator: Operator.equals, value: true } },
+  },
+};
+
+// Against a database: one DISTINCT query per sourced field, in Prisma and SQL form.
+const [query] = toSourceQueries(narrowing);
+// query.path => 'User', query.field => 'region'
+// query.composedWhere => the node's `where` AND the source's eligibility
+// query.prisma => { model: 'User', distinct: ['region'], select: { region: true }, where: { AND: [...] } }
+// query.sql => { sql: 'SELECT DISTINCT "t0"."region" FROM "User" AS "t0" WHERE (...)', params: ['t-42', true] }
+const { distinct, select, where } = query.prisma;
+const rows = await prisma.user.findMany({ distinct, select, where });
+const values = materializeSourceQuery(query, rows); // { path, mapName, model, field, options: [{ value }] }
+
+// Or from rows already fetched under the lens (relations inline):
+const all = materializeSources(narrowing, users, { now });
+
+const projection = projectLens(narrowing, { sourceValues: [values] });
+// projection.User.fields.region.options => [{ value: 'eu' }, { value: 'us' }]
+```
+
+| Function | Purpose |
+| --- | --- |
+| `toSourceQueries(lensOrNarrowing)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql }`. `prisma.steps` is present when the where needs `executePrismaPlan`. `sql.sql` is `null` with an `error` when SQL can't express the where. A grouped source drops `distinct`. |
+| `materializeSourceQuery(query, rows, { rowShape? })` | One query's fetched rows as `SourceValues`. `rowShape` is `'prisma'` (default: a dotted `label` and each `groupBy` axis come nested) or `'sql'` (they come flat as `__label` / `__group_i`). Options are deduplicated and sorted. |
+| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from rows fetched under the lens. Rows are taken as already lens-scoped, so only each source's own eligibility is applied, through `check()` with `options`. A scalar-list field gives one option per element. |
+
+Options never offer a value the lens disallows: `projectLens` drops fetched values outside a
+field's allowed set.
 
 ### Evaluating Across Bridges
 
@@ -917,8 +1136,8 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 
 **Limitations to know:**
 
-- **1-many bridge arrays are not iterable mid-path.** `field: 'crm:MarketingEvent.campaign'` or `path: 'crm:MarketingEvent.campaign'` returns `undefined` when the bridge value is an array — `lodash.get` can't fan out across array elements. Use a numeric index (`crm:MarketingEvent.0.campaign`) or `arrayOperator` on the `field:` side to iterate.
-- **Bridge keys are plain object properties.** The engine doesn't consult `lens.bridges` at eval time — callers structure `data` correctly using the schema as a guide. Use `buildBridgeDictionary(lens, rawForeign)` to pre-index foreign rows by `on` field, then embed under bridge keys per anchor row.
+- **1-many bridge arrays are not iterable mid-path.** `field: 'crm:MarketingEvent.campaign'` or `path: 'crm:MarketingEvent.campaign'` returns `undefined` when the bridge value is an array — a path read follows own properties one segment at a time and doesn't fan out across array elements. Use a numeric index (`crm:MarketingEvent.0.campaign` or `crm:MarketingEvent[0].campaign`) or `arrayOperator` on the `field:` side to iterate. A name on `Object.prototype` (`constructor`, `toString`) reads as absent.
+- **Bridge keys are plain object properties.** The engine doesn't consult `lens.bridges` at eval time — callers structure `data` correctly using the schema as a guide. Use `indexBridges(lens, rawForeign)` to pre-index foreign rows by `on` field, then embed under bridge keys per anchor row.
 
 
 `check()` itself is bridge-unaware — it walks paths via plain property access. The lens primitive is **schema metadata** (what fields exist, what bridges link them, what `on` fields join each side). The caller is responsible for structuring `data` accordingly:

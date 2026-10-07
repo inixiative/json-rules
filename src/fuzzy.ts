@@ -8,7 +8,7 @@ export type FuzzyConfig = {
 
 // Short tokens must match exactly (so 2-3 char terms don't fuzz-match half the corpus);
 // longer tokens tolerate more typos.
-export const maxFuzzyDistance = (length: number): number => {
+const maxFuzzyDistance = (length: number): number => {
   if (length <= 3) return 0;
   if (length <= 6) return 1;
   return 2;

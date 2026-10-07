@@ -1,41 +1,30 @@
-import { orderPair } from '../number';
-import { Operator } from '../operator';
-import type { AggregateRule, Condition } from '../types';
-import { hasWindow } from '../window';
-import { findReverseRelation } from './relationUtils';
-import type {
-  BuildOptions,
-  FieldMap,
-  FieldMapEntry,
-  GroupByStep,
-  PrismaBuildState,
-  PrismaWhere,
-  StepRef,
-} from './types';
-import { buildNestedFilter } from './utils';
-import { readSource } from './valueSource';
-
-// Forward declaration - provided by condition.ts to avoid circular import
-type BuildConditionFn = (
-  condition: Condition,
-  options?: BuildOptions,
-  state?: PrismaBuildState,
-) => PrismaWhere;
-let buildConditionRef: BuildConditionFn;
-
-export const setConditionBuilderForAggregate = (fn: BuildConditionFn) => {
-  buildConditionRef = fn;
-};
+import { unknownAggregateMode, windowUnsupported } from '../errors';
+import { checkField } from '../field';
+import { isJsonEntry } from '../fieldMap/entry';
+import type { FieldMap } from '../fieldMap/types';
+import { conditionTouchesBridge } from '../fieldMap/walk';
+import { negate } from '../negate';
+import { AGGREGATE_MODES, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
+import { fieldOf } from '../own';
+import type { AggregateRule, Condition, Rule } from '../types';
+import { hasWindow, windowRewrite } from '../window';
+import { comparisonFilter, hopArms } from './field';
+import { groupMembership, groupPath } from './groupStep';
+import { matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
+import { buildCondition } from './recurse';
+import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
+import { settleLeaf } from './valueSource';
 
 export const buildAggregateRule = (
   rule: AggregateRule,
-  options?: BuildOptions,
+  options?: ToPrismaOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
-  if (hasWindow(rule))
-    throw new Error(
-      'Windowing (orderBy/take/skip) is not supported by toPrisma(); evaluate with check().',
-    );
+  if (hasWindow(rule)) {
+    const rewritten = windowRewrite(rule);
+    if (!rewritten) throw windowUnsupported('toPrisma');
+    return buildCondition(rewritten, options, state);
+  }
 
   if (!options?.map || !options?.model || !state) {
     throw new Error(
@@ -44,6 +33,8 @@ export const buildAggregateRule = (
     );
   }
 
+  if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
+    throw unknownAggregateMode(rule.aggregate.mode);
   if (!rule.aggregate.field) {
     throw new Error(
       `Prisma aggregate rules require aggregate.field to specify the numeric field on the related model.`,
@@ -52,192 +43,50 @@ export const buildAggregateRule = (
 
   return buildAggregateStep(
     rule,
-    options as BuildOptions & { map: FieldMap; model: string },
+    options as ToPrismaOptions & { map: FieldMap; model: string },
     state,
   );
 };
 
-/**
- * Walk a dot-notation field path through the FieldMap to find the terminal list relation.
- *
- * Returns the segments traversed, the final list relation entry, and the model it lives on.
- * E.g. for 'department.employees' on User:
- *   - segments: ['department', 'employees']
- *   - intermediate: User → Department (singular)
- *   - terminal: Department.employees → Employee (list)
- */
-const walkAggregateFieldPath = (
-  field: string,
-  map: FieldMap,
-  rootModel: string,
-): {
-  segments: string[];
-  intermediateRelations: { fieldName: string; entry: FieldMapEntry; onModel: string }[];
-  terminalModel: string;
-  terminalEntry: FieldMapEntry;
-} => {
-  const segments = field.split('.');
-  const intermediateRelations: { fieldName: string; entry: FieldMapEntry; onModel: string }[] = [];
-  let currentModel = rootModel;
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const fieldEntry = map.models[currentModel]?.fields[seg];
-    if (!fieldEntry || fieldEntry.kind !== 'object') {
-      throw new Error(
-        `Field '${seg}' is not a relation in model '${currentModel}'. ` +
-          `Prisma aggregate rules only support relation fields.`,
-      );
-    }
-
-    if (i === segments.length - 1) {
-      // Terminal segment — must be a list relation
-      if (!fieldEntry.isList) {
-        throw new Error(`Field '${seg}' is not a list relation in model '${currentModel}'.`);
-      }
-      return {
-        segments,
-        intermediateRelations,
-        terminalModel: currentModel,
-        terminalEntry: fieldEntry,
-      };
-    }
-
-    // Intermediate segment — must be a singular relation
-    if (fieldEntry.isList) {
-      throw new Error(
-        `Intermediate field '${seg}' in path '${field}' is a list relation. ` +
-          `Only the final segment can be a list relation for aggregate rules.`,
-      );
-    }
-
-    intermediateRelations.push({ fieldName: seg, entry: fieldEntry, onModel: currentModel });
-    currentModel = fieldEntry.type;
-  }
-
-  throw new Error(`Field path '${field}' did not terminate at a list relation.`);
-};
-
 const buildAggregateStep = (
   rule: AggregateRule,
-  options: BuildOptions & { map: FieldMap; model: string },
+  options: ToPrismaOptions & { map: FieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
-  const { map, model: rootModel } = options;
-
-  const { intermediateRelations, terminalModel, terminalEntry } = walkAggregateFieldPath(
-    rule.field,
-    map,
-    rootModel,
-  );
-
-  const targetModel = terminalEntry.type;
+  const path = groupPath(rule.field, options.map, options.model, 'Aggregate rules');
+  // A condition that crosses a bridge is unknown here: the step would aggregate every child.
+  // Over-fetch and let check() decide.
+  if (rule.condition && conditionTouchesBridge(rule.condition, options.map, path.target))
+    return overFetch();
   const itemField = rule.aggregate.field ?? '';
-
-  const targetFieldEntry = map.models[targetModel]?.fields[itemField];
-  if (!targetFieldEntry) {
-    throw new Error(`aggregate.field '${itemField}' does not exist on model '${targetModel}'.`);
-  }
-  if (targetFieldEntry.kind !== 'scalar') {
+  const item = fieldOf(options.map, path.target, itemField);
+  if (!item)
+    throw new Error(`aggregate.field '${itemField}' does not exist on model '${path.target}'.`);
+  if (item.kind !== 'scalar' || isJsonEntry(item))
     throw new Error(
-      `aggregate.field '${itemField}' on model '${targetModel}' must be a scalar field, got '${targetFieldEntry.kind}'.`,
+      `aggregate.field '${itemField}' on model '${path.target}' must be a numeric scalar, got ${item.kind === 'scalar' ? 'Json' : `'${item.kind}'`}.`,
     );
-  }
 
-  if (targetFieldEntry.type === 'Json') {
-    throw new Error(
-      `aggregate.field '${itemField}' on model '${targetModel}' is a Json field — aggregate rules require a numeric scalar.`,
-    );
-  }
+  // The comparison as check() makes it, with its operand read; nothing to compare against
+  // matches nothing.
+  const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>);
+  if (leaf === null) return matchNothing();
+  // A parent with no matching children has the empty aggregate (0) and no group: when the
+  // comparison holds for it, select the parents outside the groups where it fails.
+  const holdsEmpty =
+    checkField(leaf as unknown as Rule, [{}], undefined, undefined, {}, { value: 0 }) === true;
+  const target = (holdsEmpty ? negate(leaf as Condition) : leaf) as unknown as Rule;
+  const filter = comparisonFilter(target, options);
+  const aggregate = { [rule.aggregate.mode === 'sum' ? '_sum' : '_avg']: filter };
+  // Prisma can't negate a two-sided bound inside a field filter; NOT the having clause instead.
+  const having = NEGATED_RANGE_OPERATORS.includes(target.operator)
+    ? notLeaf({ [itemField]: aggregate })
+    : { [itemField]: aggregate };
 
-  let fkOnTarget: string;
-  let pkOnTerminal: string;
-
-  if (terminalEntry.fromFields && terminalEntry.fromFields.length > 0) {
-    if (terminalEntry.fromFields.length > 1) {
-      throw new Error(`Aggregate rules do not support composite FK relations.`);
-    }
-    fkOnTarget = terminalEntry.toFields?.[0] ?? 'id';
-    pkOnTerminal = terminalEntry.fromFields[0];
-  } else {
-    const reverseRelation = findReverseRelation(
-      map,
-      targetModel,
-      terminalModel,
-      terminalEntry.relationName,
-    );
-    if (!reverseRelation) {
-      throw new Error(
-        `Cannot determine FK relationship between '${terminalModel}' and '${targetModel}'. ` +
-          `Ensure the FieldMap contains both sides of the relation.`,
-      );
-    }
-    if ((reverseRelation.fromFields?.length ?? 0) > 1) {
-      throw new Error(`Aggregate rules do not support composite FK relations.`);
-    }
-    fkOnTarget = reverseRelation.fromFields?.[0] ?? '';
-    pkOnTerminal = reverseRelation.toFields?.[0] ?? '';
-  }
-
-  // Build inner WHERE from condition (if present)
-  const innerWhere = rule.condition
-    ? buildConditionRef(rule.condition, { ...options, model: targetModel }, state)
-    : {};
-
-  // Prisma 6.x having format: field first, then aggregate operator nested inside.
-  const aggKey = rule.aggregate.mode === 'sum' ? '_sum' : '_avg';
-  const having = { [itemField]: { [aggKey]: buildPrismaFilter(rule, options) } };
-
-  const step: GroupByStep = {
-    operation: 'groupBy',
-    model: targetModel,
-    args: { by: [fkOnTarget], where: innerWhere, having },
-    extract: fkOnTarget,
-  };
-
-  const stepIndex = state.steps.length;
-  state.steps.push(step);
-
-  const stepRef: StepRef = { __step: stepIndex };
-
-  // If there are intermediate relations, nest the filter through them
-  if (intermediateRelations.length > 0) {
-    // The step ref gives us IDs of the model that owns the terminal list relation.
-    // We need to filter back through intermediate relations to the root model.
-    const leafFilter = { [pkOnTerminal]: { in: stepRef } };
-    const relationPath = intermediateRelations.map((r) => r.fieldName).join('.');
-    return buildNestedFilter(relationPath, leafFilter);
-  }
-
-  return { [pkOnTerminal]: { in: stepRef } };
-};
-
-const buildPrismaFilter = (rule: AggregateRule, options: BuildOptions): Record<string, unknown> => {
-  const value = readSource(rule, options);
-  if (value === null || value === undefined)
-    throw new Error('A Prisma aggregate compares against a number; its value source read nothing');
-  switch (rule.operator) {
-    case Operator.equals:
-      return { equals: value };
-    case Operator.notEquals:
-      return { not: value };
-    case Operator.lessThan:
-      return { lt: value };
-    case Operator.lessThanEquals:
-      return { lte: value };
-    case Operator.greaterThan:
-      return { gt: value };
-    case Operator.greaterThanEquals:
-      return { gte: value };
-    case Operator.between: {
-      if (!Array.isArray(value) || value.length !== 2)
-        throw new Error('between requires two values');
-      const [min, max] = orderPair(value as number[]);
-      return { gte: min, lte: max };
-    }
-    case Operator.notBetween:
-      throw new Error(`Operator 'notBetween' is not supported for Prisma aggregate rules.`);
-    default:
-      throw new Error(`Operator '${rule.operator}' is not supported for Prisma aggregate rules.`);
-  }
+  const where = rule.condition
+    ? buildCondition(rule.condition, { ...options, model: path.target }, state)
+    : matchAll();
+  const membership = groupMembership(state, path, where, having, holdsEmpty);
+  // check() reads the array under an absent to-one relation as empty.
+  return holdsEmpty ? orWhere([membership, ...hopArms(rule.field, options)]) : membership;
 };

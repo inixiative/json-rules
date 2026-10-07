@@ -1,281 +1,425 @@
+import { check } from '../check';
+import { compileFieldLiteral } from '../compileLiteral';
 import {
   engineGlobals,
   type PrismaProvider,
   resolveCaseInsensitive,
   supportsQueryMode,
 } from '../engineGlobals';
-import { hasNoOperand } from '../field';
-import { orderPair, splitNull } from '../number';
+import { enumMatches } from '../enumMatch';
+import {
+  fuzzyNotCompiled,
+  noCompiledForm,
+  pastScalarError,
+  relationNotValue,
+  toManyHopError,
+  unorderedOperand,
+} from '../errors';
+import { hasNoOperand, isExistenceTest, listMembership } from '../field';
+import { acceptsEmptyString, comparesText, type FieldShape, ruleShape } from '../fieldMap/shape';
+import type { FieldMap } from '../fieldMap/types';
+import { fieldEntry, optionalToOneHops, walkFieldPath, walkWith } from '../fieldMap/walk';
+import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
-  NEGATED_COMPARISON_OPERATORS,
+  COMPLEMENT_OPERATORS,
+  comparatorOf,
+  NEGATED_OPERATORS,
   NEGATED_RANGE_OPERATORS,
-  NEGATED_SINGLE_VALUE_OPERATORS,
-  NO_VALUE_OPERATORS,
+  NEGATED_STRING_OPERATORS,
+  ORDERED_OPERATORS,
+  SET_OPERATORS,
 } from '../operatorCatalog';
-import type { Rule } from '../types';
-import { matchNothing } from './logical';
-import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
+import { escapeLikePattern } from '../toSql/quoting';
+import type { Condition, Rule } from '../types';
+import { prismaAnyNull } from './anyNull';
+import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
-import type { BuildOptions, FieldMap, PrismaWhere } from './types';
+import { buildCondition } from './recurse';
+import type { PrismaWhere, ToPrismaOptions } from './types';
 import { buildNestedFilter } from './utils';
-import { readSource } from './valueSource';
+import { dateConfigOf, readSource } from './valueSource';
 
-/**
- * Whether the emptiness operators may compare this column against `''`. Only a
- * String column accepts it ('' is also a representable JSON value) — Prisma
- * rejects `equals: ''` on DateTime/Int/enum/… columns outright ("Expected
- * ISO-8601 DateTime"), turning an authored `isEmpty` into a runtime 500. The
- * field map is the authority; a stamped `coerceType` is the fallback; with
- * neither, keep the legacy two-branch shape — an untyped String field must not
- * lose its ''-branch.
- */
-const acceptsEmptyString = (rule: Rule, options?: BuildOptions): boolean => {
-  const entry = directEntry(rule, options);
-  if (entry) return entry.kind === 'scalar' && (entry.type === 'String' || entry.type === 'Json');
-  return (
-    rule.coerceType === undefined || rule.coerceType === 'String' || rule.coerceType === 'Json'
-  );
+const shapeOf = (rule: Pick<Rule, 'field' | 'coerceType'>, options?: ToPrismaOptions): FieldShape =>
+  ruleShape(rule, options?.map as FieldMap | undefined, options?.model);
+
+const isJson = (shape: FieldShape): boolean => shape === 'json' || shape === 'json-path';
+
+/** The filter value that matches a field's NULL: on Json, Prisma's AnyNull — a DB NULL, a JSON
+ *  null, and an absent path all read as null in check(). */
+const nullOf = (shape: FieldShape): unknown => {
+  if (!isJson(shape)) return null;
+  return prismaAnyNull();
 };
 
-const fieldWalk = (rule: Pick<Rule, 'field'>, options?: BuildOptions) =>
+/** Each optional to-one hop on the path NULL: `{ rel: { col: { equals: null } } }` requires the
+ *  relation to exist, so a row without it needs its own arm. */
+export const hopArms = (field: string, options?: ToPrismaOptions): PrismaWhere[] =>
   options?.map && options?.model
-    ? walkFieldPath(rule.field, options.map as FieldMap, options.model)
-    : undefined;
-
-const directEntry = (rule: Pick<Rule, 'field'>, options?: BuildOptions) => {
-  const walk = fieldWalk(rule, options);
-  return walk?.kind === 'direct' ? walk.entry : undefined;
-};
-
-/**
- * Known nullable per the field map. Unknown (no map, no `isRequired`) reads as
- * required: an `equals: null` arm on a NOT NULL column is a Prisma validation
- * error at runtime, so the map is the only authority that can license one.
- */
-const isNullableColumn = (rule: Pick<Rule, 'field'>, options?: BuildOptions): boolean =>
-  directEntry(rule, options)?.isRequired === false;
-
-/**
- * The arms that make a negation match the rows where the path is ABSENT — what check()
- * sees as `undefined`/`null`. Two kinds, both licensed by the field map: the leaf column
- * NULL (`isRequired: false` on the column), and each optional to-one hop NULL
- * (`{ hop: { is: null } }` — Prisma's `{ rel: { col: { equals: null } } }` requires the
- * relation to exist, so a member with no relation would otherwise fall out of every
- * negation while the in-memory rail keeps them). Empty when nothing is licensed.
- */
-const hopArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): PrismaWhere[] =>
-  options?.map && options?.model
-    ? optionalToOneHops(rule.field, options.map as FieldMap, options.model).map((hop) =>
+    ? optionalToOneHops(field, options.map as FieldMap, options.model).map((hop) =>
         buildNestedFilter(hop, { is: null }),
       )
     : [];
 
-export const absentArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): PrismaWhere[] => [
-  ...(isNullableColumn(rule, options)
-    ? [buildMapAwareFilter(rule.field, { equals: null }, options)]
-    : []),
-  ...hopArms(rule, options),
-];
+/**
+ * The arms that make a negation match the rows where the path is ABSENT — what check() reads as
+ * null: the leaf NULL where the map licenses it (a nullable column, a Json path, a scalar list;
+ * an `equals: null` arm on a NOT NULL column is a Prisma validation error), and each optional
+ * to-one hop NULL.
+ */
+export const absentArms = (
+  rule: Pick<Rule, 'field' | 'coerceType'>,
+  options?: ToPrismaOptions,
+): PrismaWhere[] => {
+  const shape = shapeOf(rule, options);
+  const nullable =
+    isJson(shape) ||
+    shape === 'list' ||
+    fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)?.isRequired ===
+      false;
+  return [
+    ...(nullable ? [buildMapAwareFilter(rule.field, { equals: nullOf(shape) }, options)] : []),
+    ...hopArms(rule.field, options),
+  ];
+};
 
-const orWith = (head: PrismaWhere, arms: PrismaWhere[]): PrismaWhere =>
-  arms.length ? { OR: [head, ...arms] } : head;
+/** An equality filter. Prisma compiles an insensitive one to ILIKE and passes %, _ and backslash
+ *  through: escape them, so the value matches only itself. On Json it matches the JSON text, which
+ *  escapes quotes and control characters and doubles any escape, so a value holding one of those,
+ *  or a % or _, has no Prisma form. */
+const equalityFilter = (
+  key: 'equals' | 'not',
+  value: unknown,
+  mode: { mode?: 'insensitive' },
+  shape: FieldShape,
+): PrismaWhere => {
+  if (mode.mode && isJson(shape) && Array.isArray(value))
+    throw noCompiledForm(
+      'toPrisma',
+      `A case-insensitive comparison of a Json value with the list ${JSON.stringify(value)}`,
+    );
+  if (!mode.mode || typeof value !== 'string') return { [key]: value, ...mode };
+  if (!isJson(shape)) return { [key]: escapeLikePattern(value), ...mode };
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: JSON text escapes them.
+  if (/[%_\\"\u0000-\u001f]/.test(value))
+    throw noCompiledForm(
+      'toPrisma',
+      `A case-insensitive equality on Json against '${value}'`,
+      `Prisma matches the JSON text, where %, _, a backslash, a quote or a control character doesn't read as itself`,
+    );
+  return { [key]: value, ...mode };
+};
 
 /**
- * The complement of a BOUNDED range, which Prisma can only express at the WHERE level.
- *
- * There is no field-level negation of a two-sided filter: Prisma distributes `not` over the keys
- * of the nested filter, so `{ col: { not: { gte: a, lte: b } } }` becomes
- * `NOT(col >= a) AND NOT(col <= b)` — unsatisfiable for any window, and it fails silently: the
- * query validates, runs, and returns nothing. `{ NOT: { col: { gte: a, lte: b } } }` negates the
- * whole clause, which is what a complement means, and matches what `toSql` has always emitted
- * (`NOT BETWEEN`). Same WHERE-level hoist the emptiness operators need above, for the same class
- * of reason.
- *
- * These carry their own `equals: null` arm below, so they are deliberately not in NEGATED_SINGLE_VALUE_OPERATORS.
+ * `mode: 'insensitive'` when the rule is case-insensitive and compares text: a String column, or a
+ * string (or strings) against Json or an undeclared field — and only where the connector accepts
+ * QueryMode (MySQL/SQLite are case-insensitive by collation and reject it).
  */
+const queryMode = (
+  rule: Rule,
+  options: ToPrismaOptions | undefined,
+  shape: FieldShape,
+  value: unknown,
+): { mode?: 'insensitive' } => {
+  const provider = (options?.datasource?.provider ??
+    engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
+  return resolveCaseInsensitive(rule.caseInsensitive) &&
+    supportsQueryMode(provider) &&
+    comparesText(shape, value)
+    ? { mode: 'insensitive' }
+    : {};
+};
 
-export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+/** The non-null values that read as empty, as filters: `''`, and `[]` on a list or Json. */
+const emptyValues = (shape: FieldShape, emptyString: boolean): Record<string, unknown>[] => {
+  if (shape === 'list') return [{ isEmpty: true }];
+  const values: Record<string, unknown>[] = emptyString ? [{ equals: '' }] : [];
+  return isJson(shape) ? [...values, { equals: [] }] : values;
+};
+
+const notEmpty = (empty: Record<string, unknown>): Record<string, unknown> =>
+  'isEmpty' in empty ? { isEmpty: false } : { not: empty.equals };
+
+/**
+ * Whether a field is empty — null (or absent through an optional relation), '', or an empty list
+ * or Json array, as check() reads it — or, with `empty` false, not. One form for the emptiness
+ * operators and the array ones.
+ */
+export const emptinessWhere = (
+  field: string,
+  shape: FieldShape,
+  empty: boolean,
+  emptyString: boolean,
+  options?: ToPrismaOptions,
+): PrismaWhere => {
+  const at = (filter: unknown) => buildMapAwareFilter(field, filter, options);
+  const values = emptyValues(shape, emptyString);
+  if (empty)
+    return orWhere([
+      at({ equals: nullOf(shape) }),
+      ...hopArms(field, options),
+      ...values.map((value) => at(value)),
+    ]);
+  // A list has no `not`; `isEmpty: false` is NULL — so false — for a NULL list.
+  return andWhere([
+    ...(shape === 'list' ? [] : [at({ not: nullOf(shape) })]),
+    ...values.map((value) => at(notEmpty(value))),
+  ]);
+};
+
+/** A to-one relation as a field: it exists or it doesn't. */
+const buildRelationRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere => {
+  if (!isExistenceTest(rule)) throw relationNotValue(rule.field);
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
+  // check() answers which way it asks: for a missing relation, or a present one.
+  return check({ ...rule, field: 'relation' } as Condition, { relation: null }) === true
+    ? orWhere([at({ is: null }), ...hopArms(rule.field, options)])
+    : at({ isNot: null });
+};
 
-  // isEmpty/notEmpty need OR/AND at the WHERE level (not field-filter level)
-  // because Prisma 6.x rejects mixed null/string in `in`/`notIn` for nullable fields.
-  const arms = absentArms(rule, options);
+export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere => {
+  const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
+  const shape = shapeOf(rule, options);
+  const arms = () => absentArms(rule, options);
+  const emptyString = acceptsEmptyString(
+    rule,
+    options?.map as FieldMap | undefined,
+    options?.model,
+  );
 
-  if (rule.operator === Operator.isEmpty) {
-    // isEmpty carries the leaf null arm unconditionally (it IS the operator); the optional hops
-    // ride beside it, then the ''-arm on String/Json columns.
-    const nulls = [at({ equals: null }), ...hopArms(rule, options)];
-    const empties = acceptsEmptyString(rule, options) ? [...nulls, at({ equals: '' })] : nulls;
-    return empties.length === 1 ? empties[0] : { OR: empties };
+  if (shape === 'relation') return buildRelationRule(rule, options);
+
+  switch (rule.operator) {
+    // A list filter has no `not`: its complements negate `equals` at the WHERE level.
+    case Operator.exists:
+      return shape === 'list' ? notLeaf(at({ equals: null })) : at({ not: nullOf(shape) });
+    case Operator.notExists: {
+      const absent = arms();
+      return absent.length ? orWhere(absent) : at({ equals: nullOf(shape) });
+    }
+    // The emptiness operators OR / AND at the WHERE level: Prisma rejects a mixed null + string
+    // list in `in` / `notIn`. isEmpty carries the leaf null arm unconditionally — it is the
+    // operator.
+    case Operator.isEmpty:
+    case Operator.notEmpty:
+      return emptinessWhere(
+        rule.field,
+        shape,
+        rule.operator === Operator.isEmpty,
+        emptyString,
+        options,
+      );
   }
-  if (rule.operator === Operator.notExists && arms.length) {
-    return arms.length === 1 ? arms[0] : { OR: arms };
-  }
-  if (rule.operator === Operator.notEmpty) {
-    const notNull = at({ not: null });
-    if (!acceptsEmptyString(rule, options)) return notNull;
-    return { AND: [notNull, at({ not: '' })] };
+
+  // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the absent
+  // rows only.
+  const value = resolveRuleValue(rule, options);
+  if (hasNoOperand(rule, value))
+    return orWhere(NEGATED_OPERATORS.includes(rule.operator) ? arms() : []);
+
+  if (shape === 'list' && SET_OPERATORS.includes(rule.operator) && Array.isArray(value))
+    return buildCondition(listMembership(rule, value), options);
+  // Prisma's list filters take no null element.
+  if (shape === 'list' && Array.isArray(value) && value.includes(null))
+    throw noCompiledForm('toPrisma', `A list holding null in '${rule.field}'`);
+
+  // Prisma's list filters have no case-insensitive mode.
+  if (
+    shape === 'list' &&
+    resolveCaseInsensitive(rule.caseInsensitive) &&
+    comparesText('text', value)
+  )
+    throw noCompiledForm('toPrisma', `A case-insensitive comparison on the list '${rule.field}'`);
+
+  // An enum compares against its declared values (see enumMatches).
+  const enumEntry =
+    shape === 'enum'
+      ? fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)
+      : undefined;
+  const matched = enumEntry
+    ? enumMatches(rule, value, enumEntry, options?.map as FieldMap | undefined)
+    : null;
+  if (matched) {
+    const listed = at({ in: matched.values });
+    return matched.matchesNull ? orWhere([listed, ...arms()]) : listed;
   }
 
   // Prisma's `not` / `notIn` compile to SQL `<>` / `NOT IN`, which drop NULL rows under
-  // three-valued logic. check() treats a negation as the complement of its positive form,
-  // so a nullable column gets an explicit null arm to keep the two engines in agreement.
-  const nullable = isNullableColumn(rule, options);
-
-  if (rule.operator === Operator.in || rule.operator === Operator.notIn) {
-    const { values, hasNull } = splitNull(resolveRuleValue(rule, options));
-    if (rule.operator === Operator.in) {
-      const inList = at({ in: values });
-      return hasNull ? orWith(inList, arms) : inList;
-    }
-    const notInList = at({ notIn: values });
-    if (hasNull) return nullable ? { AND: [notInList, at({ not: null })] } : notInList;
-    return orWith(notInList, arms);
+  // three-valued logic; a negation is the complement of its positive form in check(), so it
+  // carries the absent arms.
+  if (SET_OPERATORS.includes(rule.operator)) {
+    const { values, hasNull } = splitNull(value);
+    // Json has no `in`: one `equals` per value.
+    const ci = queryMode(rule, options, shape, values);
+    const listed = isJson(shape)
+      ? rule.operator === Operator.in
+        ? orWhere(values.map((v) => at(equalityFilter('equals', v, ci, shape))))
+        : andWhere(values.map((v) => at(equalityFilter('not', v, ci, shape))))
+      : at({ [rule.operator]: values, ...ci });
+    if (rule.operator === Operator.in) return hasNull ? orWhere([listed, ...arms()]) : listed;
+    return hasNull ? andWhere([listed, at({ not: nullOf(shape) })]) : orWhere([listed, ...arms()]);
   }
 
-  // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the
-  // absent rows only.
-  if (
-    !NO_VALUE_OPERATORS.includes(rule.operator) &&
-    hasNoOperand(rule, resolveRuleValue(rule, options))
-  ) {
-    if (!NEGATED_COMPARISON_OPERATORS.includes(rule.operator) || !arms.length)
-      return matchNothing();
-    return arms.length === 1 ? arms[0] : { OR: arms };
+  // A string operator's positive form; a Json value contains a string's substring, or a
+  // member of an array.
+  const positive = (operator: string): PrismaWhere => {
+    if (!isJson(shape) || operator !== Operator.contains)
+      return at(comparisonFilter({ ...rule, operator: operator as Operator }, options));
+    const member = at({ array_contains: [jsonMember(rule, value, options, shape)] });
+    return typeof value === 'string'
+      ? orWhere([at(comparisonFilter({ ...rule, operator }, options)), member])
+      : member;
+  };
+  if (rule.operator === Operator.contains) return positive(Operator.contains);
+
+  // A negated string operator or range negates its positive form at the WHERE level: no field
+  // filter carries it on Json or a list. Prisma's Json filters can't test a value's type — the
+  // positive is NULL for the other types — so on Json the complement, which keeps them, has no
+  // form.
+  const complemented = NEGATED_STRING_OPERATORS.includes(rule.operator)
+    ? COMPLEMENT_OPERATORS[rule.operator]
+    : NEGATED_RANGE_OPERATORS.includes(rule.operator)
+      ? Operator.between
+      : undefined;
+  if (complemented) {
+    if (isJson(shape))
+      throw noCompiledForm(
+        'toPrisma',
+        `'${rule.operator}' on the Json value '${rule.field}'`,
+        `it keeps values of other types`,
+      );
+    return orWhere([notLeaf(positive(complemented)), ...arms()]);
   }
 
-  if (NEGATED_RANGE_OPERATORS.includes(rule.operator)) {
-    // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
-    return orWith({ NOT: at(buildLeafFilter(rule, options)) }, arms);
-  }
-
-  const filter = at(buildLeafFilter(rule, options));
-  if (
-    NEGATED_SINGLE_VALUE_OPERATORS.includes(rule.operator) &&
-    resolveRuleValue(rule, options) !== null
-  ) {
-    return orWith(filter, arms);
-  }
-  return filter;
+  const filter = at(comparisonFilter(rule, options));
+  // `equals null` is the is-null sentinel: a path through an absent relation is null too.
+  if (rule.operator === Operator.equals && value === null)
+    return orWhere([filter, ...hopArms(rule.field, options)]);
+  if (rule.operator === Operator.notEquals && shape === 'list')
+    return value === null
+      ? notLeaf(at({ equals: null }))
+      : orWhere([notLeaf(at({ equals: value })), ...arms()]);
+  return rule.operator === Operator.notEquals && value !== null
+    ? orWhere([filter, ...arms()])
+    : filter;
 };
 
 /** The comparison value: the rule's value source, coerced to the field, moved by its offset. */
-const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
+const resolveRuleValue = (rule: Rule, options?: ToPrismaOptions): unknown => {
   const value = compileFieldLiteral(
     rule,
     readSource(rule, options),
-    fieldWalk(rule, options),
+    walkWith(rule.field, options?.map as FieldMap | undefined, options?.model),
     'toPrisma',
+    () => dateConfigOf(options).timeZone,
   );
   return rule.offset === undefined ? value : offsetNumber(value, rule.offset, options);
 };
 
-const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
-  if (rule.fuzzy)
-    throw new Error(
-      'Fuzzy matching has no Prisma equivalent — evaluate it in memory with check().',
-    );
-  // Lazy resolver: only called by operators that need a value
+/** A leaf's comparison as a Prisma field filter, in the form its field's shape takes (a negated
+ *  range is its positive form; the caller negates the clause). */
+export const comparisonFilter = (rule: Rule, options?: ToPrismaOptions): unknown => {
+  const fuzzy = fuzzyNotCompiled(rule);
+  if (fuzzy) throw fuzzy;
+  const shape = shapeOf(rule, options);
   const val = () => resolveRuleValue(rule, options);
-  // QueryMode only where the connector accepts it; MySQL/SQLite reject `mode` (collation-driven).
-  const provider = (options?.datasource?.provider ??
-    engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
-  const ci =
-    resolveCaseInsensitive(rule.caseInsensitive) && supportsQueryMode(provider)
-      ? { mode: 'insensitive' as const }
-      : {};
+  const ci = (value: unknown) => queryMode(rule, options, shape, value);
+  // String matching on Json is `string_*`; containment on a list is `has`.
+  const match = (op: 'contains' | 'startsWith' | 'endsWith') => {
+    const value = val();
+    if (shape === 'list') {
+      if (op !== 'contains')
+        throw new Error(`Operator '${op}' does not apply to the list '${rule.field}'.`);
+      return { has: value };
+    }
+    const key = isJson(shape) ? JSON_MATCH[op] : op;
+    // Prisma matches with LIKE and passes % and _ through: escape them, as toSql does.
+    const literal = typeof value === 'string' ? escapeLikePattern(value) : value;
+    return { [key]: literal, ...ci(value) };
+  };
+
+  const unordered = unorderedOperand(rule.operator, val());
+  if (unordered) throw unordered;
+  const comparator = comparatorOf(rule.operator, 'field');
+  if (comparator && ORDERED_OPERATORS.includes(rule.operator)) return { [comparator]: val() };
 
   switch (rule.operator) {
-    case Operator.equals:
-      return { equals: val() ?? null, ...ci };
-
-    case Operator.notEquals:
-      return { not: val() ?? null, ...ci };
-
-    case Operator.lessThan:
-      return { lt: val() };
-
-    case Operator.lessThanEquals:
-      return { lte: val() };
-
-    case Operator.greaterThan:
-      return { gt: val() };
-
-    case Operator.greaterThanEquals:
-      return { gte: val() };
-
+    case Operator.equals: {
+      const value = val() ?? nullOf(shape);
+      return equalityFilter('equals', value, ci(value), shape);
+    }
+    case Operator.notEquals: {
+      const value = val() ?? nullOf(shape);
+      return equalityFilter('not', value, ci(value), shape);
+    }
+    // A field's set membership is built by buildFieldRule; an aggregate's `having` takes it here.
     case Operator.in:
-      return { in: val() };
-
     case Operator.notIn:
-      return { notIn: val() };
-
+      return { [rule.operator]: val() };
     case Operator.contains:
-      return { contains: val(), ...ci };
-
-    case Operator.notContains:
-      return { not: { contains: val(), ...ci } };
-
+      return match('contains');
     case Operator.startsWith:
-      return { startsWith: val(), ...ci };
-
+      return match('startsWith');
     case Operator.endsWith:
-      return { endsWith: val(), ...ci };
-
+      return match('endsWith');
     case Operator.matches:
-      throw new Error(
-        `Operator 'matches' has no Prisma equivalent. Use prisma.$queryRaw for regex filtering.`,
-      );
-
     case Operator.notMatches:
-      throw new Error(
-        `Operator 'notMatches' has no Prisma equivalent. Use prisma.$queryRaw for regex filtering.`,
-      );
-
-    // The POSITIVE range for both: `buildFieldRule` negates the whole clause for notBetween
-    // (see NEGATED_RANGE_OPERATORS), because a field filter cannot carry a two-sided negation.
+      throw noCompiledForm('toPrisma', `'${rule.operator}'`, 'Prisma has no pattern filter');
+    // The POSITIVE range for both: `buildFieldRule` negates the whole clause for notBetween,
+    // because a field filter cannot carry a two-sided negation.
     case Operator.between:
     case Operator.notBetween: {
-      const v = val();
-      if (!Array.isArray(v) || v.length !== 2) {
-        throw new Error(`${rule.operator} operator requires an array of two values`);
-      }
-      const [min, max] = orderPair(v);
+      const [min, max] = orderPair(readPair(val(), rule.operator));
       return { gte: min, lte: max };
     }
-
-    case Operator.isEmpty:
-    case Operator.notEmpty:
-      // Handled in buildFieldRule — should not reach here
-      throw new Error('isEmpty/notEmpty handled at buildFieldRule level');
-
-    case Operator.exists:
-      return { not: null };
-
-    case Operator.notExists:
-      return { equals: null };
-
     default:
-      throw new Error(`Unknown operator: ${(rule as Rule).operator}`);
+      // Negated string operators / emptiness / existence are built at the WHERE level.
+      throw new Error(`Operator '${rule.operator}' is built by buildFieldRule`);
   }
 };
 
+/** A Json array member Prisma can match exactly: `array_contains` reads an object or a list
+ *  partially (its fields / members contained), unlike check()'s equal member, and compares a
+ *  string case-sensitively. */
+const jsonMember = (
+  rule: Rule,
+  value: unknown,
+  options: ToPrismaOptions | undefined,
+  shape: FieldShape,
+): unknown => {
+  if (typeof value === 'object' && value !== null)
+    throw new Error(
+      `Membership of an object or a list in the Json array '${rule.field}' has no exact Prisma form; use toSql() or check().`,
+    );
+  if (queryMode(rule, options, shape, value).mode)
+    throw noCompiledForm('toPrisma', `A case-insensitive member of the Json array '${rule.field}'`);
+  return value;
+};
+
+const JSON_MATCH = {
+  contains: 'string_contains',
+  startsWith: 'string_starts_with',
+  endsWith: 'string_ends_with',
+} as const;
+
 /**
- * Build the Prisma WHERE using map-aware traversal when a map+model is available.
+ * Build the Prisma WHERE for a leaf filter on `field`, map-aware when a map+model is available —
+ * the one place every toPrisma leaf (field, date, array) nests its filter.
  * - JSON field mid-path → Prisma JSON path syntax: { metadata: { path: ['theme'], equals: 'dark' } }
  * - All other paths → standard nested relation filter
  */
-const buildMapAwareFilter = (
+export const buildMapAwareFilter = (
   field: string,
   filter: unknown,
-  options?: BuildOptions,
+  options?: ToPrismaOptions,
 ): PrismaWhere => {
   if (!options?.map || !options?.model) {
     return buildNestedFilter(field, filter);
   }
 
   const walkResult = walkFieldPath(field, options.map as FieldMap, options.model);
+  const toMany = walkResult.hops.find((hop) => hop.entry.isList);
+  if (toMany) throw toManyHopError(field, toMany);
   const parts = field.split('.');
 
   switch (walkResult.kind) {
@@ -284,7 +428,10 @@ const buildMapAwareFilter = (
       return buildNestedFilter(field, filter);
 
     case 'bridge':
-      return {};
+      return overFetch();
+
+    case 'past-scalar':
+      throw pastScalarError(field, walkResult.column);
 
     case 'json-path': {
       // Merge the json path array into the leaf filter, then nest normally

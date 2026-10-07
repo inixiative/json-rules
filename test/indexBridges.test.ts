@@ -1,0 +1,179 @@
+import { describe, expect, test } from 'bun:test';
+import { indexBridges } from '../src/fieldMap/indexBridges';
+import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
+
+const prismaMap: FieldMap = {
+  models: {
+    FanUser: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        crmId: { kind: 'scalar', type: 'String' },
+      },
+    },
+  },
+};
+const salesforceMap: FieldMap = {
+  models: {
+    Contact: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        accountId: { kind: 'scalar', type: 'String' },
+      },
+    },
+  },
+};
+const billingMap: FieldMap = {
+  models: {
+    Account: { fields: { id: { kind: 'scalar', type: 'String' } } },
+  },
+};
+const crmMap: FieldMap = {
+  models: {
+    MarketingEvent: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        userId: { kind: 'scalar', type: 'String' },
+      },
+    },
+  },
+};
+
+const oneToOne: Bridge = {
+  endpoints: [
+    { fieldMap: 'salesforce', model: 'Contact', on: 'id' },
+    { fieldMap: 'prisma', model: 'FanUser', on: 'crmId' },
+  ],
+  cardinality: 'oneToOne',
+};
+
+const oneToMany: Bridge = {
+  endpoints: [
+    { fieldMap: 'prisma', model: 'FanUser', on: 'id' },
+    { fieldMap: 'crm', model: 'MarketingEvent', on: 'userId' },
+  ],
+  cardinality: 'oneToMany',
+};
+
+const oneToOneSet: FieldMapSet = {
+  maps: { prisma: prismaMap, salesforce: salesforceMap },
+  bridges: [oneToOne],
+};
+
+const oneToManySet: FieldMapSet = {
+  maps: { prisma: prismaMap, crm: crmMap },
+  bridges: [oneToMany],
+};
+
+describe('indexBridges', () => {
+  test('keys 1-1 endpoints under map → model → on', () => {
+    const out = indexBridges(oneToOneSet, {
+      'salesforce:Contact': [
+        { id: 'c1', industry: 'tech' },
+        { id: 'c2', industry: 'finance' },
+      ],
+      'prisma:FanUser': [
+        { crmId: 'c1', email: 'a@b.com' },
+        { crmId: 'c2', email: 'd@e.com' },
+      ],
+    });
+    expect(out.salesforce.Contact.id.c1).toEqual({ id: 'c1', industry: 'tech' });
+    expect(out.prisma.FanUser.crmId.c1).toEqual({ crmId: 'c1', email: 'a@b.com' });
+  });
+
+  test('1-many: "one" side keyed singular, "many" side grouped to arrays', () => {
+    const out = indexBridges(oneToManySet, {
+      'prisma:FanUser': [
+        { id: 'u1', email: 'a@b.com' },
+        { id: 'u2', email: 'd@e.com' },
+      ],
+      'crm:MarketingEvent': [
+        { id: 'e1', userId: 'u1', campaign: 'launch' },
+        { id: 'e2', userId: 'u1', campaign: 'retention' },
+        { id: 'e3', userId: 'u2', campaign: 'launch' },
+      ],
+    });
+    expect(out.prisma.FanUser.id.u1).toEqual({ id: 'u1', email: 'a@b.com' });
+    expect(out.crm.MarketingEvent.userId.u1).toHaveLength(2);
+    expect(out.crm.MarketingEvent.userId.u2).toHaveLength(1);
+  });
+
+  test('same model on multiple bridges with different `on` fields keeps both indexes', () => {
+    const contactToAccount: Bridge = {
+      endpoints: [
+        { fieldMap: 'billing', model: 'Account', on: 'id' },
+        { fieldMap: 'salesforce', model: 'Contact', on: 'accountId' },
+      ],
+      cardinality: 'oneToOne',
+    };
+    const set: FieldMapSet = {
+      maps: { prisma: prismaMap, salesforce: salesforceMap, billing: billingMap },
+      bridges: [oneToOne, contactToAccount],
+    };
+    const out = indexBridges(set, {
+      'salesforce:Contact': [
+        { id: 'c1', accountId: 'a1' },
+        { id: 'c2', accountId: 'a2' },
+      ],
+      'billing:Account': [{ id: 'a1' }, { id: 'a2' }],
+    });
+    expect(out.salesforce.Contact.id.c1).toEqual({ id: 'c1', accountId: 'a1' });
+    expect(out.salesforce.Contact.accountId.a1).toEqual({ id: 'c1', accountId: 'a1' });
+    expect(out.billing.Account.id.a1).toBeDefined();
+  });
+
+  test('skips endpoints with no raw data provided', () => {
+    const out = indexBridges(oneToOneSet, {
+      'salesforce:Contact': [{ id: 'c1' }],
+    });
+    expect(out.salesforce.Contact.id.c1).toBeDefined();
+    expect(out.prisma).toBeUndefined();
+  });
+
+  test('no bridges returns empty index', () => {
+    expect(indexBridges({ maps: {} }, { foo: [{ id: '1' }] })).toEqual({});
+  });
+});
+
+describe('indexBridges reads own properties only', () => {
+  test('a join column named after an Object.prototype member groups by its own value', () => {
+    const set = {
+      maps: {},
+      bridges: [
+        {
+          endpoints: [
+            { fieldMap: 'app', model: 'Post', on: 'id' },
+            { fieldMap: 'crm', model: 'Event', on: 'constructor' },
+          ],
+          cardinality: 'oneToMany' as const,
+        },
+      ],
+    };
+    const dict = indexBridges(set as never, {
+      'crm:Event': [{ constructor: 'p1' }, { constructor: 'p1' }, { other: 1 }],
+    });
+    expect(Object.keys(dict.crm.Event.constructor)).toEqual(['p1']);
+  });
+
+  test('a key Object.prototype names is an ordinary key', () => {
+    const set = {
+      maps: {},
+      bridges: [
+        {
+          endpoints: [
+            { fieldMap: 'constructor', model: 'toString', on: 'id' },
+            { fieldMap: 'crm', model: 'Event', on: 'postId' },
+          ],
+          cardinality: 'oneToOne' as const,
+        },
+      ],
+    };
+    const dict = indexBridges(set as never, {
+      'constructor:toString': [{ id: 'constructor' }, { id: 'valueOf' }],
+    });
+    expect(dict).toEqual({
+      constructor: {
+        toString: { id: { constructor: { id: 'constructor' }, valueOf: { id: 'valueOf' } } },
+      },
+    });
+  });
+});

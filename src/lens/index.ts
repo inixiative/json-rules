@@ -1,25 +1,31 @@
-export { applyLens } from './applyLens';
-export { lensRequiredBindings, resolveLensBindings, validateBindNames } from './bindings';
-export type { RuleLensCheck, RuleLensViolation } from './checkRule';
-export { checkRuleAgainstLens } from './checkRule';
-export type { CreateLensInput } from './createLens';
+export { bindLens, listLensBindings } from './bindings';
+export { coerceRule } from './coerceRule';
 export { createLens } from './createLens';
 export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
-export { exposedSurface } from './exposedSurface';
-export { validateNarrowing } from './narrowing';
-export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectByPath';
-export { projectByPath } from './projectByPath';
-export type { LensPathHop, LensPathResolution } from './resolveLensPath';
-export { resolveLensPath } from './resolveLensPath';
-export type { RuleSourceValues } from './ruleSourceValues';
-export { ruleSourceValues } from './ruleSourceValues';
-export type { SourcePrismaQuery, SourceQuery, SourceSqlQuery } from './sourceQuery';
-export { sourceQueries } from './sourceQuery';
-export type { SourceRowShape } from './sourceValuesFromQueryRows';
-export { sourceValuesFromQueryRows } from './sourceValuesFromQueryRows';
-export { sourceValuesFromRows } from './sourceValuesFromRows';
-export { stampCoercions } from './stampCoercions';
+export type { RuleSourceDescription } from './describeRuleSources';
+export { describeRuleSources } from './describeRuleSources';
+export type { MaterializeSourceQueryOptions, SourceRowShape } from './materializeSourceQuery';
+export { materializeSourceQuery } from './materializeSourceQuery';
+export { materializeSources } from './materializeSources';
+export { assertValidNarrowing, validateNarrowing } from './narrowing';
+export { narrowRule } from './narrowRule';
+export { projectLens } from './projectLens';
+export type {
+  PathProjection,
+  ProjectedVisit,
+  ProjectLensOptions,
+  SourceValues,
+} from './projectPaths';
+export type { StoredLens } from './storedLens';
+export { composeLens, storeLens } from './storedLens';
+export type {
+  SourcePrismaQuery,
+  SourceQuery,
+  SourceSelect,
+  SourceSqlQuery,
+} from './toSourceQueries';
+export { toSourceQueries } from './toSourceQueries';
 export type {
   EnumNarrowing,
   Lens,
@@ -27,6 +33,9 @@ export type {
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
+  SourceEntry,
   SourceSpec,
-  SourceValue,
 } from './types';
+export { validateRuleInLens } from './validateRuleInLens';
+export type { LensPathHop, LensPathResolution } from './walkLensPath';
+export { walkLensPath } from './walkLensPath';

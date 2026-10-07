@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, Rule } from '../index';
-import { ArrayOperator, check, createLens, Operator, stampCoercions, validateRule } from '../index';
+import { ArrayOperator, check, coerceRule, createLens, Operator, validateRule } from '../index';
 
 describe('coerceType — check()', () => {
   describe('DateTime', () => {
@@ -202,7 +202,7 @@ describe('coerceType — validateRule', () => {
   });
 });
 
-describe('stampCoercions', () => {
+describe('coerceRule', () => {
   const lens = createLens({
     mapName: 'sdk',
     model: 'Reward',
@@ -229,7 +229,7 @@ describe('stampCoercions', () => {
   });
 
   test('stamps scalar kinds on field rules', () => {
-    const stamped = stampCoercions(
+    const stamped = coerceRule(
       { field: 'createdAt', operator: Operator.greaterThan, value: '2026-01-01' },
       lens,
     ) as Rule;
@@ -237,17 +237,17 @@ describe('stampCoercions', () => {
   });
 
   test('leaves enum and Json fields unstamped', () => {
-    const enumRule = stampCoercions(
+    const enumRule = coerceRule(
       { field: 'status', operator: Operator.equals, value: 'live' },
       lens,
     ) as Rule;
     expect(enumRule.coerceType).toBeUndefined();
-    const jsonRule = stampCoercions({ field: 'meta', operator: Operator.exists }, lens) as Rule;
+    const jsonRule = coerceRule({ field: 'meta', operator: Operator.exists }, lens) as Rule;
     expect(jsonRule.coerceType).toBeUndefined();
   });
 
   test('walks all/any/if and dotted relation paths', () => {
-    const stamped = stampCoercions(
+    const stamped = coerceRule(
       {
         all: [
           { field: 'brand.tier', operator: Operator.greaterThan, value: '2' },
@@ -270,7 +270,7 @@ describe('stampCoercions', () => {
   });
 
   test('array rule nested condition stamps against the item model', () => {
-    const stamped = stampCoercions(
+    const stamped = coerceRule(
       {
         field: 'tags',
         arrayOperator: ArrayOperator.any,
@@ -289,8 +289,8 @@ describe('stampCoercions', () => {
       value: '1',
       coerceType: 'String',
     };
-    expect((stampCoercions(existing, lens) as Rule).coerceType).toBe('String');
-    const unknown = stampCoercions(
+    expect((coerceRule(existing, lens) as Rule).coerceType).toBe('String');
+    const unknown = coerceRule(
       { field: 'nope', operator: Operator.equals, value: 1 },
       lens,
     ) as Rule;
@@ -298,10 +298,7 @@ describe('stampCoercions', () => {
   });
 
   test('stamped rule round-trips through check()', () => {
-    const stamped = stampCoercions(
-      { field: 'price', operator: Operator.in, value: ['3', '5'] },
-      lens,
-    );
+    const stamped = coerceRule({ field: 'price', operator: Operator.in, value: ['3', '5'] }, lens);
     expect(check(stamped, { price: 5 })).toBe(true);
   });
 });

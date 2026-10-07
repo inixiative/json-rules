@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import type { FieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
-// checkRuleAgainstLens should validate that enum field values used in rules are
+// validateRuleInLens should validate that enum field values used in rules are
 // in the allowed set, considering:
 //   1. FieldMap.enums[type] (registry)
 //   2. FieldMapEntry.values (per-field override)
@@ -31,9 +31,9 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('checkRuleAgainstLens — enum value validation', () => {
+describe('validateRuleInLens — enum value validation', () => {
   test('rule value in registry → passes', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'admin' },
       lens,
     );
@@ -41,20 +41,20 @@ describe('checkRuleAgainstLens — enum value validation', () => {
   });
 
   test('rule value NOT in registry → rejected with helpful violation', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'GHOST' },
       lens,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('role');
-    expect(result.violations[0].reason).toMatch(/enum|value|GHOST/i);
+    expect(result.errors[0].path).toBe('role');
+    expect(result.errors[0].message).toMatch(/enum|value|GHOST/i);
   });
 
   test('rule value narrowed away by enumPicks → rejected', () => {
     const n = withParent(lens, {
       root: { enumPicks: { role: ['admin', 'member'] } },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'owner' },
       n,
     );
@@ -65,7 +65,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
     const n = withParent(lens, {
       root: { enumOmits: { role: ['owner'] } },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'owner' },
       n,
     );
@@ -76,7 +76,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { enums: { UserRole: { omits: ['owner'] } } } },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'owner' },
       n,
     );
@@ -84,7 +84,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
   });
 
   test('in/notIn operator: array value with one bad member → rejected', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.in, value: ['admin', 'GHOST'] },
       lens,
     );
@@ -107,7 +107,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
       enums: { UserRole: ['admin', 'member', 'owner', 'guest'] },
     };
     const lensF: Lens = { maps: { prisma: mapWithFieldValues }, mapName: 'prisma', model: 'User' };
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'member' }, // valid in registry but not in field values
       lensF,
     );
@@ -115,7 +115,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
   });
 
   test('enum value validation inside `all` (recurses into compound conditions)', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         all: [
           { field: 'id', operator: Operator.equals, value: 'u1' },
@@ -125,11 +125,11 @@ describe('checkRuleAgainstLens — enum value validation', () => {
       lens,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'role')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'role')).toBe(true);
   });
 
   test('enum value validation inside `any`', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         any: [
           { field: 'role', operator: Operator.equals, value: 'admin' },
@@ -142,7 +142,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
   });
 
   test('enum value validation inside `if/then/else`', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         if: { field: 'id', operator: Operator.equals, value: 'u1' },
         then: { field: 'role', operator: Operator.equals, value: 'GHOST' },
@@ -172,7 +172,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
       enums: { UserRole: ['admin', 'member', 'owner', 'guest'] },
     };
     const lensR: Lens = { maps: { prisma: mapWithRel }, mapName: 'prisma', model: 'Org' };
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       {
         field: 'users',
         arrayOperator: 'any',
@@ -194,7 +194,7 @@ describe('checkRuleAgainstLens — enum value validation', () => {
       // no enums registry
     };
     const lensB: Lens = { maps: { prisma: bareMap }, mapName: 'prisma', model: 'User' };
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'role', operator: Operator.equals, value: 'anything' },
       lensB,
     );

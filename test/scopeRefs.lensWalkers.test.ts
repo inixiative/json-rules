@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { applyLens } from '../src/lens/applyLens';
+import type { FieldMap } from '../src/fieldMap/types';
+import { coerceRule } from '../src/lens/coerceRule';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
-import { ruleSourceValues } from '../src/lens/ruleSourceValues';
-import { stampCoercions } from '../src/lens/stampCoercions';
+import { describeRuleSources } from '../src/lens/describeRuleSources';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 const map: FieldMap = {
@@ -54,7 +54,7 @@ const atLineItems = (leaf: Condition): Condition => ({
 const wOrder: Condition = { field: 'status', operator: Operator.equals, value: 'active' };
 const wCustomer: Condition = { field: 'tenantId', operator: Operator.equals, value: 't1' };
 
-describe('applyLens — narrowing follows a prefixed field to its scope', () => {
+describe('narrowRule — narrowing follows a prefixed field to its scope', () => {
   test('a $$$. array rule gets the ancestor relation grant injected', () => {
     const narrowing: LensNarrowing = {
       parent: lens,
@@ -66,7 +66,7 @@ describe('applyLens — narrowing follows a prefixed field to its scope', () => 
       arrayOperator: ArrayOperator.any,
       condition: idExists,
     });
-    expect(applyLens(rule, narrowing)).toEqual({
+    expect(narrowRule(rule, narrowing)).toEqual({
       field: 'orders',
       arrayOperator: ArrayOperator.any,
       condition: {
@@ -92,7 +92,7 @@ describe('applyLens — narrowing follows a prefixed field to its scope', () => 
       mapDefaults: { prisma: { models: { Customer: { where: wCustomer } } } },
     };
     const leaf: Condition = { field: '$$.customer.tier', operator: Operator.equals, value: 'gold' };
-    expect(applyLens(atLineItems(leaf), narrowing)).toEqual({
+    expect(narrowRule(atLineItems(leaf), narrowing)).toEqual({
       field: 'orders',
       arrayOperator: ArrayOperator.any,
       condition: {
@@ -107,7 +107,7 @@ describe('applyLens — narrowing follows a prefixed field to its scope', () => 
 
   test('an out-of-bounds field fails closed', () => {
     const rule: Condition = { field: '$$.orders', arrayOperator: ArrayOperator.notEmpty };
-    expect(() => applyLens(rule, lens)).toThrow(/depth 2.*only 1/);
+    expect(() => narrowRule(rule, lens)).toThrow(/depth 2.*only 1/);
   });
 
   test('a relation grant authored with a scope ref cannot be re-rooted', () => {
@@ -126,7 +126,7 @@ describe('applyLens — narrowing follows a prefixed field to its scope', () => 
       arrayOperator: ArrayOperator.any,
       condition: { field: 'customer.tier', operator: Operator.equals, value: 'gold' },
     };
-    expect(() => applyLens(rule, narrowing)).toThrow(/re-root/);
+    expect(() => narrowRule(rule, narrowing)).toThrow(/re-root/);
   });
 });
 
@@ -136,7 +136,7 @@ describe('describeRule — scope refs', () => {
       atLineItems({ field: '$$.maxQty', operator: Operator.lessThan, path: '$$$.limit' }),
       lens,
     );
-    expect(result.violations).toEqual([]);
+    expect(result.errors).toEqual([]);
     expect(result.supportedTargets).toEqual(['check']);
   });
 
@@ -153,14 +153,16 @@ describe('describeRule — scope refs', () => {
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$$$.limit' }),
       lens,
     );
-    expect(result.violations).toEqual(['$$$$.limit']);
+    expect(result.errors.map((e) => [e.path, e.code])).toEqual([
+      ['$$$$.limit', 'scope_out_of_bounds'],
+    ]);
   });
 });
 
-describe('stampCoercions — scope refs', () => {
+describe('coerceRule — scope refs', () => {
   test('a prefixed field is stamped from the ancestor model', () => {
     const rule = atLineItems({ field: '$$.maxQty', operator: Operator.equals, value: '5' });
-    const stamped = stampCoercions(rule, lens) as {
+    const stamped = coerceRule(rule, lens) as {
       condition: { condition: { coerceType?: string } };
     };
     expect(stamped.condition.condition.coerceType).toBe('Int');
@@ -168,11 +170,11 @@ describe('stampCoercions — scope refs', () => {
 
   test('an out-of-bounds field is left unstamped', () => {
     const rule: Condition = { field: '$$.limit', operator: Operator.equals, value: '5' };
-    expect(stampCoercions(rule, lens)).toEqual(rule);
+    expect(coerceRule(rule, lens)).toEqual(rule);
   });
 });
 
-describe('ruleSourceValues — scope refs', () => {
+describe('describeRuleSources — scope refs', () => {
   const narrowing: LensNarrowing = {
     parent: lens,
     root: { relations: { orders: { sources: { maxQty: true } } } },
@@ -180,7 +182,7 @@ describe('ruleSourceValues — scope refs', () => {
 
   test('a $$. field records its values at the ancestor source', () => {
     const rule = atLineItems({ field: '$$.maxQty', operator: Operator.in, value: [1, 2] });
-    expect(ruleSourceValues(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'Org.orders',
         mapName: 'prisma',
@@ -194,6 +196,6 @@ describe('ruleSourceValues — scope refs', () => {
 
   test('an out-of-bounds field records nothing', () => {
     const rule: Condition = { field: '$$.maxQty', operator: Operator.in, value: [1] };
-    expect(ruleSourceValues(narrowing, rule)).toEqual([]);
+    expect(describeRuleSources(rule, narrowing)).toEqual([]);
   });
 });

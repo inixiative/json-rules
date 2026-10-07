@@ -1,34 +1,37 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import type { Bridge } from '../src/fieldMap/types';
-import { applyLens } from '../src/lens/applyLens';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
-import { projectByPath } from '../src/lens/projectByPath';
+import { narrowRule } from '../src/lens/narrowRule';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 import {
   FIELD_OPERATOR_CATALOG,
   getValueShape,
   isOperatorSupportedForTarget,
 } from '../src/operatorCatalog';
-import type { FieldMap } from '../src/toPrisma/types';
 import { validateRule } from '../src/validate';
 import { at } from './fixtures/helpers';
 
 // Bug #1: prototype keys must not be treated as operators
 describe('Bug #1 — catalog rejects prototype keys', () => {
   test('getValueShape throws on prototype keys', () => {
-    expect(() => getValueShape('toString' as never)).toThrow(/Unknown operator/);
-    expect(() => getValueShape('__proto__' as never)).toThrow(/Unknown operator/);
-    expect(() => getValueShape('constructor' as never)).toThrow(/Unknown operator/);
-    expect(() => getValueShape('hasOwnProperty' as never)).toThrow(/Unknown operator/);
+    expect(() => getValueShape('toString', 'field')).toThrow(/Unknown (field|date|array) operator/);
+    expect(() => getValueShape('__proto__', 'date')).toThrow(/Unknown (field|date|array) operator/);
+    expect(() => getValueShape('constructor', 'array')).toThrow(
+      /Unknown (field|date|array) operator/,
+    );
+    expect(() => getValueShape('hasOwnProperty', 'field')).toThrow(
+      /Unknown (field|date|array) operator/,
+    );
   });
 
   test('isOperatorSupportedForTarget returns false on prototype keys (does not throw)', () => {
-    expect(isOperatorSupportedForTarget('toString' as never, 'check')).toBe(false);
-    expect(isOperatorSupportedForTarget('__proto__' as never, 'check')).toBe(false);
-    expect(isOperatorSupportedForTarget('constructor' as never, 'check')).toBe(false);
+    expect(isOperatorSupportedForTarget('toString', 'field', 'check')).toBe(false);
+    expect(isOperatorSupportedForTarget('__proto__', 'date', 'check')).toBe(false);
+    expect(isOperatorSupportedForTarget('constructor', 'array', 'check')).toBe(false);
   });
 
   test('catalog membership checks reject prototype keys', () => {
@@ -84,7 +87,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       parent: lens,
       root: { picks: ['email', 'salesforce:Contact'] },
     };
-    const projected = projectByPath(narrowing);
+    const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeDefined();
   });
 
@@ -94,7 +97,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       parent: lens,
       root: { picks: ['email'] },
     };
-    const projected = projectByPath(narrowing);
+    const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeUndefined();
   });
 
@@ -104,7 +107,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       parent: lens,
       root: { omits: ['salesforce:Contact'] },
     };
-    const projected = projectByPath(narrowing);
+    const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeUndefined();
   });
 });
@@ -151,7 +154,7 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
     expect(result.errors.map((e) => e.code)).toContain('invalid_aggregate_mode');
   });
 
-  test('check returns error string instead of silently using avg', () => {
+  test('check refuses it instead of silently using avg', () => {
     const rule = {
       field: 'orders',
       aggregate: {} as never, // no mode
@@ -159,13 +162,12 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
       value: 0,
     };
     const data = { orders: [{ total: 100 }] };
-    const result = check(rule as never, data);
-    expect(typeof result).toBe('string');
+    expect(() => check(rule as never, data)).toThrow('aggregate.mode must be one of');
   });
 });
 
-// Bug #8: checkRuleAgainstLens must walk aggregate.field paths against the lens schema.
-describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () => {
+// Bug #8: validateRuleInLens must walk aggregate.field paths against the lens schema.
+describe('Bug #8 — validateRuleInLens validates aggregate sub-fields', () => {
   const map: FieldMap = {
     models: {
       User: {
@@ -191,9 +193,9 @@ describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () =>
       operator: Operator.greaterThan,
       value: 0,
     };
-    const result = checkRuleAgainstLens(rule as never, lens);
+    const result = validateRuleInLens(rule as never, lens);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'ghostField')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'ghostField')).toBe(true);
   });
 
   test('aggregate.field referencing a real leaf passes', () => {
@@ -204,7 +206,7 @@ describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () =>
       operator: Operator.greaterThan,
       value: 0,
     };
-    const result = checkRuleAgainstLens(rule as never, lens);
+    const result = validateRuleInLens(rule as never, lens);
     expect(result.ok).toBe(true);
   });
 
@@ -216,11 +218,11 @@ describe('Bug #8 — checkRuleAgainstLens validates aggregate sub-fields', () =>
       arrayOperator: 'any' as const,
       condition: { field: 'ghostField', operator: Operator.equals, value: 1 },
     };
-    const result = checkRuleAgainstLens(rule as never, lens);
+    const result = validateRuleInLens(rule as never, lens);
     expect(result.ok).toBe(false);
-    expect(result.violations.some((v) => v.path === 'ghostField')).toBe(true);
+    expect(result.errors.some((v) => v.path === 'ghostField')).toBe(true);
   });
 });
 
-// Sanity: applyLens import retained for future tests
-void applyLens;
+// Sanity: narrowRule import retained for future tests
+void narrowRule;

@@ -1,0 +1,81 @@
+import { own, ownEntry } from '../own';
+import type { Row } from '../types';
+import { endpointKey } from './endpointKey.ts';
+import type { FieldMapSet } from './types.ts';
+
+export type BridgeDictionary = Record<
+  string, // map name
+  Record<
+    string, // model name
+    Record<string, Record<string, Row | Row[]>> // on field → identifier → row(s)
+  >
+>;
+
+const keyByUnique = (
+  rows: Row[],
+  on: string,
+  endpointLabel: string,
+  side: 'one' | 'oneToOne',
+): Record<string, Row> => {
+  const out: Record<string, Row> = {};
+  for (const row of rows) {
+    const k = own(row, on) as string | number | undefined;
+    if (k === undefined || k === null) continue;
+    const key = String(k);
+    if (Object.hasOwn(out, key)) {
+      const hint =
+        side === 'one'
+          ? `endpoint[0] must be the "one" side of a oneToMany bridge — swap endpoints if '${endpointLabel}' is the "many" side`
+          : `oneToOne bridges require unique '${on}' on both endpoints`;
+      throw new Error(
+        `indexBridges: duplicate '${on}' value '${key}' on '${endpointLabel}' — ${hint}.`,
+      );
+    }
+    out[key] = row;
+  }
+  return out;
+};
+
+/** Rows grouped by their own `on` value; a row whose value is null joins nothing. */
+const groupByKey = (rows: Row[], on: string): Record<string, Row[]> => {
+  const out: Record<string, Row[]> = {};
+  for (const row of rows) {
+    const k = own(row, on);
+    if (k === null || k === undefined) continue;
+    ownEntry(out, String(k), () => []).push(row);
+  }
+  return out;
+};
+
+export const indexBridges = (
+  set: FieldMapSet,
+  rawData: Record<string, Row[]>,
+): BridgeDictionary => {
+  const out: BridgeDictionary = {};
+  for (const bridge of set.bridges ?? []) {
+    const [a, b] = bridge.endpoints;
+    const aKey = endpointKey(a);
+    const bKey = endpointKey(b);
+    const aSide = bridge.cardinality === 'oneToMany' ? 'one' : 'oneToOne';
+    const endpoint = (
+      fieldMap: string,
+      model: string,
+    ): Record<string, Record<string, Row | Row[]>> =>
+      ownEntry(
+        ownEntry(out, fieldMap, () => ({})),
+        model,
+        () => ({}),
+      );
+    const aRows = own(rawData, aKey);
+    if (aRows) endpoint(a.fieldMap, a.model)[a.on] = keyByUnique(aRows, a.on, aKey, aSide);
+    const bRows = own(rawData, bKey);
+    if (bRows) {
+      if (bridge.cardinality === 'oneToMany') {
+        endpoint(b.fieldMap, b.model)[b.on] = groupByKey(bRows, b.on);
+      } else {
+        endpoint(b.fieldMap, b.model)[b.on] = keyByUnique(bRows, b.on, bKey, 'oneToOne');
+      }
+    }
+  }
+  return out;
+};

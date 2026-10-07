@@ -1,0 +1,158 @@
+import { leafCatalogEntry, ValueShape } from '../operatorCatalog';
+import { readScopeRef } from '../scope';
+import {
+  type ConditionNode,
+  isLogicalNode,
+  isRelationNode,
+  leafSources,
+  visitCondition,
+} from '../traverse.ts';
+import type { Condition, RuleValue } from '../types.ts';
+import { ruleLiterals } from './fieldFit.ts';
+import { lensPathEnd, resolvePolicy } from './policy.ts';
+import type { Lens, LensNarrowing } from './types.ts';
+
+/**
+ * The values one rule compares at one declared source — keyed the way `projectPaths`
+ * keys a source (`path` + `field`), so the caller can join it back to the source's
+ * model without spelling a path of its own. A `mapDefaults`-declared source resolves
+ * wherever its model appears, so `path` may name a relation chain the narrowing never
+ * spelled under `root.relations`; the dotted format is the same.
+ */
+export type RuleSourceDescription = {
+  path: string;
+  mapName: string;
+  model: string;
+  field: string;
+  /** Every literal a leaf at this source named; list operators flattened, deduped by content. */
+  values: RuleValue[];
+  /**
+   * The set of values cannot be enumerated from literals: a leaf read a value at evaluation
+   * (a `path` / `bind` on its comparison value, an offset or an amount) or moved it by an offset, used an operator that describes values without naming them
+   * (substring, pattern, range, date window), or used an operator the catalog does not
+   * know. A caller deciding anything from `values` must fail closed.
+   */
+  dynamic: boolean;
+};
+
+/** Shapes whose `value` IS the named value(s): a literal, an ordered literal, a list, a
+ * day list, or a date literal / point expression. Everything else describes values
+ * without enumerating them. */
+const ENUMERABLE_SHAPES = new Set<string>([
+  ValueShape.scalar,
+  ValueShape.ordered,
+  ValueShape.array,
+  ValueShape.dayList,
+  ValueShape.dateValue,
+]);
+
+/** Shapes whose `value` is not about the field's values at all (a flag, a cardinality). */
+const VALUELESS_SHAPES = new Set<string>([ValueShape.none, ValueShape.count]);
+
+type Contribution = { values: RuleValue[]; dynamic: boolean };
+
+const contribution = (node: ConditionNode): Contribution => {
+  // A value read at evaluation — a path or bind anywhere on the leaf, its comparison value, an
+  // offset or an amount — or an offset moving a literal: the literal doesn't name the value.
+  if (
+    node.offset !== undefined ||
+    leafSources(node).some(({ source }) => source.value === undefined)
+  )
+    return { values: [], dynamic: true };
+  const entry = leafCatalogEntry(node);
+  if (!entry) return { values: [], dynamic: true };
+  if (VALUELESS_SHAPES.has(entry.valueShape)) return { values: [], dynamic: false };
+  if (!ENUMERABLE_SHAPES.has(entry.valueShape)) return { values: [], dynamic: true };
+  if (!('value' in node)) return { values: [], dynamic: false };
+  return { values: (ruleLiterals(node) ?? []) as RuleValue[], dynamic: false };
+};
+
+const dedupeKey = (value: RuleValue): string => {
+  if (value instanceof Date) return `d:${+value}`;
+  if (value instanceof RegExp) return `r:${value}`;
+  if (typeof value === 'object' && value !== null) return `j:${JSON.stringify(value)}`;
+  return `p:${typeof value}:${String(value)}`;
+};
+
+/**
+ * Which values a rule names at each source the lens declares — the lens owns the
+ * vocabulary, so it answers questions about it; callers never spell a path. A leaf reaches a
+ * source by its absolute path through the lens: nested (`{ field: 'orders', arrayOperator,
+ * condition: { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`) spellings are one path,
+ * resolved by `lensPathEnd` — visibility, `mapDefaults`, and the Json boundary all apply, so a
+ * source declared in `mapDefaults` answers wherever its model appears. Quantifier-blind on
+ * purpose — a `none` relation names its value as much as an `any` one, `notIn` as much as `in` —
+ * but shape-aware via the operator catalog: only literal-naming shapes contribute `values`;
+ * substring / pattern / range / window operators, and operators the catalog does not know, mark
+ * the source `dynamic` instead of inventing values. A relation node's own comparison (an
+ * aggregate's threshold, an array `count`) belongs to the node, not to a source. Paths invisible
+ * under the lens, unmapped segments, and sub-paths beneath a Json column are silent.
+ */
+export const describeRuleSources = (
+  rule: Condition,
+  lensOrNarrowing: Lens | LensNarrowing,
+): RuleSourceDescription[] => {
+  const policy = resolvePolicy(lensOrNarrowing);
+  const root = policy.lens.model;
+  const out = new Map<string, RuleSourceDescription>();
+  // Each entry's literal keys, so a large `in` list dedupes in linear time.
+  const seenKeys = new Map<string, Set<string>>();
+
+  const record = (segments: string[], node: ConditionNode): void => {
+    if (segments.length === 0) return;
+    const resolved = lensPathEnd(
+      policy,
+      { mapName: policy.lens.mapName, modelName: root, relPath: [] },
+      segments.join('.'),
+    );
+    if (!resolved || resolved.jsonSubPath.length > 0) return;
+    const { mapName, modelName, relPath, terminalEffect, terminalFieldName } = resolved;
+    if (!terminalEffect.sources.has(terminalFieldName)) return;
+
+    const path = [root, ...relPath].join('.');
+    const key = `${path}|${terminalFieldName}`;
+    let entry = out.get(key);
+    if (!entry) {
+      entry = {
+        path,
+        mapName,
+        model: modelName,
+        field: terminalFieldName,
+        values: [],
+        dynamic: false,
+      };
+      out.set(key, entry);
+    }
+    const found = contribution(node);
+    if (found.dynamic) entry.dynamic = true;
+    const seen = seenKeys.get(key) ?? new Set<string>();
+    seenKeys.set(key, seen);
+    for (const literal of found.values) {
+      const literalKey = dedupeKey(literal);
+      if (seen.has(literalKey)) continue;
+      seen.add(literalKey);
+      entry.values.push(literal);
+    }
+  };
+
+  // The scope is the stack of absolute anchors, innermost last; a `$`-prefixed field anchors at
+  // the scope it names. An out-of-bounds ref anchors nowhere and is silent.
+  const anchorOf = (field: string, prefixes: readonly string[][]): string[] | undefined => {
+    const target = readScopeRef(field, prefixes);
+    if ('outOfBounds' in target) return undefined;
+    return [...target.scope, ...target.path.split('.')];
+  };
+  visitCondition<readonly string[][]>(
+    rule,
+    (node, prefixes) => {
+      if (isLogicalNode(node)) return;
+      const anchor =
+        typeof node.field === 'string' ? anchorOf(node.field, prefixes) : prefixes.at(-1);
+      if (!anchor) return false;
+      if (!isRelationNode(node) && typeof node.field === 'string') record(anchor, node);
+      return [...prefixes, anchor];
+    },
+    [[]],
+  );
+  return [...out.values()];
+};

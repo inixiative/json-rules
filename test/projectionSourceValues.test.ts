@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { exposedSurface } from '../src/lens/exposedSurface';
-import { projectByPath, type SourceValues } from '../src/lens/projectByPath';
+import type { FieldMap } from '../src/fieldMap/types';
+import { projectModels } from '../src/lens/projectModels';
+import { projectPaths, type SourceValues } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
-import type { FieldMap } from '../src/toPrisma/types';
 import { enumOptions } from './fixtures/helpers';
 
 const map: FieldMap = {
@@ -23,7 +23,7 @@ const map: FieldMap = {
 
 const lens: Lens = { maps: { app: map }, mapName: 'app', model: 'User' };
 
-describe('exposedSurface — fetched sourceValues fold onto field.options (per model)', () => {
+describe('projectModels — fetched sourceValues fold onto field.options (per model)', () => {
   test('a sourced scalar gains the fetched options (value/label pairs)', () => {
     const sourceValues: SourceValues[] = [
       {
@@ -34,7 +34,7 @@ describe('exposedSurface — fetched sourceValues fold onto field.options (per m
         options: [{ value: 'gold' }, { value: 'silver' }],
       },
     ];
-    const surface = exposedSurface(lens, { sourceValues });
+    const surface = projectModels(lens, { sourceValues });
     expect(surface.maps.app.models.User.fields.tier.options).toEqual([
       { value: 'gold' },
       { value: 'silver' },
@@ -42,7 +42,7 @@ describe('exposedSurface — fetched sourceValues fold onto field.options (per m
   });
 
   test('labeled options carry their label', () => {
-    const surface = exposedSurface(lens, {
+    const surface = projectModels(lens, {
       sourceValues: [
         {
           path: 'User',
@@ -63,7 +63,7 @@ describe('exposedSurface — fetched sourceValues fold onto field.options (per m
   });
 
   test('fetched options land on an enum field (enum registry stays on values)', () => {
-    const surface = exposedSurface(lens, {
+    const surface = projectModels(lens, {
       sourceValues: [
         {
           path: 'User',
@@ -80,7 +80,7 @@ describe('exposedSurface — fetched sourceValues fold onto field.options (per m
   });
 
   test('options for the same model+field across paths union (dedup by value, label kept)', () => {
-    const surface = exposedSurface(lens, {
+    const surface = projectModels(lens, {
       sourceValues: [
         {
           path: 'User.region',
@@ -106,7 +106,7 @@ describe('exposedSurface — fetched sourceValues fold onto field.options (per m
   });
 
   test('without sourceValues, a plain scalar has no options but an enum still exposes its set', () => {
-    const surface = exposedSurface(lens);
+    const surface = projectModels(lens);
     // tier is a plain scalar with no allowed-set → no options, no values.
     expect(surface.maps.app.models.User.fields.tier.options).toBeUndefined();
     expect(surface.maps.app.models.User.fields.tier.values).toBeUndefined();
@@ -117,11 +117,11 @@ describe('exposedSurface — fetched sourceValues fold onto field.options (per m
   });
 });
 
-describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
+describe('projectPaths — fetched sourceValues fold per path (exact)', () => {
   const narrowed: LensNarrowing = { parent: lens, root: { relations: { region: {} } } };
 
   test('each path gets its own fetched options', () => {
-    const proj = projectByPath(narrowed, {
+    const proj = projectPaths(narrowed, {
       sourceValues: [
         {
           path: 'User',
@@ -139,12 +139,12 @@ describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
         },
       ],
     });
-    expect(proj.get('User')?.fields.tier.options).toEqual([{ value: 'a' }]);
-    expect(proj.get('User.region')?.fields.code.options).toEqual([{ value: 'b', label: 'Bee' }]);
+    expect(proj.User?.fields.tier.options).toEqual([{ value: 'a' }]);
+    expect(proj['User.region']?.fields.code.options).toEqual([{ value: 'b', label: 'Bee' }]);
   });
 
   test('an option at one path does not leak to another', () => {
-    const proj = projectByPath(narrowed, {
+    const proj = projectPaths(narrowed, {
       sourceValues: [
         {
           path: 'User.region',
@@ -155,11 +155,11 @@ describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
         },
       ],
     });
-    expect(proj.get('User')?.fields.tier.options).toBeUndefined();
+    expect(proj.User?.fields.tier.options).toBeUndefined();
   });
 
   test('a bare (label-less) source folds pairs without labels', () => {
-    const proj = projectByPath(lens, {
+    const proj = projectPaths(lens, {
       sourceValues: [
         {
           path: 'User',
@@ -170,6 +170,6 @@ describe('projectByPath — fetched sourceValues fold per path (exact)', () => {
         },
       ],
     });
-    expect(proj.get('User')?.fields.tier.options).toEqual([{ value: 'gold' }]);
+    expect(proj.User?.fields.tier.options).toEqual([{ value: 'gold' }]);
   });
 });

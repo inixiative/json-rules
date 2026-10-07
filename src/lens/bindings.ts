@@ -1,45 +1,72 @@
-import {
-  bindingNames as conditionBindingNames,
-  requiredBindings as conditionRequiredBindings,
-  resolveBindings as resolveConditionBindings,
-} from '../bindings.ts';
+import { bindRule, listBindings } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
-import { isSourceSpec, normalizeSource } from './policy.ts';
+import { collectChain, isLens } from './chain.ts';
+import { isSourceSpec } from './policy.ts';
 import type {
   Lens,
   LensNarrowing,
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
-  SourceValue,
+  SourceEntry,
 } from './types.ts';
-import { collectChain, isLens } from './walk.ts';
 
 const PARENT_PREFIX = 'parent:';
 const isParentRef = (name: string): boolean => name.startsWith(PARENT_PREFIX);
 const baseName = (name: string): string =>
   isParentRef(name) ? name.slice(PARENT_PREFIX.length) : name;
 
-// Every Condition a model node carries: its own `where`, each `sources` where,
-// and the same recursively for path-specific relations.
-const modelNodeConditions = (n: ModelDefaultNarrowing | ModelNarrowing): Condition[] => {
-  const out: Condition[] = [];
-  if (n.where !== undefined) out.push(n.where);
-  for (const entry of Object.values(n.sources ?? {})) {
-    const where = normalizeSource(entry).where;
-    if (where !== undefined) out.push(where);
+type Rewrite = (condition: Condition) => Condition;
+
+// A model node's condition slots — its `where`, each source's `where`, and the same through its
+// path relations — listed once. `fn` rewrites each; collecting is a rewrite that keeps them.
+const mapNodeConditions = <T extends ModelDefaultNarrowing | ModelNarrowing>(
+  node: T,
+  fn: Rewrite,
+): T => {
+  const out = { ...node } as ModelNarrowing;
+  if (node.where !== undefined) out.where = fn(node.where);
+  if (node.sources) {
+    const sources: Record<string, SourceEntry> = {};
+    for (const [field, entry] of Object.entries(node.sources))
+      sources[field] = isSourceSpec(entry)
+        ? entry.where !== undefined
+          ? { ...entry, where: fn(entry.where) }
+          : entry
+        : fn(entry);
+    out.sources = sources;
   }
-  if ('relations' in n && n.relations)
-    for (const sub of Object.values(n.relations)) out.push(...modelNodeConditions(sub));
-  return out;
+  if ('relations' in node && node.relations) {
+    const relations: Record<string, ModelNarrowing> = {};
+    for (const [rel, sub] of Object.entries(node.relations))
+      relations[rel] = mapNodeConditions(sub, fn);
+    out.relations = relations;
+  }
+  return out as T;
 };
 
-// Every Condition one narrowing layer carries (root + mapDefaults).
+// One narrowing layer's condition slots: its root and every map default's models.
+const mapLayerConditions = (nrw: LensNarrowing, fn: Rewrite): LensNarrowing => {
+  const mapDefaults: Record<string, NarrowingDefaults> = {};
+  for (const [mapName, defaults] of Object.entries(nrw.mapDefaults ?? {})) {
+    const models: Record<string, ModelDefaultNarrowing> = {};
+    for (const [model, node] of Object.entries(defaults.models ?? {}))
+      models[model] = mapNodeConditions(node, fn);
+    mapDefaults[mapName] = defaults.models ? { ...defaults, models } : defaults;
+  }
+  return {
+    ...nrw,
+    root: nrw.root ? mapNodeConditions(nrw.root, fn) : undefined,
+    mapDefaults: nrw.mapDefaults ? mapDefaults : undefined,
+  };
+};
+
 const layerConditions = (nrw: LensNarrowing): Condition[] => {
   const out: Condition[] = [];
-  if (nrw.root) out.push(...modelNodeConditions(nrw.root));
-  for (const defaults of Object.values(nrw.mapDefaults ?? {}))
-    for (const m of Object.values(defaults.models ?? {})) out.push(...modelNodeConditions(m));
+  mapLayerConditions(nrw, (condition) => {
+    out.push(condition);
+    return condition;
+  });
   return out;
 };
 
@@ -48,7 +75,7 @@ const layerConditions = (nrw: LensNarrowing): Condition[] => {
 const declaredNames = (nrw: LensNarrowing): Set<string> => {
   const names = new Set<string>();
   for (const cond of layerConditions(nrw))
-    for (const name of conditionBindingNames(cond)) if (!isParentRef(name)) names.add(name);
+    for (const name of listBindings(cond)) if (!isParentRef(name)) names.add(name);
   return names;
 };
 
@@ -60,70 +87,23 @@ const declaredNames = (nrw: LensNarrowing): Set<string> => {
  * this lens require" answer; pass `narrowing.parent` to see the names a child must
  * not collide with.
  */
-export const lensRequiredBindings = (lensOrNarrowing: Lens | LensNarrowing): Set<string> => {
+export const listLensBindings = (lensOrNarrowing: Lens | LensNarrowing): string[] => {
   const names = new Set<string>();
   for (const nrw of collectChain(lensOrNarrowing))
     for (const cond of layerConditions(nrw))
-      for (const name of conditionRequiredBindings(cond)) names.add(baseName(name));
-  return names;
-};
-
-const resolveModelNode = <T extends ModelDefaultNarrowing | ModelNarrowing>(
-  node: T,
-  effective: Record<string, RuleValue>,
-): T => {
-  const out = { ...node } as ModelNarrowing;
-  if (node.where !== undefined) out.where = resolveConditionBindings(node.where, effective);
-  if (node.sources) {
-    const sources: Record<string, SourceValue> = {};
-    for (const [field, entry] of Object.entries(node.sources)) {
-      if (isSourceSpec(entry)) {
-        sources[field] =
-          entry.where !== undefined
-            ? { ...entry, where: resolveConditionBindings(entry.where, effective) }
-            : entry;
-      } else {
-        sources[field] = resolveConditionBindings(entry, effective);
-      }
-    }
-    out.sources = sources;
-  }
-  if ('relations' in node && node.relations) {
-    const relations: Record<string, ModelNarrowing> = {};
-    for (const [rel, sub] of Object.entries(node.relations))
-      relations[rel] = resolveModelNode(sub, effective);
-    out.relations = relations;
-  }
-  return out as T;
-};
-
-const resolveMapDefaults = (
-  mapDefaults: Record<string, NarrowingDefaults>,
-  effective: Record<string, RuleValue>,
-): Record<string, NarrowingDefaults> => {
-  const out: Record<string, NarrowingDefaults> = {};
-  for (const [mapName, defaults] of Object.entries(mapDefaults)) {
-    const next: NarrowingDefaults = { ...defaults };
-    if (defaults.models) {
-      const models: Record<string, ModelDefaultNarrowing> = {};
-      for (const [model, node] of Object.entries(defaults.models))
-        models[model] = resolveModelNode(node, effective);
-      next.models = models;
-    }
-    out[mapName] = next;
-  }
-  return out;
+      for (const name of listBindings(cond, { required: true })) names.add(baseName(name));
+  return [...names].sort();
 };
 
 /**
  * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
  * `where`/`sources`, returning a structurally-new lens with concrete conditions.
  * Partial — uncovered tokens stay, so stages bind progressively. Once resolved,
- * `applyLens` / `toPrisma` / `toSql` / `sourceQueries` / `projectByPath` consume the
+ * `narrowRule` / `toPrisma` / `toSql` / `toSourceQueries` / `projectPaths` consume the
  * lens unchanged: a bind needs nothing new downstream. `parent:name` draws the same
  * value as the ancestor's `name`. Does not mutate the input.
  */
-export const resolveLensBindings = (
+export const bindLens = (
   lensOrNarrowing: Lens | LensNarrowing,
   bindings: Record<string, RuleValue>,
 ): Lens | LensNarrowing => {
@@ -131,12 +111,8 @@ export const resolveLensBindings = (
   const effective: Record<string, RuleValue> = { ...bindings };
   for (const [k, v] of Object.entries(bindings)) effective[`${PARENT_PREFIX}${k}`] = v;
   return {
-    ...lensOrNarrowing,
-    parent: resolveLensBindings(lensOrNarrowing.parent, bindings),
-    root: lensOrNarrowing.root ? resolveModelNode(lensOrNarrowing.root, effective) : undefined,
-    mapDefaults: lensOrNarrowing.mapDefaults
-      ? resolveMapDefaults(lensOrNarrowing.mapDefaults, effective)
-      : undefined,
+    ...mapLayerConditions(lensOrNarrowing, (condition) => bindRule(condition, effective)),
+    parent: bindLens(lensOrNarrowing.parent, bindings),
   };
 };
 
@@ -144,7 +120,7 @@ export const resolveLensBindings = (
  * Bind names are unique across a composed chain: a layer may not re-declare a name
  * an ancestor already declares — rename it, or reference the inherited one read-only
  * as `parent:name`. A `parent:name` reference must point at a name some ancestor
- * actually declares. Returns the violation messages (folded into `validateNarrowing`).
+ * actually declares. Returns the problems as messages (folded into `validateNarrowing`).
  */
 export const validateBindNames = (narrowing: LensNarrowing): string[] => {
   const errors: string[] = [];
@@ -161,7 +137,7 @@ export const validateBindNames = (narrowing: LensNarrowing): string[] => {
 
   const refs = new Set<string>();
   for (const cond of layerConditions(narrowing))
-    for (const name of conditionBindingNames(cond)) if (isParentRef(name)) refs.add(baseName(name));
+    for (const name of listBindings(cond)) if (isParentRef(name)) refs.add(baseName(name));
   for (const r of refs)
     if (!occupied.has(r))
       errors.push(`bind 'parent:${r}' references an inherited binding no ancestor declares`);

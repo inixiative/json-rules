@@ -1,39 +1,41 @@
+import { fieldlessArrayError, unknownOperator, windowUnsupported } from '../errors';
+import { ruleShape } from '../fieldMap/shape';
+import { fieldEntry } from '../fieldMap/walk';
 import { ArrayOperator } from '../operator';
 import type { ArrayRule } from '../types';
 import { hasWindow } from '../window';
-import { quoteField } from './quoting';
+import { emptinessSql } from './field';
+import { resolveField } from './join';
 import type { BuilderState } from './types';
 
-const WINDOW_UNSUPPORTED =
-  'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().';
-
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
-  if (hasWindow(rule)) throw new Error(WINDOW_UNSUPPORTED);
+  if (hasWindow(rule)) throw windowUnsupported('toSql');
   if (!rule.field) {
-    throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
+    throw fieldlessArrayError('toSql');
   }
-  const field = quoteField(rule.field);
-  const fieldEntry = state.map?.models[state.currentModel ?? '']?.fields[rule.field];
-  const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
-
-  // Different length functions for JSONB vs native PostgreSQL arrays
-  const lengthFn = isNative
-    ? `array_length(${field}, 1)` // Native: TEXT[], INT[], etc.
-    : `jsonb_array_length(${field})`; // JSONB arrays
+  const shape = ruleShape({ field: rule.field }, state.map, state.currentModel);
+  if (
+    shape === 'relation' ||
+    fieldEntry(rule.field, state.map, state.currentModel)?.kind === 'object'
+  )
+    throw new Error(
+      `Field '${rule.field}' is a relation — relation arrays are not supported in SQL; use toPrisma().`,
+    );
 
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
-      if (isNative) {
-        // Native arrays: NULL or empty (array_length returns NULL for empty)
-        return `(${field} IS NULL OR ${lengthFn} IS NULL)`;
-      }
-      return `(${field} IS NULL OR ${lengthFn} = 0)`;
-
-    case ArrayOperator.notEmpty:
-      if (isNative) {
-        return `(${field} IS NOT NULL AND ${lengthFn} IS NOT NULL)`;
-      }
-      return `(${field} IS NOT NULL AND ${lengthFn} > 0)`;
+    case ArrayOperator.notEmpty: {
+      // A list column, or else a Json array — an array rule names one.
+      const field = resolveField(rule.field, state);
+      const arrayShape = field.shape === 'list' ? field : { ...field, shape: 'json-path' as const };
+      return emptinessSql(
+        rule.field,
+        arrayShape,
+        rule.arrayOperator === ArrayOperator.empty,
+        state,
+        false,
+      );
+    }
 
     case ArrayOperator.all:
     case ArrayOperator.any:
@@ -47,6 +49,6 @@ export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => 
       );
 
     default:
-      throw new Error(`Unknown array operator: ${(rule as ArrayRule).arrayOperator}`);
+      throw unknownOperator((rule as ArrayRule).arrayOperator, 'array');
   }
 };

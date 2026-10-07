@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { buildBridgeDictionary } from '../src/fieldMap/buildBridgeDictionary';
+import { indexBridges } from '../src/fieldMap/indexBridges';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Three sources, two bridges deep:
 //   prisma:FanUser  --(1-1)--  salesforce:Contact  --(1-1)--  billing:Account
@@ -77,7 +76,7 @@ describe('3-source / 2-bridge-deep traversal', () => {
   });
 
   test('check walks rule across two bridges', () => {
-    // Build per-row data manually (mimics what the caller would do with buildBridgeDictionary)
+    // Build per-row data manually (mimics what the caller would do with indexBridges)
     const account = { id: 'a1', plan: 'enterprise', monthlySpend: 5000 };
     const contact = {
       id: 'c1',
@@ -136,8 +135,8 @@ describe('3-source / 2-bridge-deep traversal', () => {
     ).toBe('string');
   });
 
-  test('buildBridgeDictionary (multi-bridge) → caller composes per-row → check passes deep', () => {
-    const index = buildBridgeDictionary(set, {
+  test('indexBridges (multi-bridge) → caller composes per-row → check passes deep', () => {
+    const index = indexBridges(set, {
       'salesforce:Contact': [
         { id: 'c1', industry: 'tech', accountId: 'a1' },
         { id: 'c2', industry: 'finance', accountId: 'a2' },

@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
 import { check, toPrisma, toSql, validateRule } from '../index';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { getWhere } from './fixtures/helpers';
 
 // Edges where the rails could part: amounts that aren't whole or are negative, a range with one
@@ -317,7 +317,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
     },
   };
   const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'E' });
-  const gate = (r: object) => checkRuleAgainstLens(rule(r), lens);
+  const gate = (r: object) => validateRuleInLens(rule(r), lens);
 
   test('a DateTime path with an Int day count passes', () => {
     expect(
@@ -338,7 +338,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
       offset: { value: { ago: { days: { path: '$.ratio' } } } },
     });
     expect(result.ok).toBe(false);
-    expect(result.violations[0]?.path).toBe('$.ratio');
+    expect(result.errors[0]?.path).toBe('$.ratio');
   });
 
   test('a time unit takes any number', () => {
@@ -359,7 +359,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
         dateOperator: 'before',
         path: '$.at',
         offset: { value: { ago: { days: { path: '$.at' } } } },
-      }).violations.map((v) => v.path),
+      }).errors.map((v) => v.path),
     ).toEqual(['$.at']);
   });
 });

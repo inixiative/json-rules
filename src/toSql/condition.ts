@@ -1,29 +1,16 @@
+import { ambiguousCondition } from '../errors';
+import { refuseRelationsValue } from '../fieldMap/shape';
+import { hitsBridge } from '../fieldMap/walk';
 import { rejectScopedField } from '../scope';
+import { conditionShape } from '../traverse';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
 import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
-import { buildAll, buildAny, buildIfThenElse, setConditionBuilder } from './logical';
-import type { BuilderState, FieldMap } from './types';
-
-const pathHitsBridge = (field: string, map: FieldMap, model: string): boolean => {
-  const parts = field.split('.');
-  let cur = model;
-  for (let i = 0; i < parts.length; i++) {
-    const me = map.models[cur];
-    if (!me) return false;
-    const fe = me.fields[parts[i]];
-    if (!fe) return false;
-    if (fe.kind === 'bridge') return true;
-    if (fe.kind === 'object') {
-      cur = fe.type;
-      continue;
-    }
-    return false;
-  }
-  return false;
-};
+import { buildAll, buildAny, buildIfThenElse } from './logical';
+import { setConditionBuilder } from './recurse';
+import type { BuilderState } from './types';
 
 export const buildCondition = (condition: Condition, state: BuilderState): string => {
   if (typeof condition === 'boolean') {
@@ -36,21 +23,33 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
     typeof condition.field === 'string' &&
     state.map &&
     state.currentModel &&
-    pathHitsBridge(condition.field, state.map, state.currentModel)
+    hitsBridge(condition.field, state.map, state.currentModel)
   ) {
     return 'TRUE';
   }
 
-  if ('all' in condition) return buildAll(condition, state);
-  if ('any' in condition) return buildAny(condition, state);
-  if ('if' in condition) return buildIfThenElse(condition, state);
-  if ('arrayOperator' in condition) return buildArrayRule(condition, state);
-  if ('dateOperator' in condition) return buildDateRule(condition, state);
-  if ('aggregate' in condition) return buildAggregateRule(condition, state);
-  if ('field' in condition) return buildFieldRule(condition, state);
-
-  throw new Error('Unknown condition type');
+  const shape = conditionShape(condition as Record<string, unknown>);
+  if (shape === 'field' || shape === 'date')
+    refuseRelationsValue((condition as { field: string }).field, state.map, state.currentModel);
+  const node = condition as never;
+  switch (shape) {
+    case 'all':
+      return buildAll(node, state);
+    case 'any':
+      return buildAny(node, state);
+    case 'if':
+      return buildIfThenElse(node, state);
+    case 'array':
+      return buildArrayRule(node, state);
+    case 'aggregate':
+      return buildAggregateRule(node, state);
+    case 'date':
+      return buildDateRule(node, state);
+    case 'field':
+      return buildFieldRule(node, state);
+    default:
+      throw ambiguousCondition();
+  }
 };
 
-// Wire up circular dependency
 setConditionBuilder(buildCondition);

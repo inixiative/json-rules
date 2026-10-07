@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import { applyLens } from '../src/lens/applyLens';
+import type { FieldMap } from '../src/fieldMap/types';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 // END-TO-END verification that `where` narrowing semantics behave correctly
@@ -81,15 +81,15 @@ describe('arrayOperator: any — where filters before "exists" check', () => {
 
   test('U1: non-deleted matching exists → PASS', () => {
     // c1 is non-deleted and matches → passes
-    expect(check(applyLens(userRule, narrowing), dataU1)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU1)).toBe(true);
   });
 
   test('U2: non-deleted matching exists → PASS', () => {
-    expect(check(applyLens(userRule, narrowing), dataU2)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU2)).toBe(true);
   });
 
   test('U3: only matching is deleted (out of scope) → FAIL', () => {
-    expect(check(applyLens(userRule, narrowing), dataU3)).not.toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU3)).not.toBe(true);
   });
 });
 
@@ -109,7 +109,7 @@ describe('arrayOperator: none — where filters before "exists none" check', () 
   };
 
   test('deleted spam comment is ignored → PASS (no non-deleted spam)', () => {
-    expect(check(applyLens(userRule, narrowing), dataWithDeletedSpam)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataWithDeletedSpam)).toBe(true);
   });
 
   test('non-deleted spam comment → FAIL', () => {
@@ -117,7 +117,7 @@ describe('arrayOperator: none — where filters before "exists none" check', () 
       id: 'u5',
       comments: [{ id: 'c1', body: 'spam talk', deletedAt: null }],
     };
-    expect(check(applyLens(userRule, narrowing), dataWithLiveSpam)).not.toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataWithLiveSpam)).not.toBe(true);
   });
 });
 
@@ -135,17 +135,17 @@ describe('arrayOperator: all — where filters BEFORE "every" check (filter-firs
   test('U1: deleted non-matching comment is ignored → PASS (every non-deleted matches)', () => {
     // c1 (non-deleted, matches), c2 (deleted, matches — ignored), c3 (deleted, doesn't match — ignored)
     // Non-deleted set: {c1}. All match foo. → PASS
-    expect(check(applyLens(userRule, narrowing), dataU1)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU1)).toBe(true);
   });
 
   test('U2: non-deleted non-matching exists → FAIL', () => {
     // {c1 matches, c2 doesn't}. c2 is non-deleted → fails. → FAIL
-    expect(check(applyLens(userRule, narrowing), dataU2)).not.toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU2)).not.toBe(true);
   });
 
   test('U3: all matching but deleted → PASS vacuously (no non-deleted to check)', () => {
     // Non-deleted set: {}. all over empty is vacuously true. → PASS
-    expect(check(applyLens(userRule, narrowing), dataU3)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU3)).toBe(true);
   });
 });
 
@@ -158,16 +158,16 @@ describe('arrayOperator: atLeast — where filters before counting', () => {
   };
 
   test('U1: 1 non-deleted matching ≥ 1 → PASS', () => {
-    expect(check(applyLens(userRule, narrowing), dataU1)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU1)).toBe(true);
   });
 
   test('U3: 0 non-deleted matching < 1 → FAIL', () => {
-    expect(check(applyLens(userRule, narrowing), dataU3)).not.toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU3)).not.toBe(true);
   });
 
   test('atLeast 2: U1 has only 1 non-deleted matching → FAIL', () => {
     const rule: Condition = { ...userRule, count: 2 };
-    expect(check(applyLens(rule, narrowing), dataU1)).not.toBe(true);
+    expect(check(narrowRule(rule, narrowing), dataU1)).not.toBe(true);
   });
 });
 
@@ -180,12 +180,12 @@ describe('arrayOperator: atMost — where filters before counting', () => {
   };
 
   test('U1: 1 non-deleted matching ≤ 1 → PASS', () => {
-    expect(check(applyLens(userRule, narrowing), dataU1)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU1)).toBe(true);
   });
 
   test('atMost 0: U1 has 1 non-deleted matching → FAIL', () => {
     const rule: Condition = { ...userRule, count: 0 };
-    expect(check(applyLens(rule, narrowing), dataU1)).not.toBe(true);
+    expect(check(narrowRule(rule, narrowing), dataU1)).not.toBe(true);
   });
 });
 
@@ -193,6 +193,6 @@ describe('regression: where on a model the rule never visits is a no-op', () => 
   const userRule: Condition = { field: 'id', operator: Operator.equals, value: 'u1' };
   // Comment scope declared but user rule only checks User
   test('rule on User only — Comment scope ignored', () => {
-    expect(check(applyLens(userRule, narrowing), dataU1)).toBe(true);
+    expect(check(narrowRule(userRule, narrowing), dataU1)).toBe(true);
   });
 });

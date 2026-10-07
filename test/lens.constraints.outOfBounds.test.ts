@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { applyLens } from '../src/lens/applyLens';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import type { FieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
-import { validateNarrowing } from '../src/lens/narrowing';
+import { assertValidNarrowing } from '../src/lens/narrowing';
+import { narrowRule } from '../src/lens/narrowRule';
 import type { LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Investigation: can constraints reference fields the user has been narrowed away from?
 // Concern: a parent constraint on `secretField` survives even when a child narrowing omits it,
@@ -28,7 +28,7 @@ const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'FanU
 describe('constraints — out-of-bounds investigation', () => {
   test('validateNarrowing allows root.where on a field the same narrowing omits (where scopes incoming rows; omit only narrows output)', () => {
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent: lens,
         root: {
           omits: ['secretField'],
@@ -44,7 +44,7 @@ describe('constraints — out-of-bounds investigation', () => {
       root: { picks: ['email'] },
     };
     expect(() =>
-      validateNarrowing({
+      assertValidNarrowing({
         parent,
         root: { where: { field: 'secretField', operator: Operator.equals, value: 'x' } },
       }),
@@ -55,7 +55,7 @@ describe('constraints — out-of-bounds investigation', () => {
     // Grandparent root.where on `email`.
     // Parent picks ['email', 'id'].
     // Child picks ['email'] (more restrictive).
-    // applyLens should still AND grandparent's email constraint.
+    // narrowRule should still AND grandparent's email constraint.
     const grandparent: LensNarrowing = {
       parent: lens,
       root: { where: { field: 'email', operator: Operator.equals, value: 'pinned@example.com' } },
@@ -70,7 +70,7 @@ describe('constraints — out-of-bounds investigation', () => {
     };
 
     const rule = { field: 'email', operator: Operator.equals, value: 'pinned@example.com' };
-    const composed = applyLens(rule, child);
+    const composed = narrowRule(rule, child);
     // The grandparent constraint should be the first element of the all
     expect(composed).toEqual({
       all: [{ field: 'email', operator: Operator.equals, value: 'pinned@example.com' }, rule],
@@ -88,20 +88,20 @@ describe('constraints — out-of-bounds investigation', () => {
       parent: grandparent,
       root: { omits: ['secretField'] },
     };
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
 
-    // applyLens preserves the grandparent constraint
+    // narrowRule preserves the grandparent constraint
     const rule = { field: 'email', operator: Operator.equals, value: 'a@b.com' };
-    const composed = applyLens(rule, child);
+    const composed = narrowRule(rule, child);
     expect(composed).toEqual({
       all: [{ field: 'secretField', operator: Operator.equals, value: 'admin-only' }, rule],
     });
 
-    // The composed rule, however, will FAIL checkRuleAgainstLens at child's narrowing
+    // The composed rule, however, will FAIL validateRuleInLens at child's narrowing
     // because secretField is no longer in child's projection
-    const validity = checkRuleAgainstLens(composed, child);
+    const validity = validateRuleInLens(composed, child);
     expect(validity.ok).toBe(false);
-    expect(validity.violations.map((v) => v.path)).toContain('secretField');
+    expect(validity.errors.map((v) => v.path)).toContain('secretField');
   });
 
   test('root.where: false acts as deny-everything and still ANDs in (not dropped)', () => {
@@ -110,6 +110,6 @@ describe('constraints — out-of-bounds investigation', () => {
       root: { where: false },
     };
     const rule = { field: 'email', operator: Operator.equals, value: 'x' };
-    expect(applyLens(rule, narrowing)).toEqual({ all: [false, rule] });
+    expect(narrowRule(rule, narrowing)).toEqual({ all: [false, rule] });
   });
 });

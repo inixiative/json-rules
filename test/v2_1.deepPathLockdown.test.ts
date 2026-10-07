@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import type { FieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
-// Lockdown: checkRuleAgainstLens must reject rules whose path goes through
+// Lockdown: validateRuleInLens must reject rules whose path goes through
 // a relation that the narrowing strips. The library's contract is
 // "describe-and-validate" — the narrowing IS the security boundary at
 // validation time. (toPrisma/check still execute against the base lens —
-// they're not the boundary; checkRuleAgainstLens is.)
+// they're not the boundary; validateRuleInLens is.)
 
 const map: FieldMap = {
   models: {
@@ -42,9 +42,9 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relations', () => {
+describe('validateRuleInLens — deep-path rejection through un-narrowed relations', () => {
   test('unrestricted lens: deep path passes', () => {
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
       lens,
     );
@@ -61,12 +61,12 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
         },
       },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
       n,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('orgUsers.organization.name');
+    expect(result.errors[0].path).toBe('orgUsers.organization.name');
   });
 
   test('narrowing strips terminal field → terminal path rejected', () => {
@@ -79,7 +79,7 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
         },
       },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
       n,
     );
@@ -98,14 +98,14 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
     });
     // name is declared → passes
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'x' },
         n,
       ).ok,
     ).toBe(true);
     // plan is not declared → rejected
     expect(
-      checkRuleAgainstLens(
+      validateRuleInLens(
         { field: 'orgUsers.organization.plan', operator: Operator.equals, value: 'x' },
         n,
       ).ok,
@@ -116,7 +116,7 @@ describe('checkRuleAgainstLens — deep-path rejection through un-narrowed relat
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { Organization: { omits: ['plan'] } } } },
     });
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       { field: 'orgUsers.organization.plan', operator: Operator.equals, value: 'enterprise' },
       n,
     );

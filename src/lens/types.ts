@@ -14,8 +14,8 @@ export type Lens = FieldMapSet & {
  * - SCHEMA narrowing (picks/omits/enumPicks/enumOmits): controls what's visible
  *   in the type surface. AI/SDK consumers can't see narrowed-away fields.
  * - DATA narrowing (where): controls which ROWS are in scope. Filter-first
- *   semantic, anchored to the model. Under arrayOperator: 'all', applied via
- *   implication (negate) to preserve filter-first meaning — see applyLens.
+ *   semantic, anchored to the model. Under arrayOperator: 'all', it becomes the window filter
+ *   (filter-first) — see narrowRule.
  */
 export type ModelDefaultNarrowing = {
   picks?: string[];
@@ -38,7 +38,7 @@ export type ModelDefaultNarrowing = {
    * model that path resolves to. The `where` composes AND-only across layers (general
    * via `mapDefaults`, path-specific via `root`/`relations`); a later layer's `label` wins.
    */
-  sources?: Record<string, SourceValue>; // fieldName → eligibility where | SourceSpec
+  sources?: Record<string, SourceEntry>; // fieldName → eligibility where | SourceSpec
 };
 
 /**
@@ -55,7 +55,7 @@ export type SourceSpec =
   | { where?: Condition; label?: string; groupBy: string | string[] };
 
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
-export type SourceValue = Condition | SourceSpec;
+export type SourceEntry = Condition | SourceSpec;
 
 /** Narrowing for a model at a specific traversal path. Adds relations to the default shape. */
 export type ModelNarrowing = ModelDefaultNarrowing & {
@@ -75,7 +75,7 @@ export type NarrowingDefaults = {
 };
 
 export type LensNarrowing = {
-  // TODO: may need to be an identifier (lens name/uuid) rather than a direct reference for persistence
+  // The composed form: the layer above as an object. A database stores layers as StoredLens records.
   parent: Lens | LensNarrowing;
   /**
    * Path-specific narrowing anchored at (lens.mapName, lens.model). Descends via

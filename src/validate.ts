@@ -1,17 +1,34 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
-import { isDateInputValue, parseDateValue } from './date';
-import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
-import { ArrayOperator, type DateOperator, type Operator } from './operator';
+import { unitAmountProblem } from './amount';
+import { parseDateValue } from './date';
 import {
-  ARRAY_OPERATOR_CATALOG,
-  DATE_OPERATOR_CATALOG,
-  FIELD_OPERATOR_CATALOG,
+  DEFAULT_ZONE,
+  isDateExpr,
+  isEdgeExpr,
+  isPeriodExpr,
+  namedPeriod,
+  rollingShift,
+} from './dateExpr';
+import {
+  ambiguousCondition,
+  conditionRequired,
+  countRequired,
+  rangeExprRequired,
+  unknownAggregateMode,
+  unknownOperator,
+  windowUnsupported,
+} from './errors';
+import { isOrderedValue, readOrderedPair } from './number';
+import type { ArrayOperator, DateOperator, Operator } from './operator';
+import {
+  AGGREGATE_MODES,
+  AGGREGATE_OPERATORS,
+  catalogEntry,
+  DAY_NAMES,
   FieldKind,
-  getAggregateOperators,
   getValueShape,
-  isAggregateRangeOperator,
-  isAggregateSingleOperator,
-  isCalendarUnit,
+  isDayName,
+  isFieldKind,
   isOperatorSupportedForTarget,
   isRelativeUnit,
   OFFSET_OPERATORS,
@@ -21,10 +38,12 @@ import {
   type ValueShape,
   WINDOW_OPERATORS,
 } from './operatorCatalog';
+import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
-import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
+import { conditionShape } from './traverse';
+import type { AggregateMode, ArrayRule, Condition, DateExpr, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
-import { extremalRewrite } from './window';
+import { hasWindow, windowRewrite } from './window';
 
 export type ValidationIssue = {
   path: string;
@@ -37,18 +56,29 @@ export type ValidationResult = {
   errors: ValidationIssue[];
 };
 
+/** Every validator's result: ok when it found nothing. */
+export const validationResult = (errors: ValidationIssue[]): ValidationResult => ({
+  ok: errors.length === 0,
+  errors,
+});
+
+/** Every validator's assert form: throws the issues, one per line, under `label`. */
+export const throwIfInvalid = (result: ValidationResult, label: string): void => {
+  if (result.ok) return;
+  throw new Error(`${label}:\n${result.errors.map((e) => `${e.path}: ${e.message}`).join('\n')}`);
+};
+
 type ValidationContext = {
   target: RuleTarget;
   errors: ValidationIssue[];
 };
 
-const FIELD_OPERATORS = new Set<string>(Object.keys(FIELD_OPERATOR_CATALOG));
-const ARRAY_OPERATORS = new Set<string>(Object.keys(ARRAY_OPERATOR_CATALOG));
-const DATE_OPERATORS = new Set<string>(Object.keys(DATE_OPERATOR_CATALOG));
+/** Which engine a rule must compile for; `check` (the default) accepts every rule. */
+export type ValidateRuleOptions = { target?: RuleTarget };
 
 export const validateRule = (
   condition: unknown,
-  options: { target?: RuleTarget } = {},
+  options: ValidateRuleOptions = {},
 ): ValidationResult => {
   const context: ValidationContext = {
     target: options.target ?? 'check',
@@ -56,18 +86,14 @@ export const validateRule = (
   };
 
   validateCondition(condition, '$', context, 1);
-  return { ok: context.errors.length === 0, errors: context.errors };
+  return validationResult(context.errors);
 };
 
 export const assertValidRule = (
   condition: unknown,
-  options: { target?: RuleTarget } = {},
+  options: ValidateRuleOptions = {},
 ): asserts condition is Condition => {
-  const result = validateRule(condition, options);
-  if (result.ok) return;
-
-  const message = result.errors.map((error) => `${error.path}: ${error.message}`).join('\n');
-  throw new Error(`Invalid rule:\n${message}`);
+  throwIfInvalid(validateRule(condition, options), 'validateRule');
 };
 
 const validateCondition = (
@@ -76,31 +102,16 @@ const validateCondition = (
   context: ValidationContext,
   depth: number,
 ): void => {
-  if (typeof condition === 'boolean') {
-    if (context.target === 'toPrisma' && condition === false) {
-      pushIssue(
-        context,
-        path,
-        'boolean_false_not_supported',
-        `Boolean 'false' is not supported by toPrisma()`,
-      );
-    }
-    return;
-  }
+  if (typeof condition === 'boolean') return;
 
   if (!isPlainObject(condition)) {
     pushIssue(context, path, 'invalid_condition', 'Condition must be a boolean or object');
     return;
   }
 
-  const shape = detectShape(condition);
+  const shape = conditionShape(condition);
   if (!shape) {
-    pushIssue(
-      context,
-      path,
-      'ambiguous_condition',
-      'Condition must be exactly one of: field rule, array rule, date rule, all, any, or if/then[/else]',
-    );
+    pushIssue(context, path, 'ambiguous_condition', ambiguousCondition().message);
     return;
   }
 
@@ -131,23 +142,6 @@ const validateCondition = (
       validateDateRule(condition, path, context, depth);
       break;
   }
-};
-
-const detectShape = (
-  condition: Record<string, unknown>,
-): 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date' | null => {
-  const shapes: string[] = [];
-  if ('all' in condition) shapes.push('all');
-  if ('any' in condition) shapes.push('any');
-  if ('if' in condition || 'then' in condition || 'else' in condition) shapes.push('if');
-  if ('arrayOperator' in condition) shapes.push('array');
-  if ('dateOperator' in condition) shapes.push('date');
-  if ('aggregate' in condition) shapes.push('aggregate');
-  else if ('operator' in condition) shapes.push('field');
-
-  const uniqueShapes = Array.from(new Set(shapes));
-  if (uniqueShapes.length !== 1) return null;
-  return uniqueShapes[0] as 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
 };
 
 const validateLogicalArray = (
@@ -301,8 +295,11 @@ const validateOffset = (
       pushIssue(context, `${at}.value`, 'invalid_offset', 'A field offset value is a number');
     return;
   }
-  const units = isPlainObject(value) ? Object.keys(value) : [];
-  if (units.length !== 1 || (units[0] !== 'ago' && units[0] !== 'ahead')) {
+  const rolling =
+    isPlainObject(value) && Object.keys(value).length === 1 && isDateExpr(value)
+      ? rollingShift(value)
+      : null;
+  if (!rolling) {
     pushIssue(
       context,
       `${at}.value`,
@@ -312,8 +309,8 @@ const validateOffset = (
     return;
   }
   validateRelativeUnits(
-    (value as Record<string, unknown>)[units[0]],
-    `${at}.value.${units[0]}`,
+    rolling[0],
+    `${at}.value.${Object.keys(value as object)[0]}`,
     context,
     depth,
   );
@@ -346,19 +343,21 @@ const validateFieldRule = (
     pushIssue(context, `${path}.field`, 'field_required', 'Field rule requires a string field');
   }
   validateField(rule, path, context, depth);
-  if (rule.offset !== undefined && 'aggregate' in rule) {
-    pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
-  }
 
-  if (typeof rule.operator !== 'string' || !FIELD_OPERATORS.has(rule.operator)) {
-    pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
+  if (typeof rule.operator !== 'string' || !catalogEntry(rule.operator, 'field')) {
+    pushIssue(
+      context,
+      `${path}.operator`,
+      'invalid_operator',
+      unknownOperator(rule.operator, 'field').message,
+    );
     return;
   }
 
   const operator = rule.operator as Operator;
   validateOffset(rule, 'field', operator, path, context, depth);
 
-  if (!isOperatorSupportedForTarget(operator, context.target)) {
+  if (!isOperatorSupportedForTarget(operator, 'field', context.target)) {
     pushIssue(
       context,
       `${path}.operator`,
@@ -367,10 +366,7 @@ const validateFieldRule = (
     );
   }
 
-  if (
-    rule.coerceType !== undefined &&
-    !(typeof rule.coerceType === 'string' && rule.coerceType in FieldKind)
-  ) {
+  if (rule.coerceType !== undefined && !isFieldKind(rule.coerceType)) {
     pushIssue(
       context,
       `${path}.coerceType`,
@@ -379,7 +375,7 @@ const validateFieldRule = (
     );
   }
 
-  const shape = getValueShape(operator);
+  const shape = getValueShape(operator, 'field');
 
   if (shape === 'none') {
     forbidValueAndPath(rule, path, context);
@@ -413,7 +409,7 @@ const validateValueShape = (
       }
       return;
     case 'ordered':
-      if (!isOrderedRuleValue(value)) {
+      if (!isOrderedValue(value)) {
         pushIssue(
           context,
           path,
@@ -432,7 +428,7 @@ const validateValueShape = (
         );
       }
       return;
-    case 'pattern':
+    case 'pattern': {
       if (!(typeof value === 'string' || value instanceof RegExp)) {
         pushIssue(
           context,
@@ -440,16 +436,17 @@ const validateValueShape = (
           'invalid_pattern_value',
           `Operator '${operator}' requires a string or RegExp value`,
         );
+        return;
       }
+      const problem = patternProblem(value, context.target);
+      if (problem) pushIssue(context, path, 'unsupported_pattern', problem);
       return;
+    }
     case 'range':
-      if (!isOrderedRange(value)) {
-        pushIssue(
-          context,
-          path,
-          'invalid_range_value',
-          `Operator '${operator}' requires a two-item range`,
-        );
+      try {
+        readOrderedPair(value, operator);
+      } catch (error) {
+        pushIssue(context, path, 'invalid_range_value', (error as Error).message);
       }
       return;
   }
@@ -461,6 +458,8 @@ const validateAggregateRule = (
   context: ValidationContext,
   depth: number,
 ): void => {
+  if (rule.offset !== undefined)
+    pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
   validateWindow(rule, path, context, depth);
 
   if (typeof rule.field !== 'string') {
@@ -474,14 +473,13 @@ const validateAggregateRule = (
   }
 
   const agg = rule.aggregate as Record<string, unknown>;
-  if (agg.mode !== 'sum' && agg.mode !== 'avg') {
+  if (!AGGREGATE_MODES.includes(agg.mode as AggregateMode))
     pushIssue(
       context,
       `${path}.aggregate.mode`,
       'invalid_aggregate_mode',
-      "aggregate.mode must be 'sum' or 'avg'",
+      unknownAggregateMode(agg.mode).message,
     );
-  }
 
   if ('field' in agg && agg.field !== undefined && typeof agg.field !== 'string') {
     pushIssue(
@@ -492,28 +490,14 @@ const validateAggregateRule = (
     );
   }
 
-  const isSingle =
-    typeof rule.operator === 'string' && isAggregateSingleOperator(rule.operator as Operator);
-  const isRange =
-    typeof rule.operator === 'string' && isAggregateRangeOperator(rule.operator as Operator);
-
-  if (!isSingle && !isRange) {
+  if (!AGGREGATE_OPERATORS.includes(rule.operator as Operator)) {
     pushIssue(
       context,
       `${path}.operator`,
       'invalid_aggregate_operator',
-      `Aggregate rules only support: equals, notEquals, lessThan, lessThanEquals, greaterThan, greaterThanEquals, between, notBetween`,
+      `Aggregate rules only support: ${AGGREGATE_OPERATORS.join(', ')}`,
     );
     return;
-  }
-
-  if (!getAggregateOperators(context.target).includes(rule.operator as Operator)) {
-    pushIssue(
-      context,
-      `${path}.operator`,
-      `unsupported_${targetSlug(context.target)}_aggregate_operator`,
-      `Operator '${rule.operator}' is not supported by ${context.target}() for aggregate rules`,
-    );
   }
 
   if (context.target === 'toPrisma' && typeof rule.path === 'string') {
@@ -541,7 +525,7 @@ const validateAggregateRule = (
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   const value = rule.value;
-  if (isRange) {
+  if (RANGE_OPERATORS.includes(rule.operator as string)) {
     if (!isNumericRange(value)) {
       pushIssue(
         context,
@@ -582,14 +566,19 @@ const validateArrayRule = (
 
   validateWindow(rule, path, context, depth);
 
-  if (typeof rule.arrayOperator !== 'string' || !ARRAY_OPERATORS.has(rule.arrayOperator)) {
-    pushIssue(context, `${path}.arrayOperator`, 'invalid_array_operator', 'Unknown array operator');
+  if (typeof rule.arrayOperator !== 'string' || !catalogEntry(rule.arrayOperator, 'array')) {
+    pushIssue(
+      context,
+      `${path}.arrayOperator`,
+      'invalid_array_operator',
+      unknownOperator(rule.arrayOperator, 'array').message,
+    );
     return;
   }
 
   const operator = rule.arrayOperator as ArrayOperator;
 
-  if (!isOperatorSupportedForTarget(operator, context.target)) {
+  if (!isOperatorSupportedForTarget(operator, 'array', context.target)) {
     pushIssue(
       context,
       `${path}.arrayOperator`,
@@ -598,72 +587,59 @@ const validateArrayRule = (
     );
   }
 
-  switch (operator) {
-    case ArrayOperator.empty:
-    case ArrayOperator.notEmpty:
-      if ('condition' in rule && rule.condition !== undefined) {
-        pushIssue(
-          context,
-          `${path}.condition`,
-          'unexpected_condition',
-          `Array operator '${operator}' does not accept condition`,
-        );
-      }
-      if ('count' in rule && rule.count !== undefined) {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'unexpected_count',
-          `Array operator '${operator}' does not accept count`,
-        );
-      }
-      break;
-    case ArrayOperator.all:
-    case ArrayOperator.any:
-    case ArrayOperator.none:
-      if (!('condition' in rule) || rule.condition === undefined) {
-        pushIssue(
-          context,
-          `${path}.condition`,
-          'missing_condition',
-          `Array operator '${operator}' requires condition`,
-        );
-      } else {
-        validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-      }
-      if ('count' in rule && rule.count !== undefined) {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'unexpected_count',
-          `Array operator '${operator}' does not accept count`,
-        );
-      }
-      break;
-    case ArrayOperator.atLeast:
-    case ArrayOperator.atMost:
-    case ArrayOperator.exactly:
-      if (context.target !== 'toPrisma' && typeof rule.count !== 'number') {
-        pushIssue(
-          context,
-          `${path}.count`,
-          'missing_count',
-          `Array operator '${operator}' requires count`,
-        );
-      } else if ('count' in rule && rule.count !== undefined && typeof rule.count !== 'number') {
-        pushIssue(context, `${path}.count`, 'invalid_count', 'count must be a number');
-      }
-      if (context.target === 'check' && (!('condition' in rule) || rule.condition === undefined)) {
-        pushIssue(
-          context,
-          `${path}.condition`,
-          'missing_condition',
-          `Array operator '${operator}' requires condition for check()`,
-        );
-      } else if ('condition' in rule && rule.condition !== undefined) {
-        validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-      }
-      break;
+  // What the operator reads, as the catalog says: nothing, a predicate per element, or a count of
+  // the elements that match.
+  const shape = getValueShape(operator as ArrayOperator, 'array');
+  const hasCondition = rule.condition !== undefined;
+  const refuseCount = (): void => {
+    if (rule.count !== undefined)
+      pushIssue(
+        context,
+        `${path}.count`,
+        'unexpected_count',
+        `Array operator '${operator}' does not accept count`,
+      );
+  };
+  if (shape === 'none') {
+    if (hasCondition)
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'unexpected_condition',
+        `Array operator '${operator}' does not accept condition`,
+      );
+    refuseCount();
+  } else if (shape === 'predicate') {
+    if (hasCondition) validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+    else
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'missing_condition',
+        conditionRequired(operator).message,
+      );
+    refuseCount();
+  } else if (shape === 'count') {
+    if (context.target !== 'toPrisma' && typeof rule.count !== 'number')
+      pushIssue(context, `${path}.count`, 'missing_count', countRequired(operator).message);
+    else if (
+      rule.count !== undefined &&
+      !(typeof rule.count === 'number' && Number.isInteger(rule.count) && rule.count >= 0)
+    )
+      pushIssue(
+        context,
+        `${path}.count`,
+        'invalid_count',
+        'count must be a non-negative whole number',
+      );
+    if (hasCondition) validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+    else if (context.target === 'check')
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'missing_condition',
+        conditionRequired(operator).message,
+      );
   }
 };
 
@@ -678,15 +654,20 @@ const validateDateRule = (
   }
   validateField(rule, path, context, depth);
 
-  if (typeof rule.dateOperator !== 'string' || !DATE_OPERATORS.has(rule.dateOperator)) {
-    pushIssue(context, `${path}.dateOperator`, 'invalid_date_operator', 'Unknown date operator');
+  if (typeof rule.dateOperator !== 'string' || !catalogEntry(rule.dateOperator, 'date')) {
+    pushIssue(
+      context,
+      `${path}.dateOperator`,
+      'invalid_date_operator',
+      unknownOperator(rule.dateOperator, 'date').message,
+    );
     return;
   }
 
   const operator = rule.dateOperator as DateOperator;
   validateOffset(rule, 'date', operator, path, context, depth);
 
-  if (!isOperatorSupportedForTarget(operator, context.target)) {
+  if (!isOperatorSupportedForTarget(operator, 'date', context.target)) {
     pushIssue(
       context,
       `${path}.dateOperator`,
@@ -695,25 +676,18 @@ const validateDateRule = (
     );
   }
 
-  const shape = getValueShape(operator);
+  const shape = getValueShape(operator, 'date');
 
   if (shape === 'dayList') {
-    if (!Array.isArray(rule.value) || !rule.value.every((item) => typeof item === 'string')) {
+    if (validateSource(rule, path, context, depth) !== 'value') return;
+    const days = rule.value;
+    if (!Array.isArray(days) || !days.every((day) => typeof day === 'string' && isDayName(day)))
       pushIssue(
         context,
         `${path}.value`,
         'invalid_day_list',
-        `Date operator '${operator}' requires an array of day names`,
+        `Date operator '${operator}' requires an array of day names (${DAY_NAMES.join(', ')})`,
       );
-    }
-    if ('path' in rule && rule.path !== undefined) {
-      pushIssue(
-        context,
-        `${path}.path`,
-        'unexpected_path',
-        `Date operator '${operator}' does not accept path`,
-      );
-    }
     return;
   }
 
@@ -721,7 +695,7 @@ const validateDateRule = (
   rejectSqlRowRange(rule, operator, path, context);
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
-  // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
+  // Structured date expressions: ago/ahead, this/last/next, start/end.
   if (isDateExpr(rule.value)) {
     validateDateExpr(rule.value, operator, `${path}.value`, context, depth);
     return;
@@ -729,12 +703,7 @@ const validateDateRule = (
 
   if (WINDOW_OPERATORS.includes(operator)) {
     // The range operators only accept an expression range (period or rolling), not a literal pair.
-    pushIssue(
-      context,
-      `${path}.value`,
-      'invalid_date_range',
-      `Date operator '${operator}' requires a range date expression (a period or rolling window)`,
-    );
+    pushIssue(context, `${path}.value`, 'invalid_date_range', rangeExprRequired(operator).message);
     return;
   }
 
@@ -751,7 +720,7 @@ const validateDateRule = (
     (rule.value as unknown[]).forEach((item, i) => {
       if (isDateExpr(item)) {
         validateDateExpr(item, operator, `${path}.value[${i}]`, context, depth);
-      } else if (isDateInputValue(item) && !parseDateValue(item, 'UTC').isValid()) {
+      } else if (isOrderedValue(item) && !parseDateValue(item, DEFAULT_ZONE).isValid()) {
         pushIssue(
           context,
           `${path}.value[${i}]`,
@@ -763,7 +732,7 @@ const validateDateRule = (
     return;
   }
 
-  if (!isDateInputValue(rule.value)) {
+  if (!isOrderedValue(rule.value)) {
     pushIssue(
       context,
       `${path}.value`,
@@ -775,7 +744,7 @@ const validateDateRule = (
 
   // A date-like value must actually parse — a string that survives validation but
   // fails the compilers/check() would persist clean and then fail at evaluation.
-  if (!parseDateValue(rule.value, 'UTC').isValid()) {
+  if (!parseDateValue(rule.value, DEFAULT_ZONE).isValid()) {
     pushIssue(
       context,
       `${path}.value`,
@@ -785,7 +754,7 @@ const validateDateRule = (
   }
 };
 
-// --- v2.6 date-expression validation ---
+// --- Date-expression validation ---
 const validateRelativeUnits = (
   units: unknown,
   path: string,
@@ -817,19 +786,8 @@ const validateRelativeUnits = (
       : 'literal';
     if (form === null || form === 'path' || form === 'bind') continue;
     const amount = form === 'value' ? (magnitude as Record<string, unknown>).value : magnitude;
-    if (
-      typeof amount !== 'number' ||
-      !Number.isFinite(amount) ||
-      amount < 0 ||
-      (isCalendarUnit(key) && !Number.isInteger(amount))
-    ) {
-      pushIssue(
-        context,
-        `${path}.${key}`,
-        'invalid_relative_magnitude',
-        `Relative magnitudes must be positive numbers (got ${String(amount)})`,
-      );
-    }
+    const problem = unitAmountProblem(amount, key);
+    if (problem) pushIssue(context, `${path}.${key}`, 'invalid_relative_magnitude', problem);
   }
 };
 
@@ -848,25 +806,20 @@ const validateDateExpr = (
 ): void => {
   const isRange = WINDOW_OPERATORS.includes(operator);
 
-  if (isRollingExpr(expr)) {
-    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context, depth);
+  const rolling = rollingShift(expr);
+  if (rolling) {
+    validateRelativeUnits(rolling[0], path, context, depth);
     return;
   }
 
   if (isPeriodExpr(expr)) {
-    const unit = 'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
-    validatePeriodUnit(unit, path, context);
+    validatePeriodUnit(namedPeriod(expr), path, context);
     return;
   }
 
   if (isEdgeExpr(expr)) {
     if (isRange) {
-      pushIssue(
-        context,
-        path,
-        'invalid_date_range',
-        `'${operator}' requires a range (period or rolling); a start/end edge is a single point`,
-      );
+      pushIssue(context, path, 'invalid_date_range', rangeExprRequired(operator).message);
       return;
     }
     const period = 'start' in expr ? expr.start : expr.end;
@@ -874,8 +827,7 @@ const validateDateExpr = (
       pushIssue(context, path, 'invalid_period_unit', `start/end requires a this/last/next period`);
       return;
     }
-    const unit = 'this' in period ? period.this : 'last' in period ? period.last : period.next;
-    validatePeriodUnit(unit, path, context);
+    validatePeriodUnit(namedPeriod(period), path, context);
     return;
   }
 
@@ -904,15 +856,6 @@ const targetSlug = (target: RuleTarget): string =>
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   isPlainObjectLodash(value);
 
-const isOrderedRuleValue = (value: unknown): value is OrderedRuleValue =>
-  typeof value === 'string' || typeof value === 'number' || value instanceof Date;
-
-const isOrderedRange = (value: unknown): value is [OrderedRuleValue, OrderedRuleValue] =>
-  Array.isArray(value) &&
-  value.length === 2 &&
-  isOrderedRuleValue(value[0]) &&
-  isOrderedRuleValue(value[1]);
-
 const isNumericRange = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&
   value.length === 2 &&
@@ -922,8 +865,8 @@ const isNumericRange = (value: unknown): value is [number, number] =>
 const isDateRangeOrExprPair = (value: unknown): boolean =>
   Array.isArray(value) &&
   value.length === 2 &&
-  (isDateInputValue(value[0]) || isDateExpr(value[0])) &&
-  (isDateInputValue(value[1]) || isDateExpr(value[1]));
+  (isOrderedValue(value[0]) || isDateExpr(value[0])) &&
+  (isOrderedValue(value[1]) || isDateExpr(value[1]));
 
 const validateWindow = (
   rule: Record<string, unknown>,
@@ -931,22 +874,18 @@ const validateWindow = (
   context: ValidationContext,
   depth: number,
 ): void => {
-  const windowed =
-    ('filter' in rule && rule.filter !== undefined) ||
-    ('orderBy' in rule && rule.orderBy !== undefined) ||
-    ('take' in rule && rule.take !== undefined) ||
-    ('skip' in rule && rule.skip !== undefined);
+  const windowed = hasWindow(rule as WindowFields);
 
   if (windowed && context.target !== 'check') {
-    // toPrisma supports the extremal (take:1, aligned, unfiltered) rewrite to every/some.
+    // toPrisma compiles a filter-only window and the extremal (take:1, aligned) one.
     const eligible =
-      context.target === 'toPrisma' && extremalRewrite(rule as unknown as ArrayRule) !== null;
+      context.target === 'toPrisma' && windowRewrite(rule as unknown as ArrayRule) !== null;
     if (!eligible) {
       pushIssue(
         context,
         path,
         `unsupported_${targetSlug(context.target)}_window`,
-        `Windowing (filter/orderBy/take/skip) is not supported by ${context.target}() for this rule; evaluate with check()`,
+        windowUnsupported(context.target).message,
       );
     }
   }
@@ -957,12 +896,13 @@ const validateWindow = (
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {
     const ob = rule.orderBy;
-    if (!Array.isArray(ob) || ob.length === 0) {
+    // An empty orderBy orders nothing: no window, as hasWindow reads it.
+    if (!Array.isArray(ob)) {
       pushIssue(
         context,
         `${path}.orderBy`,
         'invalid_order_by',
-        'orderBy must be a non-empty array of { field, dir }',
+        'orderBy must be an array of { field, dir }',
       );
     } else {
       ob.forEach((o, i) => {

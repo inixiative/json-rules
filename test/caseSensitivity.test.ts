@@ -103,7 +103,7 @@ describe('caseInsensitive flag — toPrisma', () => {
           caseInsensitive: true,
         }),
       ),
-    ).toEqual({ name: { not: { contains: 'cisco', mode: 'insensitive' } } });
+    ).toEqual({ NOT: { name: { contains: 'cisco', mode: 'insensitive' } } });
   });
 
   test('default provider is postgresql — mode emitted', () => {

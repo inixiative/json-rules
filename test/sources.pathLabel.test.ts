@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  assertValidNarrowing,
   type Lens,
   type LensNarrowing,
-  projectByPath,
+  materializeSourceQuery,
+  materializeSources,
+  projectLens,
   type SourceSpec,
-  sourceQueries,
-  sourceValuesFromQueryRows,
-  sourceValuesFromRows,
-  validateNarrowing,
+  toSourceQueries,
 } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Same EAV shape the groupBy suite uses: the display name of an Enrichment's map
 // lives two to-one hops away, on FieldDef.label — a label the option picker needs
@@ -88,7 +88,7 @@ const pathLabeled = (): LensNarrowing =>
 
 describe('validateNarrowing — a dotted label is validated like a groupBy axis', () => {
   test('accepts a label path through to-one relations ending on a scalar', () => {
-    expect(() => validateNarrowing(pathLabeled())).not.toThrow();
+    expect(() => assertValidNarrowing(pathLabeled())).not.toThrow();
   });
 
   test('rejects an unknown segment', () => {
@@ -99,14 +99,14 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/label/);
+    expect(() => assertValidNarrowing(n)).toThrow(/label/);
   });
 
   test('rejects a to-many hop', () => {
     const n = withParent(base, {
       root: { picks: ['tier'], sources: { tier: { label: 'enrichments.value' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/label cannot traverse to-many/);
+    expect(() => assertValidNarrowing(n)).toThrow(/label cannot traverse to-many/);
   });
 
   test('rejects a path ending on a relation', () => {
@@ -117,7 +117,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/label must end on a scalar column/);
+    expect(() => assertValidNarrowing(n)).toThrow(/label must end on a scalar column/);
   });
 
   test("a hop excluded by an ancestor node's picks is an error", () => {
@@ -131,7 +131,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
@@ -149,20 +149,20 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 });
 
-describe('projectByPath — a dotted label surfaces verbatim', () => {
+describe('projectPaths — a dotted label surfaces verbatim', () => {
   test('sourceLabels carries the path, not a column name', () => {
-    const visit = projectByPath(pathLabeled()).get('User.enrichments');
+    const visit = projectLens(pathLabeled())['User.enrichments'];
     expect(visit?.sourceLabels).toEqual({ mapId: 'map.definition.label' });
   });
 });
 
-describe('sourceQueries — dotted label compile', () => {
+describe('toSourceQueries — dotted label compile', () => {
   test('nests the label path into the prisma select and keeps DISTINCT on the value', () => {
-    const [q] = sourceQueries(pathLabeled());
+    const [q] = toSourceQueries(pathLabeled());
     expect(q.label).toBe('map.definition.label');
     expect(q.prisma.distinct).toEqual(['mapId']);
     expect(q.prisma.select).toEqual({
@@ -172,7 +172,7 @@ describe('sourceQueries — dotted label compile', () => {
   });
 
   test('selects the joined label column aliased "__label" in sql', () => {
-    const [q] = sourceQueries(pathLabeled());
+    const [q] = toSourceQueries(pathLabeled());
     expect(q.sql.sql).toBe(
       'SELECT DISTINCT "t0"."mapId", "t2"."label" AS "__label" FROM "Enrichment" AS "t0" ' +
         'LEFT JOIN "IntegrationMap" AS "t1" ON "t1"."id" = "t0"."mapId" ' +
@@ -205,7 +205,7 @@ describe('sourceQueries — dotted label compile', () => {
         },
       },
     });
-    const [q] = sourceQueries(tenanted);
+    const [q] = toSourceQueries(tenanted);
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -230,7 +230,7 @@ describe('sourceQueries — dotted label compile', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.prisma.select).toEqual({
       value: true,
       map: { select: { definition: { select: { label: true, id: true } } } },
@@ -258,8 +258,8 @@ describe('sourceQueries — dotted label compile', () => {
           },
         },
       });
-    const [axisOnly] = sourceQueries(shared({ groupBy: 'map.definition.label' }));
-    const [both] = sourceQueries(
+    const [axisOnly] = toSourceQueries(shared({ groupBy: 'map.definition.label' }));
+    const [both] = toSourceQueries(
       shared({ groupBy: 'map.definition.label', label: 'map.definition.id' }),
     );
     expect(both.composedWhere).toEqual(axisOnly.composedWhere);
@@ -274,14 +274,14 @@ describe('sourceQueries — dotted label compile', () => {
         },
       },
     });
-    expect(() => sourceQueries(n)).toThrow(/label 'value\.deeper'/);
+    expect(() => toSourceQueries(n)).toThrow(/label 'value\.deeper'/);
   });
 });
 
-describe('sourceValuesFromQueryRows — dotted label materialization', () => {
+describe('materializeSourceQuery — dotted label materialization', () => {
   test('reads the label off prisma-shaped nested rows', () => {
-    const [q] = sourceQueries(pathLabeled());
-    const sv = sourceValuesFromQueryRows(q, [
+    const [q] = toSourceQueries(pathLabeled());
+    const sv = materializeSourceQuery(q, [
       { mapId: 'm2', map: { definition: { label: 'Industry' } } },
       { mapId: 'm1', map: { definition: { label: 'Business Unit' } } },
     ]);
@@ -298,27 +298,27 @@ describe('sourceValuesFromQueryRows — dotted label materialization', () => {
   });
 
   test('sql row shape reads the "__label" alias explicitly', () => {
-    const [q] = sourceQueries(pathLabeled());
-    const sv = sourceValuesFromQueryRows(q, [{ mapId: 'm1', __label: 'Industry' }], {
+    const [q] = toSourceQueries(pathLabeled());
+    const sv = materializeSourceQuery(q, [{ mapId: 'm1', __label: 'Industry' }], {
       rowShape: 'sql',
     });
     expect(sv.options).toEqual([{ value: 'm1', label: 'Industry' }]);
   });
 
   test('an unreachable label hop leaves the option unlabeled', () => {
-    const [q] = sourceQueries(pathLabeled());
-    const sv = sourceValuesFromQueryRows(q, [{ mapId: 'm1', map: null }]);
+    const [q] = toSourceQueries(pathLabeled());
+    const sv = materializeSourceQuery(q, [{ mapId: 'm1', map: null }]);
     expect(sv.options).toEqual([{ value: 'm1' }]);
   });
 
   test('prisma rows never read a stray flat "__label" column', () => {
-    const [q] = sourceQueries(pathLabeled());
-    const sv = sourceValuesFromQueryRows(q, [{ mapId: 'm1', map: null, __label: 'STRAY' }]);
+    const [q] = toSourceQueries(pathLabeled());
+    const sv = materializeSourceQuery(q, [{ mapId: 'm1', map: null, __label: 'STRAY' }]);
     expect(sv.options).toEqual([{ value: 'm1' }]);
   });
 });
 
-describe('sourceValuesFromRows — dotted label from an already-fetched collection', () => {
+describe('materializeSources — dotted label from an already-fetched collection', () => {
   test('labels come off the nested rows, first non-null wins', () => {
     const rows = [
       {
@@ -330,7 +330,7 @@ describe('sourceValuesFromRows — dotted label from an already-fetched collecti
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(pathLabeled(), rows);
+    const [sv] = materializeSources(pathLabeled(), rows);
     expect(sv.options).toEqual([{ value: 'm1', label: 'Business Unit' }, { value: 'm2' }]);
   });
 
@@ -364,7 +364,7 @@ describe('sourceValuesFromRows — dotted label from an already-fetched collecti
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(guarded, rows);
+    const [sv] = materializeSources(guarded, rows);
     expect(sv.options).toEqual([{ value: 'm1', label: 'Kept' }]);
   });
 });
@@ -381,7 +381,7 @@ describe('mutation control — a sibling label is untouched by the path spelling
     });
 
   test('prisma select stays flat and sql keeps the bare column, no "__label" alias', () => {
-    const [q] = sourceQueries(sibling());
+    const [q] = toSourceQueries(sibling());
     expect(q.prisma.select).toEqual({ mapId: true, value: true });
     expect(q.sql.sql).toBe(
       'SELECT DISTINCT "t0"."mapId", "t0"."value" FROM "Enrichment" AS "t0" WHERE TRUE',
@@ -390,15 +390,14 @@ describe('mutation control — a sibling label is untouched by the path spelling
   });
 
   test('both executors still read a sibling label off the flat row', () => {
-    const [q] = sourceQueries(sibling());
-    expect(sourceValuesFromQueryRows(q, [{ mapId: 'm1', value: 'Sibling' }]).options).toEqual([
+    const [q] = toSourceQueries(sibling());
+    expect(materializeSourceQuery(q, [{ mapId: 'm1', value: 'Sibling' }]).options).toEqual([
       { value: 'm1', label: 'Sibling' },
     ]);
     expect(
-      sourceValuesFromQueryRows(q, [{ mapId: 'm1', value: 'Sibling' }], { rowShape: 'sql' })
-        .options,
+      materializeSourceQuery(q, [{ mapId: 'm1', value: 'Sibling' }], { rowShape: 'sql' }).options,
     ).toEqual([{ value: 'm1', label: 'Sibling' }]);
-    const [sv] = sourceValuesFromRows(sibling(), [
+    const [sv] = materializeSources(sibling(), [
       { id: 'u1', enrichments: [{ mapId: 'm1', value: 'Sibling' }] },
     ]);
     expect(sv.options).toEqual([{ value: 'm1', label: 'Sibling' }]);

@@ -9,75 +9,24 @@ export const escapeLikePattern = (value: string): string => {
 };
 
 /**
- * Quote a field name as a SQL identifier, handling JSON paths.
- * Uses pg's escapeIdentifier for proper SQL injection prevention.
+ * A field as SQL: its column, then any JSON sub-path. The leaf reads as text (`->>`), or as
+ * JSONB (`->`) when the result feeds a JSONB function such as jsonb_array_elements().
  *
- * Examples:
- *   "name" → "name"
- *   "data.theme" → "data"->>'theme'
+ *   "name"                → "name"
+ *   "data.theme"          → "data"->>'theme'        (jsonb: "data"->'theme')
  *   "settings.display.mode" → "settings"->'display'->>'mode'
+ *   with an alias          → "t0"."data"->>'theme'
  */
-export const quoteField = (field: string): string => {
-  const parts = field.split('.');
-  if (parts.length === 1) return escapeIdentifier(field);
-
-  const [column, ...jsonPath] = parts;
-  if (jsonPath.length === 0) return escapeIdentifier(column);
-
-  return buildJsonPath(escapeIdentifier(column), jsonPath);
-};
-
-/**
- * Quote a field (with possible JSON sub-path) qualified with a table alias.
- *
- * Examples:
- *   quoteQualifiedField('name', 't0')           → "t0"."name"
- *   quoteQualifiedField('data.theme', 't0')      → "t0"."data"->>'theme'
- *   quoteQualifiedField('data.a.b', 't0')        → "t0"."data"->'a'->>'b'
- */
-export const quoteQualifiedField = (field: string, alias: string): string => {
-  const parts = field.split('.');
-  if (parts.length === 1) {
-    return `${escapeIdentifier(alias)}.${escapeIdentifier(field)}`;
-  }
-
-  const [column, ...jsonPath] = parts;
-  return buildJsonPath(`${escapeIdentifier(alias)}.${escapeIdentifier(column)}`, jsonPath);
-};
-
-const escapeJsonKey = (key: string) => `'${key.replace(/'/g, "''")}'`;
-
-const buildJsonPath = (columnExpr: string, jsonPath: string[]): string => {
+export const quoteField = (field: string, alias?: string, jsonb = false): string => {
+  const [column, ...jsonPath] = field.split('.');
+  const columnExpr = alias
+    ? `${escapeIdentifier(alias)}.${escapeIdentifier(column)}`
+    : escapeIdentifier(column);
   if (jsonPath.length === 0) return columnExpr;
-
-  const pathParts = jsonPath.slice(0, -1).map(escapeJsonKey).join('->');
-  const leaf = escapeJsonKey(jsonPath[jsonPath.length - 1]);
-
-  if (pathParts) {
-    return `${columnExpr}->${pathParts}->>${leaf}`;
-  }
-  return `${columnExpr}->>${leaf}`;
+  const keys = jsonPath.map(jsonKey);
+  const leaf = keys.pop() as string;
+  return [columnExpr, ...keys].join('->') + (jsonb ? '->' : '->>') + leaf;
 };
 
-/**
- * Like quoteField but keeps the leaf as JSONB (uses -> instead of ->> at the end).
- * Required when the result must be a JSONB value, e.g. as input to jsonb_array_elements().
- *
- * Examples:
- *   "scores"           → "scores"
- *   "settings.scores"  → "settings"->'scores'
- */
-export const quoteFieldAsJsonb = (field: string): string => {
-  const parts = field.split('.');
-  if (parts.length === 1) return escapeIdentifier(field);
-
-  const [column, ...jsonPath] = parts;
-  if (jsonPath.length === 0) return escapeIdentifier(column);
-
-  return buildJsonPathJsonb(escapeIdentifier(column), jsonPath);
-};
-
-const buildJsonPathJsonb = (columnExpr: string, jsonPath: string[]): string => {
-  const allParts = jsonPath.map(escapeJsonKey).join('->');
-  return `${columnExpr}->${allParts}`;
-};
+/** A JSON key as a SQL string literal. */
+export const jsonKey = (key: string): string => `'${key.replace(/'/g, "''")}'`;

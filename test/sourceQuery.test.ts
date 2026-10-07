@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { sourceQueries } from '../src/lens/sourceQuery';
+import type { FieldMap } from '../src/fieldMap/types';
+import { toSourceQueries } from '../src/lens/toSourceQueries';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap, PrismaWhere } from '../src/toPrisma/types';
+import type { PrismaWhere } from '../src/toPrisma/types';
 import type { Condition } from '../src/types';
 
 const map: FieldMap = {
@@ -54,10 +55,10 @@ const activeWhere: Condition = {
   all: [{ field: 'active', operator: Operator.equals, value: true }],
 };
 
-describe('sourceQueries', () => {
+describe('toSourceQueries', () => {
   test('compiles a DISTINCT prisma + sql query for a sourced field', () => {
     const n = withParent(base, { root: { sources: { code: activeWhere } } });
-    const queries = sourceQueries(n);
+    const queries = toSourceQueries(n);
 
     expect(queries).toHaveLength(1);
     const q = queries[0];
@@ -90,7 +91,7 @@ describe('sourceQueries', () => {
       all: [{ field: 'code', operator: Operator.notEquals, value: '' }],
     };
     const n = withParent(base, { root: { where: rootWhere, sources: { code: activeWhere } } });
-    const q = sourceQueries(n)[0];
+    const q = toSourceQueries(n)[0];
     expect(q.composedWhere).toEqual({ all: [rootWhere, activeWhere] });
     // both predicates land in the SQL
     expect(q.sql.sql).toContain('"t0"."active" = ');
@@ -105,7 +106,7 @@ describe('sourceQueries', () => {
         },
       },
     });
-    const q = sourceQueries(n)[0];
+    const q = toSourceQueries(n)[0];
     expect(q.sql.sql).toContain('JOIN "Country"');
     expect(q.sql.sql?.startsWith('SELECT DISTINCT "t0"."code" FROM "Region" AS "t0"')).toBe(true);
   });
@@ -121,11 +122,11 @@ describe('sourceQueries', () => {
       ],
     };
     const n = withParent(base, { root: { sources: { code: arrayWhere } } });
-    const q = sourceQueries(n)[0];
+    const q = toSourceQueries(n)[0];
 
     // Prisma expresses it via `some`
     expect(q.prisma.distinct).toEqual(['code']);
-    expect(q.prisma.where).toEqual({ AND: [{ cities: { some: { active: { equals: true } } } }] });
+    expect(q.prisma.where).toEqual({ cities: { some: { active: { equals: true } } } });
 
     // SQL cannot — it degrades to null with a captured error rather than throwing
     expect(q.sql.sql).toBeNull();
@@ -137,7 +138,7 @@ describe('sourceQueries', () => {
     const n = withParent(base, {
       root: { sources: { code: { where: activeWhere, label: 'name' } } },
     });
-    const q = sourceQueries(n)[0];
+    const q = toSourceQueries(n)[0];
     expect(q.field).toBe('code');
     expect(q.label).toBe('name');
     expect(q.composedWhere).toEqual(activeWhere);
@@ -152,8 +153,8 @@ describe('sourceQueries', () => {
   test('a SourceSpec with only a where behaves exactly like a bare condition', () => {
     const spec = withParent(base, { root: { sources: { code: { where: activeWhere } } } });
     const bare = withParent(base, { root: { sources: { code: activeWhere } } });
-    const qSpec = sourceQueries(spec)[0];
-    const qBare = sourceQueries(bare)[0];
+    const qSpec = toSourceQueries(spec)[0];
+    const qBare = toSourceQueries(bare)[0];
     expect(qSpec.label).toBeUndefined();
     expect(qSpec.composedWhere).toEqual(qBare.composedWhere);
     expect(qSpec.prisma).toEqual(qBare.prisma);
@@ -174,7 +175,7 @@ describe('sourceQueries', () => {
         },
       },
     });
-    const queries = sourceQueries(n);
+    const queries = toSourceQueries(n);
     expect(queries).toHaveLength(1);
     const q = queries[0];
     expect({
@@ -216,9 +217,9 @@ describe('sourceQueries', () => {
     const n = withParent(base, {
       root: { sources: { code: { where: arrayWhere, label: 'name' } } },
     });
-    const q = sourceQueries(n)[0];
+    const q = toSourceQueries(n)[0];
     expect(q.prisma.select).toEqual({ code: true, name: true });
-    expect(q.prisma.where).toEqual({ AND: [{ cities: { some: { active: { equals: true } } } }] });
+    expect(q.prisma.where).toEqual({ cities: { some: { active: { equals: true } } } });
     expect(q.sql.sql).toBeNull();
     expect(q.sql.error).toContain('not supported in SQL');
   });
@@ -235,7 +236,7 @@ describe('sourceQueries', () => {
       ],
     };
     const n = withParent(base, { root: { sources: { code: countWhere } } });
-    const q = sourceQueries(n)[0];
+    const q = toSourceQueries(n)[0];
 
     expect(q.prisma.steps).toBeDefined();
     expect((q.prisma.steps ?? []).some((s) => s.operation === 'groupBy')).toBe(true);

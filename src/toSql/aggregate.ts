@@ -1,18 +1,16 @@
-import { orderPair } from '../number';
-import { Operator } from '../operator';
-import type { AggregateRule } from '../types';
+import { unknownAggregateMode, windowUnsupported } from '../errors';
+import { ruleShape } from '../fieldMap/shape';
+import { fieldEntry } from '../fieldMap/walk';
+import { AGGREGATE_MODES } from '../operatorCatalog';
+import type { AggregateRule, Rule } from '../types';
 import { hasWindow } from '../window';
-import { compareSql, ORDERED_SQL } from './compare';
-import { nextParam } from './params';
-import { quoteField, quoteFieldAsJsonb } from './quoting';
+import { buildFieldRule } from './field';
+import { resolveFieldSql } from './join';
+import { jsonKey } from './quoting';
 import type { BuilderState } from './types';
-import { resolveSource } from './valueSource';
 
 export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): string => {
-  if (hasWindow(rule))
-    throw new Error(
-      'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().',
-    );
+  if (hasWindow(rule)) throw windowUnsupported('toSql');
   if (rule.condition) {
     throw new Error(
       `Aggregate condition filtering is not yet supported by toSql(). ` +
@@ -21,18 +19,22 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
   }
 
   const subquery = buildAggregateSubquery(rule, state);
-  return buildAggregateComparison(subquery, rule, state);
+  // An aggregate compares like a field whose value the subquery computes.
+  return buildFieldRule(rule as unknown as Rule, state, subquery);
 };
 
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {
-  // Use JSONB-preserving field reference — aggregate functions need JSONB input, not text
-  const field = quoteFieldAsJsonb(rule.field);
   const { mode, field: itemField } = rule.aggregate;
+  // check() reads the sum and the average of nothing as 0.
+  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
 
-  const fieldEntry = state.map?.models[state.currentModel ?? '']?.fields[rule.field];
+  const shape = ruleShape({ field: rule.field }, state.map, state.currentModel);
 
-  if (fieldEntry?.kind === 'object') {
+  if (
+    shape === 'relation' ||
+    fieldEntry(rule.field, state.map, state.currentModel)?.kind === 'object'
+  ) {
     throw new Error(
       `Field '${rule.field}' is a relation — toSql() cannot aggregate relation lists. Use toPrisma() instead.`,
     );
@@ -44,7 +46,12 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
     );
   }
 
-  const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
+  const isNative = shape === 'list';
+  // Aggregate functions read the array as JSONB (a native array as itself), never as text. A
+  // Json value that is not an array — JSON null among them — has no elements, as check() reads
+  // a null array.
+  const read = resolveFieldSql(rule.field, state, { jsonb: !isNative });
+  const field = isNative ? read : `(CASE WHEN jsonb_typeof(${read}) = 'array' THEN ${read} END)`;
 
   if (isNative) {
     if (itemField) {
@@ -52,57 +59,19 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
         `aggregate.field is not supported for native array types. Use a JSONB column for object arrays.`,
       );
     }
-    const agg = fn === 'SUM' ? `COALESCE(SUM(elem), 0)` : `AVG(elem)`;
+    const agg = `COALESCE(${fn}(elem), 0)`;
     return `(SELECT ${agg} FROM unnest(${field}) AS elem)`;
   }
 
   if (itemField) {
     // JSONB object array
-    const extract = `(elem->>'${itemField}')::numeric`;
-    const agg = fn === 'SUM' ? `COALESCE(SUM(${extract}), 0)` : `AVG(${extract})`;
+    const extract = `(elem->>${jsonKey(itemField)})::numeric`;
+    const agg = `COALESCE(${fn}(${extract}), 0)`;
     return `(SELECT ${agg} FROM jsonb_array_elements(${field}) AS elem)`;
   }
 
   // JSONB primitive array
   const extract = `elem::numeric`;
-  const agg = fn === 'SUM' ? `COALESCE(SUM(${extract}), 0)` : `AVG(${extract})`;
+  const agg = `COALESCE(${fn}(${extract}), 0)`;
   return `(SELECT ${agg} FROM jsonb_array_elements_text(${field}) AS elem)`;
-};
-
-const buildAggregateComparison = (
-  lhs: string,
-  rule: AggregateRule,
-  state: BuilderState,
-): string => {
-  const rhs = resolveSource(rule, state);
-  const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
-  const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
-
-  const ordered = ORDERED_SQL[rule.operator];
-  if (ordered) return compareSql(lhs, ordered.symbol, rhs, false, state);
-
-  switch (rule.operator) {
-    case Operator.equals:
-      if (rhsCol) return `${lhs} = ${rhsCol}`;
-      if (rhsVal === null) return `${lhs} IS NULL`;
-      return `${lhs} = ${nextParam(state, rhsVal)}`;
-    case Operator.notEquals:
-      if (rhsCol) return `${lhs} <> ${rhsCol}`;
-      if (rhsVal === null) return `${lhs} IS NOT NULL`;
-      return `${lhs} <> ${nextParam(state, rhsVal)}`;
-    case Operator.between: {
-      const v = rhsVal as unknown[];
-      if (!Array.isArray(v) || v.length !== 2) throw new Error('between requires two values');
-      const [min, max] = orderPair(v);
-      return `${lhs} BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
-    }
-    case Operator.notBetween: {
-      const v = rhsVal as unknown[];
-      if (!Array.isArray(v) || v.length !== 2) throw new Error('notBetween requires two values');
-      const [min, max] = orderPair(v);
-      return `${lhs} NOT BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
-    }
-    default:
-      throw new Error(`Operator '${rule.operator}' is not supported for aggregate rules`);
-  }
 };

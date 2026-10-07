@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 import { getWhere } from './fixtures/helpers';
 

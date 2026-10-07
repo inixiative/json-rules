@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
-import { exposedSurface } from '../src/lens/exposedSurface';
-import type { SourceValues } from '../src/lens/projectByPath';
+import type { FieldMap } from '../src/fieldMap/types';
+import { projectModels } from '../src/lens/projectModels';
+import type { SourceValues } from '../src/lens/projectPaths';
 import type { Lens } from '../src/lens/types';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // The hydrated-source gate: a consumer (e.g. rules-builder) folds fetched sourceValues
-// onto `field.options` via exposedSurface, then re-feeds the exposed surface back into
-// checkRuleAgainstLens. The fetched option set must gate the allowed values — otherwise a
+// onto `field.options` via projectModels, then re-feeds the exposed surface back into
+// validateRuleInLens. The fetched option set must gate the allowed values — otherwise a
 // rule can reference a value outside the source's fetched set. `free` carries no input
 // `values`, so the folded `options` is the ONLY gating source.
 
@@ -33,10 +33,10 @@ const sourceValues: SourceValues[] = [
   },
 ];
 
-describe('checkRuleAgainstLens — gates against folded source options', () => {
+describe('validateRuleInLens — gates against folded source options', () => {
   test('a value in the folded option set passes', () => {
-    const surface = exposedSurface(lens, { sourceValues });
-    const result = checkRuleAgainstLens(
+    const surface = projectModels(lens, { sourceValues });
+    const result = validateRuleInLens(
       { field: 'free', operator: Operator.equals, value: 'gold' },
       surface,
     );
@@ -44,12 +44,12 @@ describe('checkRuleAgainstLens — gates against folded source options', () => {
   });
 
   test('a value NOT in the folded option set is rejected', () => {
-    const surface = exposedSurface(lens, { sourceValues });
-    const result = checkRuleAgainstLens(
+    const surface = projectModels(lens, { sourceValues });
+    const result = validateRuleInLens(
       { field: 'free', operator: Operator.equals, value: 'platinum' },
       surface,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0].path).toBe('free');
+    expect(result.errors[0].path).toBe('free');
   });
 });

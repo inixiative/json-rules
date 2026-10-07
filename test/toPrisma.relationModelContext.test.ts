@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
 // User has many Posts (Prisma list relation). Posts have a Json `metadata` field
@@ -101,6 +100,6 @@ describe('toPrisma relation array operators — inner condition resolves against
       },
       opts,
     );
-    expect(getWhere(result)).toEqual({ posts: { every: { published: { equals: true } } } });
+    expect(getWhere(result)).toEqual({ posts: { none: { published: { not: true } } } });
   });
 });

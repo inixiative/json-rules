@@ -1,4 +1,6 @@
+import { unknownOperator } from './errors';
 import { ArrayOperator, DateOperator, Operator } from './operator';
+import type { AggregateMode } from './types';
 
 export const FieldKind = {
   String: 'String',
@@ -16,9 +18,9 @@ export const FieldKind = {
 export type FieldKind = (typeof FieldKind)[keyof typeof FieldKind];
 
 export const NUMERIC_KINDS: readonly FieldKind[] = ['Int', 'Float', 'Decimal', 'BigInt'];
-export const ORDERABLE_KINDS: readonly FieldKind[] = ['String', ...NUMERIC_KINDS, 'DateTime'];
-export const STRINGY_KINDS: readonly FieldKind[] = ['String'];
-export const EQUATABLE_KINDS: readonly FieldKind[] = [
+const ORDERABLE_KINDS: readonly FieldKind[] = ['String', ...NUMERIC_KINDS, 'DateTime'];
+const STRINGY_KINDS: readonly FieldKind[] = ['String'];
+const EQUATABLE_KINDS: readonly FieldKind[] = [
   'String',
   'Boolean',
   'Int',
@@ -32,7 +34,7 @@ export const ALL_KINDS: readonly FieldKind[] = Object.values(FieldKind);
 // Any column can be nullable — nullability is a per-field property, not a per-kind one.
 // isEmpty/notEmpty ("null or empty string") are therefore valid on every kind; the
 // SQL/Prisma compilers emit meaningful `IS NULL OR = ''` for any nullable column.
-export const NULLABLE_KINDS: readonly FieldKind[] = ALL_KINDS;
+const NULLABLE_KINDS: readonly FieldKind[] = ALL_KINDS;
 
 export const RuleTarget = {
   check: 'check',
@@ -42,7 +44,11 @@ export const RuleTarget = {
 
 export type RuleTarget = (typeof RuleTarget)[keyof typeof RuleTarget];
 
-const ALL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma', 'toSql'];
+/** Whether a name is a FieldKind (own-property: `toString` is not). */
+export const isFieldKind = (name: unknown): name is FieldKind =>
+  typeof name === 'string' && Object.hasOwn(FieldKind, name);
+
+export const ALL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma', 'toSql'];
 const NON_SQL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma'];
 const NON_PRISMA_TARGETS: readonly RuleTarget[] = ['check', 'toSql'];
 
@@ -64,42 +70,93 @@ export const ValueShape = {
 
 export type ValueShape = (typeof ValueShape)[keyof typeof ValueShape];
 
+/** How an ordered operator compares its field with its one operand (a count, its matches). */
+export type Comparator = 'lt' | 'lte' | 'gt' | 'gte' | 'equals';
+
 export type CatalogEntry = {
   kinds: readonly FieldKind[];
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
   acceptsExpr?: boolean;
+  comparator?: Comparator;
+  /** The positive operator this one negates: its exact complement, keeping NULL fields. */
+  negates?: string;
 };
 
 export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
   [Operator.equals]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'scalar' },
-  [Operator.notEquals]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'scalar' },
-  [Operator.lessThan]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'ordered' },
+  [Operator.notEquals]: {
+    negates: Operator.equals,
+    kinds: EQUATABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'scalar',
+  },
+  [Operator.lessThan]: {
+    kinds: ORDERABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'ordered',
+    comparator: 'lt',
+  },
   [Operator.lessThanEquals]: {
     kinds: ORDERABLE_KINDS,
     targets: ALL_TARGETS,
     valueShape: 'ordered',
+    comparator: 'lte',
   },
-  [Operator.greaterThan]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'ordered' },
+  [Operator.greaterThan]: {
+    kinds: ORDERABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'ordered',
+    comparator: 'gt',
+  },
   [Operator.greaterThanEquals]: {
     kinds: ORDERABLE_KINDS,
     targets: ALL_TARGETS,
     valueShape: 'ordered',
+    comparator: 'gte',
   },
   [Operator.in]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'array' },
-  [Operator.notIn]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'array' },
+  [Operator.notIn]: {
+    negates: Operator.in,
+    kinds: EQUATABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'array',
+  },
   [Operator.contains]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
-  [Operator.notContains]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notContains]: {
+    negates: Operator.contains,
+    kinds: STRINGY_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'string',
+  },
   [Operator.startsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notStartsWith]: {
+    negates: Operator.startsWith,
+    kinds: STRINGY_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'string',
+  },
   [Operator.endsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notEndsWith]: {
+    negates: Operator.endsWith,
+    kinds: STRINGY_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'string',
+  },
   [Operator.matches]: { kinds: STRINGY_KINDS, targets: NON_PRISMA_TARGETS, valueShape: 'pattern' },
   [Operator.notMatches]: {
+    negates: Operator.matches,
     kinds: STRINGY_KINDS,
     targets: NON_PRISMA_TARGETS,
     valueShape: 'pattern',
   },
   [Operator.between]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'range' },
-  [Operator.notBetween]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'range' },
+  [Operator.notBetween]: {
+    negates: Operator.between,
+    kinds: ORDERABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'range',
+  },
   [Operator.isEmpty]: { kinds: NULLABLE_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
   [Operator.notEmpty]: { kinds: NULLABLE_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
   [Operator.exists]: { kinds: ALL_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
@@ -112,36 +169,44 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'lt',
   },
   [DateOperator.after]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'gt',
   },
   [DateOperator.onOrBefore]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'lte',
   },
   [DateOperator.onOrAfter]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'gte',
   },
   [DateOperator.notBefore]: {
+    negates: DateOperator.before,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'gte',
   },
   [DateOperator.notAfter]: {
+    negates: DateOperator.after,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'lte',
   },
   [DateOperator.within]: {
     kinds: ['DateTime'],
@@ -150,6 +215,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     acceptsExpr: true,
   },
   [DateOperator.notWithin]: {
+    negates: DateOperator.within,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateWindow',
@@ -162,6 +228,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     acceptsExpr: true,
   },
   [DateOperator.notBetween]: {
+    negates: DateOperator.between,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateRange',
@@ -174,6 +241,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     acceptsExpr: false,
   },
   [DateOperator.dayNotIn]: {
+    negates: DateOperator.dayIn,
     kinds: ['DateTime'],
     targets: NON_PRISMA_TARGETS,
     valueShape: 'dayList',
@@ -181,130 +249,72 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
   },
 };
 
-export type ArrayCatalogEntry = {
+type ArrayCatalogEntry = {
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
+  comparator?: Comparator;
 };
 
 export const ARRAY_OPERATOR_CATALOG: Record<ArrayOperator, ArrayCatalogEntry> = {
   [ArrayOperator.all]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
   [ArrayOperator.any]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
   [ArrayOperator.none]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
-  [ArrayOperator.atLeast]: { targets: NON_SQL_TARGETS, valueShape: 'count' },
-  [ArrayOperator.atMost]: { targets: NON_SQL_TARGETS, valueShape: 'count' },
-  [ArrayOperator.exactly]: { targets: NON_SQL_TARGETS, valueShape: 'count' },
+  [ArrayOperator.atLeast]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'gte' },
+  [ArrayOperator.atMost]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'lte' },
+  [ArrayOperator.exactly]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'equals' },
   [ArrayOperator.empty]: { targets: ALL_TARGETS, valueShape: 'none' },
   [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none' },
 };
 
-export const WindowSupport = {
-  full: 'full',
-  extremal: 'extremal',
-  none: 'none',
-} as const;
+/** Which catalog an operator belongs to — `between` is both a field and a date operator. */
+export type OperatorFamily = 'field' | 'date' | 'array';
 
-export type WindowSupport = (typeof WindowSupport)[keyof typeof WindowSupport];
-
-export const WINDOW_SELECTOR = {
-  fields: ['filter', 'orderBy', 'take', 'skip'],
-  sortDirs: ['asc', 'desc'],
-  support: {
-    array: {
-      check: WindowSupport.full,
-      toPrisma: WindowSupport.extremal,
-      toSql: WindowSupport.none,
-    },
-    aggregate: {
-      check: WindowSupport.full,
-      toPrisma: WindowSupport.none,
-      toSql: WindowSupport.none,
-    },
-  },
-} as const;
-
-export type WindowRuleType = keyof typeof WINDOW_SELECTOR.support;
-
-export const getWindowSupport = (ruleType: WindowRuleType, target: RuleTarget): WindowSupport =>
-  WINDOW_SELECTOR.support[ruleType][target];
-
-const AGGREGATE_SINGLE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['scalar', 'ordered']);
-const AGGREGATE_RANGE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['range']);
-
-export const AGGREGATE_OPERATORS: readonly Operator[] = [
-  Operator.equals,
-  Operator.notEquals,
-  Operator.lessThan,
-  Operator.lessThanEquals,
-  Operator.greaterThan,
-  Operator.greaterThanEquals,
-  Operator.between,
-  Operator.notBetween,
-];
-
-/** Aggregate threshold comparisons a target cannot compile. `toPrisma()` builds the
- *  threshold as a Prisma `having` filter, which has no complement for a range, so
- *  `notBetween` is unavailable there — `check()` and `toSql()` both handle it. */
-const AGGREGATE_UNSUPPORTED: Partial<Record<RuleTarget, readonly Operator[]>> = {
-  toPrisma: [Operator.notBetween],
+const CATALOGS: Record<OperatorFamily, Record<string, CatalogEntry | ArrayCatalogEntry>> = {
+  field: FIELD_OPERATOR_CATALOG,
+  date: DATE_OPERATOR_CATALOG,
+  array: ARRAY_OPERATOR_CATALOG,
 };
 
-/** The aggregate threshold comparisons `target` can compile — all of them when no
- *  target is given. The one source for both the validator's rejection and a builder's
- *  threshold picker, so neither has to restate which target drops which operator. */
-export const getAggregateOperators = (target?: RuleTarget): readonly Operator[] => {
-  const unsupported = target === undefined ? undefined : AGGREGATE_UNSUPPORTED[target];
-  return unsupported === undefined
-    ? AGGREGATE_OPERATORS
-    : AGGREGATE_OPERATORS.filter((op) => !unsupported.includes(op));
-};
+/** An operator's catalog entry within its family; undefined when the family doesn't have it. */
+export const catalogEntry = (
+  operator: string,
+  family: OperatorFamily,
+): CatalogEntry | ArrayCatalogEntry | undefined =>
+  Object.hasOwn(CATALOGS[family], operator) ? CATALOGS[family][operator] : undefined;
 
-export const isAggregateSingleOperator = (operator: Operator): boolean => {
-  const entry = FIELD_OPERATOR_CATALOG[operator];
-  if (!entry) return false;
-  return AGGREGATE_SINGLE_VALUE_SHAPES.has(entry.valueShape);
-};
+/** A field or date leaf's catalog entry: its operator read in its family. */
+export const leafCatalogEntry = (node: {
+  operator?: unknown;
+  dateOperator?: unknown;
+}): CatalogEntry | undefined =>
+  (typeof node.operator === 'string'
+    ? catalogEntry(node.operator, 'field')
+    : typeof node.dateOperator === 'string'
+      ? catalogEntry(node.dateOperator, 'date')
+      : undefined) as CatalogEntry | undefined;
 
-export const isAggregateRangeOperator = (operator: Operator): boolean => {
-  const entry = FIELD_OPERATOR_CATALOG[operator];
-  if (!entry) return false;
-  return AGGREGATE_RANGE_VALUE_SHAPES.has(entry.valueShape);
-};
+/** How an operator compares its field with one operand; undefined when it doesn't. */
+export const comparatorOf = (operator: string, family: OperatorFamily): Comparator | undefined =>
+  catalogEntry(operator, family)?.comparator;
 
-export const getValueShape = (operator: Operator | DateOperator | ArrayOperator): ValueShape => {
-  if (Object.hasOwn(FIELD_OPERATOR_CATALOG, operator)) {
-    return FIELD_OPERATOR_CATALOG[operator as Operator].valueShape;
-  }
-  if (Object.hasOwn(DATE_OPERATOR_CATALOG, operator)) {
-    return DATE_OPERATOR_CATALOG[operator as DateOperator].valueShape;
-  }
-  if (Object.hasOwn(ARRAY_OPERATOR_CATALOG, operator)) {
-    return ARRAY_OPERATOR_CATALOG[operator as ArrayOperator].valueShape;
-  }
-  throw new Error(`Unknown operator: ${operator}`);
+export const getValueShape = (operator: string, family: OperatorFamily): ValueShape => {
+  const entry = catalogEntry(operator, family);
+  if (!entry) throw unknownOperator(operator, family);
+  return entry.valueShape;
 };
 
 export const isOperatorSupportedForTarget = (
-  operator: Operator | DateOperator | ArrayOperator,
+  operator: string,
+  family: OperatorFamily,
   target: RuleTarget,
-): boolean => {
-  if (Object.hasOwn(FIELD_OPERATOR_CATALOG, operator)) {
-    return FIELD_OPERATOR_CATALOG[operator as Operator].targets.includes(target);
-  }
-  if (Object.hasOwn(DATE_OPERATOR_CATALOG, operator)) {
-    return DATE_OPERATOR_CATALOG[operator as DateOperator].targets.includes(target);
-  }
-  if (Object.hasOwn(ARRAY_OPERATOR_CATALOG, operator)) {
-    return ARRAY_OPERATOR_CATALOG[operator as ArrayOperator].targets.includes(target);
-  }
-  return false;
-};
+): boolean => catalogEntry(operator, family)?.targets.includes(target) ?? false;
 
 export const getOperatorsForKind = (
   kind: FieldKind,
   target?: RuleTarget,
 ): { field: Operator[]; date: DateOperator[] } => {
   const field = (Object.keys(FIELD_OPERATOR_CATALOG) as Operator[]).filter((op) => {
-    const entry = FIELD_OPERATOR_CATALOG[op];
+    const entry = FIELD_OPERATOR_CATALOG[op as Operator];
     if (!entry.kinds.includes(kind)) return false;
     if (target && !entry.targets.includes(target)) return false;
     return true;
@@ -346,50 +356,73 @@ export const ORDERED_OPERATORS = withShape('ordered');
 export const WINDOW_OPERATORS = withShape('dateWindow');
 /** Operators that compare against two ends. */
 export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
+/** Operators a null operand leaves with nothing to compare against — unlike `equals` /
+ *  `notEquals`, where null is the is-null sentinel. */
+export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'array');
+/** Containment — of a substring, or of a list's member: `contains` / `notContains`. */
+export const CONTAINS_OPERATORS: readonly string[] = [Operator.contains, Operator.notContains];
+/** The threshold comparisons an aggregate takes — equality, order and ranges; every target
+ *  compiles all of them. */
+export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];
+
+/** What an aggregate computes over its items. */
+export const AGGREGATE_MODES: readonly AggregateMode[] = ['sum', 'avg'];
+
+export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
+
+/** Equality with one value: `equals` / `notEquals`. */
+export const EQUALITY_OPERATORS = withShape('scalar');
+/** Membership in a list: `in` / `notIn`. */
+export const SET_OPERATORS = withShape('array');
+/** Exact equality and membership: what a column answers by value, case-sensitively. */
+export const EXACT_OPERATORS = withShape('scalar', 'array');
+/** Weekday lists: `dayIn` / `dayNotIn`. */
+export const DAY_LIST_OPERATORS = withShape('dayList');
+/** Date ranges between two points: date `between` / `notBetween`. */
+export const DATE_RANGE_OPERATORS = withShape('dateRange');
 /** Operators with a point to move: the comparisons and both ends of a pair. */
 export const OFFSET_OPERATORS = withShape('scalar', 'ordered', 'range', 'dateValue', 'dateRange');
+
+const arrayWithShape = (...shapes: ValueShape[]): readonly string[] =>
+  Object.entries(ARRAY_OPERATOR_CATALOG).flatMap(([operator, entry]) =>
+    shapes.includes(entry.valueShape) ? [operator] : [],
+  );
+/** Array operators that count matching elements. */
+export const ARRAY_COUNT_OPERATORS = arrayWithShape('count');
+/** Array operators that test each element against a condition. */
+export const ARRAY_CONDITION_OPERATORS = arrayWithShape('predicate', 'count');
+/** Array operators a broader condition only widens: more matching elements never make them false. */
+export const ARRAY_MONOTONE_OPERATORS: readonly string[] = [
+  ArrayOperator.any,
+  ArrayOperator.atLeast,
+];
 
 /** The negations: each is the complement of its positive form and keeps NULL fields
  *  (the 2.19.0 ruling). */
 export const NEGATED_OPERATORS: readonly string[] = [
-  Operator.notEquals,
-  Operator.notIn,
-  Operator.notContains,
-  Operator.notMatches,
-  Operator.notBetween,
-  DateOperator.notBefore,
-  DateOperator.notAfter,
-  DateOperator.notWithin,
-  DateOperator.notBetween,
-  DateOperator.dayNotIn,
-];
+  ...Object.entries(FIELD_OPERATOR_CATALOG),
+  ...Object.entries(DATE_OPERATOR_CATALOG),
+].flatMap(([operator, entry]) => (entry.negates ? [operator] : []));
+/** Negations of a string operator: `notContains`, `notStartsWith`, `notEndsWith`. */
+export const NEGATED_STRING_OPERATORS = NEGATED_OPERATORS.filter((op) =>
+  withShape('string').includes(op),
+);
 /** Negations of a two-ended range. */
 export const NEGATED_RANGE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
   RANGE_OPERATORS.includes(op),
 );
-/** Negated comparisons an offset can move; with nothing to compare against they still keep a
- *  null field. */
-export const NEGATED_COMPARISON_OPERATORS = NEGATED_OPERATORS.filter((op) =>
-  OFFSET_OPERATORS.includes(op),
-);
-/** Negations of one literal (`notEquals`, `notContains`). */
-export const NEGATED_SINGLE_VALUE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
-  withShape('scalar', 'string').includes(op),
-);
 
 /** Comparisons that bound a field from above / below — what a window's extremal rewrite reads. */
-export const UPPER_BOUND_OPERATORS: readonly string[] = [
-  DateOperator.before,
-  DateOperator.onOrBefore,
-  Operator.lessThan,
-  Operator.lessThanEquals,
-];
-export const LOWER_BOUND_OPERATORS: readonly string[] = [
-  DateOperator.after,
-  DateOperator.onOrAfter,
-  Operator.greaterThan,
-  Operator.greaterThanEquals,
-];
+const bounding = (...comparators: Comparator[]): readonly string[] =>
+  OPERATOR_ENTRIES.flatMap(([operator, entry]) =>
+    entry.comparator &&
+    comparators.includes(entry.comparator) &&
+    !NEGATED_OPERATORS.includes(operator)
+      ? [operator]
+      : [],
+  );
+export const UPPER_BOUND_OPERATORS = bounding('lt', 'lte');
+export const LOWER_BOUND_OPERATORS = bounding('gt', 'gte');
 
 // --- Kind sets -------------------------------------------------------------------------------
 
@@ -448,3 +481,58 @@ export const PERIOD_UNITS: readonly string[] = [
   'minute',
   'second',
 ];
+
+// --- Weekdays -------------------------------------------------------------------------------
+
+/** Weekday names in Postgres `EXTRACT(DOW)` order: sunday is 0. */
+export const DAY_NAMES = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+export const isDayName = (name: string): boolean =>
+  (DAY_NAMES as readonly string[]).includes(name.toLowerCase());
+
+// --- Complements -----------------------------------------------------------------------------
+// Each operator's complement under check(). A negation keeps NULL fields (the 2.19.0 ruling), so
+// a flip is exact; an ordered comparison has no negated twin, so its complement is the opposite
+// comparison or an absent field.
+
+/** A catalog's negation pairs both ways, plus `extra` pairs that complement without being a
+ *  NULL-keeping negation. */
+const complements = (
+  catalog: Record<string, CatalogEntry>,
+  extra: readonly [string, string][] = [],
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    [
+      ...Object.entries(catalog).flatMap(([op, entry]) =>
+        entry.negates ? [[entry.negates, op] as [string, string]] : [],
+      ),
+      ...extra,
+    ].flatMap(([a, b]) => [
+      [a, b],
+      [b, a],
+    ]),
+  );
+
+export const COMPLEMENT_OPERATORS = complements(FIELD_OPERATOR_CATALOG, [
+  [Operator.isEmpty, Operator.notEmpty],
+  [Operator.exists, Operator.notExists],
+]);
+
+export const COMPLEMENT_DATE_OPERATORS = complements(DATE_OPERATOR_CATALOG);
+
+/** The opposite of a comparison with no negated twin: its complement, less the absent field. */
+export const OPPOSITE_OPERATORS: Readonly<Record<string, string>> = {
+  [Operator.lessThan]: Operator.greaterThanEquals,
+  [Operator.lessThanEquals]: Operator.greaterThan,
+  [Operator.greaterThan]: Operator.lessThanEquals,
+  [Operator.greaterThanEquals]: Operator.lessThan,
+  [DateOperator.onOrBefore]: DateOperator.after,
+  [DateOperator.onOrAfter]: DateOperator.before,
+};

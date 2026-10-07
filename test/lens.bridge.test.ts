@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma } from '../index';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 const prismaMap: FieldMap = {
   models: {
@@ -69,9 +68,8 @@ describe('lens + bridge: toPrisma compiles only the Prisma-pushable subset', () 
       ],
     };
     const result = toPrisma(rule, { map: lens, mapName: lens.mapName, model: lens.model });
-    const where = (result.steps[result.steps.length - 1] as unknown as { where: { AND: object[] } })
-      .where;
-    expect(where.AND).toEqual([{ email: { equals: 'foo@bar.com' } }]);
+    const where = (result.steps[result.steps.length - 1] as unknown as { where: object }).where;
+    expect(where).toEqual({ email: { equals: 'foo@bar.com' } });
   });
 
   test('OR of prisma-pushable + bridge: the whole disjunction over-fetches', () => {

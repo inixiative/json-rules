@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  exposedSurface,
+  assertValidNarrowing,
   type Lens,
   type LensNarrowing,
-  sourceQueries,
-  sourceValuesFromQueryRows,
-  sourceValuesFromRows,
-  validateNarrowing,
+  materializeSourceQuery,
+  materializeSources,
+  projectLens,
+  toSourceQueries,
 } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // Composite groupBy: a source may partition by SEVERAL axes at once — the
 // (source, field, value) triple that powers a 3-level cascade. Options carry
@@ -119,7 +119,7 @@ const row = (value: string, source: string | null, def: string | null, brandId =
 
 describe('validateNarrowing — composite groupBy', () => {
   test('accepts an array of to-one scalar-terminal paths', () => {
-    expect(() => validateNarrowing(composite())).not.toThrow();
+    expect(() => assertValidNarrowing(composite())).not.toThrow();
   });
 
   test('a single-string groupBy still validates (normalized form)', () => {
@@ -133,7 +133,7 @@ describe('validateNarrowing — composite groupBy', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('each axis is validated — a to-many hop in ANY axis is an error', () => {
@@ -143,7 +143,7 @@ describe('validateNarrowing — composite groupBy', () => {
         sources: { id: { groupBy: ['enrichments.value'] } },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/to-many/i);
+    expect(() => assertValidNarrowing(n)).toThrow(/to-many/i);
   });
 
   test('cross-layer conflict compares normalized axes — [a] vs a is NOT a conflict', () => {
@@ -164,7 +164,7 @@ describe('validateNarrowing — composite groupBy', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
   });
 
   test('cross-layer conflict on genuinely different axes is an error', () => {
@@ -182,7 +182,7 @@ describe('validateNarrowing — composite groupBy', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/conflict|differ/i);
+    expect(() => assertValidNarrowing(child)).toThrow(/conflict|differ/i);
   });
 
   test('indexed alias names are reserved on grouped sources', () => {
@@ -208,13 +208,13 @@ describe('validateNarrowing — composite groupBy', () => {
     const n = withParent(collisionBase, {
       root: { picks: ['__group_1'], sources: { __group_1: { groupBy: 'cat.name' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/__group/);
+    expect(() => assertValidNarrowing(n)).toThrow(/__group/);
   });
 });
 
-describe('sourceQueries — composite compile', () => {
+describe('toSourceQueries — composite compile', () => {
   test('SourceQuery.groupBy is the normalized axes array', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     expect(q.groupBy).toEqual(AXES);
   });
 
@@ -229,12 +229,12 @@ describe('sourceQueries — composite compile', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.groupBy).toEqual(['map.definition.label']);
   });
 
   test('prisma select nests every axis; distinct stays absent', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     expect(q.prisma.distinct).toBeUndefined();
     expect(q.prisma.select).toEqual({
       value: true,
@@ -248,13 +248,13 @@ describe('sourceQueries — composite compile', () => {
   });
 
   test('sql aliases each axis as __group_i', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     expect(q.sql.sql).toContain('AS "__group_0"');
     expect(q.sql.sql).toContain('AS "__group_1"');
   });
 
   test('guards fold ONCE per traversed hop across shared axis prefixes', () => {
-    const [q] = sourceQueries(composite());
+    const [q] = toSourceQueries(composite());
     // Both axes traverse `map` — the IntegrationMap mapDefaults brand guard must
     // appear exactly once, not once per axis.
     expect(q.composedWhere).toEqual({
@@ -265,7 +265,7 @@ describe('sourceQueries — composite compile', () => {
   });
 });
 
-describe('sourceQueries — source-where hop guards (hardening)', () => {
+describe('toSourceQueries — source-where hop guards (hardening)', () => {
   test('a where clause traversing an off-groupBy relation folds that hop guard', () => {
     const n = withParent(base, {
       root: {
@@ -295,7 +295,7 @@ describe('sourceQueries — source-where hop guards (hardening)', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.source.active', operator: Operator.equals, value: true },
@@ -320,7 +320,7 @@ describe('materialization — options carry index-aligned groups', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(composite(), rows);
+    const [sv] = materializeSources(composite(), rows);
     // Axes sort lexicographically, first axis outermost: HubSpot < Salesforce,
     // then Business Unit < Industry within Salesforce.
     expect(sv.options).toEqual([
@@ -337,16 +337,16 @@ describe('materialization — options carry index-aligned groups', () => {
         enrichments: [row('orphan', null, 'Industry'), row('kept', 'Salesforce', 'Industry')],
       },
     ];
-    const [sv] = sourceValuesFromRows(composite(), rows);
+    const [sv] = materializeSources(composite(), rows);
     expect(sv.options).toEqual([
       { value: 'orphan' },
       { value: 'kept', groups: ['Salesforce', 'Industry'] },
     ]);
   });
 
-  test('sourceValuesFromQueryRows: prisma-shaped rows nest each axis', () => {
-    const [q] = sourceQueries(composite());
-    const sv = sourceValuesFromQueryRows(q, [
+  test('materializeSourceQuery: prisma-shaped rows nest each axis', () => {
+    const [q] = toSourceQueries(composite());
+    const sv = materializeSourceQuery(q, [
       {
         value: 'Manufacturing',
         map: { source: { label: 'Salesforce' }, definition: { label: 'Industry' } },
@@ -362,9 +362,9 @@ describe('materialization — options carry index-aligned groups', () => {
     ]);
   });
 
-  test('sourceValuesFromQueryRows: sql-shaped rows read the indexed aliases', () => {
-    const [q] = sourceQueries(composite());
-    const sv = sourceValuesFromQueryRows(
+  test('materializeSourceQuery: sql-shaped rows read the indexed aliases', () => {
+    const [q] = toSourceQueries(composite());
+    const sv = materializeSourceQuery(
       q,
       [{ value: 'Manufacturing', __group_0: 'Salesforce', __group_1: 'Industry' }],
       { rowShape: 'sql' },
@@ -373,26 +373,29 @@ describe('materialization — options carry index-aligned groups', () => {
   });
 });
 
-describe('exposedSurface — axes on the surface, groups in the union', () => {
+describe('projectModels — axes on the surface, groups in the union', () => {
   test('the surface field entry carries the partition axes', () => {
-    const surface = exposedSurface(composite());
+    const surface = projectLens(composite(), { by: 'model' });
     expect(surface.maps.app.models.Enrichment.fields.value.groupBy).toEqual(AXES);
   });
 
   test('options sharing a value across composite groups survive the union', () => {
-    const surface = exposedSurface(composite(), {
-      sourceValues: [
-        {
-          path: 'User.enrichments',
-          mapName: 'app',
-          model: 'Enrichment',
-          field: 'value',
-          options: [
-            { value: 'Manufacturing', groups: ['Salesforce', 'Industry'] },
-            { value: 'Manufacturing', groups: ['HubSpot', 'Industry'] },
-          ],
-        },
-      ],
+    const surface = projectLens(composite(), {
+      ...{
+        sourceValues: [
+          {
+            path: 'User.enrichments',
+            mapName: 'app',
+            model: 'Enrichment',
+            field: 'value',
+            options: [
+              { value: 'Manufacturing', groups: ['Salesforce', 'Industry'] },
+              { value: 'Manufacturing', groups: ['HubSpot', 'Industry'] },
+            ],
+          },
+        ],
+      },
+      by: 'model',
     });
     expect(surface.maps.app.models.Enrichment.fields.value.options).toEqual([
       { value: 'Manufacturing', groups: ['Salesforce', 'Industry'] },
@@ -431,6 +434,6 @@ describe('exposedSurface — axes on the surface, groups in the union', () => {
         },
       },
     });
-    expect(() => exposedSurface(n)).toThrow(/ax[ei]s|groupBy/i);
+    expect(() => projectLens(n, { by: 'model' })).toThrow(/ax[ei]s|groupBy/i);
   });
 });

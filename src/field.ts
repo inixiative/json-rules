@@ -1,40 +1,44 @@
+import { isEqual } from 'lodash-es';
+import { parseDateValue, resolveDateConfig } from './date';
+import { DEFAULT_ZONE } from './dateExpr';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
-import { bigIntToNumber, orderPair } from './number';
+import { bigIntToNumber, isOrderedValue, orderPair, readOrderedPair, readSet } from './number';
 import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
+  EQUALITY_OPERATORS,
   type FieldKind,
-  NEGATED_COMPARISON_OPERATORS,
+  NEGATED_OPERATORS,
   NO_VALUE_OPERATORS,
   NUMERIC_KINDS,
-  ORDERED_OPERATORS,
+  OPERAND_OPERATORS,
   RANGE_OPERATORS,
 } from './operatorCatalog';
+import { readPattern } from './pattern';
 import { readField, type Scopes } from './scope';
-import type { Rule, RuleValue } from './types';
+import { allOf, anyOf } from './traverse';
+import type { Condition, DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
-// A value is "empty" iff it is null, undefined, or the empty string — matching the
-// SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
-// (lodash isEmpty would also treat Dates/numbers/populated arrays as empty, which
-// diverges from the compilers and breaks soft-delete grants like `deletedAt isEmpty`.)
+// A value is "empty" iff it is null, undefined, the empty string, or an empty array — as the
+// compilers read a column, a Json value and a list. (lodash isEmpty would also treat Dates and
+// numbers as empty, which breaks soft-delete grants like `deletedAt isEmpty`.)
 const isEmptyValue = (value: unknown): boolean =>
-  value === null || value === undefined || value === '';
+  value === null ||
+  value === undefined ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0);
 
-// Mirrors the server-side coerceValueForField contract: null/undefined pass through
-// (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
-// kinds pass through, and an uncoercible value returns unchanged so the comparison
-// fails with the rule's normal error instead of throwing on one dirty row.
 /**
  * Nothing to compare against — no row matches on any rail, as SQL's NULL comparison and
- * arithmetic never do: an ordered comparison or a range that reads nothing (or a range missing
- * an end), or an offset that moved nothing. `equals` / `notEquals` against a plain null stay the
- * is-null sentinel.
+ * arithmetic never do: an ordered, string, pattern or set comparison or a range that reads
+ * nothing (or a range missing an end), or an offset that moved nothing. `equals` / `notEquals`
+ * against a plain null stay the is-null sentinel.
  */
 export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unknown): boolean => {
   const missing = value === null || value === undefined;
-  if (missing && (rule.offset !== undefined || ORDERED_OPERATORS.includes(rule.operator)))
+  if (missing && (rule.offset !== undefined || OPERAND_OPERATORS.includes(rule.operator)))
     return true;
   if (!RANGE_OPERATORS.includes(rule.operator)) return false;
   return (
@@ -42,9 +46,34 @@ export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unk
   );
 };
 
-// A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
-const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+/** A field rule that only asks whether its field is there: existence or emptiness, or equality
+ *  with a null literal. */
+export const isExistenceTest = (
+  rule: Pick<Rule, 'operator' | 'value' | 'path' | 'bind'>,
+): boolean =>
+  NO_VALUE_OPERATORS.includes(rule.operator) ||
+  (EQUALITY_OPERATORS.includes(rule.operator) &&
+    rule.value === null &&
+    rule.path === undefined &&
+    rule.bind === undefined);
 
+/** A list's membership in a set of lists, as the equalities it means: the compilers have no list
+ *  `in`. A member that isn't a list (or null) never equals one. */
+export const listMembership = (rule: Rule, members: readonly unknown[]): Condition => {
+  const lists = members.filter((member) => Array.isArray(member) || member === null);
+  const each = (operator: Operator) =>
+    lists.map((value) => ({ ...rule, operator, value }) as Condition);
+  return rule.operator === Operator.in
+    ? anyOf(each(Operator.equals))
+    : allOf(each(Operator.notEquals));
+};
+
+/** Case-insensitivity lowers every string, a list's members included at any depth — never
+ *  inside an object. Every rail lowers through this. */
+export const lowerStrings = (v: unknown): unknown =>
+  typeof v === 'string' ? v.toLowerCase() : Array.isArray(v) ? v.map(lowerStrings) : v;
+
+// A bigint compares as a number (refused past the safe range).
 const fromBigInt = (value: unknown): unknown => {
   if (typeof value === 'bigint') return bigIntToNumber(value);
   return Array.isArray(value) && value.some((v) => typeof v === 'bigint')
@@ -52,7 +81,11 @@ const fromBigInt = (value: unknown): unknown => {
     : value;
 };
 
-const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
+// Mirrors the server-side coerceValueForField contract: null/undefined pass through
+// (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
+// kinds pass through, and an uncoercible value returns unchanged so the comparison
+// fails with the rule's normal error instead of throwing on one dirty row.
+const coerceScalar = (value: unknown, kind: FieldKind, zone: string): unknown => {
   if (value === null || value === undefined) return value;
 
   if (NUMERIC_KINDS.includes(kind)) {
@@ -66,18 +99,14 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
 
   switch (kind) {
     case 'DateTime': {
-      // Everything lands on epoch ms so equals/ordered compare across Date
-      // instances, ISO strings (any zone/format), and ms-timestamp strings.
-      // A naive (zoneless) datetime string anchors in UTC — deterministic across
-      // hosts, matching the date rail's parseDateValue default (Date.parse would
-      // anchor it in the host's local zone).
+      // Everything lands on epoch ms so equals/ordered compare across Date instances, ISO
+      // strings and ms-timestamp strings. A zoneless string anchors in the evaluation's zone,
+      // through the date rail's own parser.
       if (value instanceof Date) return value.getTime();
       if (typeof value === 'number') return value;
       if (typeof value !== 'string') return value;
-      if (/^-?\d+$/.test(value)) return Number(value);
-      const anchored = NAIVE_DATETIME.test(value) ? `${value.replace(' ', 'T')}Z` : value;
-      const ms = Date.parse(anchored);
-      return Number.isNaN(ms) ? value : ms;
+      const parsed = parseDateValue(value, zone);
+      return parsed.isValid() ? parsed.valueOf() : value;
     }
     case 'Boolean':
       if (value === 'true') return true;
@@ -92,10 +121,15 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   }
 };
 
-export const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => {
+/** A value coerced to a field kind; a zoneless DateTime string anchors in `zone`. */
+export const applyCoercion = (
+  value: unknown,
+  kind: FieldKind | undefined,
+  zone: string = DEFAULT_ZONE,
+): unknown => {
   if (kind === undefined) return value;
-  if (Array.isArray(value)) return value.map((item) => coerceScalar(item, kind));
-  return coerceScalar(value, kind);
+  if (Array.isArray(value)) return value.map((item) => coerceScalar(item, kind, zone));
+  return coerceScalar(value, kind, zone);
 };
 
 export const checkField = (
@@ -103,19 +137,30 @@ export const checkField = (
   scopes: Scopes,
   context: unknown,
   bindings?: Record<string, RuleValue>,
+  config: DateConfig = {},
+  // A computed left-hand side (an aggregate) in place of the field's value.
+  computed?: { value: unknown },
 ): boolean | string => {
-  const fieldValue = applyCoercion(
-    fromBigInt(readField(condition.field, scopes)),
-    condition.coerceType,
-  );
+  const raw = computed ? computed.value : (readField(condition.field, scopes) ?? null);
+  // A Date compares as DateTime even unstamped, as the compilers read a DateTime column.
+  const kind = condition.coerceType ?? (raw instanceof Date ? 'DateTime' : undefined);
+  // Only a DateTime coercion reads the zone.
+  const zone =
+    kind === 'DateTime'
+      ? resolveDateConfig(config, (source) => readValueSource(source, scopes, context, bindings))
+          .timeZone
+      : DEFAULT_ZONE;
+  // An absent path reads as NULL, as a column does on the compiled rails.
+  const fieldValue = applyCoercion(fromBigInt(raw), kind, zone);
 
   // Operators that don't need a value
   const needsValue = !NO_VALUE_OPERATORS.includes(condition.operator);
   const value = needsValue
     ? shift(
         applyCoercion(
-          fromBigInt(readValueSource(condition, scopes, context, bindings)),
-          condition.coerceType,
+          fromBigInt(readValueSource(condition, scopes, context, bindings) ?? null),
+          kind,
+          zone,
         ),
         condition,
         scopes,
@@ -125,8 +170,7 @@ export const checkField = (
     : undefined;
 
   if (needsValue && hasNoOperand(condition, value)) {
-    if (NEGATED_COMPARISON_OPERATORS.includes(condition.operator) && fieldValue == null)
-      return true;
+    if (NEGATED_OPERATORS.includes(condition.operator) && fieldValue == null) return true;
     return condition.error || `${condition.field} has no comparison value`;
   }
 
@@ -134,22 +178,27 @@ export const checkField = (
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
-  const lhs = ci && typeof fieldValue === 'string' ? fieldValue.toLowerCase() : fieldValue;
-  const rhs = ci && typeof value === 'string' ? value.toLowerCase() : value;
+  const lower = (v: unknown): unknown => (ci ? lowerStrings(v) : v);
+  const lhs = lower(fieldValue);
+  const rhs = lower(value);
 
   // Fuzzy applies to containment search: typo-tolerant token match over strings, else the
-  // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive.
+  // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive. A
+  // list contains a member exactly: case-insensitivity matches text, not membership.
   const fuzzy = resolveFuzzy(condition.fuzzy);
   const containsMatch = (): boolean =>
     fuzzy && typeof fieldValue === 'string' && typeof value === 'string'
       ? fuzzyContains(fieldValue, value, fuzzy)
-      : containsValue(lhs, rhs);
+      : Array.isArray(fieldValue)
+        ? (lhs as unknown[]).some((item) => isEqual(item, rhs))
+        : containsValue(lhs, rhs);
 
   switch (condition.operator) {
+    // Values compare as JSON does: by value (a list or an object deeply), never across types.
     case Operator.equals:
-      return lhs === rhs || getError(`must equal`);
+      return isEqual(lhs, rhs) || getError(`must equal`);
     case Operator.notEquals:
-      return lhs !== rhs || getError(`must not equal`);
+      return !isEqual(lhs, rhs) || getError(`must not equal`);
     case Operator.lessThan:
       return compareOrderedValues(fieldValue, value, 'lt') || getError(`must be less than`);
     case Operator.lessThanEquals:
@@ -164,31 +213,28 @@ export const checkField = (
         getError(`must be greater than or equal to`)
       );
     case Operator.in:
-      return (Array.isArray(value) && value.includes(fieldValue)) || getError(`must be one of`);
+      return readSet(rhs).some((item) => isEqual(item, lhs)) || getError(`must be one of`);
     case Operator.notIn:
-      return !Array.isArray(value) || !value.includes(fieldValue) || getError(`must not be one of`);
+      return !readSet(rhs).some((item) => isEqual(item, lhs)) || getError(`must not be one of`);
     case Operator.contains:
       return containsMatch() || getError(`must contain`);
     case Operator.notContains:
       return !containsMatch() || getError(`must not contain`);
     case Operator.matches:
       return (
-        (hasMatch(fieldValue) &&
-          (value instanceof RegExp || typeof value === 'string') &&
-          !!fieldValue.match(value)) ||
+        (hasMatch(fieldValue) && isPattern(value) && readPattern(value).re.test(fieldValue)) ||
         getError(`must match pattern`)
       );
     case Operator.notMatches:
       return (
         !hasMatch(fieldValue) ||
-        !(value instanceof RegExp || typeof value === 'string') ||
-        !fieldValue.match(value) ||
+        !isPattern(value) ||
+        !readPattern(value).re.test(fieldValue) ||
         getError(`must not match pattern`)
       );
     case Operator.between: {
-      const range = normalizeRange(value);
-      if (!range) throw new Error('between operator requires an array of two values');
-      if (!isOrderedValue(fieldValue)) return getError(`must be between`);
+      const range = orderedRange(value, condition.operator);
+      if (!inRangeOrder(fieldValue, range)) return getError(`must be between`);
       const comparableFieldValue = toOrderedPrimitive(fieldValue);
       const [min, max] = range;
       return (
@@ -196,9 +242,8 @@ export const checkField = (
       );
     }
     case Operator.notBetween: {
-      const range = normalizeRange(value);
-      if (!range) throw new Error('notBetween operator requires an array of two values');
-      if (!isOrderedValue(fieldValue)) return true;
+      const range = orderedRange(value, condition.operator);
+      if (!inRangeOrder(fieldValue, range)) return true;
       const comparableFieldValue = toOrderedPrimitive(fieldValue);
       const [min, max] = range;
       return (
@@ -223,6 +268,16 @@ export const checkField = (
         (typeof lhs === 'string' && typeof rhs === 'string' && lhs.endsWith(rhs)) ||
         getError(`must end with`)
       );
+    case Operator.notStartsWith:
+      return (
+        !(typeof lhs === 'string' && typeof rhs === 'string' && lhs.startsWith(rhs)) ||
+        getError(`must not start with`)
+      );
+    case Operator.notEndsWith:
+      return (
+        !(typeof lhs === 'string' && typeof rhs === 'string' && lhs.endsWith(rhs)) ||
+        getError(`must not end with`)
+      );
     default:
       throw new Error('Unknown operator');
   }
@@ -240,12 +295,7 @@ const shift = (
   return amount === null ? null : addOffset(value, amount);
 };
 
-type OrderedValue = string | number | Date;
-
-const isOrderedValue = (value: unknown): value is OrderedValue =>
-  typeof value === 'string' || typeof value === 'number' || value instanceof Date;
-
-const toOrderedPrimitive = (value: OrderedValue): string | number =>
+const toOrderedPrimitive = (value: OrderedRuleValue): string | number =>
   value instanceof Date ? value.getTime() : value;
 
 const compareOrderedValues = (
@@ -253,7 +303,7 @@ const compareOrderedValues = (
   right: unknown,
   operator: 'lt' | 'lte' | 'gt' | 'gte',
 ): boolean => {
-  if (!isOrderedValue(left) || !isOrderedValue(right)) return false;
+  if (!sameOrder(left, right) || !isOrderedValue(right)) return false;
 
   const lhs = toOrderedPrimitive(left);
   const rhs = toOrderedPrimitive(right);
@@ -272,23 +322,28 @@ const compareOrderedValues = (
 
 const hasMatch = (value: unknown): value is string => typeof value === 'string';
 
-const normalizeRange = (value: unknown): [string | number, string | number] | null => {
-  if (!Array.isArray(value) || value.length !== 2) return null;
+const isPattern = (value: unknown): value is string | RegExp =>
+  typeof value === 'string' || value instanceof RegExp;
 
-  const [rawMin, rawMax] = value;
-  if (!isOrderedValue(rawMin) || !isOrderedValue(rawMax)) return null;
+/** A range operand's two ends, ordered. */
+const orderedRange = (value: unknown, operator: string): [string | number, string | number] =>
+  orderPair(
+    readOrderedPair(value, operator).map((end) => toOrderedPrimitive(end as OrderedRuleValue)),
+  ) as [string | number, string | number];
 
-  return orderPair([toOrderedPrimitive(rawMin), toOrderedPrimitive(rawMax)]);
-};
+const containsValue = (container: unknown, search: unknown): boolean =>
+  typeof container === 'string' && typeof search === 'string' && container.includes(search);
 
-const containsValue = (container: unknown, search: unknown): boolean => {
-  if (typeof container === 'string') {
-    return typeof search === 'string' && container.includes(search);
-  }
+/** Two values that order against each other: both numbers, both strings, or both dates. */
+const sameOrder = (a: unknown, b: unknown): a is OrderedRuleValue =>
+  isOrderedValue(a) && isOrderedValue(b) && orderKind(a) === orderKind(b);
 
-  if (Array.isArray(container)) {
-    return container.includes(search);
-  }
+const orderKind = (value: OrderedRuleValue | number | string): string =>
+  value instanceof Date ? 'date' : typeof value;
 
-  return false;
-};
+/** A field that orders against a range's ends (already reduced to primitives). */
+const inRangeOrder = (
+  value: unknown,
+  range: [string | number, string | number],
+): value is OrderedRuleValue =>
+  isOrderedValue(value) && typeof toOrderedPrimitive(value) === typeof range[0];

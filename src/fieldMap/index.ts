@@ -1,5 +1,14 @@
-export type { BridgeDictionary } from './buildBridgeDictionary';
-export { buildBridgeDictionary } from './buildBridgeDictionary';
+export type { BridgeDictionary } from './indexBridges';
+export { indexBridges } from './indexBridges';
 export { stitchFieldMaps } from './stitch';
-export type { Bridge, BridgeCardinality, BridgeEndpoint, FieldMapSet } from './types';
-export { validateFieldMap, validateFieldMapSet } from './validate';
+export type {
+  Bridge,
+  BridgeCardinality,
+  BridgeEndpoint,
+  FieldMap,
+  FieldMapEntry,
+  FieldMapSet,
+  ModelEntry,
+  SourceOption,
+} from './types';
+export { assertValidFieldMaps, validateFieldMaps } from './validate';

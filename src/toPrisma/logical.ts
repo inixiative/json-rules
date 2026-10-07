@@ -1,83 +1,10 @@
+import type { FieldMap } from '../fieldMap/types';
+import { conditionTouchesBridge } from '../fieldMap/walk';
+import { negate } from '../negate';
 import type { All, Any, Condition, IfThenElse } from '../types';
-import { walkFieldPath } from './mapWalk';
-import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
-
-// Forward declaration - provided by condition.ts to avoid circular import
-type BuildConditionFn = (
-  condition: Condition,
-  options?: BuildOptions,
-  state?: PrismaBuildState,
-) => PrismaWhere;
-let buildCondition: BuildConditionFn;
-
-export const setConditionBuilder = (fn: BuildConditionFn) => {
-  buildCondition = fn;
-};
-
-/**
- * Walks a relation field path and returns the target model name (for descending
- * into arrayRule/aggregate sub-conditions). Returns null if the path isn't a
- * chain of object relations (e.g. terminates in a scalar or hits a bridge).
- */
-const resolveRelationTargetModel = (
-  field: string,
-  map: FieldMap,
-  rootModel: string,
-): string | null => {
-  const parts = field.split('.');
-  let cur = rootModel;
-  for (const part of parts) {
-    const entry = map.models[cur]?.fields[part];
-    if (!entry || entry.kind !== 'object') return null;
-    cur = entry.type;
-  }
-  return cur;
-};
-
-/**
- * Does this condition (recursively) hit a bridge field?
- *
- * Bridge predicates compile to `{}` in toPrisma (the over-fetch sentinel).
- * Under AND the fold drops it (no-op); under OR the fold absorbs the whole
- * disjunction into `{}` (over-fetch, safe). But in `if/then`, the implication is
- * encoded as `NOT(if) OR then`, and NOT of the sentinel is where the two meanings of
- * `{}` part ways: NOT(true) is match-nothing, while NOT(unknown) must stay unknown.
- * Folding would under-fetch, so a bridge anywhere in the implication over-fetches
- * the whole expression instead.
- *
- * Recurses into arrayRule.condition and aggregate.condition, flipping the
- * model context to the relation target so nested fields resolve correctly.
- * A bridge anywhere in the if-clause subtree triggers over-fetch.
- */
-const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolean => {
-  if (typeof cond === 'boolean') return false;
-  if (!options?.map || !options?.model) return false;
-
-  if ('all' in cond) return cond.all.some((c) => conditionTouchesBridge(c, options));
-  if ('any' in cond) return cond.any.some((c) => conditionTouchesBridge(c, options));
-  if ('if' in cond) {
-    return (
-      conditionTouchesBridge(cond.if, options) ||
-      conditionTouchesBridge(cond.then, options) ||
-      (cond.else !== undefined && conditionTouchesBridge(cond.else, options))
-    );
-  }
-
-  // Field-bearing leaves: arrayRule, aggregate, dateRule, field
-  if ('field' in cond && typeof cond.field === 'string' && cond.field !== '') {
-    const result = walkFieldPath(cond.field, options.map as FieldMap, options.model);
-    if (result.kind === 'bridge') return true;
-
-    // arrayRule/aggregate may carry a nested condition rooted on the relation target.
-    if ('condition' in cond && cond.condition !== undefined) {
-      const target = resolveRelationTargetModel(cond.field, options.map as FieldMap, options.model);
-      if (target) {
-        if (conditionTouchesBridge(cond.condition, { ...options, model: target })) return true;
-      }
-    }
-  }
-  return false;
-};
+import { buildCondition } from './recurse';
+import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
+import { settleLeaf } from './valueSource';
 
 /**
  * The two boolean constants and how Prisma reads them.
@@ -99,7 +26,10 @@ const conditionTouchesBridge = (cond: Condition, options?: BuildOptions): boolea
  * behind — harmless (an unreferenced step is executed and ignored) and necessary: step refs
  * are positional, so nothing may be rebuilt or renumbered.
  */
-const matchAll = (): PrismaWhere => ({});
+export const matchAll = (): PrismaWhere => ({});
+/** Unknown here — a condition across a bridge: over-fetch, and let check() decide. Prisma reads
+ *  it as match-all, and so does every fold. */
+export const overFetch = matchAll;
 export const matchNothing = (): PrismaWhere => ({ OR: [] });
 const isMatchAll = (where: PrismaWhere): boolean => Object.keys(where).length === 0;
 const isMatchNothing = (where: PrismaWhere): boolean => {
@@ -107,36 +37,45 @@ const isMatchNothing = (where: PrismaWhere): boolean => {
   return keys.length === 1 && keys[0] === 'OR' && Array.isArray(where.OR) && where.OR.length === 0;
 };
 
-const andWhere = (arms: PrismaWhere[]): PrismaWhere => {
+/** AND of arms: match-nothing absorbs, match-all drops, one arm stands alone. */
+export const andWhere = (arms: PrismaWhere[]): PrismaWhere => {
   if (arms.some(isMatchNothing)) return matchNothing();
   const rest = arms.filter((arm) => !isMatchAll(arm));
-  return rest.length === 0 ? matchAll() : { AND: rest };
+  if (rest.length === 0) return matchAll();
+  return rest.length === 1 ? rest[0] : { AND: rest };
 };
 
-const orWhere = (arms: PrismaWhere[]): PrismaWhere => {
+/** OR of arms: match-all absorbs, match-nothing drops, one arm stands alone. */
+export const orWhere = (arms: PrismaWhere[]): PrismaWhere => {
   if (arms.some(isMatchAll)) return matchAll();
   const rest = arms.filter((arm) => !isMatchNothing(arm));
-  return rest.length === 0 ? matchNothing() : { OR: rest };
+  if (rest.length === 0) return matchNothing();
+  return rest.length === 1 ? rest[0] : { OR: rest };
 };
 
-const notWhere = (where: PrismaWhere): PrismaWhere => {
-  if (isMatchAll(where)) return matchNothing();
-  if (isMatchNothing(where)) return matchAll();
-  return { NOT: where };
-};
+/** A leaf filter's complement. A bridged leaf compiles to the over-fetch sentinel `{}` —
+ *  unknown, not true — and its complement stays unknown; Prisma reads `NOT: {}` as match-all too. */
+export const notLeaf = (where: PrismaWhere): PrismaWhere =>
+  isMatchAll(where) ? where : { NOT: where };
 
-export const buildAll = (all: All, options?: BuildOptions, state?: PrismaBuildState): PrismaWhere =>
-  andWhere(all.all.map((c) => buildCondition(c, options, state)));
+export const buildAll = (
+  all: All,
+  options?: ToPrismaOptions,
+  state?: PrismaBuildState,
+): PrismaWhere => andWhere(all.all.map((c) => buildCondition(c, options, state)));
 
-export const buildAny = (any: Any, options?: BuildOptions, state?: PrismaBuildState): PrismaWhere =>
-  orWhere(any.any.map((c) => buildCondition(c, options, state)));
+export const buildAny = (
+  any: Any,
+  options?: ToPrismaOptions,
+  state?: PrismaBuildState,
+): PrismaWhere => orWhere(any.any.map((c) => buildCondition(c, options, state)));
 
 export const buildIfThenElse = (
   cond: IfThenElse,
-  options?: BuildOptions,
+  options?: ToPrismaOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
-  // if → then is equivalent to: NOT(if) OR then
+  // if → then is: (complement of if) OR then
   // With else: (NOT(if) OR then) AND (if OR else)
   //
   // When any sub-clause hits a bridge, the precise compilation breaks. The sentinel `{}`
@@ -147,23 +86,24 @@ export const buildIfThenElse = (
   // other branch present drops that branch. Over-fetch the whole expression and let the
   // caller's check() filter against hydrated cross-source data.
   if (
-    conditionTouchesBridge(cond.if, options) ||
-    conditionTouchesBridge(cond.then, options) ||
-    (cond.else !== undefined && conditionTouchesBridge(cond.else, options))
+    conditionTouchesBridge(cond as Condition, options?.map as FieldMap | undefined, options?.model)
   ) {
-    return {};
+    return overFetch();
   }
 
   // Each clause is built exactly once: a count-based array operator in `if` pushes a
   // GroupByStep as it compiles, and the same clause is reused in both conjuncts below.
   // Boolean branches (`then: true`, `else: false`, …) are compiled like any other
   // condition and folded by orWhere/andWhere/notWhere so no constant lands under OR/NOT.
-  const ifClause = buildCondition(cond.if, options, state);
+  // Prisma's NOT drops a row whose `if` is NULL (a NULL field) that check() reads as false, so
+  // the implication compiles the complement of `if` instead of negating it.
+  const notIf = buildCondition(negate(cond.if, settleLeaf(options)), options, state);
   const thenClause = buildCondition(cond.then, options, state);
-  const implication = orWhere([notWhere(ifClause), thenClause]);
+  const implication = orWhere([notIf, thenClause]);
 
   // !== undefined so `else: false` (deny branch) is emitted rather than skipped.
   if (cond.else !== undefined) {
+    const ifClause = buildCondition(cond.if, options, state);
     const elseClause = buildCondition(cond.else, options, state);
     return andWhere([implication, orWhere([ifClause, elseClause])]);
   }

@@ -1,3 +1,5 @@
+import type { OrderedRuleValue } from './types';
+
 // BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
 // number on every side of a comparison, so 5n matches 5. Past ±2^53 a number cannot hold it
 // exactly and every comparison would be silently wrong, so that throws instead.
@@ -31,9 +33,37 @@ export const readNumber = (raw: unknown, what: string): number | null => {
 export const orderPair = <T>([a, b]: readonly [T, T] | T[]): [T, T] =>
   (b as never) < (a as never) ? [b, a] : [a, b];
 
-/** A list's non-null members, and whether it held a null. */
-export const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
-  if (!Array.isArray(list)) return { values: [], hasNull: false };
+/** A range operand: two ends, or an error naming the operator. */
+export const readPair = (value: unknown, operator: string): [unknown, unknown] => {
+  if (!Array.isArray(value) || value.length !== 2)
+    throw new Error(`${operator} operator requires an array of two values`);
+  return [value[0], value[1]];
+};
+
+/** A range operand whose ends order (numbers, strings, dates), or an error naming the operator. */
+export const readOrderedPair = (value: unknown, operator: string): [unknown, unknown] => {
+  const pair = readPair(value, operator);
+  if (!pair.every(isOrderedValue))
+    throw new Error(
+      `${operator} requires two ends that order — numbers, strings or dates (got ${JSON.stringify(value)})`,
+    );
+  return pair;
+};
+
+/** A set operand: a list, or an error — a scalar is not a set. */
+export const readSet = (value: unknown): unknown[] => {
+  if (!Array.isArray(value))
+    throw new Error(`in / notIn requires a list (got ${JSON.stringify(value)})`);
+  return value;
+};
+
+/** A set operand's non-null members, and whether it names null. */
+export const splitNull = (operand: unknown): { values: unknown[]; hasNull: boolean } => {
+  const list = readSet(operand);
   const values = list.filter((v) => v !== null);
   return { values, hasNull: values.length !== list.length };
 };
+
+/** A value that orders: a string, a number or a Date — also every date input. */
+export const isOrderedValue = (value: unknown): value is OrderedRuleValue =>
+  typeof value === 'string' || typeof value === 'number' || value instanceof Date;

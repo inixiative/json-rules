@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { check, DateOperator } from '../index';
+import { check, DateOperator, toPrisma, toSql } from '../index';
+import { getWhere } from './fixtures/helpers';
 
 // FIX 2: checkDate must be consistent with the engine's config.timeZone policy
 // (default UTC), not sniff the zone from String(value)/host-local parsing.
@@ -169,5 +170,42 @@ describe('checkDate — bindable anchoring zone', () => {
       { timeZone: { bind: 'tz' }, bindings: { tz: 'Asia/Kolkata' } },
     );
     expect(out).toBe(true);
+  });
+});
+
+describe('a period with no timeZone reads in UTC, never the host zone', () => {
+  test('this day', () => {
+    const now = '2026-10-06T23:30:00Z';
+    const rule = {
+      field: 'ts',
+      dateOperator: DateOperator.within,
+      value: { this: 'day' },
+    } as const;
+    expect(check(rule, { ts: '2026-10-06T00:15:00Z' }, { now })).toBe(true);
+    expect(check(rule, { ts: '2026-10-05T23:45:00Z' }, { now })).not.toBe(true);
+  });
+});
+
+describe('a DateTime field rule anchors a zoneless string where a date rule does', () => {
+  const opts = { timeZone: 'Asia/Kolkata' };
+  test('check(), toSql and toPrisma read the same instant', () => {
+    const field = {
+      field: 'ts',
+      operator: 'equals',
+      value: '2024-06-15T09:00',
+      coerceType: 'DateTime',
+    } as never;
+    const date = {
+      field: 'ts',
+      dateOperator: DateOperator.onOrAfter,
+      value: '2024-06-15T09:00',
+    } as const;
+    const row = { ts: '2024-06-15T03:30:00Z' };
+    expect(check(field, row, opts)).toBe(true);
+    expect(check(date, row, opts)).toBe(true);
+    expect(toSql(field, opts).params).toEqual(['2024-06-15T03:30:00.000Z']);
+    expect(getWhere(toPrisma(field, opts))).toEqual({
+      ts: { equals: new Date('2024-06-15T03:30:00Z') },
+    });
   });
 });

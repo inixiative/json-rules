@@ -1,15 +1,19 @@
-import { own } from '../own';
-import type { FieldMap } from '../toPrisma/types.ts';
+import { declaredEnumValues, isJsonEntry } from '../fieldMap/entry';
+import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
+import { modelOf, own } from '../own';
+import { readScopeRef } from '../scope';
 import type { Condition } from '../types.ts';
+import { collectChain, getRoot } from './chain.ts';
+import { narrowAt } from './narrowRule.ts';
 import type {
   Lens,
   LensNarrowing,
   ModelDefaultNarrowing,
   ModelNarrowing,
+  SourceEntry,
   SourceSpec,
-  SourceValue,
 } from './types.ts';
-import { collectChain, getRoot, isJsonEntry, resolveRelationTarget } from './walk.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;
@@ -22,6 +26,9 @@ export type VisitEffect = {
   sourceLabels: Map<string, string>;
   /** Per-field option-partition axes (from a SourceSpec's `groupBy`, normalized); a later layer wins. */
   sourceGroupBys: Map<string, string[]>;
+  /** The chain index of the earliest layer that declared each source's label / axes (keyed by
+   *  `declaredKey`): every layer after it that hides one of those columns drops it. */
+  sourceDeclaredAt: Map<string, number>;
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -30,14 +37,14 @@ export const normalizeGroupBy = (g: string | string[] | undefined): string[] | u
   g === undefined ? undefined : Array.isArray(g) ? g : [g];
 
 /** A `sources` entry is a `SourceSpec` when it carries `where`/`label`/`groupBy`; else it's a bare `Condition`. */
-export const isSourceSpec = (v: SourceValue): v is SourceSpec =>
+export const isSourceSpec = (v: SourceEntry): v is SourceSpec =>
   typeof v === 'object' &&
   v !== null &&
   !Array.isArray(v) &&
   ('where' in v || 'label' in v || 'groupBy' in v);
 
 /** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
-export const normalizeSource = (v: SourceValue): SourceSpec => {
+export const normalizeSource = (v: SourceEntry): SourceSpec => {
   if (isSourceSpec(v)) return v;
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
     throw new Error('sources: {} is not a Condition — use `true` for an unconstrained source');
@@ -82,7 +89,7 @@ export const augmentPicksWithRelations = (
   return out;
 };
 
-export const accumulatePicksOmitsInto = (
+const accumulatePicksOmitsInto = (
   state: { picks: Set<string> | null; omits: Set<string> },
   n: ModelDefaultNarrowing | ModelNarrowing,
 ): void => {
@@ -91,7 +98,7 @@ export const accumulatePicksOmitsInto = (
   if (n.omits) for (const f of n.omits) state.omits.add(f);
 };
 
-export const intersectIntoMap = (
+const intersectIntoMap = (
   map: Map<string, Set<string>>,
   key: string,
   vals: readonly string[],
@@ -99,7 +106,7 @@ export const intersectIntoMap = (
   map.set(key, intersectStringSet(map.get(key) ?? null, vals));
 };
 
-export const unionIntoMap = (
+const unionIntoMap = (
   map: Map<string, Set<string>>,
   key: string,
   vals: readonly string[],
@@ -109,7 +116,7 @@ export const unionIntoMap = (
   map.set(key, s);
 };
 
-export const accumulateEnumFields = (
+const accumulateEnumFields = (
   picksMap: Map<string, Set<string>>,
   omitsMap: Map<string, Set<string>>,
   n: ModelDefaultNarrowing | ModelNarrowing,
@@ -122,17 +129,33 @@ export const accumulateEnumFields = (
   }
 };
 
-const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
+const declaredKey = (field: string, kind: 'label' | 'groupBy', value: string | string[]): string =>
+  JSON.stringify([field, kind, value]);
+
+const accumulateInto = (
+  out: VisitEffect,
+  n: ModelDefaultNarrowing | ModelNarrowing,
+  narrow: (condition: Condition) => Condition,
+  layer: number,
+): void => {
   accumulatePicksOmitsInto(out, n);
-  if (n.where !== undefined) out.whereClauses.push(n.where);
+  if (n.where !== undefined) out.whereClauses.push(narrow(n.where));
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
-      if (spec.where !== undefined) clauses.push(spec.where);
+      if (spec.where !== undefined) clauses.push(narrow(spec.where));
       out.sources.set(field, clauses); // register the field even when only a label is set
-      if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       const axes = normalizeGroupBy(spec.groupBy);
+      for (const [kind, value] of [
+        ['label', spec.label],
+        ['groupBy', axes],
+      ] as const) {
+        if (value === undefined) continue;
+        const key = declaredKey(field, kind, value);
+        if (!out.sourceDeclaredAt.has(key)) out.sourceDeclaredAt.set(key, layer);
+      }
+      if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);
     }
   }
@@ -152,11 +175,12 @@ export const resolveVisit = (
     sources: new Map(),
     sourceLabels: new Map(),
     sourceGroupBys: new Map(),
+    sourceDeclaredAt: new Map(),
     relations: new Map(),
   };
 
-  const fieldMap: FieldMap | undefined = policy.lens.maps[mapName];
-  const model = fieldMap?.models[modelName];
+  const fieldMap: FieldMap | undefined = own(policy.lens.maps, mapName);
+  const model = modelOf(fieldMap, modelName);
   if (!model) return out;
 
   const fieldEnumPicks = new Map<string, Set<string>>();
@@ -164,15 +188,23 @@ export const resolveVisit = (
   const typeEnumPicks = new Map<string, Set<string>>();
   const typeEnumOmits = new Map<string, Set<string>>();
 
+  // A layer's own conditions read through its parent: the relations they reach carry the
+  // grants of every layer above, as a user rule's do — a child can't see what its parent hides.
+  let narrow = (condition: Condition): Condition => condition;
+  let current = 0;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n);
+    accumulateInto(out, n, narrow, current);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
-  for (const narrowing of policy.chain) {
-    const visitMapDefaults = narrowing.mapDefaults?.[mapName];
+  for (const [layer, narrowing] of policy.chain.entries()) {
+    current = layer;
+    const parent: Policy = { lens: policy.lens, chain: policy.chain.slice(0, layer) };
+    narrow = (condition) =>
+      layer === 0 ? condition : narrowAt(condition, parent, { mapName, modelName, relPath });
+    const visitMapDefaults = own(narrowing.mapDefaults, mapName);
     if (visitMapDefaults) {
-      const dflt = visitMapDefaults.models?.[modelName];
+      const dflt = own(visitMapDefaults.models, modelName);
       if (dflt) applyNode(dflt);
       for (const [enumName, enumN] of Object.entries(visitMapDefaults.enums ?? {})) {
         if (enumN.picks) intersectIntoMap(typeEnumPicks, enumName, enumN.picks);
@@ -188,7 +220,7 @@ export const resolveVisit = (
       }
     } else {
       for (const seg of relPath) {
-        node = node?.relations?.[seg];
+        node = own(node?.relations, seg);
         if (!node) break;
       }
       if (node) {
@@ -206,7 +238,7 @@ export const resolveVisit = (
     // test/lens.sourceOptionsGating.test.ts).
     const optionValues = entry.options?.map((o) => o.value);
     const baseValues =
-      optionValues ?? (isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values);
+      optionValues ?? (isEnum ? declaredEnumValues(entry, fieldMap?.enums) : entry.values);
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;
     if (isEnum) {
@@ -238,9 +270,9 @@ export const allowedEnumValues = (
 
 export type LensPathHop = {
   field: string;
-  entry: import('../toPrisma/types.ts').FieldMapEntry;
+  entry: FieldMapEntry;
   mapName: string;
-  modelName: string;
+  model: string;
   /** The relation path from the lens anchor to the model this hop reads. */
   relPath: string[];
 };
@@ -257,28 +289,28 @@ export type LensPathResolution =
 
 export const resolvePolicyPath = (
   policy: Policy,
-  startMap: string,
-  startModel: string,
-  startPath: readonly string[],
+  from: MapVisit,
   path: string,
 ): { resolution: LensPathResolution; effects: VisitEffect[] } => {
   const parts = path.split('.');
-  let mapName = startMap;
-  let modelName = startModel;
-  let relPath = [...startPath];
   const hops: LensPathHop[] = [];
   const effects: VisitEffect[] = [];
-
-  for (let i = 0; i < parts.length; i++) {
-    const model = policy.lens.maps[mapName]?.models[modelName];
-    if (!model) return { resolution: { outcome: 'missing', index: i, hops }, effects };
-    const effect = resolveVisit(policy, mapName, modelName, relPath);
-    const fieldName = parts[i];
-    const entry = own(model.fields, fieldName);
+  for (const { index: i, field: fieldName, at, entry, next } of walkMaps(
+    policy.lens.maps,
+    from,
+    path,
+  )) {
     if (!entry) return { resolution: { outcome: 'missing', index: i, hops }, effects };
+    const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
     if (!isFieldVisible(effect, fieldName))
       return { resolution: { outcome: 'hidden', index: i, hops }, effects };
-    const hop: LensPathHop = { field: fieldName, entry, mapName, modelName, relPath: [...relPath] };
+    const hop: LensPathHop = {
+      field: fieldName,
+      entry,
+      mapName: at.mapName,
+      model: at.modelName,
+      relPath: [...at.relPath],
+    };
     hops.push(hop);
     effects.push(effect);
     const last = i === parts.length - 1;
@@ -295,49 +327,142 @@ export const resolvePolicyPath = (
         effects,
       };
     }
-    const target = resolveRelationTarget(entry, mapName);
-    if (!target) return { resolution: { outcome: 'pastScalar', index: i, hops }, effects };
-    relPath = [...relPath, fieldName];
-    mapName = target.mapName;
-    modelName = target.modelName;
+    if (!next) return { resolution: { outcome: 'pastScalar', index: i, hops }, effects };
   }
   return { resolution: { outcome: 'missing', index: parts.length, hops }, effects };
 };
 
-export const walkLensPath = (
+/**
+ * Whether a source's label or axes, as in force at a visit, read only columns every layer but
+ * their earliest declaration shows. The declaring layer may source a column it hides itself; any
+ * other layer that hides it — an ancestor, or a layer after — drops it, so re-declaring an
+ * ancestor's label never revives what a layer in between hid. A path that doesn't resolve stays,
+ * for the compile to refuse.
+ */
+export const sourceReadsVisible = (
   policy: Policy,
-  startMap: string,
-  startModel: string,
-  startPath: readonly string[],
+  effect: VisitEffect,
+  at: MapVisit,
+  field: string,
+  kind: 'label' | 'groupBy',
+): boolean => {
+  const value =
+    kind === 'label' ? effect.sourceLabels.get(field) : effect.sourceGroupBys.get(field);
+  if (value === undefined) return true;
+  const from = effect.sourceDeclaredAt.get(declaredKey(field, kind, value)) ?? -1;
+  const others = { lens: policy.lens, chain: policy.chain.filter((_, i) => i !== from) };
+  return (typeof value === 'string' ? [value] : value).every(
+    (path) => resolvePolicyPath(others, at, path).resolution.outcome !== 'hidden',
+  );
+};
+
+export const lensPathEnd = (
+  policy: Policy,
+  from: MapVisit,
   fieldPath: string,
 ): {
   mapName: string;
   modelName: string;
   relPath: string[];
-  entry: import('../toPrisma/types.ts').FieldMapEntry;
-  hopEffects: VisitEffect[];
+  entry: FieldMapEntry;
   terminalEffect: VisitEffect;
   terminalFieldName: string;
   /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
   jsonSubPath: string[];
 } | null => {
-  const { resolution, effects } = resolvePolicyPath(
-    policy,
-    startMap,
-    startModel,
-    startPath,
-    fieldPath,
-  );
+  const { resolution, effects } = resolvePolicyPath(policy, from, fieldPath);
   if (resolution.outcome !== 'resolved') return null;
   const { terminal, jsonSubPath } = resolution;
   return {
     mapName: terminal.mapName,
-    modelName: terminal.modelName,
+    modelName: terminal.model,
     relPath: terminal.relPath,
     entry: terminal.entry,
-    hopEffects: effects.slice(0, -1),
     terminalEffect: effects[effects.length - 1],
     terminalFieldName: terminal.field,
     jsonSubPath,
   };
+};
+
+/** Where a rule visit stands: a model reached through the lens, or open inside a Json value. */
+export type VisitScope = MapVisit & { open: boolean };
+
+export const lensRootScope = (policy: Policy): VisitScope => ({
+  mapName: policy.lens.mapName,
+  modelName: policy.lens.model,
+  relPath: [],
+  open: false,
+});
+
+export type LensWalk = NonNullable<ReturnType<typeof lensPathEnd>>;
+
+/**
+ * The scope a node's `field` leads into — where its `condition` / `filter` resolve — with the
+ * scope the walk started from and the walk that reached it (none inside an open Json scope), or the issue that stops it. A `$`-prefixed
+ * field counts scopes up the stack as check() does.
+ */
+export const stepIntoField = (
+  policy: Policy,
+  scopes: readonly VisitScope[],
+  field: string,
+):
+  | { from: VisitScope; next: VisitScope; walked: LensWalk | null }
+  | { issue: { code: 'scope_out_of_bounds' | 'not_in_lens'; message: string } } => {
+  const target = readScopeRef(field, scopes);
+  if ('outOfBounds' in target)
+    return { issue: { code: 'scope_out_of_bounds', message: target.outOfBounds } };
+  if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
+  const walked = lensPathEnd(policy, target.scope, target.path);
+  if (!walked)
+    return {
+      issue: { code: 'not_in_lens', message: 'path does not resolve through the narrowed lens' },
+    };
+  const open = isJsonEntry(walked.entry);
+  const relation = relationTargetOf(walked.entry, walked.mapName);
+  const next = relation
+    ? { ...relation, relPath: [...walked.relPath, walked.terminalFieldName], open }
+    : { ...target.scope, open };
+  return { from: target.scope, next, walked };
+};
+
+/** A relation a path crosses: the visit it reaches, its dotted prefix, and whether it's to-many. */
+export type RelationHop = {
+  map: string;
+  model: string;
+  relPath: string[];
+  prefix: string;
+  isList: boolean;
+};
+
+/**
+ * The relations a path crosses from a visit, read from the field maps — grants apply to a relation
+ * whether or not it is visible, so this walk does not gate. It stops at the first segment that
+ * isn't a relation; `end` is the visit the last segment reaches when every segment is one.
+ * `prefix` is prepended to each hop's dotted prefix (a `$`-scope ref).
+ */
+export const relationHops = (
+  maps: Record<string, FieldMap>,
+  from: MapVisit,
+  path: string,
+  prefix = '',
+): {
+  hops: RelationHop[];
+  end: MapVisit | null;
+} => {
+  const parts = path.split('.');
+  const hops: RelationHop[] = [];
+  let end: MapVisit | null = null;
+  for (const { index: i, field, at, entry, next } of walkMaps(maps, from, path)) {
+    if (!entry || !next) break;
+    const relPath = [...at.relPath, field];
+    hops.push({
+      map: next.mapName,
+      model: next.modelName,
+      relPath,
+      prefix: `${prefix}${parts.slice(0, i + 1).join('.')}`,
+      isList: entry.isList === true,
+    });
+    if (i === parts.length - 1) end = { ...next, relPath: [...relPath] };
+  }
+  return { hops, end };
 };

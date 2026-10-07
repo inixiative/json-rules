@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
+import type { FieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 const map: FieldMap = {
   models: {
@@ -42,15 +42,15 @@ const atLineItems = (leaf: unknown) => ({
   },
 });
 
-const gate = (rule: unknown) => checkRuleAgainstLens(rule as never, lens);
+const gate = (rule: unknown) => validateRuleInLens(rule as never, lens);
 
 describe('lens gate — scoped path refs walk from the ancestor visit', () => {
   test('$$. path resolves against the enclosing Order', () => {
     const ok = gate(atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$.maxQty' }));
-    expect(ok).toEqual({ ok: true, violations: [] });
+    expect(ok).toEqual({ ok: true, errors: [] });
     const bad = gate(atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$.maxQty' }));
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('$.maxQty');
+    expect(bad.errors[0]?.path).toBe('$.maxQty');
   });
 
   test('$$$. path resolves against the Org root; $$. does not reach it', () => {
@@ -59,7 +59,7 @@ describe('lens gate — scoped path refs walk from the ancestor visit', () => {
     ).toBe(true);
     const bad = gate(atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$.limit' }));
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('$$.limit');
+    expect(bad.errors[0]?.path).toBe('$$.limit');
   });
 
   test('bare path still resolves at the lens root regardless of depth', () => {
@@ -73,12 +73,12 @@ describe('lens gate — scoped path refs walk from the ancestor visit', () => {
 
   test('$$. path outside the narrowed lens is a violation', () => {
     const narrowed = { parent: lens, root: { relations: { orders: { omits: ['maxQty'] } } } };
-    const result = checkRuleAgainstLens(
+    const result = validateRuleInLens(
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$.maxQty' }) as never,
       narrowed,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0]?.path).toBe('$$.maxQty');
+    expect(result.errors[0]?.path).toBe('$$.maxQty');
   });
 });
 
@@ -89,7 +89,7 @@ describe('lens gate — scoped field refs', () => {
     ).toBe(true);
     const bad = gate(atLineItems({ field: '$$.sku', operator: Operator.exists }));
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('$$.sku');
+    expect(bad.errors[0]?.path).toBe('$$.sku');
   });
 
   test('$$.field against $$$.path gates each side at its own scope', () => {
@@ -100,7 +100,7 @@ describe('lens gate — scoped field refs', () => {
       atLineItems({ field: '$$.maxQty', operator: Operator.lessThan, path: '$$$.maxQty' }),
     );
     expect(bad.ok).toBe(false);
-    expect(bad.violations.map((v) => v.path)).toEqual(['$$$.maxQty']);
+    expect(bad.errors.map((v) => v.path)).toEqual(['$$$.maxQty']);
   });
 
   test('prefixed field on an array rule descends into the ancestor collection', () => {
@@ -120,7 +120,7 @@ describe('lens gate — scoped field refs', () => {
       }),
     );
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('sku');
+    expect(bad.errors[0]?.path).toBe('sku');
   });
 });
 
@@ -130,20 +130,20 @@ describe('lens gate — out of bounds', () => {
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$$$.limit' }),
     );
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('$$$$.limit');
-    expect(bad.violations[0]?.reason).toMatch(/depth 4.*only 3/);
+    expect(bad.errors[0]?.path).toBe('$$$$.limit');
+    expect(bad.errors[0]?.message).toMatch(/depth 4.*only 3/);
   });
 
   test('field deeper than the nesting is a violation', () => {
     const bad = gate({ field: '$$.limit', operator: Operator.greaterThan, value: 1 });
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('$$.limit');
-    expect(bad.violations[0]?.reason).toMatch(/depth 2.*only 1/);
+    expect(bad.errors[0]?.path).toBe('$$.limit');
+    expect(bad.errors[0]?.message).toMatch(/depth 2.*only 1/);
   });
 
   test('field and path both out of bounds report separately', () => {
     const bad = gate({ field: '$$.limit', operator: Operator.lessThan, path: '$$$.limit' });
-    expect(bad.violations.map((v) => v.path)).toEqual(['$$.limit', '$$$.limit']);
+    expect(bad.errors.map((v) => v.path)).toEqual(['$$.limit', '$$$.limit']);
   });
 });
 
@@ -166,7 +166,7 @@ describe('lens gate — open Json scopes', () => {
     ).toBe(true);
     const bad = gate(inMeta({ field: 'anything', operator: Operator.equals, path: '$$.nope' }));
     expect(bad.ok).toBe(false);
-    expect(bad.violations[0]?.path).toBe('$$.nope');
+    expect(bad.errors[0]?.path).toBe('$$.nope');
   });
 
   test('$$.field from inside a Json element is gated at the Order', () => {

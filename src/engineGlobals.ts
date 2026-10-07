@@ -1,5 +1,6 @@
-import { cloneDeep, get, merge, set } from 'lodash-es';
+import { cloneDeep, cloneDeepWith, isPlainObject, merge, set } from 'lodash-es';
 import type { FuzzyConfig } from './fuzzy';
+import { readOwnPath } from './scope';
 
 export type PrismaProvider =
   | 'postgresql'
@@ -19,6 +20,9 @@ export type EngineGlobalsState = {
     datasource: {
       provider: PrismaProvider;
     };
+    /** Prisma's `AnyNull` — matches a DB NULL, a JSON null and an absent Json path. Defaults to
+     *  your installed @prisma/client's; set it only to use another. */
+    anyNull?: unknown;
   };
 };
 
@@ -40,14 +44,21 @@ const DEFAULTS: EngineGlobalsState = {
 
 let store: EngineGlobalsState = cloneDeep(DEFAULTS);
 
+// Plain data is copied; an instance (Prisma's AnyNull) is held as given — Prisma knows it by
+// identity.
+const copy = <T>(value: T): T =>
+  cloneDeepWith(value, (v) =>
+    typeof v === 'object' && v !== null && !Array.isArray(v) && !isPlainObject(v) ? v : undefined,
+  );
+
 const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
 
 export const engineGlobals = {
   set: (path: string, value: unknown): void => {
-    set(store, path, cloneDeep(value));
+    set(store, path, copy(value));
   },
-  get: (path: string): unknown => get(store, path),
+  get: (path: string): unknown => readOwnPath(store, path),
   reset: (): void => {
     store = cloneDeep(DEFAULTS);
   },
@@ -56,7 +67,7 @@ export const engineGlobals = {
   // observe the override. An async `fn` would yield mid-scope and leak/collide, so it throws.
   with: <T>(partial: DeepPartial<EngineGlobalsState>, fn: () => T): T => {
     const prev = store;
-    store = merge(cloneDeep(prev), partial);
+    store = merge(copy(prev), copy(partial));
     try {
       const result = fn();
       if (isThenable(result))

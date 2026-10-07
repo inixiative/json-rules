@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { check, Operator, resolveBindings } from '../index';
+import { bindRule, check, Operator } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 import { getWhere } from './fixtures/helpers';
 
@@ -25,9 +25,9 @@ describe('bind semantics — key presence is the contract', () => {
   });
 });
 
-describe('resolveBindings — normalize nullish, leave absent as tokens', () => {
+describe('bindRule — normalize nullish, leave absent as tokens', () => {
   test('present undefined → value: null', () => {
-    expect(resolveBindings(rule, { brandUuid: undefined })).toEqual({
+    expect(bindRule(rule, { brandUuid: undefined })).toEqual({
       field: 'brandUuid',
       operator: Operator.equals,
       value: null,
@@ -35,7 +35,7 @@ describe('resolveBindings — normalize nullish, leave absent as tokens', () => 
   });
 
   test('present null → value: null', () => {
-    expect(resolveBindings(rule, { brandUuid: null })).toEqual({
+    expect(bindRule(rule, { brandUuid: null })).toEqual({
       field: 'brandUuid',
       operator: Operator.equals,
       value: null,
@@ -43,7 +43,7 @@ describe('resolveBindings — normalize nullish, leave absent as tokens', () => 
   });
 
   test('absent key leaves the token (partial)', () => {
-    expect(resolveBindings(rule, {})).toEqual(rule);
+    expect(bindRule(rule, {})).toEqual(rule);
   });
 });
 

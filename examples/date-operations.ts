@@ -9,7 +9,7 @@ const expiryRule = {
 };
 
 const validProduct = {
-  expiryDate: '2025-12-31',
+  expiryDate: '2099-12-31',
 };
 
 const expiredProduct = {
@@ -69,7 +69,7 @@ console.log(check(endAfterStartRule, validRange)); // true
 console.log(check(endAfterStartRule, invalidRange)); // "End date must be after start date"
 
 // Example 5: Complex date validation with logical operators
-const bookingRule = {
+export const bookingRule = {
   all: [
     // Must be in the future
     {
@@ -106,9 +106,9 @@ const upcomingEventsRule = {
 
 const events = {
   events: [
-    { name: 'Conference', date: '2025-03-15' },
-    { name: 'Workshop', date: '2025-04-20' },
-    { name: 'Seminar', date: '2025-05-10' },
+    { name: 'Conference', date: '2099-03-15' },
+    { name: 'Workshop', date: '2099-04-20' },
+    { name: 'Seminar', date: '2099-05-10' },
   ],
 };
 

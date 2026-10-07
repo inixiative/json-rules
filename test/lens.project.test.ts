@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge } from '../src/fieldMap/types';
-import { projectByPath } from '../src/lens/projectByPath';
+import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
-import type { FieldMap } from '../src/toPrisma/types';
 import { at } from './fixtures/helpers';
 
 const prismaMap: FieldMap = {
@@ -63,10 +62,10 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('projectByPath', () => {
+describe('projectPaths', () => {
   test('empty chain returns single root entry with all fields', () => {
-    const out = projectByPath(lens);
-    expect([...out.keys()]).toEqual(['FanUser']);
+    const out = projectPaths(lens);
+    expect(Object.keys(out)).toEqual(['FanUser']);
     const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeDefined();
@@ -74,7 +73,7 @@ describe('projectByPath', () => {
 
   test('picks restrict to listed fields at root', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
-    const out = projectByPath(n);
+    const out = projectPaths(n);
     const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeUndefined();
@@ -83,7 +82,7 @@ describe('projectByPath', () => {
 
   test('omits drop listed fields at root', () => {
     const n = withParent(lens, { root: { omits: ['deletedAt', 'name'] } });
-    const out = projectByPath(n);
+    const out = projectPaths(n);
     const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeUndefined();
@@ -97,12 +96,12 @@ describe('projectByPath', () => {
         relations: { fanMissions: { picks: ['missionUuid'] } },
       },
     });
-    const out = projectByPath(n);
+    const out = projectPaths(n);
     const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.fanMissions).toBeDefined();
     const nested = at(out, 'FanUser.fanMissions');
-    expect(nested.modelName).toBe('FanMission');
+    expect(nested.model).toBe('FanMission');
     expect(nested.fields.missionUuid).toBeDefined();
     expect(nested.fields.status).toBeUndefined();
     expect(nested.fields.id).toBeUndefined();
@@ -116,10 +115,10 @@ describe('projectByPath', () => {
         },
       },
     });
-    const out = projectByPath(n);
+    const out = projectPaths(n);
     const bridged = at(out, 'FanUser.salesforce:Contact');
     expect(bridged.mapName).toBe('salesforce');
-    expect(bridged.modelName).toBe('Contact');
+    expect(bridged.model).toBe('Contact');
     expect(bridged.fields.industry).toBeDefined();
     expect(bridged.fields.id).toBeUndefined();
   });
@@ -128,7 +127,7 @@ describe('projectByPath', () => {
     const n1 = withParent(lens, { root: { picks: ['email', 'name', 'id'] } });
     const n2 = withParent(n1, { root: { picks: ['email', 'name'] } });
     const n3 = withParent(n2, { root: { omits: ['name'] } });
-    const out = projectByPath(n3);
+    const out = projectPaths(n3);
     const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeUndefined();
@@ -138,7 +137,7 @@ describe('projectByPath', () => {
 
   test('does not mutate input', () => {
     const n = withParent(lens, { root: { picks: ['email'] } });
-    projectByPath(n);
+    projectPaths(n);
     expect(stitched.maps.prisma.models.FanUser.fields.email).toBeDefined();
     expect(stitched.maps.prisma.models.FanUser.fields.name).toBeDefined();
   });

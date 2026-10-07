@@ -1,19 +1,20 @@
 import { resolveExpr } from '../amount';
-import { coerceDateLiteral } from '../date';
+import { coerceDateLiteral, dayNumbers } from '../date';
 import {
   isDateExpr,
   requireNow,
   resolveDateExprRange,
   resolvePointForOperator,
   rollingShift,
-  zoneOf,
 } from '../dateExpr';
-import { orderPair } from '../number';
+import { noCompiledForm, rangeExprRequired, unknownOperator } from '../errors';
+import type { FieldShape } from '../fieldMap/shape';
+import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
+import { NEGATED_OPERATORS } from '../operatorCatalog';
 import type { DateExpr, DateRule } from '../types';
-import { compareSql, ORDERED_SQL, orNull, rangeSql } from './compare';
-import { mapDayNames } from './dayNames';
-import { resolveFieldSql } from './join';
+import { compareSql, noOperandSql, orderedSql, orNull, rangeSql } from './compare';
+import { type FieldSql, resolveField } from './join';
 import { offsetDate } from './offset';
 import { nextParam } from './params';
 import { asInstant, readsRow, shiftDate } from './shift';
@@ -27,46 +28,82 @@ import {
   resolveSource,
 } from './valueSource';
 
+// A known bound binds as an ISO instant, which compares against the column as stored. A bound
+// read per row, or a date stored as text, compares as instants on both sides — independent of
+// the column types and the session zone.
+const asOperand = (rhs: ResolvedRhs, state: BuilderState): ResolvedRhs =>
+  rhs.type === 'column' && !rhs.computed
+    ? { type: 'column', sql: asInstant(rhs, state), computed: true }
+    : rhs;
+
+// A date reads from a DateTime column, or text (a String column, a Json path), or a field the map
+// doesn't declare; a number, an enum, a list or a whole Json column is not one on Postgres.
+const readsDate = (shape: FieldShape | undefined): boolean =>
+  shape === undefined ||
+  shape === 'instant' ||
+  shape === 'text' ||
+  shape === 'json-path' ||
+  shape === 'unknown';
+const notADate = (field: string): Error =>
+  noCompiledForm('toSql', `A date rule on '${field}'`, 'it is not a date column');
+
+const sides = (
+  field: FieldSql,
+  ends: ResolvedRhs[],
+  state: BuilderState,
+): { lhs: string; ends: ResolvedRhs[] } => {
+  const perRow = ends.some((end) => end.type === 'column');
+  const text = field.shape === 'json-path' || field.shape === 'text';
+  return perRow || text
+    ? { lhs: asInstant(field, state), ends: ends.map((end) => asOperand(end, state)) }
+    : { lhs: field.sql, ends };
+};
+
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
-  const field = resolveFieldSql(rule.field, state);
-  const ordered = ORDERED_SQL[rule.dateOperator];
-  if (ordered)
-    return compareSql(field, ordered.symbol, resolvePoint(rule, state), !!ordered.negated, state);
+  const field = resolveField(rule.field, state);
+  if (!readsDate(field.shape)) throw notADate(rule.field);
+  const operand = resolveSource(rule, state);
+  if (operand.type === 'column' && !readsDate(operand.shape))
+    throw notADate(String(rule.path ?? rule.field));
+  const ordered = orderedSql(rule.dateOperator, 'date');
+  if (ordered) {
+    const { lhs, ends } = sides(field, [resolvePoint(rule, state)], state);
+    return compareSql(lhs, ordered.symbol, ends[0], ordered.negated, state);
+  }
+
+  const range = (pair: [ResolvedRhs, ResolvedRhs] | null, negated: boolean): string => {
+    if (!pair) return rangeSql(field.sql, null, negated, state);
+    const { lhs, ends } = sides(field, pair, state);
+    return rangeSql(lhs, ends as [ResolvedRhs, ResolvedRhs], negated, state);
+  };
 
   switch (rule.dateOperator) {
     case DateOperator.within:
     case DateOperator.notWithin:
-      return rangeSql(
-        field,
-        resolveWindow(rule, state),
-        rule.dateOperator === DateOperator.notWithin,
-        state,
-      );
+      return range(resolveWindow(rule, state), NEGATED_OPERATORS.includes(rule.dateOperator));
 
     case DateOperator.between:
     case DateOperator.notBetween:
-      return rangeSql(
-        field,
-        resolveRange(rule, state),
-        rule.dateOperator === DateOperator.notBetween,
-        state,
-      );
+      return range(resolveRange(rule, state), NEGATED_OPERATORS.includes(rule.dateOperator));
 
     case DateOperator.dayIn:
     case DateOperator.dayNotIn: {
-      if (!Array.isArray(rule.value)) {
-        throw new Error(`${rule.dateOperator} operator requires an array of day names`);
-      }
-      const zone = nextParam(state, zoneOf(dateConfigOf(state)));
-      const days = nextParam(state, mapDayNames(rule.value.map((day) => String(day))));
-      const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
+      const negated = rule.dateOperator === DateOperator.dayNotIn;
+      const source = resolveSource(rule, state);
+      if (source.type === 'column')
+        throw noCompiledForm('toSql', `A weekday list read from the row ('${rule.path}')`);
+      const numbers = dayNumbers(source.value);
+      if (numbers === null) return noOperandSql(field.sql, negated);
+      const zone = nextParam(state, dateConfigOf(state).timeZone);
+      const days = nextParam(state, numbers);
+      const dow = `EXTRACT(DOW FROM (${asInstant(field, state)} AT TIME ZONE ${zone}))`;
       return rule.dateOperator === DateOperator.dayIn
         ? `${dow} = ANY(${days})`
-        : orNull(field, `${dow} <> ALL(${days})`);
+        : orNull(field.sql, `${dow} <> ALL(${days})`);
     }
 
     default:
-      throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
+      throw unknownOperator((rule as DateRule).dateOperator, 'date');
   }
 };
 
@@ -89,7 +126,7 @@ const expressionPoint = (expr: DateExpr, operator: string, state: BuilderState):
 const toPoint = (value: unknown, operator: string, state: BuilderState): ResolvedRhs => {
   if (value === null || value === undefined) return NO_VALUE;
   if (isDateExpr(value)) return expressionPoint(value, operator, state);
-  return { type: 'value', value: coerceDateLiteral(value, zoneOf(dateConfigOf(state))) };
+  return { type: 'value', value: coerceDateLiteral(value, dateConfigOf(state).timeZone) };
 };
 
 const withOffset = (rhs: ResolvedRhs, rule: DateRule, state: BuilderState): ResolvedRhs =>
@@ -105,7 +142,7 @@ const resolveWindow = (rule: DateRule, state: BuilderState): [ResolvedRhs, Resol
   const source = resolveSource(rule, state);
   if (isMissing(source)) return null;
   if (source.type === 'column' || !isDateExpr(source.value))
-    throw new Error(`${rule.dateOperator} date operator requires a range date expression`);
+    throw rangeExprRequired(rule.dateOperator);
   const rolling = rollingShift(source.value);
   if (rolling && readsRow(rolling[0])) {
     const now = nowOperand(state);
@@ -125,10 +162,9 @@ const resolveRange = (rule: DateRule, state: BuilderState): [ResolvedRhs, Resolv
   const source = resolveSource(rule, state);
   if (isMissing(source)) return null;
   const raw = source.type === 'value' ? source.value : undefined;
-  if (!Array.isArray(raw) || raw.length !== 2) {
-    throw new Error(`${rule.dateOperator} date operator requires an array of two values`);
-  }
-  const points = raw.map((el) => toPoint(el, rule.dateOperator, state));
+  const points = readPair(raw, rule.dateOperator).map((el) =>
+    toPoint(el, rule.dateOperator, state),
+  );
   if (points.some(isMissing)) return null;
   const [first, second] = points;
   const ends: ResolvedRhs[] =

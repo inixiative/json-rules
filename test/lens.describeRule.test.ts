@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../index';
-import { ArrayOperator, createLens, DateOperator, describeRule, Operator } from '../index';
+import {
+  ArrayOperator,
+  createLens,
+  DateOperator,
+  describeRule,
+  Operator,
+  validateRule,
+} from '../index';
 
 const prisma: FieldMap = {
   models: {
@@ -60,7 +67,7 @@ describe('describeRule — single source', () => {
     expect(d.sources).toEqual(['prisma']);
     expect(d.bridgesCrossed).toBe(false);
     expect(d.supportedTargets).toEqual(['check', 'toPrisma', 'toSql']);
-    expect(d.violations).toEqual([]);
+    expect(d.errors).toEqual([]);
   });
 
   test('matches is check + toSql only (no toPrisma)', () => {
@@ -93,7 +100,7 @@ describe('describeRule — single source', () => {
 
   test('unresolvable field is reported as a violation', () => {
     const d = describeRule({ field: 'nope', operator: Operator.equals, value: 1 }, singleSource);
-    expect(d.violations).toEqual(['nope']);
+    expect(d.errors.map((e) => [e.path, e.code])).toEqual([['nope', 'not_in_lens']]);
   });
 });
 
@@ -146,5 +153,22 @@ describe('describeRule — windowing restricts targets', () => {
       singleSource,
     );
     expect(d.supportedTargets).toEqual(['check', 'toPrisma']);
+  });
+
+  test('the targets are the ones validateRule passes — an aggregate with a condition is not toSql', () => {
+    const rule = {
+      field: 'posts',
+      aggregate: { mode: 'sum', field: 'views' },
+      condition: { field: 'title', operator: Operator.equals, value: 'x' },
+      operator: Operator.greaterThan,
+      value: 1,
+    } as never;
+    const d = describeRule(rule, singleSource);
+    expect(d.supportedTargets).toEqual(
+      (['check', 'toPrisma', 'toSql'] as const).filter(
+        (target) => validateRule(rule, { target }).ok,
+      ),
+    );
+    expect(d.supportedTargets).not.toContain('toSql');
   });
 });

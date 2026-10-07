@@ -65,7 +65,7 @@ export const compileBinding = (
 ): null => {
   if (optional === true) return null;
   throw new Error(
-    `Unresolved binding '${name}' — resolve bindings (resolveBindings / resolveLensBindings) before compiling with ${rail}().`,
+    `Unresolved binding '${name}' — resolve bindings (bindRule / bindLens) before compiling with ${rail}().`,
   );
 };
 

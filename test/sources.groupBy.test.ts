@@ -1,17 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  exposedSurface,
+  assertValidNarrowing,
   type Lens,
   type LensNarrowing,
-  projectByPath,
+  materializeSourceQuery,
+  materializeSources,
+  projectLens,
   type SourceValues,
-  sourceQueries,
-  sourceValuesFromQueryRows,
-  sourceValuesFromRows,
-  validateNarrowing,
+  toSourceQueries,
 } from '../index';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
-import type { FieldMap } from '../src/toPrisma/types';
 
 // EAV shape: one physical `value` column whose vocabulary is partitioned by a
 // related definition label — the case a flat DISTINCT source cannot serve.
@@ -92,7 +91,7 @@ const grouped = (): LensNarrowing =>
 
 describe('validateNarrowing — groupBy on a SourceSpec', () => {
   test('accepts a groupBy path through to-one relations ending on a scalar', () => {
-    expect(() => validateNarrowing(grouped())).not.toThrow();
+    expect(() => assertValidNarrowing(grouped())).not.toThrow();
   });
 
   test('accepts a groupBy-only spec (no where, no label)', () => {
@@ -106,7 +105,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('accepts a sibling-column groupBy (single segment)', () => {
@@ -117,7 +116,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test('rejects an unknown segment', () => {
@@ -128,14 +127,14 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(n)).toThrow(/groupBy/);
   });
 
   test('rejects a to-many hop', () => {
     const n = withParent(base, {
       root: { picks: ['tier'], sources: { tier: { groupBy: 'enrichments.value' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(n)).toThrow(/groupBy/);
   });
 
   test('rejects a path ending on a relation', () => {
@@ -146,20 +145,20 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
         },
       },
     });
-    expect(() => validateNarrowing(n)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(n)).toThrow(/groupBy/);
   });
 });
 
-describe('projectByPath — groupBy exposure', () => {
+describe('projectPaths — groupBy exposure', () => {
   test('exposes sourceGroupBys per sourced field', () => {
-    const visit = projectByPath(grouped()).get('User.enrichments');
+    const visit = projectLens(grouped())['User.enrichments'];
     expect(visit?.sourceGroupBys).toEqual({ value: ['map.definition.label'] });
   });
 });
 
-describe('sourceQueries — grouped compile', () => {
+describe('toSourceQueries — grouped compile', () => {
   test('carries groupBy, drops distinct, nests the group path into the prisma select', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     expect(q.groupBy).toEqual(['map.definition.label']);
     expect(q.prisma.distinct).toBeUndefined();
     expect(q.prisma.select).toEqual({
@@ -169,7 +168,7 @@ describe('sourceQueries — grouped compile', () => {
   });
 
   test('selects the joined group column as "__group" in sql', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     expect(q.sql.sql).toContain('SELECT DISTINCT');
     expect(q.sql.sql).toContain('AS "__group_0"');
     expect(q.sql.sql).toContain('LEFT JOIN "FieldDef"');
@@ -183,14 +182,14 @@ describe('sourceQueries — grouped compile', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
+    const [q] = toSourceQueries(n);
     expect(q.groupBy).toBeUndefined();
     expect(q.prisma.distinct).toEqual(['value']);
     expect(q.prisma.select).toEqual({ value: true });
   });
 });
 
-describe('sourceValuesFromRows — grouped materialization', () => {
+describe('materializeSources — grouped materialization', () => {
   test('partitions options by group and dedupes per (group, value)', () => {
     const rows = [
       {
@@ -207,7 +206,7 @@ describe('sourceValuesFromRows — grouped materialization', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(grouped(), rows);
+    const [sv] = materializeSources(grouped(), rows);
     expect(sv.path).toBe('User.enrichments');
     expect(sv.field).toBe('value');
     expect(sv.options).toEqual([
@@ -239,7 +238,7 @@ describe('sourceValuesFromRows — grouped materialization', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(n, rows);
+    const [sv] = materializeSources(n, rows);
     expect(sv.options).toEqual([
       { value: 'orphan' },
       { value: 'grouped', groups: ['business unit'] },
@@ -250,7 +249,7 @@ describe('sourceValuesFromRows — grouped materialization', () => {
 describe('grouped sources — traversed narrowing wheres fold into the compile', () => {
   // The groupBy traversal must honor the same guards as any lens traversal:
   // a relation node's `where` (tenancy/soft-delete) re-roots onto the anchor,
-  // exactly like applyLens folds hop wheres for rules.
+  // exactly like narrowRule folds hop wheres for rules.
   const guarded = (): LensNarrowing =>
     withParent(base, {
       root: {
@@ -270,8 +269,8 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
       },
     });
 
-  test('sourceQueries ANDs the hop where, re-rooted, into composedWhere', () => {
-    const [q] = sourceQueries(guarded());
+  test('toSourceQueries ANDs the hop where, re-rooted, into composedWhere', () => {
+    const [q] = toSourceQueries(guarded());
     expect(q.composedWhere).toEqual({
       field: 'map.brandId',
       operator: Operator.equals,
@@ -279,7 +278,7 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
     });
   });
 
-  test('sourceValuesFromRows excludes rows whose traversed hop fails the guard', () => {
+  test('materializeSources excludes rows whose traversed hop fails the guard', () => {
     const rows = [
       {
         id: 'u1',
@@ -289,20 +288,20 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(guarded(), rows);
+    const [sv] = materializeSources(guarded(), rows);
     expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 });
 
-describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
+describe('materializeSourceQuery — materialize fetched query rows', () => {
   test('extracts the group from prisma-shaped nested rows, deduping per group', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     const rows = [
       { value: 'marketing', map: { definition: { label: 'business unit' } } },
       { value: 'marketing', map: { definition: { label: 'business unit' } } },
       { value: 'sales', map: { definition: { label: 'department' } } },
     ];
-    const sv = sourceValuesFromQueryRows(q, rows);
+    const sv = materializeSourceQuery(q, rows);
     expect(sv).toEqual({
       path: 'User.enrichments',
       mapName: 'app',
@@ -316,17 +315,17 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
   });
 
   test('sql row shape reads the "__group_0" alias explicitly', () => {
-    const [q] = sourceQueries(grouped());
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'marketing', __group_0: 'business unit' }], {
+    const [q] = toSourceQueries(grouped());
+    const sv = materializeSourceQuery(q, [{ value: 'marketing', __group_0: 'business unit' }], {
       rowShape: 'sql',
     });
     expect(sv.options).toEqual([{ value: 'marketing', groups: ['business unit'] }]);
   });
 
   test('prisma row shape (the default) never reads a stray "__group" column', () => {
-    const [q] = sourceQueries(grouped());
+    const [q] = toSourceQueries(grouped());
     // Null hop → ungrouped; a stray scalar column named __group must not mis-group it.
-    const sv = sourceValuesFromQueryRows(q, [{ value: 'v', map: null, __groups: ['STRAY'] }]);
+    const sv = materializeSourceQuery(q, [{ value: 'v', map: null, __groups: ['STRAY'] }]);
     expect(sv.options).toEqual([{ value: 'v' }]);
   });
 
@@ -341,8 +340,8 @@ describe('sourceValuesFromQueryRows — materialize fetched query rows', () => {
         },
       },
     });
-    const [q] = sourceQueries(n);
-    const sv = sourceValuesFromQueryRows(q, [
+    const [q] = toSourceQueries(n);
+    const sv = materializeSourceQuery(q, [
       { value: 'b', mapId: 'Bee' },
       { value: 'a', mapId: 'Ay' },
     ]);
@@ -383,7 +382,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
     });
 
   test('mapDefaults wheres on traversed models fold into composedWhere with no declared hops', () => {
-    const [q] = sourceQueries(tenanted());
+    const [q] = toSourceQueries(tenanted());
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -409,7 +408,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(tenanted(), rows);
+    const [sv] = materializeSources(tenanted(), rows);
     expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 
@@ -440,7 +439,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
         },
       },
     });
-    const [q] = sourceQueries(partial);
+    const [q] = toSourceQueries(partial);
     expect(q.composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -450,7 +449,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
   });
 });
 
-describe('exposedSurface — grouped options survive the per-model union', () => {
+describe('projectModels — grouped options survive the per-model union', () => {
   test('options sharing a value across groups are all preserved', () => {
     const sourceValues: SourceValues[] = [
       {
@@ -464,7 +463,7 @@ describe('exposedSurface — grouped options survive the per-model union', () =>
         ],
       },
     ];
-    const surface = exposedSurface(grouped(), { sourceValues });
+    const surface = projectLens(grouped(), { ...{ sourceValues }, by: 'model' });
     expect(surface.maps.app.models.Enrichment.fields.value.options).toEqual([
       { value: 'marketing', groups: ['business unit'] },
       { value: 'marketing', groups: ['department'] },
@@ -493,7 +492,7 @@ describe('validateNarrowing — conflicting groupBy across layers', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/groupBy/);
+    expect(() => assertValidNarrowing(child)).toThrow(/groupBy/);
   });
 
   test('a child layer re-declaring the SAME groupBy is fine', () => {
@@ -504,7 +503,7 @@ describe('validateNarrowing — conflicting groupBy across layers', () => {
         },
       },
     });
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
   });
 });
 
@@ -531,7 +530,7 @@ describe('option sort — ungrouped is its own leading tier', () => {
         ],
       },
     ];
-    const [sv] = sourceValuesFromRows(n, rows);
+    const [sv] = materializeSources(n, rows);
     expect(sv.options).toEqual([
       { value: 'zzz' },
       { value: 'aaa', groups: [''] },
@@ -565,21 +564,21 @@ describe('validateNarrowing — "__group" is reserved on grouped sources', () =>
     const n = withParent(collisionBase, {
       root: { picks: ['__group'], sources: { __group: { groupBy: 'cat.name' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/__group/);
+    expect(() => assertValidNarrowing(n)).toThrow(/__group/);
   });
 
   test('rejects a grouped source whose label column is named __group', () => {
     const n = withParent(collisionBase, {
       root: { picks: ['id'], sources: { id: { label: '__group', groupBy: 'cat.name' } } },
     });
-    expect(() => validateNarrowing(n)).toThrow(/__group/);
+    expect(() => assertValidNarrowing(n)).toThrow(/__group/);
   });
 
   test('ungrouped sources may still use a __group column (no alias in play)', () => {
     const n = withParent(collisionBase, {
       root: { picks: ['id'], sources: { id: { label: '__group' } } },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 });
 
@@ -601,7 +600,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(n)).not.toThrow();
+    expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
   test("a hop excluded by an ancestor node's picks is an error", () => {
@@ -620,7 +619,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 
   test('a hop the ancestor declares as a relation stays traversable', () => {
@@ -639,7 +638,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).not.toThrow();
+    expect(() => assertValidNarrowing(child)).not.toThrow();
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
@@ -657,7 +656,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 
   test('a label column omitted by an ancestor is an error', () => {
@@ -672,7 +671,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => validateNarrowing(child)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
   });
 });
 
@@ -723,7 +722,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
     });
 
   test('each grouped source composes only its own path narrowing', () => {
-    const byPath = Object.fromEntries(sourceQueries(asym()).map((query) => [query.path, query]));
+    const byPath = Object.fromEntries(toSourceQueries(asym()).map((query) => [query.path, query]));
     expect(byPath['User.enrichments'].composedWhere).toEqual({
       field: 'map.brandId',
       operator: Operator.equals,
@@ -762,7 +761,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    const byPath = Object.fromEntries(sourceQueries(n).map((query) => [query.path, query]));
+    const byPath = Object.fromEntries(toSourceQueries(n).map((query) => [query.path, query]));
     expect(byPath['User.enrichments'].composedWhere).toEqual({
       all: [
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
@@ -782,9 +781,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
       { value: 'acme', map: { brandId: 'b2', definition: { label: 'account' } } },
     ];
     const rows = [{ id: 'u1', enrichments: enrichmentRows, archived: enrichmentRows }];
-    const byPath = Object.fromEntries(
-      sourceValuesFromRows(asym(), rows).map((sv) => [sv.path, sv]),
-    );
+    const byPath = Object.fromEntries(materializeSources(asym(), rows).map((sv) => [sv.path, sv]));
     expect(byPath['User.enrichments'].options).toEqual([
       { value: 'engineering', groups: ['department'] },
     ]);
@@ -808,7 +805,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    expect(() => validateNarrowing(throughKeptPath)).not.toThrow();
+    expect(() => assertValidNarrowing(throughKeptPath)).not.toThrow();
 
     const throughRemovedPath = withParent(parent, {
       root: {
@@ -817,6 +814,47 @@ describe('asymmetric traversal — the same model narrowed differently per path'
         },
       },
     });
-    expect(() => validateNarrowing(throughRemovedPath)).toThrow(/ancestor/);
+    expect(() => assertValidNarrowing(throughRemovedPath)).toThrow(/hidden by another layer/);
   });
+});
+
+describe('re-declaring an ancestor label or axis never revives what a layer between hid', () => {
+  for (const spec of [{ label: 'id' }, { groupBy: 'id' }])
+    test(JSON.stringify(spec), () => {
+      const declares = withParent(base, { root: { sources: { tier: spec } } });
+      const hides = withParent(declares, { root: { omits: ['id'] } });
+      const redeclares = withParent(hides, { root: { sources: { tier: spec } } });
+      expect(() => assertValidNarrowing(redeclares)).toThrow(/hidden by another layer/);
+      const [q] = toSourceQueries(redeclares);
+      expect(q.label).toBeUndefined();
+      expect(q.groupBy).toBeUndefined();
+      expect(q.sql?.sql ?? '').not.toContain('"id"');
+    });
+
+  test('a hidden axis drops from the projected fields too, by path and by model', () => {
+    const declares = withParent(base, { root: { sources: { tier: { groupBy: 'id' } } } });
+    const hides = withParent(declares, { root: { omits: ['id'] } });
+    const [visit] = Object.values(projectLens(hides));
+    expect(visit.sourceGroupBys.tier).toBeUndefined();
+    expect(visit.fields.tier.groupBy).toBeUndefined();
+    expect(
+      projectLens(hides, { by: 'model' }).maps.app.models.User.fields.tier.groupBy,
+    ).toBeUndefined();
+  });
+});
+
+test('a sourced field named after an Object.prototype key plans without inherited label or axes', () => {
+  const proto: Lens = {
+    maps: {
+      app: {
+        models: { User: { fields: { toString: { kind: 'scalar' as const, type: 'String' } } } },
+      },
+    },
+    mapName: 'app',
+    model: 'User',
+  };
+  const [q] = toSourceQueries(withParent(proto, { root: { sources: { toString: true } } }));
+  expect(q.field).toBe('toString');
+  expect(q.label).toBeUndefined();
+  expect(q.groupBy).toBeUndefined();
 });

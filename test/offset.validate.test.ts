@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap } from '../index';
 import { validateRule } from '../index';
-import { prefixConditionFields } from '../src/lens/applyLens';
-import { checkRuleAgainstLens } from '../src/lens/checkRule';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
+import { prefixConditionFields } from '../src/lens/narrowRule';
+import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 
 // The grammar gates an offset where it can mean something, and the lens gates every ref an
 // offset or magnitude names exactly as it gates `path`.
@@ -216,8 +216,8 @@ const narrowed = {
   root: { relations: { rule: { omits: ['secret'] } } },
 };
 
-const gate = (r: object, l: Parameters<typeof checkRuleAgainstLens>[1] = lens) =>
-  checkRuleAgainstLens(rule(r), l);
+const gate = (r: object, l: Parameters<typeof validateRuleInLens>[1] = lens) =>
+  validateRuleInLens(rule(r), l);
 
 const autoResolve = {
   field: 'lastBreachedAt',
@@ -227,7 +227,7 @@ const autoResolve = {
 
 describe('lens gate — offset and magnitude refs', () => {
   test('the auto-resolve guard resolves through the lens', () => {
-    expect(gate(autoResolve)).toEqual({ ok: true, violations: [] });
+    expect(gate(autoResolve)).toEqual({ ok: true, errors: [] });
   });
 
   test('a magnitude ref outside the narrowed lens is a violation', () => {
@@ -236,7 +236,7 @@ describe('lens gate — offset and magnitude refs', () => {
       narrowed,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0]?.path).toBe('$.rule.secret');
+    expect(result.errors[0]?.path).toBe('$.rule.secret');
   });
 
   test('an offset ref outside the narrowed lens is a violation', () => {
@@ -250,13 +250,13 @@ describe('lens gate — offset and magnitude refs', () => {
       narrowed,
     );
     expect(result.ok).toBe(false);
-    expect(result.violations[0]?.path).toBe('$.rule.secret');
+    expect(result.errors[0]?.path).toBe('$.rule.secret');
   });
 
   test('a magnitude must name a number', () => {
     const result = gate({ ...autoResolve, value: { ago: { seconds: { path: '$.rule.name' } } } });
     expect(result.ok).toBe(false);
-    expect(result.violations[0]?.path).toBe('$.rule.name');
+    expect(result.errors[0]?.path).toBe('$.rule.name');
   });
 
   test('a numeric offset needs a numeric field', () => {
@@ -267,7 +267,7 @@ describe('lens gate — offset and magnitude refs', () => {
       offset: { value: 1 },
     });
     expect(result.ok).toBe(false);
-    expect(result.violations[0]?.path).toBe('note');
+    expect(result.errors[0]?.path).toBe('note');
   });
 
   test('a numeric offset on a numeric field passes', () => {
@@ -301,7 +301,7 @@ describe('describeRule — offset and magnitude refs restrict targets like path'
   });
 });
 
-describe('applyLens refuses to re-root a grant with an offset or magnitude ref', () => {
+describe('narrowRule refuses to re-root a grant with an offset or magnitude ref', () => {
   test('a magnitude ref', () => {
     expect(() => prefixConditionFields(rule(autoResolve), 'incidents')).toThrow('path reference');
   });

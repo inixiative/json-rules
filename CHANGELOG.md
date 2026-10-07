@@ -1,5 +1,312 @@
 # Changelog
 
+## 3.0.0 — one verb, one name, one implementation
+
+A consolidation release. Every operation has one public name and one implementation;
+`docs/VERBS.md` is the catalog and `test/verbs.test.ts` keeps it that way. `src/` grew by about
+1,250 lines (12%) over 2.27.0. The growth is the rails agreeing: typed Json comparisons in SQL,
+enums, case-insensitivity, RE2 patterns and the refusals each rail now states where it can't
+express a rule.
+
+### Breaking: renamed and reshaped API
+
+| 2.x | 3.0 |
+| --- | --- |
+| `applyLens(rule, lens)` | `narrowRule(rule, lens)` |
+| `checkRuleAgainstLens(rule, lens)` → `{ ok, violations: { path, reason }[] }` | `validateRuleInLens(rule, lens)` → `{ ok, errors: { path, message, code }[] }` |
+| `stampCoercions(rule, lens)` | `coerceRule(rule, lens)` |
+| `resolveBindings(rule, bindings)` | `bindRule(rule, bindings)` |
+| `resolveLensBindings(lens, bindings)` | `bindLens(lens, bindings)` |
+| `bindingNames(rule)` → `Set` | `listBindings(rule)` → sorted `string[]` |
+| `requiredBindings(rule)` → `Set` | `listBindings(rule, { required: true })` → sorted `string[]` |
+| `lensRequiredBindings(lens)` → `Set` | `listLensBindings(lens)` → sorted `string[]` |
+| `projectByPath(lens, opts)` → `Map<path, ProjectedVisit>` | `projectLens(lens, opts)` → `Record<path, ProjectedVisit>` |
+| `exposedSurface(lens, opts)` | `projectLens(lens, { ...opts, by: 'model' })` |
+| `ruleSourceValues(lens, rule)` | `describeRuleSources(rule, lens)` |
+| `sourceQueries(lens)` | `toSourceQueries(lens)` |
+| `sourceValuesFromRows(lens, rows, opts)` | `materializeSources(lens, rows, opts)` |
+| `sourceValuesFromQueryRows(query, rows, opts)` | `materializeSourceQuery(query, rows, opts)` |
+| `executePrismaQueryPlan(plan, delegates)` | `executePrismaPlan(plan, delegates)` |
+| `resolveLensPath(...)` | `walkLensPath(...)` |
+| `resolveScopeRef(ref, scopes)` | `readScopeRef(ref, scopes)` |
+| `validateNarrowing(n)` — throws | `validateNarrowing(n)` → `{ ok, errors }`; `assertValidNarrowing(n)` throws |
+| `validateFieldMapSet(set)` — throws | `validateFieldMaps(set)` → `{ ok, errors }`; `assertValidFieldMaps(set)` throws |
+| `validateFieldMap(map, name)` | `assertValidFieldMaps({ maps: { [name]: map } })` |
+| `buildBridgeDictionary(set, rawData)` | `indexBridges(set, rawData)` |
+| `RuleLensViolation`, `RuleLensCheck` | `ValidationIssue`, `ValidationResult` (`{ path, message, code }`) |
+| `describeRule(...).violations: string[]` | `describeRule(...).errors: ValidationIssue[]` (the lens gate's issues) |
+| `getValueShape(operator)` | `getValueShape(operator, family)` — `family` is `'field' \| 'date' \| 'array'` (`between` is in two) |
+| `getAggregateOperators(target)` | `getAggregateOperators()` — every target compiles them all |
+| `getWindowSupport`, `WindowSupport`, `WINDOW_SELECTOR`, `WindowRuleType` | `validateRule(rule, { target })` reports an unsupported window |
+| `isOperatorSupportedForTarget`, `isAggregateSingleOperator`, `isAggregateRangeOperator` | `getOperatorsForKind(kind, target)`, `getAggregateOperators()`, `validateRule(rule, { target })` |
+| `isCalendarUnit`, `isRelativeUnit`, `RelativeUnit` | `validateRule` reports an unknown or fractional unit |
+| `FIELD_OPERATOR_CATALOG`, `DATE_OPERATOR_CATALOG`, `ARRAY_OPERATOR_CATALOG`, `CatalogEntry`, `ArrayCatalogEntry` | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape` |
+| `BuildOptions`, `SqlResult` | `ToPrismaOptions`, `ToSqlResult` — beside `ToSqlOptions`, all named for their verb; both options extend `CompileOptions`, whose `context` is a `Row` |
+| `ProjectOptions` | `ProjectLensOptions` |
+| `CreateLensInput` | `Lens` — `createLens` takes and returns one |
+| `ProjectedVisit.modelName`, `LensPathHop.modelName` | `model`, as on `Lens`, `SourceQuery` and the compile options |
+| `SourceValue` (a `sources` entry), `RuleSourceValues` | `SourceEntry`, `RuleSourceDescription` — `SourceValues` (materialized options) keeps its name |
+| `FieldMap`, `FieldMapEntry`, `SourceOption` from the `toPrisma` / `toSql` entry points | one export each from the package root, with `ModelEntry` |
+| `readBinding`, `validateBindNames`, `resolveCaseInsensitive`, `resolveFuzzy`, `supportsQueryMode`, `fuzzyContains`, `maxFuzzyDistance`, the catalog's internal operator / kind / unit sets | no longer exported |
+
+Every validator returns `{ ok, errors: { path, message, code }[] }` and has an `assert*`
+form that throws. Lens issues carry codes (`not_in_lens`, `operator_kind_mismatch`,
+`invalid_value`, `value_not_allowed`, …).
+
+`validateNarrowing` reports a code per problem (`not_in_lens`, `not_visible`,
+`conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`, `invalid_binding`, and
+the lens gate's own codes for a `where`). `toSql` takes a FieldMapSet with `mapName`, as `toPrisma`
+does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `ToSqlOptions`, `CompileOptions`,
+`ModelEntry`, `SourceSelect`, `ValidateRuleOptions`, `ListBindingsOptions`,
+`MaterializeSourceQueryOptions`. `assertValidRule` labels its error
+`validateRule:` like the other asserts.
+
+`getAggregateOperators()` takes no target: every target compiles every aggregate comparison
+(`toPrisma` gained `notBetween`), and the `unsupported_prisma_aggregate_operator` code is gone.
+
+### A lens has three forms: composed, stored, projected
+
+`StoredLens` is a lens as a database holds it: one record per layer, each with its `id` and the
+ids of every layer it composes with, the base lens first (stored as itself, no parents).
+`storeLens(lens, ids)` writes a composed lens out; `composeLens(id, records)` resolves the records
+back into the composed lens every evaluator takes, validating each layer and failing closed on a
+missing, misplaced or stale record. Projections stay output only.
+
+### Json null checks on Prisma use `Prisma.AnyNull`
+
+A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent; `check()`
+reads all three as null. Prisma matches them together only with its `AnyNull` instance, which
+`toPrisma` takes from your installed `@prisma/client` (a new optional peer dependency). Set
+`engineGlobals.set('prismaOptions.anyNull', …)` only to use a different client's.
+
+### Security
+
+- **A value ref must read a column.** A `path` (or offset / amount ref) ending on a relation
+  passed the lens gate, and `check()` printed the whole related row — hidden columns included —
+  in its error text. The gate rejects it and `toSql` refuses it.
+- **A to-many relation takes array operators only.** `posts contains { … }` (or `equals`, `in`) passed
+  the gate and compared whole child rows in `check()` — hidden columns included; the gate, `toSql`
+  and `toPrisma` now refuse a field or date rule on a to-many relation.
+- **A to-one relation as a field only exists or not.** Ordered and range comparisons on one
+  passed the gate and `toSql` compiled them against the relation's key, which a narrowing can
+  hide.
+- **Option lists honor every ancestor's grant.** A source declared on a relation path read its
+  model's rows with only its own visit's `where`; the grants above it (the root `where`, a
+  parent relation's) now carry down through the inverse relation, and a grant no inverse can
+  carry offers nothing.
+- **The lens gate refuses a node of two kinds** (`operator` and `dateOperator`, `arrayOperator`
+  and `aggregate`, logical and leaf), as `validateRule` does — one shape detector serves both.
+- **Patterns run on RE2** (`re2js`, a runtime dependency), in time linear in the input: no pattern
+  can stall `check()` (`.*.*.*.*!` and `(a+)+` took seconds on short text). What RE2 can't run — a
+  backreference, a lookaround, a flag other than `i` — is refused on every rail; `validateRule`
+  reports `unsupported_pattern`. A RegExp's `i` flag compiles to `~*` / `!~*`.
+
+- **A layer can't revive what a layer above it hid.** A source `label` or `groupBy` axis reads
+  only what every layer but its earliest declaration shows. A grandchild re-declaring an ancestor's
+  label on a column a layer in between omitted shipped that column's values as option labels;
+  `projectLens` and `validateNarrowing` now drop and report it through one check.
+- **A value ref ending on a bridge relation** is refused, as one on a local relation is.
+- **A missing related row is not a hidden one.** `narrowRule` AND-ed a to-one relation's grant
+  onto every rule through it, so `author notExists` could never hold and a negation through the
+  hop lost its NULL rows. A row outside the grant still fails the rule; a relation that isn't
+  there reads as absent.
+- A sourced field named after an `Object.prototype` key no longer inherits a label or axes.
+- A hidden `groupBy` axis drops from the projected fields as well as from `sourceGroupBys`.
+- A `$`-scoped field through a granted to-one hop reads a missing relation as absent too.
+
+### Breaking: the rails agree
+
+`check()`, `toSql` on Postgres, and `toPrisma` on Prisma 7 now agree on every rule they all
+compile. `test/rails.agreement.test.ts` runs all three against one database: PGlite for SQL,
+and real Prisma through PGlite's socket server with a FieldMap that `@inixiative/prisma-map`
+reads off the generated client.
+
+- **An absent path reads as NULL in `check()`**, as a column does in SQL: a missing key or a
+  path through an absent to-one relation. `org.name equals null` matches a user with no org;
+  `notIn [null]` no longer does. `toPrisma` adds the relation's `{ is: null }` arm to
+  `equals null`.
+- **A NULL or absent array is empty** in `check()` (it threw "must be an array"), and an
+  aggregate skips NULL items, as SQL's `SUM` / `AVG` and Prisma's `_sum` / `_avg` do (it threw).
+- **A string or set operator with nothing to compare against** (a context path or optional bind
+  that reads nothing) matches no row, and its negation keeps the NULL fields only — as ordered
+  comparisons already did. `toSql` bound the string `'null'` (so `contains` matched "nullable")
+  and `toPrisma` emitted `contains: null`, which Prisma rejects.
+- **A to-many relation inside a plain field path is an error** on both compilers
+  (`posts.title equals …`): `toSql` matched any child and `toPrisma` emitted an invalid filter.
+  Compare its rows with an array rule on `posts`.
+- **Prisma relation aggregates keep parents with no children** (their sum and average are 0).
+- **A relation `all` fails a child whose condition reads NULL**, as in `check()`: Prisma's
+  `every` passed it. `all` compiles to `none` over the exact complement of its condition.
+- **A bridged condition over-fetches** in `none`, `all`, `atMost` and `exactly` (a matching child
+  can make them false); `none: {}` under-fetched. A bridged `isEmpty` no longer emits
+  `OR: [{}, {}]`, which Prisma reads as match-nothing.
+- **A to-one relation is a field that exists or not**: `org exists`, `org.parent notExists`,
+  `isEmpty` / `notEmpty`, and `equals` / `notEquals` null compile on both compilers (they emitted
+  a missing column and an invalid filter).
+- **Empty is `null`, `''`, or `[]`** on every rail: a list or a Json array with no elements is
+  empty, as `isEmpty` / `notEmpty` and the array operators read it.
+- **Fuzzy containment is refused by the compilers whether the rule or the engine-global default
+  sets it** (a global default made `check()` match fuzzily while both compilers compiled an exact
+  match).
+- **`notStartsWith` / `notEndsWith`** complete the negated operators: every operator now has an
+  exact complement, which Prisma uses for an implication's antecedent and a relation `all`
+  (an implication or `all` over `startsWith` / `endsWith` threw on Prisma).
+- **`caseInsensitive` applies to `in` / `notIn`** on every rail (all three ignored it).
+- **Values compare as JSON does**: by value (a list or an object deeply — `check()` compared them
+  by reference) and never across types. `"3"` never equals `3`, and an ordered comparison or a
+  range only holds between two numbers, two strings or two dates (`check()` coerced `"3" > 1`).
+  `toSql` compares a Json value as `jsonb` against the operand's JSON (it compared `->>` text, so
+  `3` equalled `"3"` and `true` equalled `"true"`); string operators read strings only.
+- **`contains` on a list or a Json array is membership**, and `caseInsensitive` applies to it like
+  to any text: `check()` lowers every string on both sides, a list's members included (it lowered
+  the operand only); SQL compares lowered members. Prisma's list filters have no case-insensitive
+  mode, so a case-insensitive list comparison is refused there. On Prisma, `contains` on
+  Json is `string_contains` OR `array_contains`; `notContains` and `notBetween` on Json have no
+  Prisma form (its Json filters can't test a value's type) and throw.
+- **An enum compares exactly, as its column does.** String, pattern and ordered operators don't
+  apply to an enum (the catalog said so; the compilers emitted `LIKE` on an enum, or a filter
+  Prisma rejects) and are refused. A case-insensitive equality or membership — or one naming a
+  value the enum doesn't declare, which the database refuses to read — compiles to the declared
+  values it matches (`IN (…)`, plus the NULL arm for a negation); the map lists them (prisma-map
+  does).
+- **A string literal on a number or Boolean column without `coerceType` is refused** by the
+  compilers (`toSql` cast it, `toPrisma` handed it to Prisma, `check()` compared it strictly);
+  stamp `coerceType` to compare it.
+- **`in` / `notIn` with a scalar, and an unknown period unit, throw on every rail** (they compiled
+  to an empty set and to a millisecond).
+- **`toSql` array `empty` on a Json value holding JSON null** no longer fails
+  (`jsonb_array_length` of a scalar); array and field emptiness share one form.
+- **A string of digits is epoch milliseconds** on the date rail too, as a `coerceType: DateTime`
+  field rule read it (`'1700000000000'` parsed as a year).
+- **`indexBridges` reads own properties only**: a row keyed `constructor` was a spurious duplicate,
+  and a map named after an `Object.prototype` member wrote onto it.
+- **Dates in Json read as `check()` reads them on SQL** — digits as epoch milliseconds, a zoned
+  string as its instant, a zoneless one as wall time in the evaluation's zone (it read in the
+  database session's zone). Prisma compares Json as text, so a date rule on Json is refused there.
+- **A Json value compares against an operand known at compile time**, an offset included (an
+  offset made SQL compare `->>` text); a per-row operand on Json is refused on SQL.
+- **Refused where a database would answer differently:** an ordered comparison or range against a
+  boolean, list or object (Prisma panicked); the complement of an ordered comparison on Json on
+  Prisma (it drops the other types); membership of an object or list in a Json array on Prisma
+  (`array_contains` matches partially — SQL now compares members exactly); `startsWith` /
+  `endsWith` on a list; a number or boolean literal on a String column without `coerceType`;
+  an aggregate mode other than `sum` / `avg` on Prisma.
+- **`toPrisma` escapes `%` and `_`** in `contains` / `startsWith` / `endsWith` (and Json `string_*`):
+  Prisma matches with LIKE and passed them through as wildcards.
+- **A scalar list `exists` / `notEquals`** compile on Prisma (`{ not: null }` is not a list
+  filter).
+- **A narrowed `all` compiles on Prisma.** `narrowRule` puts an `all` grant in the window `filter`;
+  `toPrisma` folds a filter-only window into the rule (`all` through the exact complement of its
+  condition, the rest as `filter AND condition`). Both compilers threw on it.
+- **A window sorts NULLs last** in both directions: `orderBy views desc, take 1` is the largest
+  value, as "latest" reads (a NULL sorted first). The extremal `all` rewrite on Prisma is exact
+  under it: the array is empty, or some element has a value and none with one breaks the bound.
+- **A `Date` field value compares as DateTime** in `check()` without a `coerceType`, as the
+  compilers read a DateTime column: `createdAt greaterThan '2026-10-05T00:00:00Z'` compared a
+  `Date` with a string.
+- **An implication with a NULL antecedent** holds on every rail (`NOT(if)` was NULL in SQL).
+
+Prisma filters by column kind, from the map (a stamped `coerceType` is the fallback):
+
+- **Json**: `contains` / `startsWith` / `endsWith` compile to `string_contains` / … ; `in` /
+  `notIn` to one `equals` / `not` per value; negations on a path keep absent paths.
+- **Scalar lists**: `contains` compiles to `has`; `empty` / `notEmpty` to `isEmpty` (a NULL list
+  is empty). Element conditions over a list or a Json array have no Prisma form and throw.
+- **`caseInsensitive`** applies to text only; `mode: 'insensitive'` on an Int column was a
+  Prisma error, and `toSql` no longer emits `LOWER()` on a non-text column.
+
+On the SQL rail:
+
+- **A whole Json column's JSON `null` is NULL** (`NULLIF(col, 'null'::jsonb)`): `meta exists` no
+  longer matches it.
+- **A Json path compared against a number compares numerically**; it compared `->>` text, so
+  `'3' > '25'`.
+- **A scalar list `contains`** compiles to `array_position(col, $n) IS NOT NULL` (it emitted
+  `LIKE` on an array).
+- **No session-zone dependence.** A `Date` parameter binds as its ISO-8601 instant (drivers
+  serialize a `Date` in the host zone, which a `timestamp` column then reads as wall time). A
+  date compared against a per-row operand, or a weekday, reads a DateTime column through its
+  epoch, which a `timestamp` column holding UTC wall time and a `timestamptz` share; it was cast
+  `::timestamptz` through the session zone.
+
+- **A case-insensitive equality matches only its value.** Prisma compiles one to ILIKE and passed
+  `%` and `_` through as wildcards; String columns escape them, and on Json, which Prisma matches
+  as JSON text where an escape is itself escaped, a value with `%`, `_` or a backslash is refused.
+- **`contains` on Json:** a string holds only a string (SQL matched `"a1b" contains 1`); an array
+  holds a member, case-insensitively under the flag (SQL lowers each element; Prisma, whose
+  `array_contains` can't, refuses). A number or boolean compiles to `array_contains` alone.
+- **Patterns mean the same on Postgres.** `toSql` translates RE2's dialect: `.` stops at a
+  newline, word boundaries and `\d` `\w` `\s` and POSIX classes stay ASCII, `\z` becomes `\Z`,
+  `\x41` and octal escapes are characters (not Postgres's longer hex or a backreference), a `-`
+  after a class is literal, a zero-led repeat count is literal text, and `\Q…\E` and named groups
+  translate. A Unicode class, a flag group or a repeat past 255 is refused, and
+  `validateRule(…, { target: 'toSql' })` reports it.
+- **A list `in` / `notIn` a set of lists** compiles as the equalities it means (both compilers
+  threw); Prisma refuses a list holding `null`, which its list filters can't take.
+- **A case-insensitive Json comparison with a list operand** lowers the list's strings on SQL, as
+  `check()` does, and is refused on Prisma; a Json value holding a quote or a control character is
+  refused there too (Prisma's JSON text escapes them).
+- **Operands read per row on SQL:** a list `contains` one; a column compared with a Json value
+  read per row, a set or a pattern read per row, and a date rule on (or read from) a number or
+  boolean column are refused with a clear error rather than a raw Postgres one. A padded epoch
+  string in Json reads as `check()` reads it.
+- **Clear refusals, never raw database errors:** a date rule reads only a DateTime, text or Json
+  path (an enum, a list or a whole Json column is refused); a list `contains` a member read per
+  row only when the member is text and the list holds strings; a string operator on a non-text
+  column, an offset against text, a range end that doesn't order and a quantified anchor in a
+  pattern are refused on SQL.
+- **A date rule on a non-DateTime column** (String, a number) is refused on Prisma, which sent it
+  a `Date`; a Json epoch with a fraction reads on SQL.
+- **An unknown aggregate mode** throws on every rail; `toSql` computed it as AVG, and `check()`
+  returned a failure a negation could turn true.
+
+Three differences remain, all outside the rules' control:
+
+- Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
+  Postgres's `LOWER` under the database collation can differ on letters like `İ`.
+- An array or aggregate rule on a Json value that isn't an array is a data error: `check()`
+  reports it, and SQL, which can't raise per row, reads it as empty.
+- Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
+  `check()` compares UTF-16 code units, Postgres the column's collation.
+
+### Fixed
+
+- **`narrowRule` (was `applyLens`) skipped grants on a relation node with no `condition`**
+  — emptiness, an aggregate, a filter-only node — and never rewrote its `filter`, so grants on
+  relations the filter reached were not injected. Grants now scope its rows through `filter`.
+- **`projectLens` (was `projectByPath`) projected a relation a child layer hid.**
+- **Own-property reads everywhere.** Field-map, narrowing and map-default lookups, and every
+  row / context / item / `orderBy` path read (lodash `get` is gone): a name on
+  `Object.prototype` reads as absent. `coerceType: 'toString'` fails validation.
+- **One map walk for every compiler leaf.** `toSql` array and aggregate rules join dotted
+  fields and qualify their columns like field rules; `toPrisma` date and array rules are
+  map-aware (Json sub-paths, bridges). A path past a non-Json column is an error on both
+  compilers; `toSql` read it as a JSON path and `toPrisma` dropped the tail.
+- **The bridge check in an implication sees `filter`.**
+- **One default zone, never the host's.** With no `timeZone`, periods and `now` read in UTC
+  (they read in the host zone). The test suite runs under `TZ=Pacific/Kiritimati`.
+- **A `coerceType: DateTime` field rule anchors a zoneless string in the evaluation zone**, as a
+  date rule does (it read UTC).
+- **Weekday lists** read any value source, and an unknown name throws on every rail
+  (`check()` failed to match).
+- **`describeRuleSources`** marks a leaf dynamic when an offset or a read amount moves its value.
+- `validateRule` treats an empty `orderBy` as no window, like the compilers.
+- **`describeRule`'s `supportedTargets`** are the targets `validateRule` passes (a bridge still
+  limits it to `check`); its own copy of those checks missed an aggregate's `condition` on SQL.
+- **`validateNarrowing` reads inheritance the way the lens resolves it.** An enum value an
+  inherited narrowing hides is `not_visible` (the not-picked case was `invalid_source`), and a
+  relation an ancestor narrows counts as picked for a child's picks / omits, as `projectLens`
+  already read it.
+
+### Output changes
+
+- `toPrisma` leaves a single-arm OR unwrapped (`{ a: … }`, not `{ OR: [{ a: … }] }`).
+- `toPrisma` leaves a single-arm AND unwrapped too.
+- `toPrisma` writes `notContains` as `{ NOT: { f: { contains } } }` for every column kind, and a
+  relation `all` as `{ none: <complement> }`.
+- `toSql` binds `Date` parameters as ISO strings.
+- A `toSql` array or aggregate column is alias-qualified when a map is given.
+
 ## 2.27.0 — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
 
 **First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident

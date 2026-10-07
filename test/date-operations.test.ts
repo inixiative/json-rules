@@ -157,3 +157,21 @@ describe('Date Operations Examples', () => {
     expect(check(upcomingEventsRule, events)).toBe(true);
   });
 });
+
+describe('a string of digits is epoch milliseconds on every reader', () => {
+  test('the date rail and a DateTime field rule agree', () => {
+    const ms = '1700000000000';
+    const at = new Date(1_700_000_000_000);
+    expect(check({ field: 'd', dateOperator: 'onOrAfter', value: ms } as never, { d: at })).toBe(
+      true,
+    );
+    expect(check({ field: 'd', dateOperator: 'after', value: ms } as never, { d: at })).not.toBe(
+      true,
+    );
+    expect(
+      check({ field: 'd', operator: 'equals', value: ms, coerceType: 'DateTime' } as never, {
+        d: at,
+      }),
+    ).toBe(true);
+  });
+});

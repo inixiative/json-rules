@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test';
+import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
-import type { FieldMap } from '../src/toPrisma/types';
 import { toSql } from '../src/toSql';
 import type { Rule } from '../src/types';
 import { getWhere } from './fixtures/helpers';
 
 // How both compilers emit a field rule's literal for the column it targets. A stamped
-// `coerceType` (what stampCoercions and the rule builder write) coerces the literal exactly as
+// `coerceType` (what coerceRule and the rule builder write) coerces the literal exactly as
 // check() does, so all three rails compare the same value; Decimal and BigInt keep their
 // lossless string spelling; columns the map does not type are left alone.
 const map: FieldMap = {
@@ -119,7 +119,7 @@ describe('columns the map does not type are left alone', () => {
       coerceType: 'DateTime',
     };
     expect(prismaWhere(rule)).toEqual({ meta: { path: ['signup'], equals: '2024-01-01' } });
-    expect(sqlParams(rule)).toEqual(['2024-01-01']);
+    expect(sqlParams(rule)).toEqual(['"2024-01-01"']);
   });
 
   test('stamped scalar lists keep their literals', () => {

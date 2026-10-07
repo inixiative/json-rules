@@ -1,3 +1,4 @@
+import type { FieldMap, FieldMapSet } from './fieldMap/types.ts';
 import type { FuzzyConfig } from './fuzzy.ts';
 import type { ArrayOperator, DateOperator, Operator } from './operator.ts';
 import type { FieldKind } from './operatorCatalog.ts';
@@ -131,7 +132,9 @@ export type StrictPatternRule =
 
 export type StrictStringBoundaryRule =
   | (RuleBase<OperatorValues['startsWith']> & ValueSource<string>)
-  | (RuleBase<OperatorValues['endsWith']> & ValueSource<string>);
+  | (RuleBase<OperatorValues['notStartsWith']> & ValueSource<string>)
+  | (RuleBase<OperatorValues['endsWith']> & ValueSource<string>)
+  | (RuleBase<OperatorValues['notEndsWith']> & ValueSource<string>);
 
 export type StrictRangeRule =
   | (RuleBase<OperatorValues['between']> &
@@ -276,7 +279,7 @@ export type Rule<TValue = RuleValue> = ValueSourceFields<TValue> & {
   caseInsensitive?: boolean;
   fuzzy?: boolean | FuzzyConfig;
   // Declared kind both sides coerce to before comparing — never inferred from the
-  // values. Stamp mechanically from a lens via stampCoercions().
+  // values. Stamp mechanically from a lens via coerceRule().
   coerceType?: FieldKind;
 };
 
@@ -348,3 +351,18 @@ export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
   | StrictAny<TRuleValue, TDateValue>
   | StrictIfThenElse<TRuleValue, TDateValue>
   | boolean;
+
+/** A row as a rule reads it: a record of fields. */
+export type Row = Record<string, unknown>;
+
+/** What both compilers take: the schema (a FieldMap, or a FieldMapSet with `mapName`), the
+ *  model the rule reads, the context `$` refs read, and the clock. */
+export type CompileOptions = {
+  map?: FieldMap | FieldMapSet;
+  mapName?: string;
+  model?: string;
+  context?: Row;
+} & DateConfig;
+
+/** What check() evaluates: one row, or a root array of them. */
+export type CheckData = Row | unknown[];

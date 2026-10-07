@@ -1,6 +1,8 @@
-import { orderBy as lodashOrderBy } from 'lodash-es';
+import { ArrayOperator, Operator } from './operator';
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
-import type { ArrayRule, WindowFields } from './types';
+import { readOwnPath } from './scope';
+import { allOf, conditionShape } from './traverse';
+import type { AggregateRule, ArrayRule, Condition, WindowFields } from './types';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
 export const hasWindow = (rule: WindowFields): boolean =>
@@ -12,36 +14,36 @@ export const hasWindow = (rule: WindowFields): boolean =>
 const conditionOpAndField = (condition: unknown): { op: string; field: string } | null => {
   if (typeof condition !== 'object' || condition === null) return null;
   const c = condition as Record<string, unknown>;
-  if ('aggregate' in c) return null; // not a leaf comparison
-  if (typeof c.field !== 'string') return null;
-  if (typeof c.dateOperator === 'string') return { op: c.dateOperator, field: c.field };
-  if (typeof c.operator === 'string') return { op: c.operator, field: c.field };
-  return null;
+  const shape = conditionShape(c);
+  if ((shape !== 'field' && shape !== 'date') || typeof c.field !== 'string') return null;
+  return { op: String(shape === 'date' ? c.dateOperator : c.operator), field: c.field };
 };
 
 /**
  * Extremal-window rewrite for compilation (toPrisma).
  *
- * When `take: 1` selects the extremal element (max via desc / min via asc) and the
- * condition compares that same ordered field with a monotonic operator, the windowed
- * predicate collapses to a plain un-windowed array rule:
- *   - all + (desc & upper-bound) | (asc & lower-bound)  ⟺  every (max/min is the bound)
- *   - any + (desc & lower-bound) | (asc & upper-bound)  ⟺  some
- * `atLeast: 1` is treated as `any`. Returns the de-windowed rule, or null when the
+ * When `take: 1` selects the extremal element (max via desc / min via asc; NULLs sort last, so
+ * it is the extreme non-null value when there is one) and the condition compares that same
+ * ordered field with a monotonic operator, the windowed predicate collapses to un-windowed
+ * array rules:
+ *   - any + (desc & lower-bound) | (asc & upper-bound)  ⟺  some element satisfies it
+ *   - all + (desc & upper-bound) | (asc & lower-bound)  ⟺  the array is empty, or some element
+ *     has a value and every element with one satisfies it
+ * `atLeast: 1` is treated as `any`. Returns the de-windowed condition, or null when the
  * rule is windowed but not extremal-eligible (caller throws "unsupported").
  */
-export const extremalRewrite = (rule: ArrayRule): ArrayRule | null => {
+const extremalRewrite = (rule: ArrayRule): Condition | null => {
   if (rule.filter !== undefined) return null;
   if (rule.skip !== undefined && rule.skip !== 0) return null;
   if (rule.take !== 1) return null;
-  if (!rule.orderBy || rule.orderBy.length !== 1) return null;
+  if (rule.orderBy?.length !== 1) return null;
   const { field: orderField, dir } = rule.orderBy[0];
   if (dir !== 'asc' && dir !== 'desc') return null;
 
   let kind: 'all' | 'any' | null = null;
-  if (rule.arrayOperator === 'all') kind = 'all';
-  else if (rule.arrayOperator === 'any') kind = 'any';
-  else if (rule.arrayOperator === 'atLeast' && rule.count === 1) kind = 'any';
+  if (rule.arrayOperator === ArrayOperator.all) kind = 'all';
+  else if (rule.arrayOperator === ArrayOperator.any) kind = 'any';
+  else if (rule.arrayOperator === ArrayOperator.atLeast && rule.count === 1) kind = 'any';
   if (!kind) return null;
 
   const cof = conditionOpAndField(rule.condition);
@@ -56,7 +58,23 @@ export const extremalRewrite = (rule: ArrayRule): ArrayRule | null => {
   if (!aligned) return null;
 
   const { orderBy, take, skip, count, ...rest } = rule;
-  return { ...rest, arrayOperator: kind };
+  if (kind === 'any') return { ...rest, arrayOperator: ArrayOperator.any } as ArrayRule;
+  const present = { field: orderField, operator: Operator.exists } as Condition;
+  return {
+    any: [
+      { field: rule.field, arrayOperator: ArrayOperator.empty },
+      {
+        all: [
+          { field: rule.field, arrayOperator: ArrayOperator.any, condition: present },
+          {
+            ...rest,
+            arrayOperator: ArrayOperator.all,
+            condition: { if: present, then: rule.condition },
+          },
+        ],
+      },
+    ],
+  } as Condition;
 };
 
 /**
@@ -73,13 +91,61 @@ export const applyWindow = <T>(
   let out = items;
   if (rule.filter !== undefined && filterFn) out = out.filter(filterFn);
   if (rule.orderBy?.length) {
-    out = lodashOrderBy(
-      out,
-      rule.orderBy.map((o) => o.field),
-      rule.orderBy.map((o) => o.dir),
-    );
+    const keys = rule.orderBy;
+    out = [...out].sort((a, b) => {
+      for (const { field, dir } of keys) {
+        const order = compareNullsLast(readOwnPath(a, field), readOwnPath(b, field), dir);
+        if (order !== 0) return order;
+      }
+      return 0;
+    });
   }
   if (rule.skip !== undefined) out = out.slice(rule.skip);
   if (rule.take !== undefined) out = out.slice(0, rule.take);
   return out;
+};
+
+/** Two sort keys in `dir` order, a NULL (or absent) one last either way — the extreme element
+ *  is the extreme value, as "latest" or "earliest" reads. */
+const compareNullsLast = (a: unknown, b: unknown, dir: 'asc' | 'desc'): number => {
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull || bNull) return aNull === bNull ? 0 : aNull ? 1 : -1;
+  const x = a instanceof Date ? a.getTime() : (a as number | string);
+  const y = b instanceof Date ? b.getTime() : (b as number | string);
+  const order = x < y ? -1 : x > y ? 1 : 0;
+  return dir === 'asc' ? order : -order;
+};
+
+/**
+ * A windowed array or aggregate rule as one Prisma can compile, or null when it can't. A filter
+ * alone selects the elements a rule reads, so it folds into the rule: into the condition of any /
+ * none / a count / an aggregate, as the antecedent of `all`, and as the condition of `none` / `any`
+ * for `empty` / `notEmpty`. An unfiltered extremal window rewrites as `extremalRewrite` does.
+ */
+export const windowRewrite = (rule: ArrayRule | AggregateRule): Condition | null => {
+  if (!hasWindow(rule)) return rule as Condition;
+  const ordered = !!rule.orderBy?.length || rule.take !== undefined || rule.skip !== undefined;
+  if (rule.filter !== undefined && !ordered) {
+    const { filter, ...rest } = rule;
+    if ('aggregate' in rule)
+      return {
+        ...rest,
+        condition: rule.condition === undefined ? filter : allOf([filter, rule.condition]),
+      } as Condition;
+    switch (rule.arrayOperator) {
+      case 'all':
+        return { ...rest, condition: { if: filter, then: rule.condition ?? true } } as Condition;
+      case 'empty':
+        return { ...rest, arrayOperator: 'none', condition: filter } as Condition;
+      case 'notEmpty':
+        return { ...rest, arrayOperator: 'any', condition: filter } as Condition;
+      default:
+        return {
+          ...rest,
+          condition: rule.condition === undefined ? filter : allOf([filter, rule.condition]),
+        } as Condition;
+    }
+  }
+  return 'aggregate' in rule || rule.filter !== undefined ? null : extremalRewrite(rule);
 };

@@ -23,7 +23,7 @@ const ineligibleUser = {
 };
 
 console.log(check(userEligibilityRule, eligibleUser)); // true
-console.log(check(userEligibilityRule, ineligibleUser)); // "age must be greater than or equal to 18"
+console.log(check(userEligibilityRule, ineligibleUser)); // "User is not eligible for driving privileges"
 
 // Example 2: OR logic - At least one condition must pass
 const accessRule = {

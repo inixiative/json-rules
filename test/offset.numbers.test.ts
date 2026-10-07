@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { check, resolveBindings, toPrisma, toSql } from '../index';
+import { bindRule, check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // A numeric `offset` shifts a path or bound comparison value: `score >= avg + 5`. The offset
@@ -37,7 +37,7 @@ type Opts = { context?: Record<string, unknown>; bindings?: Record<string, unkno
 
 const bothRails = async (condition: Condition, expected: number[], opts: Opts = {}) => {
   const inMemory = rows.filter((r) => check(condition, r, opts as never) === true).map((r) => r.id);
-  const compiled = opts.bindings ? resolveBindings(condition, opts.bindings as never) : condition;
+  const compiled = opts.bindings ? bindRule(condition, opts.bindings as never) : condition;
   const { sql, params } = toSql(compiled, { context: opts.context });
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
@@ -210,9 +210,7 @@ describe('toPrisma and numeric offsets', () => {
       bind: 'target',
       offset: { path: 'margin' },
     });
-    const where = getWhere(
-      toPrisma(resolveBindings(r, { target: 10 }), { context: { margin: 3 } }),
-    );
+    const where = getWhere(toPrisma(bindRule(r, { target: 10 }), { context: { margin: 3 } }));
     expect(where).toEqual({ score: { gte: 13 } });
   });
 

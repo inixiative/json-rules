@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import type { FieldMapSet } from '../src/fieldMap/types';
-import { applyLens } from '../src/lens/applyLens';
-import { projectByPath } from '../src/lens/projectByPath';
+import { narrowRule } from '../src/lens/narrowRule';
+import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
 
@@ -92,17 +92,17 @@ const targeted: LensNarrowing = {
 const attachment = (deletedAt: string | null, tag: Record<string, unknown>) => ({ deletedAt, tag });
 
 describe("stacked narrowings — every layer's where reaches the projection and the composed rule", () => {
-  test('projectByPath carries the where of each layer at the visit it narrows', () => {
-    const byPath = projectByPath(targeted);
-    expect(byPath.get('User')?.whereClauses).toEqual([
+  test('projectPaths carries the where of each layer at the visit it narrows', () => {
+    const byPath = projectPaths(targeted);
+    expect(byPath.User?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
     ]);
-    expect(byPath.get('User.tagAttachments')?.whereClauses).toEqual([
+    expect(byPath['User.tagAttachments']?.whereClauses).toEqual([
       { field: 'deletedAt', operator: Operator.notExists },
     ]);
-    expect(byPath.get('User.tagAttachments.tag')?.whereClauses).toHaveLength(1);
-    expect(byPath.get('User.tagAttachments.tag')?.fields).toHaveProperty('name');
-    expect(byPath.get('User.tagAttachments.tag')?.fields).not.toHaveProperty('organizationId');
+    expect(byPath['User.tagAttachments.tag']?.whereClauses).toHaveLength(1);
+    expect(byPath['User.tagAttachments.tag']?.fields).toHaveProperty('name');
+    expect(byPath['User.tagAttachments.tag']?.fields).not.toHaveProperty('organizationId');
   });
 
   test('a layer added later ANDs with an earlier where on the same visit — neither replaces the other', () => {
@@ -110,7 +110,7 @@ describe("stacked narrowings — every layer's where reaches the projection and 
       parent: targeted,
       root: { where: { field: 'name', operator: Operator.equals, value: 'Ann' } },
     };
-    expect(projectByPath(twice).get('User')?.whereClauses).toEqual([
+    expect(projectPaths(twice).User?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
       { field: 'name', operator: Operator.equals, value: 'Ann' },
     ]);
@@ -119,7 +119,7 @@ describe("stacked narrowings — every layer's where reaches the projection and 
       arrayOperator: 'any',
       condition: { field: 'tag.name', operator: Operator.equals, value: 'vip' },
     };
-    const composed = applyLens(rule as never, twice);
+    const composed = narrowRule(rule as never, twice);
     const row = (id: string, name: string) => ({
       id,
       name,
@@ -130,13 +130,13 @@ describe("stacked narrowings — every layer's where reaches the projection and 
     expect(check(composed, row('u2', 'Ann'))).not.toBe(true);
   });
 
-  test('applyLens folds all three layers: liveness, ownership and target each decide', () => {
+  test('narrowRule folds all three layers: liveness, ownership and target each decide', () => {
     const rule = {
       field: 'tagAttachments',
       arrayOperator: 'any',
       condition: { field: 'tag.name', operator: Operator.equals, value: 'vip' },
     };
-    const composed = applyLens(rule as never, targeted);
+    const composed = narrowRule(rule as never, targeted);
     const own = { id: 't1', name: 'vip', ownerModel: 'Organization', organizationId: 'org-1' };
     const theirs = { id: 't2', name: 'vip', ownerModel: 'Organization', organizationId: 'org-2' };
     const platform = { id: 't3', name: 'vip', ownerModel: 'platform' };

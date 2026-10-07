@@ -127,10 +127,10 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
 
   if (NEGATED_RANGE_OPERATORS.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
-    return orWhere([notLeaf(at(buildLeafFilter(rule, options))), ...arms]);
+    return orWhere([notLeaf(at(comparisonFilter(rule, options))), ...arms]);
   }
 
-  const filter = at(buildLeafFilter(rule, options));
+  const filter = at(comparisonFilter(rule, options));
   if (
     NEGATED_SINGLE_VALUE_OPERATORS.includes(rule.operator) &&
     resolveRuleValue(rule, options) !== null
@@ -152,7 +152,9 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
   return rule.offset === undefined ? value : offsetNumber(value, rule.offset, options);
 };
 
-const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
+/** A leaf's comparison as a Prisma field filter (a negated range is its positive form; the
+ *  caller negates the clause). */
+export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown => {
   if (rule.fuzzy)
     throw new Error(
       'Fuzzy matching has no Prisma equivalent — evaluate it in memory with check().',

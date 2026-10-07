@@ -106,6 +106,8 @@ export const checkField = (
   context: unknown,
   bindings?: Record<string, RuleValue>,
   config: DateConfig = {},
+  // A computed left-hand side (an aggregate) in place of the field's value.
+  computed?: { value: unknown },
 ): boolean | string => {
   // Only a DateTime coercion reads the zone.
   const zone =
@@ -114,7 +116,7 @@ export const checkField = (
           .timeZone
       : DEFAULT_ZONE;
   const fieldValue = applyCoercion(
-    fromBigInt(readField(condition.field, scopes)),
+    fromBigInt(computed ? computed.value : readField(condition.field, scopes)),
     condition.coerceType,
     zone,
   );

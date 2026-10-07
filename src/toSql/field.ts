@@ -16,19 +16,28 @@ import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
 import { dateConfigOf, isMissing, type ResolvedRhs, resolveSource } from './valueSource';
 
-export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
+/** A field rule as SQL; `lhs` compiles a computed left-hand side (an aggregate) in the column's place. */
+export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): string => {
   if (rule.fuzzy)
     throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
-  const field = resolveFieldSql(rule.field, state);
+  const field = lhs ?? resolveFieldSql(rule.field, state);
+  // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
+  const nullable = lhs === undefined;
   if (RANGE_OPERATORS.includes(rule.operator))
-    return rangeSql(field, resolveRange(rule, state), rule.operator === Operator.notBetween, state);
+    return rangeSql(
+      field,
+      resolveRange(rule, state),
+      rule.operator === Operator.notBetween,
+      state,
+      nullable,
+    );
   const rhs = resolveComparison(rule, state);
   const ordered = ORDERED_SQL[rule.operator];
   if (ordered) return compareSql(field, ordered.symbol, rhs, false, state);
   // An offset compares against arithmetic: NULL there is nothing to compare against, never
   // the is-null sentinel.
   if (rule.offset !== undefined && isMissing(rhs))
-    return noOperandSql(field, NEGATED_COMPARISON_OPERATORS.includes(rule.operator));
+    return noOperandSql(field, NEGATED_COMPARISON_OPERATORS.includes(rule.operator), nullable);
   const arithmetic = rhs.type === 'column' && rhs.computed === true;
   // Case-insensitive compares strings, as check() lowercases only strings.
   const lower =
@@ -41,7 +50,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
 
   // Every negation carries the NULL rows explicitly (see ./compare).
-  const orNull = (expr: string): string => orNullSql(field, expr);
+  const orNull = (expr: string): string => (nullable ? orNullSql(field, expr) : expr);
 
   switch (rule.operator) {
     case Operator.equals:

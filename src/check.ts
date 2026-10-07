@@ -5,7 +5,7 @@ import { orderPair } from './number';
 import { ArrayOperator, Operator } from './operator';
 import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
-import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
+import type { AggregateRule, ArrayRule, Condition, DateConfig, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 import { applyWindow } from './window';
 
@@ -162,46 +162,12 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
     return raw;
   });
 
-  const sum = numbers.reduce((s, n) => s + n, 0);
-  const result = mode === 'sum' ? sum : numbers.length === 0 ? 0 : sum / numbers.length;
-
-  const rhs = readValueSource(condition, opts.scopes, opts.context, opts.bindings);
-
-  const getError = (msg: string) =>
-    condition.error || `${condition.field} ${mode} ${msg} ${JSON.stringify(rhs)}`;
-
-  switch (condition.operator) {
-    case Operator.equals:
-      return result === rhs || getError('must equal');
-    case Operator.notEquals:
-      return result !== rhs || getError('must not equal');
-    case Operator.lessThan:
-      return (typeof rhs === 'number' && result < rhs) || getError('must be less than');
-    case Operator.lessThanEquals:
-      return (
-        (typeof rhs === 'number' && result <= rhs) || getError('must be less than or equal to')
-      );
-    case Operator.greaterThan:
-      return (typeof rhs === 'number' && result > rhs) || getError('must be greater than');
-    case Operator.greaterThanEquals:
-      return (
-        (typeof rhs === 'number' && result >= rhs) || getError('must be greater than or equal to')
-      );
-    case Operator.between: {
-      if (!Array.isArray(rhs) || rhs.length !== 2)
-        throw new Error('between requires a two-element array');
-      const [min, max] = orderPair(rhs as number[]);
-      return (result >= min && result <= max) || getError('must be between');
-    }
-    case Operator.notBetween: {
-      if (!Array.isArray(rhs) || rhs.length !== 2)
-        throw new Error('notBetween requires a two-element array');
-      const [min, max] = orderPair(rhs as number[]);
-      return result < min || result > max || getError('must not be between');
-    }
-    default:
-      throw new Error(`Operator '${condition.operator}' is not supported for aggregate rules`);
-  }
+  // An aggregate compares like a field whose value it computes; the sum and the average of
+  // nothing are 0 (the compilers coalesce to match).
+  const sum = numbers.reduce((total, n) => total + n, 0);
+  const result = mode === 'sum' || numbers.length === 0 ? sum : sum / numbers.length;
+  const labelled = { ...condition, field: `${condition.field} ${mode}` } as unknown as Rule;
+  return checkField(labelled, opts.scopes, opts.context, opts.bindings, opts, { value: result });
 };
 
 const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string => {

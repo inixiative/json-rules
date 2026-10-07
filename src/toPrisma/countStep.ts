@@ -1,16 +1,7 @@
 import { ArrayOperator } from '../operator';
-import { fieldOf, modelOf } from '../own';
 import type { ArrayRule, Condition } from '../types';
-import { notLeaf } from './logical';
-import { relationKeys } from './relationUtils';
-import type {
-  BuildOptions,
-  FieldMap,
-  GroupByStep,
-  PrismaBuildState,
-  PrismaWhere,
-  StepRef,
-} from './types';
+import { groupMembership, groupPath } from './groupStep';
+import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 
 type BuildConditionFn = (
   condition: Condition,
@@ -33,108 +24,41 @@ export const buildCountStep = (
   state: PrismaBuildState,
   buildCondition: BuildConditionFn,
 ): PrismaWhere => {
-  const { map, model: currentModel } = options;
-
-  if (!rule.field) {
-    throw new Error('toPrisma: count-based ArrayRule requires a field path');
-  }
-  const fieldEntry = fieldOf(map, currentModel, rule.field);
-  if (!fieldEntry || fieldEntry.kind !== 'object') {
-    throw new Error(
-      `Field '${rule.field}' is not a relation in model '${currentModel}'. ` +
-        `Count operators require a relation field.`,
-    );
-  }
-
-  if (!fieldEntry.isList) {
-    throw new Error(
-      `Field '${rule.field}' is not a list relation in model '${currentModel}'. ` +
-        `Count operators only apply to one-to-many or many-to-many relations.`,
-    );
-  }
-
-  const targetModel = fieldEntry.type;
-
-  const keys = relationKeys(map, currentModel, fieldEntry);
-  if (!keys) {
-    const targetFields = Object.values(modelOf(map, targetModel)?.fields ?? {});
-    const isImplicitM2M = targetFields.some(
-      (f) => f.kind === 'object' && f.type === currentModel && f.isList && !f.fromFields?.length,
-    );
-    throw new Error(
-      isImplicitM2M
-        ? `'${currentModel}.${rule.field}' is an implicit many-to-many relation. ` +
-            `Count operators require an explicit join model with a FK — convert to an explicit ` +
-            `@relation or use prisma.$queryRaw.`
-        : `Cannot determine FK relationship between '${currentModel}' and '${targetModel}'. ` +
-            `Ensure the FieldMap contains both sides of the relation.`,
-    );
-  }
-  if (keys.length > 1) {
-    throw new Error(
-      `Count operators (atLeast/atMost/exactly) do not support composite FK relations ` +
-        `('${currentModel}.${rule.field}'). Use prisma.$queryRaw for composite FK count filtering.`,
-    );
-  }
-  const { here: pkOnCurrent, there: fkOnTarget } = keys[0];
+  if (!rule.field) throw new Error('toPrisma: count-based ArrayRule requires a field path');
+  const path = groupPath(rule.field, options.map, options.model, 'Count operators');
 
   // Same contract as check(): a count operator without a condition or count is an
   // authoring error, not a default.
   if (rule.condition === undefined)
     throw new Error(`${rule.arrayOperator} requires a condition to check against array elements`);
   if (rule.count === undefined) throw new Error(`${rule.arrayOperator} requires a count`);
-
-  const innerWhere = buildCondition(rule.condition, { ...options, model: targetModel }, state);
   const count = rule.count;
-
   if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return {};
 
-  // A groupBy only emits groups with >=1 surviving row, so a root with ZERO matching
-  // children can never appear in an IN. The zero-inclusive operators therefore compile
-  // to the COMPLEMENT of an atLeast step: atMost N = NOT(atLeast N+1), exactly 0 =
-  // NOT(atLeast 1). exactly N>=1 and atLeast N>=1 keep the direct IN form.
+  const where = buildCondition(rule.condition, { ...options, model: path.target }, state);
+  // The zero-inclusive operators hold for a parent with no matching children, which no group
+  // carries: atMost N = NOT(atLeast N+1), exactly 0 = NOT(atLeast 1).
   const complement =
     rule.arrayOperator === ArrayOperator.atMost ||
     (rule.arrayOperator === ArrayOperator.exactly && count === 0);
-
   const having = complement
-    ? buildHaving(
+    ? countHaving(
         ArrayOperator.atLeast,
         rule.arrayOperator === ArrayOperator.atMost ? count + 1 : 1,
-        fkOnTarget,
+        path.targetKey,
       )
-    : buildHaving(rule.arrayOperator, count, fkOnTarget);
-
-  const step: GroupByStep = {
-    operation: 'groupBy',
-    model: targetModel,
-    args: { by: [fkOnTarget], where: innerWhere, having },
-    extract: fkOnTarget,
-  };
-
-  const stepIndex = state.steps.length;
-  state.steps.push(step);
-
-  const stepRef: StepRef = { __step: stepIndex };
-  const membership = { [pkOnCurrent]: { in: stepRef } };
-  return complement ? notLeaf(membership) : membership;
+    : countHaving(rule.arrayOperator, count, path.targetKey);
+  return groupMembership(state, path, where, having, complement);
 };
 
 // Prisma 6.x having format: field first, then _count nested inside.
 // e.g. { fanUserUuid: { _count: { gte: 3 } } } — NOT { _count: { _all: { gte: 3 } } }
-const buildHaving = (
-  op: ArrayOperator,
-  count: number,
-  groupByField: string,
-): Record<string, unknown> => {
-  switch (op) {
-    case ArrayOperator.atLeast:
-      return { [groupByField]: { _count: { gte: count } } };
-    case ArrayOperator.atMost:
-      return { [groupByField]: { _count: { lte: count } } };
-    case ArrayOperator.exactly:
-      return { [groupByField]: { _count: { equals: count } } };
-    default:
-      throw new Error('unreachable');
-  }
+const countHaving = (op: ArrayOperator, count: number, field: string): Record<string, unknown> => {
+  const bound = {
+    [ArrayOperator.atLeast]: 'gte',
+    [ArrayOperator.atMost]: 'lte',
+    [ArrayOperator.exactly]: 'equals',
+  }[op as 'atLeast' | 'atMost' | 'exactly'];
+  if (!bound) throw new Error('unreachable');
+  return { [field]: { _count: { [bound]: count } } };
 };

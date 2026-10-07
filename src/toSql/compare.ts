@@ -27,8 +27,8 @@ export const operandSql = (rhs: ResolvedRhs, state: BuilderState): string =>
 export const orNull = (field: string, expr: string): string => `(${expr} OR ${field} IS NULL)`;
 
 /** No operand to compare against: no row, or the NULL fields for a negation. */
-export const noOperandSql = (field: string, negated: boolean): string =>
-  negated ? `${field} IS NULL` : 'FALSE';
+export const noOperandSql = (field: string, negated: boolean, nullable = true): string =>
+  negated && nullable ? `${field} IS NULL` : 'FALSE';
 
 /** `field <symbol> operand`. */
 export const compareSql = (
@@ -50,12 +50,14 @@ export const rangeSql = (
   ends: [ResolvedRhs, ResolvedRhs] | null,
   negated: boolean,
   state: BuilderState,
+  nullable = true,
 ): string => {
-  if (!ends || ends.some(isMissing)) return noOperandSql(field, negated);
+  if (!ends || ends.some(isMissing)) return noOperandSql(field, negated, nullable);
   const [a, b] = ends.map((end) => operandSql(end, state));
   const perRow = ends.some((end) => end.type === 'column');
   const symmetric = perRow ? 'SYMMETRIC ' : '';
   if (!negated) return `${field} BETWEEN ${symmetric}${a} AND ${b}`;
   const outside = `${field} NOT BETWEEN ${symmetric}${a} AND ${b}`;
-  return orNull(field, perRow ? `(${outside} AND ${a} IS NOT NULL AND ${b} IS NOT NULL)` : outside);
+  const guarded = perRow ? `(${outside} AND ${a} IS NOT NULL AND ${b} IS NOT NULL)` : outside;
+  return nullable ? orNull(field, guarded) : guarded;
 };

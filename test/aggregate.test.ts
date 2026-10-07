@@ -539,7 +539,7 @@ describe('toSql() aggregate rules', () => {
       value: 80,
     });
     expect(sql).toBe(
-      `(SELECT AVG(elem::numeric) FROM jsonb_array_elements_text("scores") AS elem) >= $1`,
+      `(SELECT COALESCE(AVG(elem::numeric), 0) FROM jsonb_array_elements_text("scores") AS elem) >= $1`,
     );
     expect(params).toEqual([80]);
   });
@@ -688,8 +688,10 @@ describe('toPrisma() aggregate rules', () => {
       },
       { map: orderMap, model: 'User' },
     );
+    // An empty avg is 0, which is <= 500: select the parents outside the groups above it.
     const step = result.steps[0] as GroupByStep;
-    expect(step.args.having).toEqual({ total: { _avg: { lte: 500 } } });
+    expect(step.args.having).toEqual({ total: { _avg: { gt: 500 } } });
+    expect(getWhere(result)).toEqual({ NOT: { id: { in: { __step: 0 } } } });
   });
 
   it('between maps to gte/lte in having', () => {
@@ -726,18 +728,34 @@ describe('toPrisma() aggregate rules', () => {
     ).toThrow('aggregate.field');
   });
 
-  it('throws for notBetween', () => {
-    expect(() =>
-      toPrisma(
-        {
-          field: 'orders',
-          aggregate: { mode: 'sum', field: 'total' },
-          operator: Operator.notBetween,
-          value: [0, 100],
-        },
-        { map: orderMap, model: 'User' },
-      ),
-    ).toThrow("'notBetween' is not supported");
+  it('notBetween negates the having clause', () => {
+    const result = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        operator: Operator.notBetween,
+        value: [10, 100],
+      },
+      { map: orderMap, model: 'User' },
+    );
+    // An empty sum (0) is outside [10, 100]: select the parents outside the groups inside it.
+    const step = result.steps[0] as GroupByStep;
+    expect(step.args.having).toEqual({ total: { _sum: { gte: 10, lte: 100 } } });
+    expect(getWhere(result)).toEqual({ NOT: { id: { in: { __step: 0 } } } });
+
+    const holdsOnlyForGroups = toPrisma(
+      {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'total' },
+        operator: Operator.notBetween,
+        value: [0, 100],
+      },
+      { map: orderMap, model: 'User' },
+    );
+    expect((holdsOnlyForGroups.steps[0] as GroupByStep).args.having).toEqual({
+      NOT: { total: { _sum: { gte: 0, lte: 100 } } },
+    });
+    expect(getWhere(holdsOnlyForGroups)).toEqual({ id: { in: { __step: 0 } } });
   });
 
   it('throws if field is not a relation', () => {
@@ -779,7 +797,7 @@ describe('toPrisma() aggregate rules', () => {
         },
         { map: orderMap, model: 'User' },
       ),
-    ).toThrow('must be a scalar field');
+    ).toThrow('must be a numeric scalar');
   });
 
   describe('condition filtering', () => {

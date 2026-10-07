@@ -23,9 +23,10 @@ export const quoteField = (field: string, alias?: string, jsonb = false): string
     ? `${escapeIdentifier(alias)}.${escapeIdentifier(column)}`
     : escapeIdentifier(column);
   if (jsonPath.length === 0) return columnExpr;
-  const keys = jsonPath.map(escapeJsonKey);
+  const keys = jsonPath.map(jsonKey);
   const leaf = keys.pop() as string;
   return [columnExpr, ...keys].join('->') + (jsonb ? '->' : '->>') + leaf;
 };
 
-const escapeJsonKey = (key: string) => `'${key.replace(/'/g, "''")}'`;
+/** A JSON key as a SQL string literal. */
+export const jsonKey = (key: string): string => `'${key.replace(/'/g, "''")}'`;

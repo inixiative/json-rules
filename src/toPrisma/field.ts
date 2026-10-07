@@ -215,6 +215,11 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
 
   if (shape === 'list' && SET_OPERATORS.includes(rule.operator) && Array.isArray(value))
     return buildCondition(listMembership(rule, value), options);
+  // Prisma's list filters take no null element.
+  if (shape === 'list' && Array.isArray(value) && value.includes(null))
+    throw new Error(
+      `A list holding null in '${rule.field}' has no Prisma form; use toSql() or check().`,
+    );
 
   // Prisma's list filters have no case-insensitive mode.
   if (

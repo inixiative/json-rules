@@ -275,6 +275,16 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'tags', operator: 'notIn', value: [['a', 'b']] },
     ids: [2, 3, 4, 5],
   },
+  'a list equals one holding null': {
+    rule: { field: 'tags', operator: 'equals', value: [null] },
+    ids: [],
+    refuses: { prisma: 'has no Prisma form' },
+  },
+  'a list notIn a set holding a null-bearing list': {
+    rule: { field: 'tags', operator: 'notIn', value: [[null], ['a', 'b']] },
+    ids: [2, 3, 4, 5],
+    refuses: { prisma: 'has no Prisma form' },
+  },
   'a list is never in a set of strings': {
     rule: { field: 'tags', operator: 'in', value: ['a', null] },
     ids: [],

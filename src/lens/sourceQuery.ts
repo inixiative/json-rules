@@ -6,7 +6,7 @@ import { toSql } from '../toSql/index.ts';
 import { resolveFieldSql } from '../toSql/join.ts';
 import type { BuilderState } from '../toSql/types.ts';
 import type { Condition } from '../types.ts';
-import { resolvePolicy } from './policy.ts';
+import { allOf, resolvePolicy } from './policy.ts';
 import { projectByPath } from './projectByPath.ts';
 import { traversalGuards } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -48,11 +48,6 @@ export type SourceQuery = {
 };
 
 const q = (s: string): string => `"${s.replace(/"/g, '""')}"`;
-
-const compose = (whereClauses: Condition[], sourceClauses: Condition[]): Condition => {
-  const all = [...whereClauses, ...sourceClauses];
-  return all.length === 1 ? all[0] : { all };
-};
 
 // 'map.definition.label' → { map: { select: { definition: { select: { label: true } } } } };
 // axes sharing a prefix merge into one nested select tree.
@@ -174,7 +169,7 @@ export const sourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuer
         sourceClauses,
         label,
       );
-      const composedWhere = compose(visit.whereClauses, [...sourceClauses, ...guards]);
+      const composedWhere = allOf([...visit.whereClauses, ...[...sourceClauses, ...guards]]);
       const { prisma, sql } = compileOne(
         lens,
         visit.mapName,

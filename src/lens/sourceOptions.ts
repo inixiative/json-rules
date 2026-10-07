@@ -1,3 +1,4 @@
+import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
@@ -99,12 +100,8 @@ export const traversalGuards = (
 /** Walk a dotted to-one path through nested row objects; undefined when unreachable.
  * Serves both materialization paths a source declares: a groupBy axis and a dotted label. */
 export const groupAtPath = (row: Row, path: string): string | undefined => {
-  let cur: unknown = row;
-  for (const segment of path.split('.')) {
-    if (cur == null || typeof cur !== 'object') return undefined;
-    cur = (cur as Row)[segment];
-  }
-  return cur == null || typeof cur === 'object' ? undefined : String(cur);
+  const value = readOwnPath(row, path);
+  return value == null || typeof value === 'object' ? undefined : String(value);
 };
 
 /** Resolve every axis for a row — all-or-nothing: any unreachable axis leaves the
@@ -140,6 +137,23 @@ export const accumulateOption = (
     });
   } else if (existing.label === undefined && label !== undefined) {
     byKey.set(key, { ...existing, label });
+  }
+};
+
+/** One fetched row's options: each non-null scalar value of `field` (one per element of a
+ *  scalar list), carrying the row's label and groups. */
+export const accumulateRow = (
+  byKey: Map<string, SourceOption>,
+  row: Row,
+  field: string,
+  label: unknown,
+  groups: string[] | undefined,
+): void => {
+  const raw = readOwnPath(row, field);
+  const rowLabel = label == null ? undefined : String(label);
+  for (const value of Array.isArray(raw) ? raw : [raw]) {
+    if (value == null || typeof value === 'object') continue;
+    accumulateOption(byKey, String(value), rowLabel, groups);
   }
 };
 

@@ -3,17 +3,6 @@ import type { Lens, LensNarrowing } from './types.ts';
 
 export const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
 
-export const getRoot = (x: Lens | LensNarrowing): Lens => {
-  const visited = new Set<LensNarrowing>();
-  let cursor: Lens | LensNarrowing = x;
-  while (!isLens(cursor)) {
-    if (visited.has(cursor)) throw new Error('cycle detected in narrowing parent chain');
-    visited.add(cursor);
-    cursor = cursor.parent;
-  }
-  return cursor;
-};
-
 export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
   const list: LensNarrowing[] = [];
   const visited = new Set<LensNarrowing>();
@@ -26,6 +15,10 @@ export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
   }
   return list;
 };
+
+/** The lens a narrowing chain is rooted at. */
+export const getRoot = (x: Lens | LensNarrowing): Lens =>
+  isLens(x) ? x : (collectChain(x)[0].parent as Lens);
 
 /**
  * A Json column. It declares no sub-fields, so a dotted sub-path into it is open-ended —

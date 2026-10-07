@@ -1,6 +1,6 @@
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { SourceValues } from './projectByPath.ts';
-import { accumulateOption, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';
+import { accumulateRow, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';
 import type { SourceQuery } from './sourceQuery.ts';
 
 type Row = Record<string, unknown>;
@@ -24,30 +24,22 @@ export const sourceValuesFromQueryRows = (
   const rowShape = opts.rowShape ?? 'prisma';
   const byKey = new Map<string, SourceOption>();
   for (const row of rows) {
-    const rawValue = row[query.field];
-    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-    // A dotted label rides the same two wire formats the axes do: nested in prisma
-    // rows, flat under the statement's `__label` alias in sql rows.
-    const rawLabel =
+    // A dotted label and the axes ride the two wire formats: nested in prisma rows, flat
+    // under the statement's `__label` / `__group_i` aliases in sql rows.
+    const flat = rowShape === 'sql';
+    accumulateRow(
+      byKey,
+      row,
+      query.field,
       query.label === undefined
         ? undefined
-        : query.label.includes('.')
-          ? rowShape === 'sql'
-            ? row.__label
-            : groupAtPath(row, query.label)
-          : row[query.label];
-    const label = rawLabel == null ? undefined : String(rawLabel);
-    const groups =
+        : flat && query.label.includes('.')
+          ? row.__label
+          : groupAtPath(row, query.label),
       query.groupBy === undefined
         ? undefined
-        : groupsAtPaths(
-            row,
-            rowShape === 'sql' ? query.groupBy.map((_, i) => `__group_${i}`) : query.groupBy,
-          );
-    for (const value of values) {
-      if (value == null || typeof value === 'object') continue;
-      accumulateOption(byKey, String(value), label, groups);
-    }
+        : groupsAtPaths(row, flat ? query.groupBy.map((_, i) => `__group_${i}`) : query.groupBy),
+    );
   }
   return {
     path: query.path,

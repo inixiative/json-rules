@@ -426,3 +426,11 @@ export const relationHops = (
   }
   return { hops, end: hops.length === parts.length ? at : null };
 };
+
+/** Conditions AND-ed together: `true` for none, the condition itself for one. */
+export const allOf = (conditions: readonly Condition[]): Condition =>
+  conditions.length === 0
+    ? true
+    : conditions.length === 1
+      ? conditions[0]
+      : { all: [...conditions] };

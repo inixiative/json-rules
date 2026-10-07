@@ -1,10 +1,11 @@
 import { type CheckOptions, check } from '../check.ts';
+import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
-import { resolvePolicy } from './policy.ts';
+import { allOf, resolvePolicy } from './policy.ts';
 import { projectByPath, type SourceValues } from './projectByPath.ts';
 import {
-  accumulateOption,
+  accumulateRow,
   groupAtPath,
   groupsAtPaths,
   sortOptions,
@@ -21,18 +22,13 @@ const rowsAtPath = (rows: readonly Row[], path: string): Row[] => {
   for (const segment of path.split('.').slice(1)) {
     const next: Row[] = [];
     for (const row of current) {
-      const value = row?.[segment];
+      const value = readOwnPath(row, segment);
       if (Array.isArray(value)) next.push(...(value as Row[]));
       else if (value != null) next.push(value as Row);
     }
     current = next;
   }
   return current;
-};
-
-const composeEligibility = (sourceClauses: Condition[]): Condition => {
-  if (sourceClauses.length === 0) return true;
-  return sourceClauses.length === 1 ? sourceClauses[0] : { all: sourceClauses };
 };
 
 /**
@@ -73,27 +69,20 @@ export const sourceValuesFromRows = (
         sourceClauses,
         label,
       );
-      const where = composeEligibility([...sourceClauses, ...guards]);
+      const where = allOf([...sourceClauses, ...guards]);
 
       const byKey = new Map<string, SourceOption>();
       for (const row of anchors) {
         if (check(where, row, options) !== true) continue;
-        const rawValue = row[field];
-        const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-        // A dotted label reads through the same nested rows a groupBy axis does.
-        const rawLabel =
-          label === undefined
-            ? undefined
-            : label.includes('.')
-              ? groupAtPath(row, label)
-              : row[label];
-        const rowLabel = rawLabel == null ? undefined : String(rawLabel);
-        // Any unreachable axis (null hop) → the option stays ungrouped, never partial.
-        const groups = groupBy === undefined ? undefined : groupsAtPaths(row, groupBy);
-        for (const value of values) {
-          if (value == null || typeof value === 'object') continue;
-          accumulateOption(byKey, String(value), rowLabel, groups);
-        }
+        // A dotted label reads through the same nested rows a groupBy axis does; an
+        // unreachable axis (null hop) leaves the option ungrouped, never partial.
+        accumulateRow(
+          byKey,
+          row,
+          field,
+          label === undefined ? undefined : groupAtPath(row, label),
+          groupBy === undefined ? undefined : groupsAtPaths(row, groupBy),
+        );
       }
 
       out.push({

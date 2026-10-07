@@ -20,26 +20,57 @@ const isParentRef = (name: string): boolean => name.startsWith(PARENT_PREFIX);
 const baseName = (name: string): string =>
   isParentRef(name) ? name.slice(PARENT_PREFIX.length) : name;
 
-// Every Condition a model node carries: its own `where`, each `sources` where,
-// and the same recursively for path-specific relations.
-const modelNodeConditions = (n: ModelDefaultNarrowing | ModelNarrowing): Condition[] => {
-  const out: Condition[] = [];
-  if (n.where !== undefined) out.push(n.where);
-  for (const entry of Object.values(n.sources ?? {})) {
-    const where = normalizeSource(entry).where;
-    if (where !== undefined) out.push(where);
+type Rewrite = (condition: Condition) => Condition;
+
+// A model node's condition slots — its `where`, each source's `where`, and the same through its
+// path relations — listed once. `fn` rewrites each; collecting is a rewrite that keeps them.
+const mapNodeConditions = <T extends ModelDefaultNarrowing | ModelNarrowing>(
+  node: T,
+  fn: Rewrite,
+): T => {
+  const out = { ...node } as ModelNarrowing;
+  if (node.where !== undefined) out.where = fn(node.where);
+  if (node.sources) {
+    const sources: Record<string, SourceValue> = {};
+    for (const [field, entry] of Object.entries(node.sources))
+      sources[field] = isSourceSpec(entry)
+        ? entry.where !== undefined
+          ? { ...entry, where: fn(entry.where) }
+          : entry
+        : fn(entry);
+    out.sources = sources;
   }
-  if ('relations' in n && n.relations)
-    for (const sub of Object.values(n.relations)) out.push(...modelNodeConditions(sub));
-  return out;
+  if ('relations' in node && node.relations) {
+    const relations: Record<string, ModelNarrowing> = {};
+    for (const [rel, sub] of Object.entries(node.relations))
+      relations[rel] = mapNodeConditions(sub, fn);
+    out.relations = relations;
+  }
+  return out as T;
 };
 
-// Every Condition one narrowing layer carries (root + mapDefaults).
+// One narrowing layer's condition slots: its root and every map default's models.
+const mapLayerConditions = (nrw: LensNarrowing, fn: Rewrite): LensNarrowing => {
+  const mapDefaults: Record<string, NarrowingDefaults> = {};
+  for (const [mapName, defaults] of Object.entries(nrw.mapDefaults ?? {})) {
+    const models: Record<string, ModelDefaultNarrowing> = {};
+    for (const [model, node] of Object.entries(defaults.models ?? {}))
+      models[model] = mapNodeConditions(node, fn);
+    mapDefaults[mapName] = defaults.models ? { ...defaults, models } : defaults;
+  }
+  return {
+    ...nrw,
+    root: nrw.root ? mapNodeConditions(nrw.root, fn) : undefined,
+    mapDefaults: nrw.mapDefaults ? mapDefaults : undefined,
+  };
+};
+
 const layerConditions = (nrw: LensNarrowing): Condition[] => {
   const out: Condition[] = [];
-  if (nrw.root) out.push(...modelNodeConditions(nrw.root));
-  for (const defaults of Object.values(nrw.mapDefaults ?? {}))
-    for (const m of Object.values(defaults.models ?? {})) out.push(...modelNodeConditions(m));
+  mapLayerConditions(nrw, (condition) => {
+    out.push(condition);
+    return condition;
+  });
   return out;
 };
 
@@ -68,53 +99,6 @@ export const lensRequiredBindings = (lensOrNarrowing: Lens | LensNarrowing): Set
   return names;
 };
 
-const resolveModelNode = <T extends ModelDefaultNarrowing | ModelNarrowing>(
-  node: T,
-  effective: Record<string, RuleValue>,
-): T => {
-  const out = { ...node } as ModelNarrowing;
-  if (node.where !== undefined) out.where = resolveConditionBindings(node.where, effective);
-  if (node.sources) {
-    const sources: Record<string, SourceValue> = {};
-    for (const [field, entry] of Object.entries(node.sources)) {
-      if (isSourceSpec(entry)) {
-        sources[field] =
-          entry.where !== undefined
-            ? { ...entry, where: resolveConditionBindings(entry.where, effective) }
-            : entry;
-      } else {
-        sources[field] = resolveConditionBindings(entry, effective);
-      }
-    }
-    out.sources = sources;
-  }
-  if ('relations' in node && node.relations) {
-    const relations: Record<string, ModelNarrowing> = {};
-    for (const [rel, sub] of Object.entries(node.relations))
-      relations[rel] = resolveModelNode(sub, effective);
-    out.relations = relations;
-  }
-  return out as T;
-};
-
-const resolveMapDefaults = (
-  mapDefaults: Record<string, NarrowingDefaults>,
-  effective: Record<string, RuleValue>,
-): Record<string, NarrowingDefaults> => {
-  const out: Record<string, NarrowingDefaults> = {};
-  for (const [mapName, defaults] of Object.entries(mapDefaults)) {
-    const next: NarrowingDefaults = { ...defaults };
-    if (defaults.models) {
-      const models: Record<string, ModelDefaultNarrowing> = {};
-      for (const [model, node] of Object.entries(defaults.models))
-        models[model] = resolveModelNode(node, effective);
-      next.models = models;
-    }
-    out[mapName] = next;
-  }
-  return out;
-};
-
 /**
  * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
  * `where`/`sources`, returning a structurally-new lens with concrete conditions.
@@ -131,12 +115,10 @@ export const resolveLensBindings = (
   const effective: Record<string, RuleValue> = { ...bindings };
   for (const [k, v] of Object.entries(bindings)) effective[`${PARENT_PREFIX}${k}`] = v;
   return {
-    ...lensOrNarrowing,
+    ...mapLayerConditions(lensOrNarrowing, (condition) =>
+      resolveConditionBindings(condition, effective),
+    ),
     parent: resolveLensBindings(lensOrNarrowing.parent, bindings),
-    root: lensOrNarrowing.root ? resolveModelNode(lensOrNarrowing.root, effective) : undefined,
-    mapDefaults: lensOrNarrowing.mapDefaults
-      ? resolveMapDefaults(lensOrNarrowing.mapDefaults, effective)
-      : undefined,
   };
 };
 

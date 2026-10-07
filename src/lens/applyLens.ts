@@ -4,7 +4,7 @@ import { isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../trave
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
-import { type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import { allOf, type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 // Composes a user rule with the lens's narrowing where-clauses, injecting each
@@ -20,10 +20,8 @@ import type { Lens, LensNarrowing } from './types.ts';
 //   - all and windowed rules: filter-first via the array rule's window `filter` (drops out-of-scope rows before
 //     order/take/skip and before the all-check) — never a per-row negate implication
 
-const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition => {
-  if (wheres.length === 0) return rule;
-  return { all: [...wheres, rule] };
-};
+const wrapWithWheres = (rule: Condition, wheres: Condition[]): Condition =>
+  wheres.length ? allOf([...wheres, rule]) : rule;
 
 // Re-roots a related-model `where` grant so its field refs resolve from the current
 // anchor through the relation path (e.g. a User grant `tenantId` reached via `author`
@@ -103,9 +101,6 @@ const anchorOf = (
   const { hops, end } = relationHops(policy.lens.maps, target.scope, target.path, scopePrefix);
   return { hops, below: end };
 };
-
-const allOf = (conditions: Condition[]): Condition =>
-  conditions.length === 1 ? conditions[0] : { all: conditions };
 
 // Injects each grant at its anchor. A relation node (array or aggregate) whose field ends on a
 // relation gets that relation's grants row-scoped: AND-ed into its `condition`, or — for `all`, a

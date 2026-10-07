@@ -1,6 +1,6 @@
-# Lens v2.2 — deep-dive guide
+# Lens deep-dive guide
 
-> The Lens primitive at v2.2. For library basics (operators, `check()`,
+> The Lens primitive as of 3.0. For library basics (operators, `check()`,
 > `toPrisma()`, `toSql()`, bridges, multi-source data evaluation), see the
 > [README](../README.md).
 
@@ -70,7 +70,7 @@ rule executed against the lens runs over non-deleted rows.
 
 ## 3. The three anchor layers for `where`
 
-The whole point of v2.1's anchored composition is that a `where` does not
+The point of anchored composition is that a `where` does not
 always belong at the *root* of the rule. It belongs anchored to the model it
 describes — and `narrowRule` finds that anchor point and injects it there.
 
@@ -124,7 +124,7 @@ For "scope the lens itself" use `n1` (`root.where`).
 
 ## 4. The `all` operator filter-first trick
 
-This is the part of v2.1 that justifies the rewrite. Consider:
+This is the case anchored composition exists for. Consider:
 
 - Schema: `User { comments: Comment[] }`, `Comment { body, deletedAt }`.
 - Lens scope: `mapDefaults.prisma.models.Comment.where = { deletedAt isEmpty }`.
@@ -201,9 +201,9 @@ A previous approach realized the grant as a per-row implication *inside the cond
 
 Injecting into the `filter` avoids both: there is no `negate`, so no operator needs an inverse (a
 `startsWith` grant just works), and the window can't reorder around the scope. The trade-off is
-that a filter-bearing `all` grant is evaluated by `check()` (the compilers don't express window
-filters) — i.e. the compiled prefilter overmatches for that rule and `check()` narrows it, which is
-exactly the prefilter-then-check contract.
+that a narrowed `all` runs on `check()` only. Neither compiler expresses a window `filter`:
+`toPrisma` and `toSql` throw on it, and `describeRule` reports `supportedTargets: ['check']`.
+Evaluate it with `check()` over rows fetched under the lens.
 
 The other array operators (`any`, `none`, `atLeast`, `atMost`, `exactly`) and `aggregate.condition`
 use plain AND injection — filter-first is already preserved by the operator's own meaning.
@@ -222,23 +222,31 @@ only further restrict what the layers above admit.
 
 `validateNarrowing()` enforces strict inheritance at construction time. Each
 layer can mention only items still visible from layers above *plus same-layer
-defaults*. A chained narrowing that re-picks an ancestor-omitted field throws:
+defaults*. A chained narrowing that re-picks an ancestor-omitted field is an
+error:
 
-```text
-validateNarrowing:
-root.picks: 'password' was omitted by ancestor
+```ts
+validateNarrowing(child);
+// { ok: false, errors: [{ path: 'root.picks', code: 'not_visible', message: "'password' was omitted by ancestor" }] }
+
+assertValidNarrowing(child);
+// throws:
+// validateNarrowing:
+// root.picks: 'password' was omitted by ancestor
 ```
+
+The codes are `not_in_lens`, `not_visible`, `conflicting_selection`, `wrong_kind`,
+`value_not_allowed`, `invalid_source` and `invalid_binding`, plus the lens gate's own
+codes for a `where`.
 
 The strict check means you find bad lens code at construction, not at query
 time with a silently empty result.
 
-`projectLens()` is the projection primitive (added in 3.0, replacing the
-pre-3.0 `projectNarrowing` which returned a flat model-keyed `FieldMapSet`).
-The pre-3.0 shape couldn't represent "User looks different at `sourceUser`
-vs `targetUser`" — two sibling relation paths targeting the same model
-collapsed into a single accumulator. `projectLens` returns
-`Map<dottedPath, ProjectedVisit>` so each declared path keeps its own resolved
-narrowing. See section 10 for the API.
+`projectLens()` is the projection primitive. A model-keyed projection can't
+represent "User looks different at `sourceUser` vs `targetUser`": two sibling
+relation paths targeting the same model collapse into one entry. `projectLens`
+returns a plain `Record<dottedPath, ProjectedVisit>`, so each declared path keeps
+its own resolved narrowing. See section 10 for the API.
 
 ## 6. Defaults vs path-specific
 
@@ -373,7 +381,7 @@ composed. The consumer reads it directly:
 
 ```ts
 const projection = projectLens(lens);
-const allowed = projection.get('User')?.fields.role?.values ?? [];
+const allowed = projection.User?.fields.role?.values ?? [];
 ```
 
 Each path key gets its own resolved field set, so path-specific enum divergence
@@ -418,7 +426,13 @@ type ModelDefaultNarrowing = {
   enumPicks?: Record<string, readonly string[]>;          // schema: per-field enum allow-list
   enumOmits?: Record<string, readonly string[]>;          // schema: per-field enum deny-list
   where?: Condition;                                      // data: row-level filter (filter-first)
+  sources?: Record<string, SourceValue>;                  // per-field option sources (see README)
 };
+
+/** A `sources` entry: a bare eligibility Condition, or a spec with a label and/or groupBy. */
+type SourceValue =
+  | Condition
+  | { where?: Condition; label?: string; groupBy?: string | string[] }; // at least one key
 
 /** Narrowing for a model at a specific traversal path. Adds relations. */
 type ModelNarrowing = ModelDefaultNarrowing & {
@@ -578,7 +592,7 @@ column** and everything below it is accepted as-is.
 validateRuleInLens({ field: 'metadata.theme.color', operator: 'equals', value: 'red' }, lens);
 // ok — resolution stops at the visible `metadata` column
 validateRuleInLens({ field: 'firstName.foo', operator: 'equals', value: 'x' }, lens);
-// violation — open-endedness is exclusively a Json-boundary property
+// rejected — open-endedness is exclusively a Json-boundary property
 ```
 
 What follows from that:
@@ -605,7 +619,7 @@ What follows from that:
   value untyped — a type mismatch fails the comparison rather than throwing.
 
 `describeRule` follows the same boundary, so a Json sub-path is never reported
-as a violation.
+as an error.
 
 ### `narrowRule(rule, narrowing)` — compose with scope
 
@@ -614,14 +628,24 @@ Once a rule has passed the gate, run it through `narrowRule` to get the
 the result to `check()`, `toPrisma()`, or `toSql()`.
 
 ```ts
-import { narrowRule, toPrisma } from '@inixiative/json-rules';
+import { check, narrowRule } from '@inixiative/json-rules';
 
 const composed = narrowRule(userRule, narrowing);
 // composed now contains the user rule + tenantId/deletedAt wheres anchored
-// at every User and Post visit, with `all` operators rewritten filter-first.
+// at every User and Post visit. Under the `all`, the Post grant is the
+// array rule's window `filter`, so only check() runs it.
 
+check(composed, userWithPosts);
+```
+
+A rule with no narrowed `all` compiles as usual:
+
+```ts
+import { executePrismaPlan, toPrisma } from '@inixiative/json-rules';
+
+const composed = narrowRule(anyPublishedRule, narrowing);
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
-// plan.steps[plan.steps.length - 1].where is your Prisma where clause.
+const where = await executePrismaPlan(plan, { post: prisma.post });
 ```
 
 ### `projectLens(lens)` — path-keyed projection
@@ -630,10 +654,13 @@ const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' })
 import { projectLens } from '@inixiative/json-rules';
 
 const projection = projectLens(narrowing);
-// Map<dottedPath, ProjectedVisit>
+// Record<dottedPath, ProjectedVisit> — a plain object
 //   key:   dotted path from the lens anchor, e.g. "Post", "Post.author", "Post.editor"
-//   value: { mapName, modelName, fields, whereClauses }
+//   value: { mapName, modelName, fields, whereClauses, sources, sourceLabels, sourceGroupBys }
 ```
+
+Pass `{ sourceValues }` (from `materializeSources` / `materializeSourceQuery`) to attach
+each sourced field's fetched `options`.
 
 `ProjectedVisit.fields` contains only the fields visible at *this specific
 visit*. Composition at each visit: path-specific picks/omits/enumPicks/enumOmits
@@ -652,7 +679,7 @@ Example — enumerate all reachable scalar/enum paths through the lens:
 const projection = projectLens(lens);
 const lensAnchor = lens.model;
 const paths: string[] = [];
-for (const [dottedPath, visit] of projection) {
+for (const [dottedPath, visit] of Object.entries(projection)) {
   const prefix = dottedPath === lensAnchor ? '' : `${dottedPath.slice(lensAnchor.length + 1)}.`;
   for (const [field, entry] of Object.entries(visit.fields)) {
     if (entry.kind === 'scalar' || entry.kind === 'enum') paths.push(`${prefix}${field}`);
@@ -660,10 +687,8 @@ for (const [dottedPath, visit] of projection) {
 }
 ```
 
-For the runtime per-path narrowing facts (without materializing the whole
-projection), `resolveVisit(policy, mapName, modelName, relPath)` returns the
-same composition for a single visit. `validateRuleInLens` uses it
-internally — it's the path-aware authority for "is this rule field allowed."
+For one path without materializing the whole projection, use `walkLensPath`
+(below). It runs the same per-visit composition `validateRuleInLens` gates with.
 
 ### `walkLensPath(lens, path)` — one path, verified hop by hop
 
@@ -735,20 +760,31 @@ caller may say. The flow is:
 
 To *classify* a rule before executing — which sources it touches, whether it
 crosses a bridge, and which targets can run it — use `describeRule(rule, lens)`.
-It returns `{ sources, bridgesCrossed, supportedTargets, violations }`. A
+It returns `{ sources, bridgesCrossed, supportedTargets, errors }`, where `errors`
+is the lens gate's `ValidationIssue[]` (`{ path, message, code }`). A
 bridge-crossing rule is `check()`-only (no cross-source joins), and windowing
-restricts targets further. `describeRule` is for routing/UX (pick an executor,
+(including a narrowed `all`'s `filter`) restricts targets further. `describeRule` is for routing/UX (pick an executor,
 badge a rule); `validateRuleInLens` remains the security gate.
 
 ```ts
-import { validateRuleInLens, narrowRule, toPrisma } from '@inixiative/json-rules';
+import {
+  describeRule,
+  executePrismaPlan,
+  narrowRule,
+  toPrisma,
+  validateRuleInLens,
+} from '@inixiative/json-rules';
 
-const check = validateRuleInLens(userRule, narrowing);
-if (!check.ok) throw new HttpError(400, check.errors);
+const gate = validateRuleInLens(userRule, narrowing);
+if (!gate.ok) throw new HttpError(400, gate.errors);
 
 const composed = narrowRule(userRule, narrowing);
+if (!describeRule(composed, narrowing).supportedTargets.includes('toPrisma')) {
+  // e.g. a narrowed `all`: fetch under the lens and evaluate with check()
+}
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
-return prisma.$transaction(plan.steps.map(executeStep));
+const where = await executePrismaPlan(plan, { post: prisma.post });
+return prisma.user.findMany({ where });
 ```
 
 `toPrisma` / `toSql` / `check` operate against the **base lens / FieldMap** —
@@ -759,6 +795,12 @@ unnarrowed rule. Treat the two-step (validate → apply) as the bottleneck for
 every rule entering execution.
 
 ## 12. Migration
+
+### To 3.0
+
+3.0 renamed the lens API (`applyLens` is `narrowRule`, `checkRuleAgainstLens` is
+`validateRuleInLens`, `projectByPath` is `projectLens`, and so on). The full table is
+in the [CHANGELOG](../CHANGELOG.md) under 3.0.0.
 
 ### From v2.1 to v2.2
 
@@ -952,10 +994,12 @@ const buildNarrowing = (currentTenantId: string): LensNarrowing => ({
 
 ### AI-authored rule
 
+"Users with at least one published post":
+
 ```ts
 const userRule = {
   field: 'posts',
-  arrayOperator: 'all',
+  arrayOperator: 'any',
   condition: { field: 'published', operator: Operator.equals, value: true },
 };
 ```
@@ -966,7 +1010,7 @@ const userRule = {
 import { validateRuleInLens } from '@inixiative/json-rules';
 
 const narrowing = buildNarrowing('tenant-42');
-const check = validateRuleInLens(userRule, narrowing);
+const gate = validateRuleInLens(userRule, narrowing);
 // { ok: true, errors: [] }
 ```
 
@@ -976,20 +1020,19 @@ const check = validateRuleInLens(userRule, narrowing);
 import { narrowRule } from '@inixiative/json-rules';
 
 const composed = narrowRule(userRule, narrowing);
-// Composed AST (filter-first under `all`):
 // {
 //   all: [
 //     { field: 'tenantId', operator: 'equals', value: 'tenant-42' },  // root User where
 //     {
 //       field: 'posts',
-//       arrayOperator: 'all',
+//       arrayOperator: 'any',
 //       condition: {
-//         any: [
-//           // negate(Post.where) — De Morgan over the `all` compound
+//         all: [
+//           // Post.where, ANDed in
 //           {
-//             any: [
-//               { field: 'tenantId', operator: 'notEquals', value: 'tenant-42' },
-//               { field: 'deletedAt', operator: 'notEmpty' },
+//             all: [
+//               { field: 'tenantId', operator: 'equals', value: 'tenant-42' },
+//               { field: 'deletedAt', operator: 'isEmpty' },
 //             ],
 //           },
 //           // original user condition
@@ -1001,23 +1044,50 @@ const composed = narrowRule(userRule, narrowing);
 // }
 ```
 
-The rewritten inner condition reads: "every post is either out-of-scope (wrong
-tenant or deleted) *or* published." Equivalently: "every in-scope post is
-published" — the intent the AI was expressing, applied to the rows the lens
-admits.
+The inner condition reads: "some post is in scope (this tenant, not deleted)
+*and* published", the intent the AI was expressing, applied to the rows the
+lens admits.
 
 ### Execute
 
 ```ts
-import { toPrisma } from '@inixiative/json-rules';
+import { executePrismaPlan, toPrisma } from '@inixiative/json-rules';
 
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
-const where = plan.steps[plan.steps.length - 1].where;
+const where = await executePrismaPlan(plan, { post: prisma.post });
+// { AND: [
+//   { tenantId: { equals: 'tenant-42' } },
+//   { posts: { some: { AND: [
+//     { AND: [{ tenantId: { equals: 'tenant-42' } }, { deletedAt: { equals: null } }] },
+//     { published: { equals: true } },
+//   ] } } },
+// ] }
 
 const users = await prisma.user.findMany({ where });
 ```
 
-The resulting Prisma `where` carries the tenant predicate at the root and the
-filter-first `all` semantic inside the `posts.every` clause, so the database
-itself returns only users whose in-scope posts are all published — never
-admitting deleted or cross-tenant rows into the check.
+The Prisma `where` carries the tenant predicate at the root and the Post grant
+inside `posts.some`, so the database returns only users with a published post
+that is in scope.
+
+### The same rule with `all`
+
+"Every post is published" (`arrayOperator: 'all'`) narrows differently: the
+Post grant becomes the array rule's window `filter` (section 4), so deleted and
+cross-tenant posts are dropped before the `all` runs. Neither compiler
+expresses a window `filter`, so `describeRule(composed, narrowing).supportedTargets`
+is `['check']` and `toPrisma` throws. Fetch the users with their posts under the
+lens and evaluate the composed rule with `check()`:
+
+```ts
+import { check } from '@inixiative/json-rules';
+
+const composedAll = narrowRule({ ...userRule, arrayOperator: 'all' }, narrowing);
+check(composedAll, {
+  tenantId: 'tenant-42',
+  posts: [
+    { tenantId: 'tenant-42', published: true, deletedAt: null },
+    { tenantId: 'tenant-42', published: false, deletedAt: '2026-01-01' }, // deleted: filtered out
+  ],
+}); // true
+```

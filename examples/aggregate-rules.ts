@@ -74,7 +74,7 @@ const { sql: sql1, params: p1 } = toSql({
   value: 80,
 });
 console.log(sql1);
-// (SELECT AVG(elem::numeric) FROM jsonb_array_elements_text("scores") AS elem) >= $1
+// (SELECT COALESCE(AVG(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) >= $1
 console.log(p1); // [80]
 
 // JSONB object array
@@ -85,11 +85,11 @@ const { sql: sql2, params: p2 } = toSql({
   value: 1000,
 });
 console.log(sql2);
-// (SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements("orders") AS elem) > $1
+// (SELECT COALESCE(SUM((elem->>'total')::numeric), 0) FROM jsonb_array_elements((CASE WHEN jsonb_typeof("orders") = 'array' THEN "orders" END)) AS elem) > $1
 console.log(p2); // [1000]
 
 // ─── toPrisma() ───────────────────────────────────────────────────────────────
-// Requires map + model — see README for executePrismaQueryPlan usage
+// Requires map + model — run the plan with executePrismaPlan (see README)
 
 const plan = toPrisma(
   {
@@ -139,7 +139,7 @@ console.log(JSON.stringify(plan, null, 2));
 //     {
 //       "operation": "groupBy",
 //       "model": "Order",
-//       "args": { "by": ["userId"], "where": {}, "having": { "_sum": { "total": { "gt": 1000 } } } },
+//       "args": { "by": ["userId"], "where": {}, "having": { "total": { "_sum": { "gt": 1000 } } } },
 //       "extract": "userId"
 //     },
 //     {

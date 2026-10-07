@@ -269,7 +269,7 @@ const validOrder = {
   paymentMethod: 'credit_card',
   cardNumber: '1234567812345678',
   cvv: '123',
-  expiryDate: '2025-12-31',
+  expiryDate: '2099-12-31',
 };
 
 console.log(validateOrder(validOrder)); // { success: true }

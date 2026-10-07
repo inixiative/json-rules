@@ -1,7 +1,9 @@
+import { windowUnsupported } from '../errors';
 import { checkField } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import { negate } from '../negate';
 import { Operator } from '../operator';
+import { NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasWindow, windowRewrite } from '../window';
@@ -20,10 +22,7 @@ export const buildAggregateRule = (
 ): PrismaWhere => {
   if (hasWindow(rule)) {
     const rewritten = windowRewrite(rule);
-    if (!rewritten)
-      throw new Error(
-        'Windowing (orderBy/take/skip) is not supported by toPrisma(); evaluate with check().',
-      );
+    if (!rewritten) throw windowUnsupported('toPrisma');
     return buildCondition(rewritten, options, state);
   }
 
@@ -80,10 +79,9 @@ const buildAggregateStep = (
   const filter = comparisonFilter(target, options);
   const aggregate = { [rule.aggregate.mode === 'sum' ? '_sum' : '_avg']: filter };
   // Prisma can't negate a two-sided bound inside a field filter; NOT the having clause instead.
-  const having =
-    target.operator === Operator.notBetween
-      ? notLeaf({ [itemField]: aggregate })
-      : { [itemField]: aggregate };
+  const having = NEGATED_RANGE_OPERATORS.includes(target.operator)
+    ? notLeaf({ [itemField]: aggregate })
+    : { [itemField]: aggregate };
 
   const where = rule.condition
     ? buildCondition(rule.condition, { ...options, model: path.target }, state)

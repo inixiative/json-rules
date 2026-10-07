@@ -1,5 +1,7 @@
+import { ambiguousCondition } from '../errors';
 import { rejectScopedField } from '../scope';
 import { hitsBridge, refuseRelationsValue } from '../toPrisma/mapWalk';
+import { conditionShape } from '../traverse';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
@@ -25,17 +27,28 @@ export const buildCondition = (condition: Condition, state: BuilderState): strin
     return 'TRUE';
   }
 
-  if ('all' in condition) return buildAll(condition, state);
-  if ('any' in condition) return buildAny(condition, state);
-  if ('if' in condition) return buildIfThenElse(condition, state);
-  if ('arrayOperator' in condition) return buildArrayRule(condition, state);
-  if (('dateOperator' in condition || 'operator' in condition) && !('aggregate' in condition))
-    refuseRelationsValue(condition.field, state.map, state.currentModel);
-  if ('dateOperator' in condition) return buildDateRule(condition, state);
-  if ('aggregate' in condition) return buildAggregateRule(condition, state);
-  if ('field' in condition) return buildFieldRule(condition, state);
-
-  throw new Error('Unknown condition type');
+  const shape = conditionShape(condition as Record<string, unknown>);
+  if (shape === 'field' || shape === 'date')
+    refuseRelationsValue((condition as { field: string }).field, state.map, state.currentModel);
+  const node = condition as never;
+  switch (shape) {
+    case 'all':
+      return buildAll(node, state);
+    case 'any':
+      return buildAny(node, state);
+    case 'if':
+      return buildIfThenElse(node, state);
+    case 'array':
+      return buildArrayRule(node, state);
+    case 'aggregate':
+      return buildAggregateRule(node, state);
+    case 'date':
+      return buildDateRule(node, state);
+    case 'field':
+      return buildFieldRule(node, state);
+    default:
+      throw ambiguousCondition();
+  }
 };
 
 setConditionBuilder(buildCondition);

@@ -1,7 +1,7 @@
 import { relationsNotValue } from '../errors';
 import { applyCoercion } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
-import { COMPILE_COERCED_KINDS, FieldKind, NUMERIC_KINDS } from '../operatorCatalog';
+import { COMPILE_COERCED_KINDS, FieldKind, isFieldKind, NUMERIC_KINDS } from '../operatorCatalog';
 import { modelOf, own } from '../own';
 import { someCondition } from '../traverse';
 import type { Condition, Rule } from '../types';
@@ -194,7 +194,7 @@ export const entryKind = (entry: FieldMapEntry): FieldKind | undefined => {
   if (entry.isList) return undefined;
   if (entry.kind === 'enum') return FieldKind.Enum;
   if (entry.kind !== 'scalar' || entry.type === FieldKind.Json) return undefined;
-  return Object.hasOwn(FieldKind, entry.type) ? (entry.type as FieldKind) : undefined;
+  return isFieldKind(entry.type) ? entry.type : undefined;
 };
 
 /** Epoch ms of a DateTime literal through check()'s own DateTime coercion (Date, ISO with or

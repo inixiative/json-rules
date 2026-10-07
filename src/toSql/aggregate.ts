@@ -1,14 +1,14 @@
+import { windowUnsupported } from '../errors';
 import { fieldEntry, ruleShape } from '../toPrisma/mapWalk';
 import type { AggregateRule, Rule } from '../types';
 import { hasWindow } from '../window';
-import { SQL_WINDOW_UNSUPPORTED } from './array';
 import { buildFieldRule } from './field';
 import { resolveFieldSql } from './join';
 import { jsonKey } from './quoting';
 import type { BuilderState } from './types';
 
 export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): string => {
-  if (hasWindow(rule)) throw new Error(SQL_WINDOW_UNSUPPORTED);
+  if (hasWindow(rule)) throw windowUnsupported('toSql');
   if (rule.condition) {
     throw new Error(
       `Aggregate condition filtering is not yet supported by toSql(). ` +

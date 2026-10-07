@@ -1,5 +1,5 @@
 import { check } from '../check';
-import { fieldlessArrayError } from '../errors';
+import { fieldlessArrayError, windowUnsupported } from '../errors';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
 import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
@@ -12,11 +12,6 @@ import { conditionTouchesBridge, type FieldShape, relationTarget, ruleShape } fr
 import { buildCondition } from './recurse';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
-
-const WINDOW_UNSUPPORTED =
-  'Windowing (orderBy/take/skip) is not supported by toPrisma() for this rule; ' +
-  'only extremal (take:1, single orderBy on the compared field, aligned direction) ' +
-  'rewrites to every/some. Evaluate other windowed rules with check().';
 
 /** A rule over an array, which check() reads as empty when a to-one relation on its path is
  *  absent: where the rule holds for an empty array, so does the row with no such relation. */
@@ -43,7 +38,7 @@ const compileArrayRule = (
 ): PrismaWhere => {
   if (hasWindow(rule)) {
     const rewritten = windowRewrite(rule);
-    if (!rewritten) throw new Error(WINDOW_UNSUPPORTED);
+    if (!rewritten) throw windowUnsupported('toPrisma');
     return buildCondition(rewritten, options, state);
   }
 

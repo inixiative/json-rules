@@ -11,16 +11,14 @@ import {
 import { isOrderedValue } from './number';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
-  ARRAY_OPERATOR_CATALOG,
-  DATE_OPERATOR_CATALOG,
+  AGGREGATE_OPERATORS,
+  catalogEntry,
   DAY_NAMES,
-  FIELD_OPERATOR_CATALOG,
   FieldKind,
   getValueShape,
-  isAggregateRangeOperator,
-  isAggregateSingleOperator,
   isCalendarUnit,
   isDayName,
+  isFieldKind,
   isOperatorSupportedForTarget,
   isRelativeUnit,
   OFFSET_OPERATORS,
@@ -64,10 +62,6 @@ type ValidationContext = {
   target: RuleTarget;
   errors: ValidationIssue[];
 };
-
-const FIELD_OPERATORS = new Set<string>(Object.keys(FIELD_OPERATOR_CATALOG));
-const ARRAY_OPERATORS = new Set<string>(Object.keys(ARRAY_OPERATOR_CATALOG));
-const DATE_OPERATORS = new Set<string>(Object.keys(DATE_OPERATOR_CATALOG));
 
 export const validateRule = (
   condition: unknown,
@@ -342,7 +336,7 @@ const validateFieldRule = (
   }
   validateField(rule, path, context, depth);
 
-  if (typeof rule.operator !== 'string' || !FIELD_OPERATORS.has(rule.operator)) {
+  if (typeof rule.operator !== 'string' || !catalogEntry(rule.operator, 'field')) {
     pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
     return;
   }
@@ -359,10 +353,7 @@ const validateFieldRule = (
     );
   }
 
-  if (
-    rule.coerceType !== undefined &&
-    !(typeof rule.coerceType === 'string' && Object.hasOwn(FieldKind, rule.coerceType))
-  ) {
+  if (rule.coerceType !== undefined && !isFieldKind(rule.coerceType)) {
     pushIssue(
       context,
       `${path}.coerceType`,
@@ -490,17 +481,12 @@ const validateAggregateRule = (
     );
   }
 
-  const isSingle =
-    typeof rule.operator === 'string' && isAggregateSingleOperator(rule.operator as Operator);
-  const isRange =
-    typeof rule.operator === 'string' && isAggregateRangeOperator(rule.operator as Operator);
-
-  if (!isSingle && !isRange) {
+  if (!AGGREGATE_OPERATORS.includes(rule.operator as Operator)) {
     pushIssue(
       context,
       `${path}.operator`,
       'invalid_aggregate_operator',
-      `Aggregate rules only support: equals, notEquals, lessThan, lessThanEquals, greaterThan, greaterThanEquals, between, notBetween`,
+      `Aggregate rules only support: ${AGGREGATE_OPERATORS.join(', ')}`,
     );
     return;
   }
@@ -530,7 +516,7 @@ const validateAggregateRule = (
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   const value = rule.value;
-  if (isRange) {
+  if (RANGE_OPERATORS.includes(rule.operator as string)) {
     if (!isNumericRange(value)) {
       pushIssue(
         context,
@@ -571,7 +557,7 @@ const validateArrayRule = (
 
   validateWindow(rule, path, context, depth);
 
-  if (typeof rule.arrayOperator !== 'string' || !ARRAY_OPERATORS.has(rule.arrayOperator)) {
+  if (typeof rule.arrayOperator !== 'string' || !catalogEntry(rule.arrayOperator, 'array')) {
     pushIssue(context, `${path}.arrayOperator`, 'invalid_array_operator', 'Unknown array operator');
     return;
   }
@@ -675,7 +661,7 @@ const validateDateRule = (
   }
   validateField(rule, path, context, depth);
 
-  if (typeof rule.dateOperator !== 'string' || !DATE_OPERATORS.has(rule.dateOperator)) {
+  if (typeof rule.dateOperator !== 'string' || !catalogEntry(rule.dateOperator, 'date')) {
     pushIssue(context, `${path}.dateOperator`, 'invalid_date_operator', 'Unknown date operator');
     return;
   }

@@ -77,7 +77,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   }
   if (RANGE_OPERATORS.includes(rule.operator)) {
     const ends = resolveRange(rule, state);
-    return rangeSql(compared.sql, ends, rule.operator === Operator.notBetween, state, nullable);
+    return rangeSql(compared.sql, ends, NEGATED_OPERATORS.includes(rule.operator), state, nullable);
   }
   const rhs = resolveComparison(rule, state);
   const field = compared.sql;

@@ -9,6 +9,7 @@ import {
 } from '../dateExpr';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
+import { NEGATED_OPERATORS } from '../operatorCatalog';
 import type { DateExpr, DateRule } from '../types';
 import { compareSql, noOperandSql, orderedSql, orNull, rangeSql } from './compare';
 import { type FieldSql, resolveField } from './join';
@@ -62,11 +63,11 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   switch (rule.dateOperator) {
     case DateOperator.within:
     case DateOperator.notWithin:
-      return range(resolveWindow(rule, state), rule.dateOperator === DateOperator.notWithin);
+      return range(resolveWindow(rule, state), NEGATED_OPERATORS.includes(rule.dateOperator));
 
     case DateOperator.between:
     case DateOperator.notBetween:
-      return range(resolveRange(rule, state), rule.dateOperator === DateOperator.notBetween);
+      return range(resolveRange(rule, state), NEGATED_OPERATORS.includes(rule.dateOperator));
 
     case DateOperator.dayIn:
     case DateOperator.dayNotIn: {

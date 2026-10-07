@@ -1,4 +1,4 @@
-import { fieldlessArrayError } from '../errors';
+import { fieldlessArrayError, windowUnsupported } from '../errors';
 import { ArrayOperator } from '../operator';
 import { fieldEntry, ruleShape } from '../toPrisma/mapWalk';
 import type { ArrayRule } from '../types';
@@ -7,11 +7,8 @@ import { emptinessSql } from './field';
 import { resolveField } from './join';
 import type { BuilderState } from './types';
 
-export const SQL_WINDOW_UNSUPPORTED =
-  'Windowing (orderBy/take/skip) is not supported by toSql(); evaluate with check().';
-
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
-  if (hasWindow(rule)) throw new Error(SQL_WINDOW_UNSUPPORTED);
+  if (hasWindow(rule)) throw windowUnsupported('toSql');
   if (!rule.field) {
     throw fieldlessArrayError('toSql');
   }

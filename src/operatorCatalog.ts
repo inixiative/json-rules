@@ -42,7 +42,11 @@ export const RuleTarget = {
 
 export type RuleTarget = (typeof RuleTarget)[keyof typeof RuleTarget];
 
-const ALL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma', 'toSql'];
+/** Whether a name is a FieldKind (own-property: `toString` is not). */
+export const isFieldKind = (name: unknown): name is FieldKind =>
+  typeof name === 'string' && Object.hasOwn(FieldKind, name);
+
+export const ALL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma', 'toSql'];
 const NON_SQL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma'];
 const NON_PRISMA_TARGETS: readonly RuleTarget[] = ['check', 'toSql'];
 
@@ -222,35 +226,6 @@ export const ARRAY_OPERATOR_CATALOG: Record<ArrayOperator, ArrayCatalogEntry> = 
   [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none' },
 };
 
-const AGGREGATE_SINGLE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['scalar', 'ordered']);
-const AGGREGATE_RANGE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['range']);
-
-export const AGGREGATE_OPERATORS: readonly Operator[] = [
-  Operator.equals,
-  Operator.notEquals,
-  Operator.lessThan,
-  Operator.lessThanEquals,
-  Operator.greaterThan,
-  Operator.greaterThanEquals,
-  Operator.between,
-  Operator.notBetween,
-];
-
-/** The threshold comparisons an aggregate takes; every target compiles all of them. */
-export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
-
-export const isAggregateSingleOperator = (operator: Operator): boolean => {
-  const entry = FIELD_OPERATOR_CATALOG[operator];
-  if (!entry) return false;
-  return AGGREGATE_SINGLE_VALUE_SHAPES.has(entry.valueShape);
-};
-
-export const isAggregateRangeOperator = (operator: Operator): boolean => {
-  const entry = FIELD_OPERATOR_CATALOG[operator];
-  if (!entry) return false;
-  return AGGREGATE_RANGE_VALUE_SHAPES.has(entry.valueShape);
-};
-
 /** Which catalog an operator belongs to — `between` is both a field and a date operator. */
 export type OperatorFamily = 'field' | 'date' | 'array';
 
@@ -288,7 +263,7 @@ export const getOperatorsForKind = (
   target?: RuleTarget,
 ): { field: Operator[]; date: DateOperator[] } => {
   const field = (Object.keys(FIELD_OPERATOR_CATALOG) as Operator[]).filter((op) => {
-    const entry = FIELD_OPERATOR_CATALOG[op];
+    const entry = FIELD_OPERATOR_CATALOG[op as Operator];
     if (!entry.kinds.includes(kind)) return false;
     if (target && !entry.targets.includes(target)) return false;
     return true;
@@ -335,6 +310,12 @@ export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
 export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'array');
 /** Containment — of a substring, or of a list's member: `contains` / `notContains`. */
 export const CONTAINS_OPERATORS: readonly string[] = [Operator.contains, Operator.notContains];
+/** The threshold comparisons an aggregate takes — equality, order and ranges; every target
+ *  compiles all of them. */
+export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];
+
+export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
+
 /** Equality with one value: `equals` / `notEquals`. */
 export const EQUALITY_OPERATORS = withShape('scalar');
 /** Membership in a list: `in` / `notIn`. */

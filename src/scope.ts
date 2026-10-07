@@ -51,16 +51,14 @@ const step = (at: unknown, key: string): unknown => {
 export const readOwnPath = (root: unknown, path: string): unknown =>
   segments(path).reduce<unknown>(step, root);
 
-const readScoped = (ref: string, scopes: Scopes): unknown => {
+export const readField = (ref: string, scopes: Scopes): unknown => {
   const target = readScopeRef(ref, scopes);
   if ('outOfBounds' in target) throw new Error(target.outOfBounds);
   return readOwnPath(target.scope, target.path);
 };
 
-export const readField = (ref: string, scopes: Scopes): unknown => readScoped(ref, scopes);
-
 export const readPath = (ref: string, scopes: Scopes, context: unknown): unknown =>
-  parseScopeRef(ref) ? readScoped(ref, scopes) : readOwnPath(context, ref);
+  parseScopeRef(ref) ? readField(ref, scopes) : readOwnPath(context, ref);
 
 export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): string =>
   `Scope ref '${ref}' is not supported by ${rail}(); evaluate with check()`;

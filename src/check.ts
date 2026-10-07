@@ -1,12 +1,15 @@
 import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
-import { conditionRequired } from './errors';
+import { ambiguousCondition, conditionRequired } from './errors';
 import { checkField } from './field';
 import { ArrayOperator } from './operator';
 import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
+import { conditionShape } from './traverse';
 import type {
   AggregateRule,
+  All,
+  Any,
   ArrayRule,
   CheckData,
   Condition,
@@ -60,17 +63,25 @@ const evaluate = <TData extends CheckData>(
 ): boolean | string => {
   if (typeof conditions === 'boolean') return conditions;
 
-  if ('all' in conditions) return all(conditions.all, data, opts, conditions.error);
-  if ('any' in conditions) return any(conditions.any, data, opts, conditions.error);
-  if ('arrayOperator' in conditions) return checkArray(conditions, opts);
-  if ('dateOperator' in conditions)
-    return checkDate(conditions, opts.scopes, opts.context as Row, opts, opts.bindings);
-  if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, opts);
-  if ('field' in conditions)
-    return checkField(conditions, opts.scopes, opts.context as Row, opts.bindings, opts);
-  if ('if' in conditions) return checkIfThenElse(conditions, data, opts);
-
-  return false;
+  const node = conditions as never;
+  switch (conditionShape(conditions as Record<string, unknown>)) {
+    case 'all':
+      return all((node as All).all, data, opts, (node as All).error);
+    case 'any':
+      return any((node as Any).any, data, opts, (node as Any).error);
+    case 'if':
+      return checkIfThenElse(node, data, opts);
+    case 'array':
+      return checkArray(node, opts);
+    case 'aggregate':
+      return checkAggregate(node, opts);
+    case 'date':
+      return checkDate(node, opts.scopes, opts.context as Row, opts, opts.bindings);
+    case 'field':
+      return checkField(node, opts.scopes, opts.context as Row, opts.bindings, opts);
+    default:
+      throw ambiguousCondition();
+  }
 };
 
 const enter = (opts: EvalOptions, item: unknown): EvalOptions => ({

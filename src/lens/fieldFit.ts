@@ -2,8 +2,7 @@ import { applyCoercion } from '../field';
 import { isJsonEntry, isRelationEntry } from '../fieldMap/entry.ts';
 import {
   type CatalogEntry,
-  DATE_OPERATOR_CATALOG,
-  FIELD_OPERATOR_CATALOG,
+  catalogEntry,
   FieldKind,
   NUMERIC_KINDS,
   SINGLE_VALUE_SHAPES,
@@ -73,8 +72,7 @@ export const leafFitViolations = (
   if (kind === undefined || kind === FieldKind.Json) return [];
 
   const op = 'operator' in cond ? cond.operator : cond.dateOperator;
-  const entry: CatalogEntry | undefined =
-    'operator' in cond ? own(FIELD_OPERATOR_CATALOG, op) : own(DATE_OPERATOR_CATALOG, op);
+  const entry = catalogEntry(op, 'operator' in cond ? 'field' : 'date') as CatalogEntry | undefined;
   if (!entry) return [];
 
   const coerced = coerceType !== undefined && coerceType !== declared;

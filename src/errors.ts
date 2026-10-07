@@ -46,3 +46,15 @@ export const unorderedOperand = (operator: string, value: unknown): Error | null
       )
     : null;
 };
+
+/** A node that is not exactly one kind of condition. */
+export const ambiguousCondition = (): Error =>
+  new Error(
+    'A condition is exactly one of: a field, date, array or aggregate rule, all, any, or if/then[/else]',
+  );
+
+/** A window (filter / orderBy / take / skip) a compiler has no form for. */
+export const windowUnsupported = (target: 'toSql' | 'toPrisma'): Error =>
+  new Error(
+    `Windowing (filter/orderBy/take/skip) is not supported by ${target}() for this rule; evaluate with check()${target === 'toPrisma' ? ' — toPrisma compiles a filter alone and an extremal take: 1' : ''}.`,
+  );

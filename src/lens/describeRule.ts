@@ -1,4 +1,5 @@
 import {
+  ALL_TARGETS,
   isOperatorSupportedForTarget,
   type OperatorFamily,
   type RuleTarget,
@@ -20,8 +21,6 @@ export type RuleDescription = {
   /** What the lens refuses in the rule — validateRuleInLens's issues. */
   errors: ValidationIssue[];
 };
-
-const ALL_TARGETS: readonly RuleTarget[] = ['check', 'toPrisma', 'toSql'];
 
 type Acc = {
   policy: Policy;

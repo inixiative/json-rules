@@ -6,7 +6,8 @@ import {
   NEGATED_OPERATORS,
   OPPOSITE_OPERATORS,
 } from './operatorCatalog';
-import { anyOf, conditionShape } from './traverse';
+import { own } from './own';
+import { allOf, anyOf, conditionShape } from './traverse';
 import type { Condition, Rule } from './types';
 
 type Node = Record<string, unknown>;
@@ -27,15 +28,15 @@ const negateLeaf = (node: Node, settle: Settle): Condition => {
       : true;
   }
   if ('aggregate' in leaf) {
-    const flip = COMPLEMENT_OPERATORS[leaf.operator as string];
+    const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
     if (flip) return { ...leaf, operator: flip } as Condition;
-    return { ...leaf, operator: OPPOSITE_OPERATORS[leaf.operator as string] } as Condition;
+    return { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) } as Condition;
   }
   if (typeof leaf.dateOperator === 'string') {
-    const flip = COMPLEMENT_DATE_OPERATORS[leaf.dateOperator];
+    const flip = own(COMPLEMENT_DATE_OPERATORS, leaf.dateOperator);
     if (flip) return { ...leaf, dateOperator: flip } as Condition;
     return anyOf([
-      { ...leaf, dateOperator: OPPOSITE_OPERATORS[leaf.dateOperator] } as Condition,
+      { ...leaf, dateOperator: own(OPPOSITE_OPERATORS, leaf.dateOperator) } as Condition,
       absent(leaf.field),
     ]);
   }
@@ -71,10 +72,10 @@ const negateLeaf = (node: Node, settle: Settle): Condition => {
         ]);
     }
   }
-  const flip = COMPLEMENT_OPERATORS[leaf.operator as string];
+  const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
   if (flip) return { ...leaf, operator: flip } as Condition;
   return anyOf([
-    { ...leaf, operator: OPPOSITE_OPERATORS[leaf.operator as string] } as Condition,
+    { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) } as Condition,
     absent(leaf.field),
   ]);
 };
@@ -89,16 +90,16 @@ export const negate = (condition: Condition, settle: Settle = (leaf) => leaf): C
   if (typeof condition === 'boolean') return !condition;
   const node = condition as Node;
   if (Array.isArray(node.all))
-    return { any: (node.all as Condition[]).map((c) => negate(c, settle)) };
+    return anyOf((node.all as Condition[]).map((c) => negate(c, settle)));
   if (Array.isArray(node.any))
-    return { all: (node.any as Condition[]).map((c) => negate(c, settle)) };
+    return allOf((node.any as Condition[]).map((c) => negate(c, settle)));
   if ('if' in node) {
-    const holds = { all: [node.if as Condition, negate(node.then as Condition, settle)] };
+    const holds = allOf([node.if as Condition, negate(node.then as Condition, settle)]);
     if (node.else === undefined) return holds;
     return {
       any: [
         holds,
-        { all: [negate(node.if as Condition, settle), negate(node.else as Condition, settle)] },
+        allOf([negate(node.if as Condition, settle), negate(node.else as Condition, settle)]),
       ],
     };
   }

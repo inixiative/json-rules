@@ -1,4 +1,6 @@
+import { ambiguousCondition } from '../errors';
 import { rejectScopedField } from '../scope';
+import { conditionShape } from '../traverse';
 import type { Condition } from '../types';
 import { buildAggregateRule } from './aggregate';
 import { buildArrayRule } from './array';
@@ -22,17 +24,32 @@ export const buildCondition = (
   }
   rejectScopedField(condition, 'toPrisma');
 
-  if ('all' in condition) return buildAll(condition, options, state);
-  if ('any' in condition) return buildAny(condition, options, state);
-  if ('if' in condition) return buildIfThenElse(condition, options, state);
-  if ('arrayOperator' in condition) return buildArrayRule(condition, options, state);
-  if (('dateOperator' in condition || 'operator' in condition) && !('aggregate' in condition))
-    refuseRelationsValue(condition.field, options?.map as FieldMap | undefined, options?.model);
-  if ('dateOperator' in condition) return buildDateRule(condition, options);
-  if ('aggregate' in condition) return buildAggregateRule(condition, options, state);
-  if ('field' in condition) return buildFieldRule(condition, options);
-
-  throw new Error('Unknown condition type');
+  const shape = conditionShape(condition as Record<string, unknown>);
+  if (shape === 'field' || shape === 'date')
+    refuseRelationsValue(
+      (condition as { field: string }).field,
+      options?.map as FieldMap | undefined,
+      options?.model,
+    );
+  const node = condition as never;
+  switch (shape) {
+    case 'all':
+      return buildAll(node, options, state);
+    case 'any':
+      return buildAny(node, options, state);
+    case 'if':
+      return buildIfThenElse(node, options, state);
+    case 'array':
+      return buildArrayRule(node, options, state);
+    case 'aggregate':
+      return buildAggregateRule(node, options, state);
+    case 'date':
+      return buildDateRule(node, options);
+    case 'field':
+      return buildFieldRule(node, options);
+    default:
+      throw ambiguousCondition();
+  }
 };
 
 setConditionBuilder(buildCondition);

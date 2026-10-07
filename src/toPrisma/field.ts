@@ -21,6 +21,7 @@ import type { Condition, Rule } from '../types';
 import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import {
   acceptsEmptyString,
+  comparesText,
   compileFieldLiteral,
   type FieldShape,
   fieldEntry,
@@ -97,11 +98,9 @@ const queryMode = (
 ): { mode?: 'insensitive' } => {
   const provider = (options?.datasource?.provider ??
     engineGlobals.get('prismaOptions.datasource.provider')) as PrismaProvider;
-  const strings = Array.isArray(value)
-    ? value.some((item) => typeof item === 'string')
-    : typeof value === 'string';
-  const text = shape === 'text' || ((isJson(shape) || shape === 'unknown') && strings);
-  return resolveCaseInsensitive(rule.caseInsensitive) && supportsQueryMode(provider) && text
+  return resolveCaseInsensitive(rule.caseInsensitive) &&
+    supportsQueryMode(provider) &&
+    comparesText(shape, value)
     ? { mode: 'insensitive' }
     : {};
 };
@@ -115,6 +114,33 @@ const emptyValues = (shape: FieldShape, emptyString: boolean): Record<string, un
 
 const notEmpty = (empty: Record<string, unknown>): Record<string, unknown> =>
   'isEmpty' in empty ? { isEmpty: false } : { not: empty.equals };
+
+/**
+ * Whether a field is empty — null (or absent through an optional relation), '', or an empty list
+ * or Json array, as check() reads it — or, with `empty` false, not. One form for the emptiness
+ * operators and the array ones.
+ */
+export const emptinessWhere = (
+  field: string,
+  shape: FieldShape,
+  empty: boolean,
+  emptyString: boolean,
+  options?: BuildOptions,
+): PrismaWhere => {
+  const at = (filter: unknown) => buildMapAwareFilter(field, filter, options);
+  const values = emptyValues(shape, emptyString);
+  if (empty)
+    return orWhere([
+      at({ equals: nullOf(shape) }),
+      ...hopArms(field, options),
+      ...values.map((value) => at(value)),
+    ]);
+  // A list has no `not`; `isEmpty: false` is NULL — so false — for a NULL list.
+  return andWhere([
+    ...(shape === 'list' ? [] : [at({ not: nullOf(shape) })]),
+    ...values.map((value) => at(notEmpty(value))),
+  ]);
+};
 
 /** A to-one relation as a field: it exists or it doesn't. */
 const buildRelationRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
@@ -149,16 +175,15 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     // The emptiness operators OR / AND at the WHERE level: Prisma rejects a mixed null + string
     // list in `in` / `notIn`. isEmpty carries the leaf null arm unconditionally — it is the
     // operator.
-    case Operator.isEmpty: {
-      const nulls = [at({ equals: nullOf(shape) }), ...hopArms(rule.field, options)];
-      return orWhere([...nulls, ...emptyValues(shape, emptyString).map((empty) => at(empty))]);
-    }
-    // A list has no `not`; `isEmpty: false` is NULL — so false — for a NULL list.
+    case Operator.isEmpty:
     case Operator.notEmpty:
-      return andWhere([
-        ...(shape === 'list' ? [] : [at({ not: nullOf(shape) })]),
-        ...emptyValues(shape, emptyString).map((empty) => at(notEmpty(empty))),
-      ]);
+      return emptinessWhere(
+        rule.field,
+        shape,
+        rule.operator === Operator.isEmpty,
+        emptyString,
+        options,
+      );
   }
 
   // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the absent

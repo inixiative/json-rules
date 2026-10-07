@@ -5,8 +5,8 @@ import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCata
 import type { AggregateRule, ArrayRule, Condition } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import { buildCountStep } from './countStep';
-import { buildMapAwareFilter, hopArms, nullOf } from './field';
-import { andWhere, orWhere, overFetch } from './logical';
+import { buildMapAwareFilter, emptinessWhere, hopArms } from './field';
+import { orWhere, overFetch } from './logical';
 import { conditionTouchesBridge, type FieldShape, relationTarget, ruleShape } from './mapWalk';
 import { buildCondition } from './recurse';
 import type { BuildOptions, FieldMap, PrismaBuildState, PrismaWhere } from './types';
@@ -25,7 +25,8 @@ export const buildArrayRule = (
   state?: PrismaBuildState,
 ): PrismaWhere => {
   const where = compileArrayRule(rule, options, state);
-  return rule.field && holdsForEmpty(rule)
+  // An array held in a column carries its own absent arms (see emptinessWhere).
+  return rule.field && holdsForEmpty(rule) && !isValueArray(rule.field, options)
     ? orWhere([where, ...hopArms(rule.field, options)])
     : where;
 };
@@ -77,11 +78,20 @@ const compileArrayRule = (
     throw new Error('toPrisma: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }
   const { field } = rule;
-  const shape = ruleShape({ field }, options?.map as FieldMap | undefined, options?.model);
-  if (shape === 'list' || shape === 'json' || shape === 'json-path')
-    return buildValueArrayRule(rule, field, shape, options);
+  if (isValueArray(field, options))
+    return buildValueArrayRule(
+      rule,
+      field,
+      ruleShape({ field }, options?.map as FieldMap | undefined, options?.model),
+      options,
+    );
   const filter = buildArrayLeafFilter(rule, options, state);
   return buildMapAwareFilter(rule.field, filter, options);
+};
+
+const isValueArray = (field: string, options?: BuildOptions): boolean => {
+  const shape = ruleShape({ field }, options?.map as FieldMap | undefined, options?.model);
+  return shape === 'list' || shape === 'json' || shape === 'json-path';
 };
 
 /** An array held in a column — a scalar list or a Json array. An absent or NULL one is empty,
@@ -92,15 +102,16 @@ const buildValueArrayRule = (
   shape: FieldShape,
   options?: BuildOptions,
 ): PrismaWhere => {
-  const at = (filter: unknown) => buildMapAwareFilter(field, filter, options);
-  const absent = at({ equals: nullOf(shape) });
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
-      return orWhere([at(shape === 'list' ? { isEmpty: true } : { equals: [] }), absent]);
     case ArrayOperator.notEmpty:
-      return shape === 'list'
-        ? at({ isEmpty: false })
-        : andWhere([at({ not: [] }), at({ not: nullOf(shape) })]);
+      return emptinessWhere(
+        field,
+        shape,
+        rule.arrayOperator === ArrayOperator.empty,
+        false,
+        options,
+      );
     default:
       throw new Error(
         `ArrayOperator '${rule.arrayOperator}' over the ${shape === 'list' ? 'list' : 'Json array'} '${field}' has no Prisma equivalent; evaluate it with check()${shape === 'list' ? ", or test membership with 'contains'" : ''}.`,

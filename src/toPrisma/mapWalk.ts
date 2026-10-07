@@ -141,6 +141,18 @@ const kindShape = (kind: string): FieldShape => {
   return kind === FieldKind.String ? 'text' : 'scalar';
 };
 
+/** A shape whose values read as text (an undeclared field may). */
+export const readsText = (shape: FieldShape | undefined): boolean =>
+  shape !== 'scalar' && shape !== 'list' && shape !== 'enum' && shape !== 'relation';
+
+/** Whether a case-insensitive comparison applies — text against a string operand (or a list
+ *  holding one), as check() lowercases only strings. */
+export const comparesText = (shape: FieldShape | undefined, operand: unknown): boolean =>
+  readsText(shape) &&
+  (Array.isArray(operand)
+    ? operand.some((item) => typeof item === 'string')
+    : typeof operand === 'string');
+
 /** A rule's field shape: the map's authority, a stamped `coerceType` the fallback. */
 export const ruleShape = (
   rule: Pick<Rule, 'field' | 'coerceType'>,

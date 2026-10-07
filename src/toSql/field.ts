@@ -7,9 +7,10 @@ import { NEGATED_OPERATORS, NO_VALUE_OPERATORS, RANGE_OPERATORS } from '../opera
 import { readPattern } from '../pattern';
 import {
   acceptsEmptyString,
+  comparesText,
   compileFieldLiteral,
-  type FieldShape,
   fieldEntry,
+  readsText,
   walkWith,
 } from '../toPrisma/mapWalk';
 import type { Rule } from '../types';
@@ -74,13 +75,11 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   if (rhs.type === 'value' && hasNoOperand(rule, rhs.value))
     return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator), nullable);
   const arithmetic = rhs.type === 'column' && rhs.computed === true;
-  // Case-insensitive compares text, as check() lowercases only strings.
-  const text = (shape: FieldShape | undefined) =>
-    shape !== 'scalar' && shape !== 'list' && shape !== 'enum';
   const lower =
     resolveCaseInsensitive(rule.caseInsensitive) &&
-    text(resolved.shape) &&
-    (rhs.type === 'column' ? !arithmetic && text(rhs.shape) : hasString(rhs.value));
+    (rhs.type === 'column'
+      ? !arithmetic && readsText(resolved.shape) && readsText(rhs.shape)
+      : comparesText(resolved.shape, rhs.value));
   const lc = (expr: string): string => (lower ? `LOWER(${expr})` : expr);
   const lowered = (values: unknown[]): unknown[] =>
     lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
@@ -198,11 +197,6 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
     return rule.offset === undefined ? end : offsetNumber(end, rule.offset, state);
   }) as [ResolvedRhs, ResolvedRhs];
 };
-
-const hasString = (operand: unknown): boolean =>
-  Array.isArray(operand)
-    ? operand.some((item) => typeof item === 'string')
-    : typeof operand === 'string';
 
 /** A pattern's source for Postgres `~`, refused when it can backtrack exponentially. */
 const sqlPattern = (value: unknown): string => {

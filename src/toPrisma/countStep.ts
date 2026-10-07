@@ -1,3 +1,4 @@
+import { conditionRequired } from '../errors';
 import { ArrayOperator } from '../operator';
 import { comparatorOf } from '../operatorCatalog';
 import type { ArrayRule } from '../types';
@@ -26,8 +27,7 @@ export const buildCountStep = (
 
   // Same contract as check(): a count operator without a condition or count is an
   // authoring error, not a default.
-  if (rule.condition === undefined)
-    throw new Error(`${rule.arrayOperator} requires a condition to check against array elements`);
+  if (rule.condition === undefined) throw conditionRequired(rule.arrayOperator);
   if (rule.count === undefined) throw new Error(`${rule.arrayOperator} requires a count`);
   const count = rule.count;
   if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return matchAll();

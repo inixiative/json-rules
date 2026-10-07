@@ -1,15 +1,22 @@
 import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
+import { conditionRequired } from './errors';
 import { checkField } from './field';
 import { ArrayOperator } from './operator';
 import { ARRAY_CONDITION_OPERATORS, ARRAY_COUNT_OPERATORS } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
 import { assertConditionDepth } from './traverse';
-import type { AggregateRule, ArrayRule, Condition, DateConfig, Rule, RuleValue } from './types';
+import type {
+  AggregateRule,
+  ArrayRule,
+  CheckData,
+  Condition,
+  DateConfig,
+  Row,
+  Rule,
+  RuleValue,
+} from './types';
 import { applyWindow } from './window';
-
-type Row = Record<string, unknown>;
-type CheckData = Row | unknown[];
 
 export type CheckOptions = {
   context?: CheckData;
@@ -196,10 +203,7 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
 
   const itemCondition = condition.condition;
   const elementwise = ARRAY_CONDITION_OPERATORS.includes(condition.arrayOperator);
-  if (elementwise && itemCondition === undefined)
-    throw new Error(
-      `${condition.arrayOperator} requires a condition to check against array elements`,
-    );
+  if (elementwise && itemCondition === undefined) throw conditionRequired(condition.arrayOperator);
 
   const count = condition.count ?? 0;
   if (ARRAY_COUNT_OPERATORS.includes(condition.arrayOperator) && condition.count === undefined)

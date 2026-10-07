@@ -57,12 +57,6 @@ export const isExistenceTest = (
     rule.path === undefined &&
     rule.bind === undefined);
 
-/** The error for comparing a to-one relation as a value. */
-export const relationNotValue = (field: string): Error =>
-  new Error(
-    `'${field}' is a relation: it exists or not; compare its fields with '${field}.<field>'.`,
-  );
-
 // A bigint compares as a number (refused past the safe range).
 const fromBigInt = (value: unknown): unknown => {
   if (typeof value === 'bigint') return bigIntToNumber(value);

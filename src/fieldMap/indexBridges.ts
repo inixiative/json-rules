@@ -1,9 +1,8 @@
 import { groupBy } from 'lodash-es';
 import { own, ownEntry } from '../own';
+import type { Row } from '../types';
 import { endpointKey } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
-
-type Row = Record<string, unknown>;
 
 export type BridgeDictionary = Record<
   string, // map name

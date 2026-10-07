@@ -348,3 +348,9 @@ export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
   | StrictAny<TRuleValue, TDateValue>
   | StrictIfThenElse<TRuleValue, TDateValue>
   | boolean;
+
+/** A row as a rule reads it: a record of fields. */
+export type Row = Record<string, unknown>;
+
+/** What check() evaluates: one row, or a root array of them. */
+export type CheckData = Row | unknown[];

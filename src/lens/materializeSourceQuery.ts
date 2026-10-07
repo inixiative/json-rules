@@ -1,9 +1,8 @@
 import type { SourceOption } from '../toPrisma/types.ts';
+import type { Row } from '../types';
 import type { SourceValues } from './projectPaths.ts';
 import { accumulateRow, groupAtPath, groupsAtPaths, sortOptions } from './sourceOptions.ts';
 import type { SourceQuery } from './toSourceQueries.ts';
-
-type Row = Record<string, unknown>;
 
 /** Which executor produced the rows — the caller always knows; never guessed. */
 export type SourceRowShape = 'prisma' | 'sql';

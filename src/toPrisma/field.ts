@@ -6,7 +6,8 @@ import {
   supportsQueryMode,
 } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
-import { hasNoOperand, isExistenceTest, relationNotValue } from '../field';
+import { relationNotValue } from '../errors';
+import { hasNoOperand, isExistenceTest } from '../field';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {

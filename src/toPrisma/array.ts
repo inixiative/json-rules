@@ -1,4 +1,5 @@
 import { check } from '../check';
+import { fieldlessArrayError } from '../errors';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
 import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
@@ -75,7 +76,7 @@ const compileArrayRule = (
   }
 
   if (!rule.field) {
-    throw new Error('toPrisma: ArrayRule.field is required (fieldless arrayOps are check-only)');
+    throw fieldlessArrayError('toPrisma');
   }
   const { field } = rule;
   if (isValueArray(field, options))

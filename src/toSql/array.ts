@@ -1,3 +1,4 @@
+import { fieldlessArrayError } from '../errors';
 import { ArrayOperator } from '../operator';
 import { fieldEntry, ruleShape } from '../toPrisma/mapWalk';
 import type { ArrayRule } from '../types';
@@ -12,7 +13,7 @@ export const SQL_WINDOW_UNSUPPORTED =
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
   if (hasWindow(rule)) throw new Error(SQL_WINDOW_UNSUPPORTED);
   if (!rule.field) {
-    throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
+    throw fieldlessArrayError('toSql');
   }
   const shape = ruleShape({ field: rule.field }, state.map, state.currentModel);
   if (

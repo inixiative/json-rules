@@ -4,14 +4,13 @@ import { inverseRelation } from '../toPrisma/relationUtils';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
 import { visitCondition } from '../traverse.ts';
+import type { Row } from '../types';
 import type { Condition } from '../types.ts';
 import { prefixConditionFields } from './narrowRule.ts';
 import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectedVisit } from './projectPaths.ts';
 import { projectPaths } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-
-type Row = Record<string, unknown>;
 
 /**
  * Fold the traversal guards one dotted path picks up: every traversed model's

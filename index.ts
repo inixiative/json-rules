@@ -62,14 +62,13 @@ export {
 export { ArrayOperator, DateOperator, Operator } from './src/operator';
 export {
   ALL_KINDS,
-  type ArrayCatalogEntry,
-  type CatalogEntry,
   FieldKind,
   getAggregateOperators,
   getArrayOperators,
   getOperatorsForKind,
   getValueShape,
   NUMERIC_KINDS,
+  type OperatorFamily,
   RuleTarget,
   ValueShape,
 } from './src/operatorCatalog';
@@ -93,7 +92,7 @@ export type {
   WhereStep,
 } from './src/toPrisma';
 export { executePrismaPlan, toPrisma } from './src/toPrisma';
-export { type SqlResult, toSql } from './src/toSql';
+export { type SqlBuildOptions, type SqlResult, toSql } from './src/toSql';
 export type * from './src/types';
 export {
   assertValidRule,

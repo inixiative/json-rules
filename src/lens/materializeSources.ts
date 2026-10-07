@@ -2,6 +2,7 @@ import { type CheckOptions, check } from '../check.ts';
 import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
+import type { Row } from '../types';
 import type { SourceValues } from './projectPaths.ts';
 import {
   accumulateRow,
@@ -11,8 +12,6 @@ import {
   sourcePlans,
 } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-
-type Row = Record<string, unknown>;
 
 // Rows anchored at a projection path: segments after the root model name descend
 // relations, flattening to-many arrays (mirrors the joins a SourceQuery would emit).

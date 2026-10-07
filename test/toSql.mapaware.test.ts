@@ -264,3 +264,25 @@ describe('toSql without map falls back to existing behavior', () => {
     expect(sql).toBe(`NULLIF("settings"->'display'->'mode', 'null'::jsonb) = $1::jsonb`);
   });
 });
+
+describe('toSql takes a FieldMapSet with mapName, as toPrisma does', () => {
+  it('resolves the named map', () => {
+    const { sql } = toSql(
+      { field: 'author.email', operator: Operator.equals, value: 'a@b.com' },
+      { map: { maps: { app: blogMap } }, mapName: 'app', model: 'Post' },
+    );
+    expect(sql).toBe('"t1"."email" = $1');
+  });
+
+  it('refuses a set without mapName', () => {
+    expect(() =>
+      toSql(
+        { field: 'title', operator: Operator.equals, value: 'x' },
+        {
+          map: { maps: { app: blogMap } },
+          model: 'Post',
+        },
+      ),
+    ).toThrow("'mapName' is required");
+  });
+});

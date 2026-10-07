@@ -171,6 +171,27 @@ test.each([
   expect(result.sql).toEqual(expect.stringContaining('is not a date column'));
 });
 
+test('a column compared with a Json value read per row has no SQL form', async () => {
+  const result = await rails.run({
+    field: 'age',
+    operator: 'greaterThan',
+    path: '$.meta.n',
+  } as Condition);
+  expect(result.sql).toEqual(expect.stringContaining('Json value read per row'));
+});
+
+test.each([
+  { field: 'name', operator: 'in', path: '$.tags' },
+  { field: 'name', operator: 'matches', path: '$.name' },
+])('a set or pattern read per row has no SQL form: %j', async (rule) => {
+  expect((await rails.run(rule as Condition)).sql).toEqual(expect.stringContaining('read per row'));
+});
+
+test.each(['contains', 'notContains'])('a list %s a member read per row', async (operator) => {
+  const result = await rails.run({ field: 'tags', operator, path: '$.name' } as Condition);
+  expect(result.sql).toEqual(result.check);
+});
+
 test('a date rule on a String column has no Prisma form', async () => {
   const result = await rails.run({
     field: 'name',

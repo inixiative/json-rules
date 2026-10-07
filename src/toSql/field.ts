@@ -72,11 +72,24 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
       state,
     );
   }
+  // check() compares a Json value as JSON, never across types; SQL would compare its text.
+  const refuseJsonOperand = (operand: ResolvedRhs): void => {
+    if (
+      operand.type === 'column' &&
+      !operand.computed &&
+      (operand.shape === 'json' || operand.shape === 'json-path')
+    )
+      throw new Error(
+        `'${rule.field}' compared with a Json value read per row has no SQL form; use check().`,
+      );
+  };
   if (RANGE_OPERATORS.includes(rule.operator)) {
     const ends = resolveRange(rule, state);
+    ends?.forEach(refuseJsonOperand);
     return rangeSql(compared.sql, ends, NEGATED_OPERATORS.includes(rule.operator), state, nullable);
   }
   const rhs = resolveComparison(rule, state);
+  refuseJsonOperand(rhs);
   const field = compared.sql;
   const ordered = orderedSql(rule.operator, 'field');
   if (ordered) return compareSql(field, ordered.symbol, rhs, false, state);
@@ -92,6 +105,21 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const lc = (expr: string): string => (lower ? `LOWER(${expr})` : expr);
   const lowered = (values: unknown[]): unknown[] =>
     lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
+
+  // A member read per row: a NULL one is nothing to look for, so only a NULL list is without it.
+  if (
+    resolved.shape === 'list' &&
+    rhs.type === 'column' &&
+    CONTAINS_OPERATORS.includes(rule.operator)
+  ) {
+    const has =
+      resolveCaseInsensitive(rule.caseInsensitive) && readsText(rhs.shape)
+        ? `EXISTS (SELECT 1 FROM unnest(${field}) AS e WHERE LOWER(e) = LOWER(${rhs.sql}))`
+        : `array_position(${field}, ${rhs.sql}) IS NOT NULL`;
+    return rule.operator === Operator.contains
+      ? `(${rhs.sql} IS NOT NULL AND ${has})`
+      : `(${field} IS NULL OR (${rhs.sql} IS NOT NULL AND NOT ${has}))`;
+  }
 
   // A scalar list contains a member, as check() reads a list; NULL elements and a NULL list
   // contain nothing. Case-insensitively, its members compare lowered.
@@ -124,6 +152,15 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
+
+  // A set or a pattern is bound when compiling; one read per row has no SQL form.
+  if (
+    rhsCol !== undefined &&
+    (SET_OPERATORS.includes(rule.operator) || getValueShape(rule.operator, 'field') === 'pattern')
+  )
+    throw new Error(
+      `'${rule.operator}' against an operand read per row ('${rule.path}') has no SQL form; use check().`,
+    );
 
   // Every negation carries the NULL rows explicitly (see ./compare).
   const orNull = (expr: string): string => (nullable ? orNullSql(field, expr) : expr);

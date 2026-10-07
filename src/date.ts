@@ -255,6 +255,8 @@ const hasExplicitZone = (value: string): boolean =>
  *   date-only string becomes midnight in that zone.
  */
 export const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
+  // A string of digits is epoch milliseconds, as a number is.
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) return dayjs(Number(value));
   if (typeof value === 'string' && !hasExplicitZone(value)) {
     // dayjs.tz throws on an unparseable string; return the (invalid) base parse instead
     // so callers' isValid() checks surface the friendly "not a valid date" error.

@@ -130,6 +130,8 @@ reads off the generated client.
   to an empty set and to a millisecond).
 - **`toSql` array `empty` on a Json value holding JSON null** no longer fails
   (`jsonb_array_length` of a scalar); array and field emptiness share one form.
+- **A string of digits is epoch milliseconds** on the date rail too, as a `coerceType: DateTime`
+  field rule read it (`'1700000000000'` parsed as a year).
 - **`indexBridges` reads own properties only**: a row keyed `constructor` was a spurious duplicate,
   and a map named after an `Object.prototype` member wrote onto it.
 - **`toPrisma` escapes `%` and `_`** in `contains` / `startsWith` / `endsWith` (and Json `string_*`):

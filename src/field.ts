@@ -95,7 +95,6 @@ const coerceScalar = (value: unknown, kind: FieldKind, zone: string): unknown =>
       if (value instanceof Date) return value.getTime();
       if (typeof value === 'number') return value;
       if (typeof value !== 'string') return value;
-      if (/^-?\d+$/.test(value)) return Number(value);
       const parsed = parseDateValue(value, zone);
       return parsed.isValid() ? parsed.valueOf() : value;
     }

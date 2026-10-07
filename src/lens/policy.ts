@@ -394,13 +394,13 @@ export type RelationHop = {
 };
 
 /**
- * The relations a path crosses from a visit, read from the lens maps — grants apply to a relation
+ * The relations a path crosses from a visit, read from the field maps — grants apply to a relation
  * whether or not it is visible, so this walk does not gate. It stops at the first segment that
  * isn't a relation; `end` is the visit the last segment reaches when every segment is one.
  * `prefix` is prepended to each hop's dotted prefix (a `$`-scope ref).
  */
 export const relationHops = (
-  policy: Policy,
+  maps: Record<string, FieldMap>,
   from: { mapName: string; modelName: string; relPath: readonly string[] },
   path: string,
   prefix = '',
@@ -412,7 +412,7 @@ export const relationHops = (
   let at = { ...from, relPath: [...from.relPath] };
   const hops: RelationHop[] = [];
   for (let i = 0; i < parts.length; i++) {
-    const entry = fieldOf(own(policy.lens.maps, at.mapName), at.modelName, parts[i]);
+    const entry = fieldOf(own(maps, at.mapName), at.modelName, parts[i]);
     const relation = entry && resolveRelationTarget(entry, at.mapName);
     if (!entry || !relation) break;
     at = { ...relation, relPath: [...at.relPath, parts[i]] };

@@ -1,5 +1,4 @@
 import { ArrayOperator } from '../operator.ts';
-import { fieldOf, own } from '../own';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
@@ -7,7 +6,6 @@ import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import { type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
-import { resolveRelationTarget } from './walk.ts';
 
 // Composes a user rule with the lens's narrowing where-clauses, injecting each
 // `where` at its proper anchor in the rule tree (not blindly AND-ing at root).
@@ -102,7 +100,7 @@ const anchorOf = (
   const target = resolveScopeRef(node.field, scopes);
   if ('outOfBounds' in target) throw new Error(`applyLens: ${target.outOfBounds}`);
   const scopePrefix = node.field.slice(0, node.field.length - target.path.length);
-  const { hops, end } = relationHops(policy, target.scope, target.path, scopePrefix);
+  const { hops, end } = relationHops(policy.lens.maps, target.scope, target.path, scopePrefix);
   return { hops, below: end };
 };
 

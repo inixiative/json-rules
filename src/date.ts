@@ -17,7 +17,7 @@ import { isOrderedValue, orderPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
 import { DAY_NAMES, NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
-import { parseScopeRef, readField, type Scopes } from './scope';
+import { readField, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
 import { type ReadSource, readValueSource, rowRef } from './valueSource';
 

@@ -10,6 +10,7 @@ import {
   normalizeSource,
   OFF_PATH,
   type Policy,
+  relationHops,
   resolvePolicy,
 } from './policy.ts';
 import { projectByPath } from './projectByPath.ts';
@@ -79,25 +80,22 @@ const validateSourceTargetVisibility = (
   // in force at the node it is read from — the same walk for a groupBy axis and a label.
   const checkPathVisibility = (path: string, kind: 'groupBy' | 'label', field: string): void => {
     const segments = path.split('.');
+    const { hops } = relationHops(maps, { mapName, modelName, relPath: [] }, path);
     let nodes: readonly (ModelNarrowing | ModelDefaultNarrowing)[] = ancestorChain;
-    let curMap = mapName;
-    let curModel = modelName;
-    for (let i = 0; i < segments.length; i++) {
+    let at = { map: mapName, model: modelName };
+    // Path resolvability is validated by toOnePathError; this checks each readable segment.
+    for (let i = 0; i <= Math.min(hops.length, segments.length - 1); i++) {
       const seg = segments[i];
-      const removed = ancestorRemoval(seg, [...nodes, ...defaultsFor(curMap, curModel)]);
+      const removed = ancestorRemoval(seg, [...nodes, ...defaultsFor(at.map, at.model)]);
       if (removed) {
         errors.push(`${position}.sources.${field}: ${kind} segment '${seg}' ${removed}`);
-        break;
+        return;
       }
-      if (i === segments.length - 1) break;
-      const fieldEntry = fieldOf(own(maps, curMap), curModel, seg);
-      const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
-      if (!target) break; // path resolvability is validated by toOnePathError
+      if (i === hops.length) return;
       nodes = nodes
         .map((n) => ('relations' in n ? own(n.relations, seg) : undefined))
         .filter((x): x is ModelNarrowing => x !== undefined);
-      curMap = target.mapName;
-      curModel = target.modelName;
+      at = hops[i];
     }
   };
 
@@ -145,24 +143,18 @@ const toOnePathError = (
   kind: 'groupBy' | 'label',
 ): string | null => {
   const segments = path.split('.');
-  let curMap = mapName;
-  let curModel = modelName;
-  for (let i = 0; i < segments.length; i++) {
-    const entry = fieldOf(own(maps, curMap), curModel, segments[i]);
-    if (!entry) return `${kind} segment '${segments[i]}' not on model '${curModel}'`;
-    const isLast = i === segments.length - 1;
-    if (entry.kind === 'object' || entry.kind === 'bridge') {
-      if (isLast) return `${kind} must end on a scalar column, '${segments[i]}' is a relation`;
-      if (entry.isList) return `${kind} cannot traverse to-many relation '${segments[i]}'`;
-      const target = resolveRelationTarget(entry, curMap);
-      if (!target) return `${kind} relation '${segments[i]}' has no resolvable target`;
-      curMap = target.mapName;
-      curModel = target.modelName;
-      continue;
-    }
-    if (!isLast) return `${kind} segment '${segments[i]}' is not a relation`;
-  }
-  return null;
+  const { hops } = relationHops(maps, { mapName, modelName, relPath: [] }, path);
+  const toMany = hops.find((hop, i) => hop.isList && i < segments.length - 1);
+  if (toMany) return `${kind} cannot traverse to-many relation '${segments[hops.indexOf(toMany)]}'`;
+  if (hops.length === segments.length)
+    return `${kind} must end on a scalar column, '${segments.at(-1)}' is a relation`;
+  const at = hops.at(-1) ?? { map: mapName, model: modelName };
+  const seg = segments[hops.length];
+  const entry = fieldOf(own(maps, at.map), at.model, seg);
+  if (!entry) return `${kind} segment '${seg}' not on model '${at.model}'`;
+  if (entry.kind === 'object' || entry.kind === 'bridge')
+    return `${kind} relation '${seg}' has no resolvable target`;
+  return hops.length === segments.length - 1 ? null : `${kind} segment '${seg}' is not a relation`;
 };
 
 const validateModelNode = (

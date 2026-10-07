@@ -7,7 +7,6 @@ import {
   RANGE_OPERATORS,
 } from '../operatorCatalog';
 import { acceptsEmptyString, compileFieldLiteral, walkWith } from '../toPrisma/mapWalk';
-import type { FieldMap } from '../toPrisma/types';
 import type { Rule } from '../types';
 import { compareSql, noOperandSql, ORDERED_SQL, orNull as orNullSql, rangeSql } from './compare';
 import { resolveFieldSql } from './join';

@@ -32,7 +32,11 @@ const foldPathGuards = (
 ): void => {
   const segments = dotted.split('.');
   // The last segment is the column; guards live on the traversed models.
-  const { hops } = relationHops(policy, { mapName, modelName, relPath: baseRelPath }, dotted);
+  const { hops } = relationHops(
+    policy.lens.maps,
+    { mapName, modelName, relPath: baseRelPath },
+    dotted,
+  );
   const crossed = hops.filter((_, i) => i < segments.length - 1);
   if (strict && crossed.length < segments.length - 1) {
     const hop = segments[crossed.length];

@@ -1,4 +1,3 @@
-import { own } from '../own';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 

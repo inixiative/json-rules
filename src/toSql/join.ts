@@ -1,4 +1,4 @@
-import { modelOf, own } from '../own';
+import { modelOf } from '../own';
 import { type MapHop, pastScalarError, walkFieldPath } from '../toPrisma/mapWalk';
 import { relationKeys } from '../toPrisma/relationUtils';
 import type { FieldMapEntry } from '../toPrisma/types';

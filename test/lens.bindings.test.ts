@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { bindLens, lensRequiredBindings } from '../src/lens/bindings';
+import { bindLens, listLensBindings } from '../src/lens/bindings';
 import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectByPath } from '../src/lens/projectByPath';
@@ -29,15 +29,15 @@ const regionBind: Condition = { field: 'region', operator: Operator.equals, bind
 describe('bindLens — preprocess binds into the lens', () => {
   test('a bare lens carries no binds and is returned as-is', () => {
     expect(bindLens(lens, { brandUuid: 'acme-1' })).toBe(lens);
-    expect(lensRequiredBindings(lens)).toEqual(new Set());
+    expect(listLensBindings(lens)).toEqual([]);
   });
 
   test('resolves a root.where bind, then narrowRule is fully concrete', () => {
     const n: LensNarrowing = { parent: lens, root: { where: brandBind } };
-    expect(lensRequiredBindings(n)).toEqual(new Set(['brandUuid']));
+    expect(listLensBindings(n)).toEqual(['brandUuid']);
 
     const resolved = bindLens(n, { brandUuid: 'acme-1' });
-    expect(lensRequiredBindings(resolved)).toEqual(new Set());
+    expect(listLensBindings(resolved)).toEqual([]);
     expect(narrowRule(rule, resolved)).toEqual({
       all: [{ field: 'brandUuid', operator: Operator.equals, value: 'acme-1' }, rule],
     });
@@ -46,10 +46,10 @@ describe('bindLens — preprocess binds into the lens', () => {
   test('partial — covers what the map has, leaves the rest as tokens', () => {
     const a: LensNarrowing = { parent: lens, root: { where: brandBind } };
     const b: LensNarrowing = { parent: a, root: { where: regionBind } };
-    expect(lensRequiredBindings(b)).toEqual(new Set(['brandUuid', 'region']));
+    expect(listLensBindings(b)).toEqual(['brandUuid', 'region']);
 
     const partial = bindLens(b, { brandUuid: 'acme-1' });
-    expect(lensRequiredBindings(partial)).toEqual(new Set(['region']));
+    expect(listLensBindings(partial)).toEqual(['region']);
     expect(narrowRule(rule, partial)).toEqual({
       all: [{ field: 'brandUuid', operator: Operator.equals, value: 'acme-1' }, regionBind, rule],
     });
@@ -58,7 +58,7 @@ describe('bindLens — preprocess binds into the lens', () => {
   test('resolves binds in a source eligibility where (toSourceQueries/projection see concrete)', () => {
     const n: LensNarrowing = { parent: lens, root: { sources: { tier: brandBind } } };
     const resolved = bindLens(n, { brandUuid: 'acme-1' });
-    expect(projectByPath(resolved).get('FanUser')?.sources.tier).toEqual([
+    expect(projectByPath(resolved)['FanUser']?.sources.tier).toEqual([
       { field: 'brandUuid', operator: Operator.equals, value: 'acme-1' },
     ]);
   });
@@ -87,7 +87,7 @@ describe('bind-name discipline — unique names + parent:', () => {
       root: { where: { field: 'region', operator: Operator.equals, bind: 'parent:brandUuid' } },
     };
     expect(() => assertValidNarrowing(b)).not.toThrow();
-    expect(lensRequiredBindings(b)).toEqual(new Set(['brandUuid']));
+    expect(listLensBindings(b)).toEqual(['brandUuid']);
 
     const resolved = bindLens(b, { brandUuid: 'acme-1' });
     expect(narrowRule(rule, resolved)).toEqual({
@@ -116,12 +116,12 @@ describe('bindOptional through a lens', () => {
     bindOptional: true,
   };
 
-  test('lensRequiredBindings leaves an optional name out', () => {
+  test('listLensBindings leaves an optional name out', () => {
     const a: LensNarrowing = {
       parent: lens,
       root: { where: { all: [brandBind, optionalRegion] } },
     };
-    expect(lensRequiredBindings(a)).toEqual(new Set(['brandUuid']));
+    expect(listLensBindings(a)).toEqual(['brandUuid']);
   });
 
   test('an optional name still collides with an ancestor declaration', () => {

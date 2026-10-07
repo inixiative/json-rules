@@ -2,7 +2,7 @@ import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { isFieldVisible, OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
-import type { ProjectOptions } from './projectByPath.ts';
+import { type ProjectOptions, projectFields } from './projectByPath.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
@@ -92,27 +92,24 @@ export const exposedSurface = (
       surface.set(key, acc);
     }
 
-    for (const [fieldName, entry] of Object.entries(model.fields)) {
-      if (!isFieldVisible(effect, fieldName)) continue;
-      const svKey = `${mapName}::${modelName}::${fieldName}`;
-      const fetchedOptions = fetchedByModelField.get(svKey);
-      const enumValues = effect.enumValuesByField.get(fieldName);
-      let nextEntry = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
-      if (fetchedOptions) nextEntry = { ...nextEntry, options: [...fetchedOptions.values()] };
-      // Stamp the partition axes so consumers know WHICH sibling path pins this
-      // field's options. The surface flattens per model, so two paths declaring
-      // DIFFERENT axes for one field would union two incompatible partition
-      // namespaces — fail loud instead of merging them.
-      const axes = effect.sourceGroupBys.get(fieldName);
-      if (axes !== undefined) {
-        const existing = acc.fields.get(fieldName)?.groupBy;
-        if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(axes)) {
-          throw new Error(
-            `exposedSurface: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
-          );
-        }
-        nextEntry = { ...nextEntry, groupBy: axes };
-      }
+    const fields = projectFields(effect, model, (field) => {
+      const fetched = fetchedByModelField.get(`${mapName}::${modelName}::${field}`);
+      return fetched && [...fetched.values()];
+    });
+    for (const [fieldName, nextEntry] of Object.entries(fields)) {
+      const entry = nextEntry;
+      // The surface flattens per model: two paths grouping one field by DIFFERENT axes would
+      // union two incompatible partition namespaces — fail loud instead of merging them.
+      const axes = nextEntry.groupBy;
+      const existing = acc.fields.get(fieldName)?.groupBy;
+      if (
+        axes !== undefined &&
+        existing !== undefined &&
+        JSON.stringify(existing) !== JSON.stringify(axes)
+      )
+        throw new Error(
+          `exposedSurface: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
+        );
       unionFieldInto(acc.fields, fieldName, nextEntry);
 
       if (entry.kind === 'object' || entry.kind === 'bridge') {

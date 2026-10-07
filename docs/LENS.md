@@ -26,7 +26,7 @@ to write a lens that "works" but leaks scope.
 
 `picks` / `omits` / `enumPicks` / `enumOmits` control the **type surface**. The
 SDK, the AI, the OpenAPI emission — none of them can *mention* a narrowed-away
-field or enum value. `projectByPath(lens)` produces the path-keyed projection
+field or enum value. `projectLens(lens)` produces the path-keyed projection
 that reflects this surface, with each declared path getting its own resolved
 narrowing.
 
@@ -232,11 +232,11 @@ root.picks: 'password' was omitted by ancestor
 The strict check means you find bad lens code at construction, not at query
 time with a silently empty result.
 
-`projectByPath()` is the projection primitive (added in 3.0, replacing the
+`projectLens()` is the projection primitive (added in 3.0, replacing the
 pre-3.0 `projectNarrowing` which returned a flat model-keyed `FieldMapSet`).
 The pre-3.0 shape couldn't represent "User looks different at `sourceUser`
 vs `targetUser`" — two sibling relation paths targeting the same model
-collapsed into a single accumulator. `projectByPath` returns
+collapsed into a single accumulator. `projectLens` returns
 `Map<dottedPath, ProjectedVisit>` so each declared path keeps its own resolved
 narrowing. See section 10 for the API.
 
@@ -367,12 +367,12 @@ boundary.
 
 ### Surfacing the narrowed enum to a builder/SDK
 
-`projectByPath` materializes the per-field allowed set onto `FieldMapEntry.values`
+`projectLens` materializes the per-field allowed set onto `FieldMapEntry.values`
 on each visited field at each path, with all three enum narrowing layers
 composed. The consumer reads it directly:
 
 ```ts
-const projection = projectByPath(lens);
+const projection = projectLens(lens);
 const allowed = projection.get('User')?.fields.role?.values ?? [];
 ```
 
@@ -552,10 +552,10 @@ const userRule = {
 };
 
 const check = validateRuleInLens(userRule, narrowing);
-// { ok: boolean, violations: Array<{ path, reason }> }
+// { ok: boolean, errors: Array<{ path, message, code }> }
 
 if (!check.ok) {
-  return res.status(400).json({ violations: check.violations });
+  return res.status(400).json({ errors: check.errors });
 }
 ```
 
@@ -624,12 +624,12 @@ const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' })
 // plan.steps[plan.steps.length - 1].where is your Prisma where clause.
 ```
 
-### `projectByPath(lens)` — path-keyed projection
+### `projectLens(lens)` — path-keyed projection
 
 ```ts
-import { projectByPath } from '@inixiative/json-rules';
+import { projectLens } from '@inixiative/json-rules';
 
-const projection = projectByPath(narrowing);
+const projection = projectLens(narrowing);
 // Map<dottedPath, ProjectedVisit>
 //   key:   dotted path from the lens anchor, e.g. "Post", "Post.author", "Post.editor"
 //   value: { mapName, modelName, fields, whereClauses }
@@ -649,7 +649,7 @@ generation, search-field enumeration.
 Example — enumerate all reachable scalar/enum paths through the lens:
 
 ```ts
-const projection = projectByPath(lens);
+const projection = projectLens(lens);
 const lensAnchor = lens.model;
 const paths: string[] = [];
 for (const [dottedPath, visit] of projection) {
@@ -675,7 +675,7 @@ const walk = walkLensPath(narrowing, 'posts.author.name');
 // { outcome: 'hidden' | 'missing' | 'pastScalar', index: number, hops: [...] }
 ```
 
-The per-path counterpart of `projectByPath`: the walk `validateRuleInLens`
+The per-path counterpart of `projectLens`: the walk `validateRuleInLens`
 gates a rule's `field` with, exposed for consumers that resolve paths of their
 own — template tokens, loop bindings, presence guards. It verifies as it walks:
 every hop is checked against the narrowing at that visit, so `hidden` is a
@@ -687,17 +687,17 @@ resolve at evaluation time. Each hop carries its `FieldMapEntry`, so a consumer
 reads kind, list-ness and requiredness off the walk instead of re-walking the
 map.
 
-### `exposedSurface(lens)` — the leak-safe surface, as a Lens
+### `projectLens(lens, { by: 'model' })` — the leak-safe surface, as a Lens
 
-`projectByPath` returns a path-keyed *view* — the graph is flattened away. When
+`projectLens` returns a path-keyed *view* — the graph is flattened away. When
 you need the narrowed schema *as a navigable graph* (maps intact) — e.g. to hand
 a builder the total set of models/fields/enum values it may draw from —
-`exposedSurface` returns a **Lens**, not a projection:
+`projectLens(…, { by: 'model' })` returns a **Lens**, not a projection:
 
 ```ts
-import { exposedSurface } from '@inixiative/json-rules';
+import { projectLens } from '@inixiative/json-rules';
 
-const surface = exposedSurface(narrowing); // a Lens — maps intact, navigable
+const surface = projectLens(narrowing, { by: 'model' }); // a Lens — maps intact, navigable
 ```
 
 It is the **leak-safe server→client surface**. A field appears on a model iff
@@ -711,15 +711,15 @@ exposed values. The traversal is cycle-safe, so recursive schemas
 
 > **Lens vs Projection.** Both derive from a lens, but they are different shapes:
 > a **Lens** keeps its maps (the model→field→model graph) and is navigable; a
-> **Projection** (`projectByPath`) is a path-keyed read that has flattened the
-> graph away. `exposedSurface: Lens → Lens`; `projectByPath: Lens → Projection`.
+> **Projection** (`projectLens`) is a path-keyed read that has flattened the
+> graph away. `projectLens(lens, { by: 'model' }): Lens`; `projectLens(lens): Projection`.
 > Pair them when both navigation *and* per-path divergence matter.
 
-> **Trust boundaries.** `exposedSurface` strips `where` because the client never
+> **Trust boundaries.** `projectLens(…, { by: 'model' })` strips `where` because the client never
 > executes the rule. A server→subtenant handoff is different: the subtenant *does*
 > execute and must inherit the tenant's `where` scope floor and per-path narrowing,
 > narrowing only further (never widening). That where-preserving collapse is a
-> separate planned primitive (`seal`); do not use `exposedSurface` for it.
+> separate planned primitive (`seal`); do not use `projectLens(…, { by: 'model' })` for it.
 
 ## 11. Describe-and-validate vs deny-at-execution
 
@@ -744,7 +744,7 @@ badge a rule); `validateRuleInLens` remains the security gate.
 import { validateRuleInLens, narrowRule, toPrisma } from '@inixiative/json-rules';
 
 const check = validateRuleInLens(userRule, narrowing);
-if (!check.ok) throw new HttpError(400, check.violations);
+if (!check.ok) throw new HttpError(400, check.errors);
 
 const composed = narrowRule(userRule, narrowing);
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
@@ -967,7 +967,7 @@ import { validateRuleInLens } from '@inixiative/json-rules';
 
 const narrowing = buildNarrowing('tenant-42');
 const check = validateRuleInLens(userRule, narrowing);
-// { ok: true, violations: [] }
+// { ok: true, errors: [] }
 ```
 
 ### Apply

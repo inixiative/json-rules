@@ -86,6 +86,10 @@ export const shiftByUnits = (
 };
 
 export const isRollingExpr = <A>(e: DateExpr<A>): e is RollingExpr<A> => 'ago' in e || 'ahead' in e;
+/** A rolling expression from units and a direction: back (-1) is `ago`, forward (1) `ahead`. */
+export const rollingExpr = <A>(units: RelativeUnits<A>, direction: 1 | -1): RollingExpr<A> =>
+  direction === -1 ? { ago: units } : { ahead: units };
+
 /** A rolling expression's units and direction: `ago` moves back (-1), `ahead` forward (1). */
 export const rollingShift = <A>(expr: DateExpr<A>): [RelativeUnits<A>, 1 | -1] | null =>
   isRollingExpr(expr) ? ('ago' in expr ? [expr.ago, -1] : [expr.ahead, 1]) : null;

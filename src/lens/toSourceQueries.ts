@@ -155,7 +155,7 @@ export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQu
   const { lens } = policy;
   const projection = projectByPath(lensOrNarrowing);
   const out: SourceQuery[] = [];
-  for (const [path, visit] of projection) {
+  for (const [path, visit] of Object.entries(projection)) {
     const relPath = path.split('.').slice(1);
     for (const [field, sourceClauses] of Object.entries(visit.sources)) {
       const label = visit.sourceLabels[field];

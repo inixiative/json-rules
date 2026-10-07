@@ -1,7 +1,7 @@
 import { own } from '../own';
-import type { FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
+import type { FieldMapEntry, ModelEntry, SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
-import { isFieldVisible, resolvePolicy, resolveVisit } from './policy.ts';
+import { isFieldVisible, resolvePolicy, resolveVisit, type VisitEffect } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
 
@@ -19,7 +19,8 @@ export type ProjectedVisit = {
   sourceGroupBys: Record<string, string[]>;
 };
 
-export type PathProjection = Map<string, ProjectedVisit>;
+/** Each declared path's projected visit, keyed by dotted path from the lens model. */
+export type PathProjection = Record<string, ProjectedVisit>;
 
 /**
  * The materialized option set for one sourced field — the fetched companion to a
@@ -37,12 +38,38 @@ export type SourceValues = {
 
 export type ProjectOptions = { sourceValues?: readonly SourceValues[] };
 
+/**
+ * One visit's fields as the lens exposes them: the visible fields, a value-gated field carrying
+ * its allowed `values`, fetched source `options` attached, and a grouped source's `groupBy` axes.
+ * Both projections build their fields through it.
+ */
+export const projectFields = (
+  effect: VisitEffect,
+  model: ModelEntry,
+  fetched: (field: string) => readonly SourceOption[] | undefined,
+): Record<string, FieldMapEntry> => {
+  const fields: Record<string, FieldMapEntry> = {};
+  for (const [fieldName, entry] of Object.entries(model.fields)) {
+    if (!isFieldVisible(effect, fieldName)) continue;
+    const values = effect.enumValuesByField.get(fieldName);
+    const options = fetched(fieldName);
+    const groupBy = effect.sourceGroupBys.get(fieldName);
+    fields[fieldName] = {
+      ...entry,
+      ...(values !== undefined && { values }),
+      ...(options !== undefined && { options }),
+      ...(groupBy !== undefined && { groupBy }),
+    };
+  }
+  return fields;
+};
+
 export const projectByPath = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectOptions = {},
 ): PathProjection => {
   const policy = resolvePolicy(lensOrNarrowing);
-  const out: PathProjection = new Map();
+  const out: PathProjection = {};
 
   const fetchedByPathField = new Map<string, readonly SourceOption[]>();
   for (const sv of opts.sourceValues ?? []) {
@@ -55,24 +82,19 @@ export const projectByPath = (
     relPath: string[],
     dottedPath: string,
   ): void => {
-    if (out.has(dottedPath)) return;
+    if (Object.hasOwn(out, dottedPath)) return;
     const model = own(own(policy.lens.maps, mapName)?.models ?? {}, modelName);
     if (!model) return;
 
     const effect = resolveVisit(policy, mapName, modelName, relPath);
 
-    const fields: Record<string, FieldMapEntry> = {};
-    for (const [fieldName, entry] of Object.entries(model.fields)) {
-      if (!isFieldVisible(effect, fieldName)) continue;
-      const fetchedOptions = fetchedByPathField.get(`${dottedPath}|${fieldName}`);
-      const enumValues = effect.enumValuesByField.get(fieldName);
-      let projected = enumValues !== undefined ? { ...entry, values: enumValues } : entry;
-      // A sourced field's fetched pairs win; otherwise a value-gated field surfaces
-      // its resolved allowed-set as options, so every selectable field exposes `options`.
-      const options = fetchedOptions ?? enumValues?.map((v) => ({ value: v, label: v }));
-      if (options) projected = { ...projected, options };
-      fields[fieldName] = projected;
-    }
+    // A sourced field's fetched pairs win; otherwise a value-gated field surfaces its resolved
+    // allowed-set as options, so every selectable field exposes `options`.
+    const fields = projectFields(effect, model, (field) => {
+      const fetched = fetchedByPathField.get(`${dottedPath}|${field}`);
+      const values = effect.enumValuesByField.get(field);
+      return fetched ?? values?.map((value) => ({ value, label: value }));
+    });
 
     const sources: Record<string, Condition[]> = {};
     for (const [fieldName, clauses] of effect.sources) {
@@ -89,7 +111,7 @@ export const projectByPath = (
       if (isFieldVisible(effect, fieldName)) sourceGroupBys[fieldName] = groupBy;
     }
 
-    out.set(dottedPath, {
+    out[dottedPath] = {
       mapName,
       modelName,
       fields,
@@ -97,7 +119,7 @@ export const projectByPath = (
       sources,
       sourceLabels,
       sourceGroupBys,
-    });
+    };
 
     for (const relField of effect.relations.keys()) {
       // A relation this visit hides is not projected, as exposedSurface skips it.

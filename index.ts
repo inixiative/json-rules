@@ -1,11 +1,78 @@
-export * from './src/bindings';
-export * from './src/check';
-export * from './src/engineGlobals';
-export * from './src/fieldMap';
-export * from './src/fuzzy';
-export * from './src/lens';
-export * from './src/operator';
-export * from './src/operatorCatalog';
+// The public API: one name per operation, grouped by verb in docs/VERBS.md.
+
+export { bindRule, listBindings } from './src/bindings';
+export { type CheckOptions, check } from './src/check';
+export {
+  type EngineGlobalsState,
+  engineGlobals,
+  type PrismaProvider,
+} from './src/engineGlobals';
+export {
+  assertValidFieldMaps,
+  type Bridge,
+  type BridgeCardinality,
+  type BridgeDictionary,
+  type BridgeEndpoint,
+  type FieldMapSet,
+  indexBridges,
+  stitchFieldMaps,
+  validateFieldMaps,
+} from './src/fieldMap';
+export type { FuzzyConfig } from './src/fuzzy';
+export type {
+  EnumNarrowing,
+  Lens,
+  LensNarrowing,
+  ModelDefaultNarrowing,
+  ModelNarrowing,
+  NarrowingDefaults,
+  SourceSpec,
+  SourceValue,
+} from './src/lens';
+export {
+  assertValidNarrowing,
+  bindLens,
+  type CreateLensInput,
+  coerceRule,
+  createLens,
+  describeRule,
+  describeRuleSources,
+  type LensPathHop,
+  type LensPathResolution,
+  listLensBindings,
+  materializeSourceQuery,
+  materializeSources,
+  narrowRule,
+  type PathProjection,
+  type ProjectedVisit,
+  type ProjectOptions,
+  projectLens,
+  type RuleDescription,
+  type RuleSourceValues,
+  type SourcePrismaQuery,
+  type SourceQuery,
+  type SourceRowShape,
+  type SourceSqlQuery,
+  type SourceValues,
+  toSourceQueries,
+  validateNarrowing,
+  validateRuleInLens,
+  walkLensPath,
+} from './src/lens';
+export { ArrayOperator, DateOperator, Operator } from './src/operator';
+export {
+  ALL_KINDS,
+  type ArrayCatalogEntry,
+  type CatalogEntry,
+  FieldKind,
+  getAggregateOperators,
+  getArrayOperators,
+  getOperatorsForKind,
+  getValueShape,
+  NUMERIC_KINDS,
+  RuleTarget,
+  ValueShape,
+} from './src/operatorCatalog';
 export {
   parseScopeRef,
   readScopeRef,
@@ -13,7 +80,24 @@ export {
   type ScopeOutOfBounds,
   type ScopeRef,
 } from './src/scope';
-export * from './src/toPrisma';
-export * from './src/toSql';
+export type {
+  BuildOptions,
+  FieldMap,
+  FieldMapEntry,
+  GroupByStep,
+  PrismaStep,
+  PrismaWhere,
+  SourceOption,
+  StepRef,
+  ToPrismaResult,
+  WhereStep,
+} from './src/toPrisma';
+export { executePrismaPlan, toPrisma } from './src/toPrisma';
+export { type SqlResult, toSql } from './src/toSql';
 export type * from './src/types';
-export * from './src/validate';
+export {
+  assertValidRule,
+  type ValidationIssue,
+  type ValidationResult,
+  validateRule,
+} from './src/validate';

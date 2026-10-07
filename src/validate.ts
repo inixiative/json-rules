@@ -5,8 +5,8 @@ import {
   isDateExpr,
   isEdgeExpr,
   isPeriodExpr,
-  isRollingExpr,
   periodUnit,
+  rollingShift,
 } from './dateExpr';
 import { isOrderedValue } from './number';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
@@ -319,8 +319,11 @@ const validateOffset = (
       pushIssue(context, `${at}.value`, 'invalid_offset', 'A field offset value is a number');
     return;
   }
-  const units = isPlainObject(value) ? Object.keys(value) : [];
-  if (units.length !== 1 || (units[0] !== 'ago' && units[0] !== 'ahead')) {
+  const rolling =
+    isPlainObject(value) && Object.keys(value).length === 1 && isDateExpr(value)
+      ? rollingShift(value)
+      : null;
+  if (!rolling) {
     pushIssue(
       context,
       `${at}.value`,
@@ -330,8 +333,8 @@ const validateOffset = (
     return;
   }
   validateRelativeUnits(
-    (value as Record<string, unknown>)[units[0]],
-    `${at}.value.${units[0]}`,
+    rolling[0],
+    `${at}.value.${Object.keys(value as object)[0]}`,
     context,
     depth,
   );
@@ -859,8 +862,9 @@ const validateDateExpr = (
 ): void => {
   const isRange = WINDOW_OPERATORS.includes(operator);
 
-  if (isRollingExpr(expr)) {
-    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context, depth);
+  const rolling = rollingShift(expr);
+  if (rolling) {
+    validateRelativeUnits(rolling[0], path, context, depth);
     return;
   }
 

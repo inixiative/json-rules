@@ -103,8 +103,8 @@ const dedupeKey = (value: RuleValue): string => {
  * under the lens, unmapped segments, and sub-paths beneath a Json column are silent.
  */
 export const describeRuleSources = (
-  lensOrNarrowing: Lens | LensNarrowing,
   rule: Condition,
+  lensOrNarrowing: Lens | LensNarrowing,
 ): RuleSourceValues[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   const root = policy.lens.model;

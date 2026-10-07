@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import {
   assertValidNarrowing,
-  exposedSurface,
   type Lens,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
+  projectLens,
   toSourceQueries,
 } from '../index';
 import { Operator } from '../src/operator';
@@ -375,24 +375,27 @@ describe('materialization — options carry index-aligned groups', () => {
 
 describe('exposedSurface — axes on the surface, groups in the union', () => {
   test('the surface field entry carries the partition axes', () => {
-    const surface = exposedSurface(composite());
+    const surface = projectLens(composite(), { by: 'model' });
     expect(surface.maps.app.models.Enrichment.fields.value.groupBy).toEqual(AXES);
   });
 
   test('options sharing a value across composite groups survive the union', () => {
-    const surface = exposedSurface(composite(), {
-      sourceValues: [
-        {
-          path: 'User.enrichments',
-          mapName: 'app',
-          model: 'Enrichment',
-          field: 'value',
-          options: [
-            { value: 'Manufacturing', groups: ['Salesforce', 'Industry'] },
-            { value: 'Manufacturing', groups: ['HubSpot', 'Industry'] },
-          ],
-        },
-      ],
+    const surface = projectLens(composite(), {
+      ...{
+        sourceValues: [
+          {
+            path: 'User.enrichments',
+            mapName: 'app',
+            model: 'Enrichment',
+            field: 'value',
+            options: [
+              { value: 'Manufacturing', groups: ['Salesforce', 'Industry'] },
+              { value: 'Manufacturing', groups: ['HubSpot', 'Industry'] },
+            ],
+          },
+        ],
+      },
+      by: 'model',
     });
     expect(surface.maps.app.models.Enrichment.fields.value.options).toEqual([
       { value: 'Manufacturing', groups: ['Salesforce', 'Industry'] },
@@ -431,6 +434,6 @@ describe('exposedSurface — axes on the surface, groups in the union', () => {
         },
       },
     });
-    expect(() => exposedSurface(n)).toThrow(/ax[ei]s|groupBy/i);
+    expect(() => projectLens(n, { by: 'model' })).toThrow(/ax[ei]s|groupBy/i);
   });
 });

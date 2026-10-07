@@ -1,8 +1,4 @@
-import {
-  bindingNames as conditionBindingNames,
-  requiredBindings as conditionRequiredBindings,
-  bindRule as resolveConditionBindings,
-} from '../bindings.ts';
+import { listBindings, bindRule as resolveConditionBindings } from '../bindings.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { isSourceSpec, normalizeSource } from './policy.ts';
 import type {
@@ -79,7 +75,7 @@ const layerConditions = (nrw: LensNarrowing): Condition[] => {
 const declaredNames = (nrw: LensNarrowing): Set<string> => {
   const names = new Set<string>();
   for (const cond of layerConditions(nrw))
-    for (const name of conditionBindingNames(cond)) if (!isParentRef(name)) names.add(name);
+    for (const name of listBindings(cond)) if (!isParentRef(name)) names.add(name);
   return names;
 };
 
@@ -91,12 +87,12 @@ const declaredNames = (nrw: LensNarrowing): Set<string> => {
  * this lens require" answer; pass `narrowing.parent` to see the names a child must
  * not collide with.
  */
-export const lensRequiredBindings = (lensOrNarrowing: Lens | LensNarrowing): Set<string> => {
+export const listLensBindings = (lensOrNarrowing: Lens | LensNarrowing): string[] => {
   const names = new Set<string>();
   for (const nrw of collectChain(lensOrNarrowing))
     for (const cond of layerConditions(nrw))
-      for (const name of conditionRequiredBindings(cond)) names.add(baseName(name));
-  return names;
+      for (const name of listBindings(cond, { required: true })) names.add(baseName(name));
+  return [...names].sort();
 };
 
 /**
@@ -143,7 +139,7 @@ export const validateBindNames = (narrowing: LensNarrowing): string[] => {
 
   const refs = new Set<string>();
   for (const cond of layerConditions(narrowing))
-    for (const name of conditionBindingNames(cond)) if (isParentRef(name)) refs.add(baseName(name));
+    for (const name of listBindings(cond)) if (isParentRef(name)) refs.add(baseName(name));
   for (const r of refs)
     if (!occupied.has(r))
       errors.push(`bind 'parent:${r}' references an inherited binding no ancestor declares`);

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
-import { bindingNames, bindRule, check, requiredBindings, toPrisma, toSql } from '../index';
+import { bindRule, check, listBindings, toPrisma, toSql } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
 import { getWhere } from './fixtures/helpers';
@@ -134,9 +134,9 @@ describe('bindings see an offset bind', () => {
     ],
   });
 
-  test('bindingNames and requiredBindings', () => {
-    expect([...bindingNames(r)].sort()).toEqual(['floor', 'par', 'strokes']);
-    expect([...requiredBindings(r)].sort()).toEqual(['par', 'strokes']);
+  test('listBindings and requiredBindings', () => {
+    expect(listBindings(r).sort()).toEqual(['floor', 'par', 'strokes']);
+    expect(listBindings(r, { required: true }).sort()).toEqual(['par', 'strokes']);
   });
 
   test('bindRule turns a bound offset into a value', () => {

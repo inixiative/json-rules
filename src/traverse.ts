@@ -1,7 +1,7 @@
 import { isPlainObject } from 'lodash-es';
-import { isDateExpr, isRollingExpr } from './dateExpr';
+import { isDateExpr, rollingExpr, rollingShift } from './dateExpr';
 import { isCalendarUnit } from './operatorCatalog';
-import type { Condition, ValueSourceOf } from './types';
+import type { Condition, RelativeUnits, ValueSourceOf } from './types';
 import { hasPath, isValueSource } from './valueSource';
 
 export type ConditionNode = Record<string, unknown>;
@@ -139,8 +139,8 @@ const mapUnits = (units: unknown, fn: MapSource): unknown =>
     : units;
 
 const mapExpr = (expr: unknown, fn: MapSource): unknown => {
-  if (!isDateExpr(expr) || !isRollingExpr(expr)) return expr;
-  return 'ago' in expr ? { ago: mapUnits(expr.ago, fn) } : { ahead: mapUnits(expr.ahead, fn) };
+  const rolling = isDateExpr(expr) ? rollingShift(expr) : null;
+  return rolling ? rollingExpr(mapUnits(rolling[0], fn) as RelativeUnits, rolling[1]) : expr;
 };
 
 /**

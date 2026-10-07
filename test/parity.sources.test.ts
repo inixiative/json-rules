@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
-import { bindingNames, bindRule, check, toPrisma, toSql, validateRule } from '../index';
+import { bindRule, check, listBindings, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // Where a value source reads nothing, check(), executed SQL and the Prisma filter agree.
@@ -115,7 +115,7 @@ describe('a bind inside a bound value', () => {
         offset: { value: { ago: { days: { value: 2 } } } },
       }),
     );
-    expect([...bindingNames(resolved)]).toEqual([]);
+    expect(listBindings(resolved)).toEqual([]);
   });
 });
 

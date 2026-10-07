@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap, LensNarrowing } from '../index';
-import { createLens, exposedSurface, Operator } from '../index';
+import { createLens, Operator, projectLens } from '../index';
 import { enumOptions, sortedOptions } from './fixtures/helpers';
 
 const socialMap: FieldMap = {
@@ -41,7 +41,7 @@ const socialMap: FieldMap = {
 describe('exposedSurface — reachability', () => {
   test('keeps the entrypoint and all reachable models, drops unreachable ones', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const reduced = exposedSurface(lens);
+    const reduced = projectLens(lens, { by: 'model' });
 
     expect(reduced.mapName).toBe('app');
     expect(reduced.model).toBe('User');
@@ -51,14 +51,14 @@ describe('exposedSurface — reachability', () => {
 
   test('prunes the enum registry to enum types still referenced by a visible field', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const reduced = exposedSurface(lens);
+    const reduced = projectLens(lens, { by: 'model' });
     expect(reduced.maps.app.enums?.UserRole).toEqual(['admin', 'member', 'guest']);
     expect(reduced.maps.app.enums?.Unused).toBeUndefined();
   });
 
   test('is cycle-safe — User → Org → members(User) → orgs(Org) terminates', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const reduced = exposedSurface(lens);
+    const reduced = projectLens(lens, { by: 'model' });
     // Org.members points back to User, User.orgs points back to Org — both kept once.
     expect(reduced.maps.app.models.Org.fields.members.type).toBe('User');
     expect(reduced.maps.app.models.User.fields.orgs.type).toBe('Org');
@@ -79,7 +79,7 @@ describe('exposedSurface — model-default narrowing applied', () => {
         },
       },
     };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
 
     expect(reduced.maps.app.models.User.fields.password).toBeUndefined();
     expect(reduced.maps.app.models.Org.fields.secrets).toBeUndefined();
@@ -93,7 +93,7 @@ describe('exposedSurface — model-default narrowing applied', () => {
       parent: lens,
       mapDefaults: { app: { models: { User: { enumOmits: { role: ['guest'] } } } } },
     };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
     expect(sortedOptions(reduced.maps.app.models.User.fields.role)).toEqual(
       enumOptions('admin', 'member'),
     );
@@ -107,7 +107,7 @@ describe('exposedSurface — model-default narrowing applied', () => {
         app: { models: { User: { where: { field: 'id', operator: Operator.notEmpty } } } },
       },
     };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
     expect(reduced.maps.app.models.User.fields.id).toBeDefined();
   });
 });
@@ -152,7 +152,7 @@ describe('exposedSurface — multi-source bridges', () => {
       mapName: 'prisma',
       model: 'FanUser',
     });
-    const reduced = exposedSurface(lens);
+    const reduced = projectLens(lens, { by: 'model' });
 
     expect(reduced.maps.prisma.models.FanUser).toBeDefined();
     expect(reduced.maps.salesforce.models.Contact).toBeDefined();
@@ -215,7 +215,7 @@ describe('exposedSurface — multi-source bridges', () => {
         salesforce: { models: { Contact: { omits: ['prisma:FanUser'] } } },
       },
     };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
 
     expect(reduced.maps.salesforce.models.Contact).toBeDefined(); // still reachable via Org
     // Only the Org↔Contact bridge survives; the FanUser↔Contact bridge is eliminated.
@@ -250,7 +250,7 @@ describe('exposedSurface — root narrowing must not leak (server→client surfa
   test('root omit at the anchor hides the field (no other path exposes it)', () => {
     const lens = createLens({ maps: { app: acyclicMap }, mapName: 'app', model: 'User' });
     const narrowing: LensNarrowing = { parent: lens, root: { omits: ['password'] } };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
     expect(reduced.maps.app.models.User.fields.password).toBeUndefined();
     expect(reduced.maps.app.models.User.fields.email).toBeDefined();
   });
@@ -258,7 +258,7 @@ describe('exposedSurface — root narrowing must not leak (server→client surfa
   test('root picks at the anchor expose only the allow-list', () => {
     const lens = createLens({ maps: { app: acyclicMap }, mapName: 'app', model: 'User' });
     const narrowing: LensNarrowing = { parent: lens, root: { picks: ['email', 'posts'] } };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
     expect(Object.keys(reduced.maps.app.models.User.fields).sort()).toEqual(['email', 'posts']);
     expect(reduced.maps.app.models.Post).toBeDefined(); // posts kept → Post reachable
   });
@@ -267,7 +267,7 @@ describe('exposedSurface — root narrowing must not leak (server→client surfa
     // User cycles back via Org.members, where no narrowing hides password.
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
     const narrowing: LensNarrowing = { parent: lens, root: { omits: ['password'] } };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
     // Anchor hides password, but Org.members(User) exposes it → it is legitimately
     // in the total exposed surface. Per-path enforcement is artifact #2's job.
     expect(reduced.maps.app.models.User.fields.password).toBeDefined();
@@ -281,7 +281,7 @@ describe('exposedSurface — enum registry reflects narrowing (no stale values)'
       parent: lens,
       mapDefaults: { app: { enums: { UserRole: { omits: ['guest'] } } } },
     };
-    const reduced = exposedSurface(narrowing);
+    const reduced = projectLens(narrowing, { by: 'model' });
     expect(reduced.maps.app.models.User.fields.role.values).toEqual(['admin', 'member']);
     // The registry must NOT still list the narrowed-away 'guest'.
     expect(reduced.maps.app.enums?.UserRole).toEqual(['admin', 'member']);

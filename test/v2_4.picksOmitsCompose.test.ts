@@ -31,7 +31,7 @@ const withParent = (parent: Lens | LensNarrowing, rest: Omit<LensNarrowing, 'par
 });
 
 const fieldsAt = (l: Lens | LensNarrowing, path: string): string[] =>
-  Object.keys(projectByPath(l).get(path)?.fields ?? {}).sort();
+  Object.keys(projectByPath(l)[path]?.fields ?? {}).sort();
 
 describe('projectByPath — picks/omits composition', () => {
   test('pure picks at root', () => {
@@ -119,9 +119,9 @@ describe('projectByPath — picks/omits composition', () => {
 describe('projectByPath — a relation the visit hides is not projected', () => {
   test('a child layer omits a relation the parent declared', () => {
     const parent = withParent(lens, { root: { relations: { author: { picks: ['name'] } } } });
-    expect(projectByPath(parent).has('Post.author')).toBe(true);
+    expect(Object.hasOwn(projectByPath(parent), 'Post.author')).toBe(true);
     const child = withParent(parent, { root: { omits: ['author'] } });
-    expect(projectByPath(child).has('Post.author')).toBe(false);
+    expect(Object.hasOwn(projectByPath(child), 'Post.author')).toBe(false);
     expect(fieldsAt(child, 'Post')).toEqual(['id', 'secret', 'title']);
   });
 });

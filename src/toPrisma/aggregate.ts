@@ -3,6 +3,7 @@ import { Operator } from '../operator';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition } from '../types';
 import { hasWindow } from '../window';
+import { walkFieldPath } from './mapWalk';
 import { relationKeys } from './relationUtils';
 import type {
   BuildOptions,
@@ -59,64 +60,36 @@ export const buildAggregateRule = (
 };
 
 /**
- * Walk a dot-notation field path through the FieldMap to find the terminal list relation.
- *
- * Returns the segments traversed, the final list relation entry, and the model it lives on.
- * E.g. for 'department.employees' on User:
- *   - segments: ['department', 'employees']
- *   - intermediate: User → Department (singular)
- *   - terminal: Department.employees → Employee (list)
+ * An aggregate's field path: to-one relations, then the to-many relation it aggregates over
+ * (e.g. 'department.employees' on User: User → Department, then Department.employees).
  */
-const walkAggregateFieldPath = (
-  field: string,
-  map: FieldMap,
-  rootModel: string,
-): {
-  segments: string[];
-  intermediateRelations: { fieldName: string; entry: FieldMapEntry; onModel: string }[];
-  terminalModel: string;
-  terminalEntry: FieldMapEntry;
-} => {
+const aggregatePath = (field: string, map: FieldMap, rootModel: string) => {
+  const walk = walkFieldPath(field, map, rootModel);
   const segments = field.split('.');
-  const intermediateRelations: { fieldName: string; entry: FieldMapEntry; onModel: string }[] = [];
-  let currentModel = rootModel;
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const fieldEntry = fieldOf(map, currentModel, seg);
-    if (!fieldEntry || fieldEntry.kind !== 'object') {
-      throw new Error(
-        `Field '${seg}' is not a relation in model '${currentModel}'. ` +
-          `Prisma aggregate rules only support relation fields.`,
-      );
-    }
-
-    if (i === segments.length - 1) {
-      // Terminal segment — must be a list relation
-      if (!fieldEntry.isList) {
-        throw new Error(`Field '${seg}' is not a list relation in model '${currentModel}'.`);
-      }
-      return {
-        segments,
-        intermediateRelations,
-        terminalModel: currentModel,
-        terminalEntry: fieldEntry,
-      };
-    }
-
-    // Intermediate segment — must be a singular relation
-    if (fieldEntry.isList) {
-      throw new Error(
-        `Intermediate field '${seg}' in path '${field}' is a list relation. ` +
-          `Only the final segment can be a list relation for aggregate rules.`,
-      );
-    }
-
-    intermediateRelations.push({ fieldName: seg, entry: fieldEntry, onModel: currentModel });
-    currentModel = fieldEntry.type;
+  if (walk.kind !== 'direct' || walk.entry.kind !== 'object') {
+    const seg = segments[walk.hops.length];
+    const on = walk.hops.at(-1)?.entry.type ?? rootModel;
+    throw new Error(
+      `Field '${seg}' is not a relation in model '${on}'. Prisma aggregate rules only support relation fields.`,
+    );
   }
-
-  throw new Error(`Field path '${field}' did not terminate at a list relation.`);
+  const toMany = walk.hops.find((hop) => hop.entry.isList);
+  if (toMany)
+    throw new Error(
+      `Intermediate field '${toMany.field}' in path '${field}' is a list relation. ` +
+        `Only the final segment can be a list relation for aggregate rules.`,
+    );
+  if (!walk.entry.isList)
+    throw new Error(`Field '${walk.column}' is not a list relation in model '${walk.model}'.`);
+  return {
+    intermediateRelations: walk.hops.map((hop) => ({
+      fieldName: hop.field,
+      entry: hop.entry,
+      onModel: hop.from,
+    })),
+    terminalModel: walk.model,
+    terminalEntry: walk.entry,
+  };
 };
 
 const buildAggregateStep = (
@@ -126,7 +99,7 @@ const buildAggregateStep = (
 ): PrismaWhere => {
   const { map, model: rootModel } = options;
 
-  const { intermediateRelations, terminalModel, terminalEntry } = walkAggregateFieldPath(
+  const { intermediateRelations, terminalModel, terminalEntry } = aggregatePath(
     rule.field,
     map,
     rootModel,

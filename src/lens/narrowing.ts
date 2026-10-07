@@ -582,7 +582,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
       // A model default applies at EVERY visit of the model: the model-intrinsic (off-path)
       // visit plus each path the parent declares for it, so its where must resolve at all.
       const whereVisits: WhereVisit[] = [{ mapName, modelName, relPath: OFF_PATH }];
-      for (const [path, visit] of parentVisits) {
+      for (const [path, visit] of Object.entries(parentVisits)) {
         if (visit.mapName === mapName && visit.modelName === modelName) {
           whereVisits.push({ mapName, modelName, relPath: path.split('.').slice(1) });
         }

@@ -8,7 +8,7 @@ export const getWhere = (result: ToPrismaResult): Record<string, unknown> => {
 
 /** Look up a path in a PathProjection; throws with a clear message if missing. */
 export const at = (proj: PathProjection, path: string): ProjectedVisit => {
-  const v = proj.get(path);
+  const v = proj[path];
   if (!v) throw new Error(`expected projection visit at path '${path}'`);
   return v;
 };

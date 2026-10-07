@@ -180,7 +180,7 @@ describe('describeRuleSources — scope refs', () => {
 
   test('a $$. field records its values at the ancestor source', () => {
     const rule = atLineItems({ field: '$$.maxQty', operator: Operator.in, value: [1, 2] });
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'Org.orders',
         mapName: 'prisma',
@@ -194,6 +194,6 @@ describe('describeRuleSources — scope refs', () => {
 
   test('an out-of-bounds field records nothing', () => {
     const rule: Condition = { field: '$$.maxQty', operator: Operator.in, value: [1] };
-    expect(describeRuleSources(narrowing, rule)).toEqual([]);
+    expect(describeRuleSources(rule, narrowing)).toEqual([]);
   });
 });

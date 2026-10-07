@@ -87,7 +87,7 @@ describe('projectByPath — bridges', () => {
       },
     });
     const proj = projectByPath(n);
-    expect([...proj.keys()].sort()).toEqual([
+    expect(Object.keys(proj).sort()).toEqual([
       'FanUser',
       'FanUser.salesforce:Contact',
       'FanUser.salesforce:Contact.account',
@@ -277,9 +277,9 @@ describe('projectByPath — direct self-referential relation', () => {
       root: { relations: { manager: { picks: ['email'] } } },
     });
     const proj = projectByPath(n);
-    expect([...proj.keys()].sort()).toEqual(['User', 'User.manager']);
+    expect(Object.keys(proj).sort()).toEqual(['User', 'User.manager']);
     expect(Object.keys(at(proj, 'User.manager').fields).sort()).toEqual(['email']);
-    expect(proj.get('User.manager.manager')).toBeUndefined();
+    expect(proj['User.manager.manager']).toBeUndefined();
   });
 
   test('declared 2 hops deep: each manager visit is independently narrowed', () => {
@@ -296,7 +296,7 @@ describe('projectByPath — direct self-referential relation', () => {
       },
     });
     const proj = projectByPath(n);
-    expect([...proj.keys()].sort()).toEqual(['User', 'User.manager', 'User.manager.manager']);
+    expect(Object.keys(proj).sort()).toEqual(['User', 'User.manager', 'User.manager.manager']);
     expect(Object.keys(at(proj, 'User.manager').fields).sort()).toEqual(['manager', 'name']);
     expect(Object.keys(at(proj, 'User.manager.manager').fields).sort()).toEqual(['email']);
   });
@@ -318,7 +318,7 @@ describe('projectByPath — only mapDefaults, no root narrowing', () => {
       },
     });
     const proj = projectByPath(n);
-    expect([...proj.keys()]).toEqual(['User']);
+    expect(Object.keys(proj)).toEqual(['User']);
     expect(Object.keys(at(proj, 'User').fields).sort()).toEqual(['id', 'name']);
   });
 });

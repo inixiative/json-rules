@@ -51,7 +51,7 @@ export const materializeSources = (
   const out: SourceValues[] = [];
 
   const policy = resolvePolicy(lensOrNarrowing);
-  for (const [path, visit] of projectByPath(lensOrNarrowing)) {
+  for (const [path, visit] of Object.entries(projectByPath(lensOrNarrowing))) {
     const sourceFields = Object.entries(visit.sources);
     if (sourceFields.length === 0) continue;
 

@@ -396,7 +396,7 @@ instead of `now`:
 ```
 
 `bindRule` resolves an offset's bind as it does the comparison value's, and
-`bindingNames` / `requiredBindings` list it. A date offset read per row (a column holding
+`listBindings` lists it. A date offset read per row (a column holding
 `{ ago: … }`) is check-only; to size a shift from the row, read the amount instead.
 
 Any relative-date unit — in a `value` expression or an offset's rolling shift — is a number or a
@@ -438,8 +438,8 @@ format grows a node type, and it goes blind silently.
 
 | Function | Purpose |
 | --- | --- |
-| `requiredBindings(rule)` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`. A name optional at one leaf and required at another is required. |
-| `bindingNames(rule)` | Every `{ bind }` name in the tree, optional or not — what a lens declares. |
+| `listBindings(rule, { required: true })` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`, sorted. A name optional at one leaf and required at another is required. |
+| `listBindings(rule)` | Every `{ bind }` name in the tree, optional or not, sorted — what a lens declares. |
 | `bindRule(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
 
 A leaf may mark its bind optional: `{ field, operator, bind: 'region', bindOptional: true }`. An
@@ -720,19 +720,19 @@ Lens & bridges:
 
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`
 - `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`
-- `createLens`, `stitchFieldMaps`, `validateFieldMap`, `validateFieldMaps`
-- `validateNarrowing`, `projectByPath`, `exposedSurface`, `describeRule`, `validateRuleInLens`, `narrowRule`
+- `createLens`, `stitchFieldMaps`, `validateFieldMaps`
+- `validateNarrowing`, `projectLens`, `describeRule`, `validateRuleInLens`, `narrowRule`
 - `PathProjection`, `ProjectedVisit`, `RuleDescription`
 - `indexBridges`
 
 Two shapes come out of a lens, and they are different things:
 
-- **Lens** (maps intact — the navigable graph): `exposedSurface(lensOrNarrowing)`
+- **Lens** (maps intact — the navigable graph): `projectLens(lensOrNarrowing, { by: 'model' })`
   returns the leak-safe total exposed surface *as a Lens* — every reachable model
   with the full narrowing applied (root + path-specific + `mapDefaults`), unioned
   per model, `where` stripped. Use it as the server→client builder surface; it
   never exposes the raw, un-narrowed lens.
-- **Projection** (path-keyed view — graph flattened away): `projectByPath(lens)`
+- **Projection** (path-keyed view — graph flattened away): `projectLens(lens)`
   returns `Map<dottedPath, ProjectedVisit>` for per-path checks where sibling
   paths to the same model diverge.
 
@@ -813,7 +813,7 @@ boundary is **enforced, not documented**:
   `validateRuleInLens`, at author time;
 - the row-scope **`where` is the grant, applied server-side at execution** via
   `narrowRule` — the authored rule never sees it and can't escape it;
-- what reaches an untrusted party reveals nothing hidden — `exposedSurface`.
+- what reaches an untrusted party reveals nothing hidden — `projectLens(…, { by: 'model' })`.
 
 A lens defines a **surface area**, reused for distinct, separately-enforced
 constraints that may **diverge**: the *data-flow* surface (what you receive / pass
@@ -905,10 +905,10 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 
 | Function | Purpose |
 | --- | --- |
-| `validateNarrowing(narrowing)` | Throws on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call at narrowing construction. |
-| `projectByPath(lens)` | Returns `Map<dottedPath, ProjectedVisit>` — each declared path keys its own resolved narrowing (path picks/omits/enums chain-intersected ∩ `mapDefaults` for the target model). Sibling paths to the same model stay independent. Use for SDK-contract / OpenAPI emission, search-field enumeration, validation whitelists. See [docs/LENS.md §10](./docs/LENS.md). |
-| `describeRuleSources(lens, rule)` | The values a rule names at each source the lens declares, keyed like `projectByPath` (`path` + `field`, with the source's `mapName` / `model`). Resolved via `lensPathEnd`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
-| `validateRuleInLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, violations }`. The security gate. |
+| `validateNarrowing(narrowing)` | Returns `{ ok, errors }` (`assertValidNarrowing` throws) on structural or chain violations (incl. unresolvable `where` paths and items invisible from ancestors). Call at narrowing construction. |
+| `projectLens(lens)` | Returns `Record<dottedPath, ProjectedVisit>` — each declared path keys its own resolved narrowing (path picks/omits/enums chain-intersected ∩ `mapDefaults` for the target model). Sibling paths to the same model stay independent. Use for SDK-contract / OpenAPI emission, search-field enumeration, validation whitelists. See [docs/LENS.md §10](./docs/LENS.md). |
+| `describeRuleSources(rule, lens)` | The values a rule names at each source the lens declares, keyed like `projectLens` (`path` + `field`, with the source's `mapName` / `model`). Resolved through the lens like `walkLensPath`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
+| `validateRuleInLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, errors: { path, message, code }[] }` like `validateRule`. The security gate. |
 | `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Pass the result to `check` / `toPrisma` / `toSql`. |
 
 ### Evaluating Across Bridges

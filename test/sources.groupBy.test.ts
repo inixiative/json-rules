@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import {
   assertValidNarrowing,
-  exposedSurface,
   type Lens,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
-  projectByPath,
+  projectLens,
   type SourceValues,
   toSourceQueries,
 } from '../index';
@@ -152,7 +151,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
 
 describe('projectByPath — groupBy exposure', () => {
   test('exposes sourceGroupBys per sourced field', () => {
-    const visit = projectByPath(grouped()).get('User.enrichments');
+    const visit = projectLens(grouped())['User.enrichments'];
     expect(visit?.sourceGroupBys).toEqual({ value: ['map.definition.label'] });
   });
 });
@@ -464,7 +463,7 @@ describe('exposedSurface — grouped options survive the per-model union', () =>
         ],
       },
     ];
-    const surface = exposedSurface(grouped(), { sourceValues });
+    const surface = projectLens(grouped(), { ...{ sourceValues }, by: 'model' });
     expect(surface.maps.app.models.Enrichment.fields.value.options).toEqual([
       { value: 'marketing', groups: ['business unit'] },
       { value: 'marketing', groups: ['department'] },

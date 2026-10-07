@@ -16,7 +16,7 @@ const postLens: Lens = { maps: { prisma: multiRelMap }, mapName: 'prisma', model
 describe('projectByPath — path-keyed projection (v2.4)', () => {
   test('lens-only (no narrowing): single root entry with all fields', () => {
     const projection = projectByPath(postLens);
-    expect([...projection.keys()]).toEqual(['Post']);
+    expect(Object.keys(projection)).toEqual(['Post']);
     expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual([
       'author',
       'authorId',
@@ -29,7 +29,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
   test('root picks restrict the root visit', () => {
     const n = withParent(postLens, { root: { picks: ['id'] } });
     const projection = projectByPath(n);
-    expect([...projection.keys()]).toEqual(['Post']);
+    expect(Object.keys(projection)).toEqual(['Post']);
     expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual(['id']);
   });
 
@@ -45,7 +45,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
       },
     });
     const projection = projectByPath(n);
-    expect([...projection.keys()].sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
+    expect(Object.keys(projection).sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
 
     const author = at(projection, 'Post.author');
     expect(author.modelName).toBe('User');
@@ -112,7 +112,7 @@ describe('projectByPath — path-keyed projection (v2.4)', () => {
       mapDefaults: { prisma: { models: { User: { omits: ['email'] } } } },
     });
     const projection = projectByPath(n3);
-    expect([...projection.keys()].sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
+    expect(Object.keys(projection).sort()).toEqual(['Post', 'Post.author', 'Post.editor']);
     // author: layer1 ∩ layer2 picks = {name, email}; mapDefaults omits email → {name}
     expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['name']);
     // editor: only layer2 picks; mapDefaults still applies → {id} (email not picked anyway)
@@ -163,7 +163,7 @@ describe('projectByPath — recursive same model on one path', () => {
       },
     });
     const projection = projectByPath(n);
-    expect([...projection.keys()].sort()).toEqual([
+    expect(Object.keys(projection).sort()).toEqual([
       'User',
       'User.spaceUsers',
       'User.spaceUsers.user',

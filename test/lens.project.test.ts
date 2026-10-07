@@ -66,7 +66,7 @@ const withParent = (
 describe('projectByPath', () => {
   test('empty chain returns single root entry with all fields', () => {
     const out = projectByPath(lens);
-    expect([...out.keys()]).toEqual(['FanUser']);
+    expect(Object.keys(out)).toEqual(['FanUser']);
     const root = at(out, 'FanUser');
     expect(root.fields.email).toBeDefined();
     expect(root.fields.name).toBeDefined();

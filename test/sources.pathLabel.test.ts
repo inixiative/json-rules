@@ -5,7 +5,7 @@ import {
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
-  projectByPath,
+  projectLens,
   type SourceSpec,
   toSourceQueries,
 } from '../index';
@@ -155,7 +155,7 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
 
 describe('projectByPath — a dotted label surfaces verbatim', () => {
   test('sourceLabels carries the path, not a column name', () => {
-    const visit = projectByPath(pathLabeled()).get('User.enrichments');
+    const visit = projectLens(pathLabeled())['User.enrichments'];
     expect(visit?.sourceLabels).toEqual({ mapId: 'map.definition.label' });
   });
 });

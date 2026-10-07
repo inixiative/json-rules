@@ -59,14 +59,14 @@ describe('describeRuleSources — the values a rule names at each declared sourc
       arrayOperator: 'any',
       condition: { field: 'tag.id', operator: 'in', value: ['a', 'b'] },
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: ['a', 'b'], dynamic: false },
     ]);
   });
 
   test('dotted spelling is the same path', () => {
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: ['a'], dynamic: false },
     ]);
   });
@@ -82,7 +82,7 @@ describe('describeRuleSources — the values a rule names at each declared sourc
         { field: 'tagAttachments.tag.id', operator: 'notIn', value: ['b', 'a'] },
       ],
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: ['a', 'b'], dynamic: false },
     ]);
   });
@@ -94,7 +94,7 @@ describe('describeRuleSources — the values a rule names at each declared sourc
         { field: 'tier', operator: 'equals', bind: 'tier' },
       ],
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: [], dynamic: true },
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: true },
     ]);
@@ -107,7 +107,7 @@ describe('describeRuleSources — the values a rule names at each declared sourc
         { field: 'tier', operator: 'isEmpty', value: true },
       ],
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: [], dynamic: false },
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: false },
     ]);
@@ -121,7 +121,7 @@ describe('describeRuleSources — the values a rule names at each declared sourc
         { field: 'meta.tag.id', operator: 'equals', value: 'a' },
       ],
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([]);
+    expect(describeRuleSources(rule, narrowing)).toEqual([]);
   });
 
   test('a windowing filter is walked at the relation anchor; the aggregate threshold is not a source value', () => {
@@ -132,7 +132,7 @@ describe('describeRuleSources — the values a rule names at each declared sourc
       operator: 'greaterThan',
       value: 2,
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: ['a'], dynamic: false },
     ]);
   });
@@ -143,7 +143,7 @@ describe('describeRuleSources — the values a rule names at each declared sourc
       then: { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' },
       else: { field: 'tagAttachments.tag.id', operator: 'equals', value: 'b' },
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -158,12 +158,12 @@ describe('describeRuleSources — the values a rule names at each declared sourc
 
   test('a bare lens declares no sources', () => {
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' };
-    expect(describeRuleSources(lens, rule)).toEqual([]);
+    expect(describeRuleSources(rule, lens)).toEqual([]);
   });
 
   test('a prototype-named field is not a source', () => {
     const rule: Condition = { field: 'toString', operator: 'equals', value: 'a' };
-    expect(describeRuleSources(narrowing, rule)).toEqual([]);
+    expect(describeRuleSources(rule, narrowing)).toEqual([]);
   });
 });
 
@@ -174,7 +174,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       mapDefaults: { app: { models: { Tag: { sources: { id: true } } } } },
     };
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'in', value: ['t1', 't2'] };
-    expect(describeRuleSources(byDefaults, rule)).toEqual([
+    expect(describeRuleSources(rule, byDefaults)).toEqual([
       { ...tagSource, values: ['t1', 't2'], dynamic: false },
     ]);
   });
@@ -186,7 +186,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       { field: 'tagAttachments.tag.id', operator: 'matches', value: '^gold$' },
     ];
     for (const rule of rules) {
-      expect(describeRuleSources(narrowing, rule)).toEqual([
+      expect(describeRuleSources(rule, narrowing)).toEqual([
         { ...tagSource, values: [], dynamic: true },
       ]);
     }
@@ -198,7 +198,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       operator: 'definitelyNotAnOperator',
       value: 'x',
     } as unknown as Condition;
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { path: 'User', mapName: 'app', model: 'User', field: 'tier', values: [], dynamic: true },
     ]);
   });
@@ -211,7 +211,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       path: undefined,
       bind: undefined,
     } as unknown as Condition;
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -230,7 +230,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       value: 'gold',
       variable: {},
     } as unknown as Condition;
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -251,7 +251,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
         { field: 'tier', operator: 'in', value: [{ a: 1 }, { a: 1 }] },
       ],
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -265,7 +265,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
 
   test('a null inside an in list is a named value', () => {
     const rule = { field: 'tier', operator: 'in', value: ['a', null] } as unknown as Condition;
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       {
         path: 'User',
         mapName: 'app',
@@ -284,7 +284,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       count: 0,
       condition: { field: 'tag.id', operator: 'equals', value: 'a' },
     };
-    expect(describeRuleSources(narrowing, rule)).toEqual([
+    expect(describeRuleSources(rule, narrowing)).toEqual([
       { ...tagSource, values: ['a'], dynamic: false },
     ]);
   });
@@ -292,7 +292,7 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
 
 describe('describeRuleSources — a value read at evaluation, or moved, is dynamic', () => {
   const tierSource = (r: object) =>
-    describeRuleSources(narrowing, r as Condition).find((s) => s.field === 'tier');
+    describeRuleSources(r as Condition, narrowing).find((s) => s.field === 'tier');
 
   test('an offset moves the literal', () => {
     expect(

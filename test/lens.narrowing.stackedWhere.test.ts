@@ -94,15 +94,15 @@ const attachment = (deletedAt: string | null, tag: Record<string, unknown>) => (
 describe("stacked narrowings — every layer's where reaches the projection and the composed rule", () => {
   test('projectByPath carries the where of each layer at the visit it narrows', () => {
     const byPath = projectByPath(targeted);
-    expect(byPath.get('User')?.whereClauses).toEqual([
+    expect(byPath['User']?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
     ]);
-    expect(byPath.get('User.tagAttachments')?.whereClauses).toEqual([
+    expect(byPath['User.tagAttachments']?.whereClauses).toEqual([
       { field: 'deletedAt', operator: Operator.notExists },
     ]);
-    expect(byPath.get('User.tagAttachments.tag')?.whereClauses).toHaveLength(1);
-    expect(byPath.get('User.tagAttachments.tag')?.fields).toHaveProperty('name');
-    expect(byPath.get('User.tagAttachments.tag')?.fields).not.toHaveProperty('organizationId');
+    expect(byPath['User.tagAttachments.tag']?.whereClauses).toHaveLength(1);
+    expect(byPath['User.tagAttachments.tag']?.fields).toHaveProperty('name');
+    expect(byPath['User.tagAttachments.tag']?.fields).not.toHaveProperty('organizationId');
   });
 
   test('a layer added later ANDs with an earlier where on the same visit — neither replaces the other', () => {
@@ -110,7 +110,7 @@ describe("stacked narrowings — every layer's where reaches the projection and 
       parent: targeted,
       root: { where: { field: 'name', operator: Operator.equals, value: 'Ann' } },
     };
-    expect(projectByPath(twice).get('User')?.whereClauses).toEqual([
+    expect(projectByPath(twice)['User']?.whereClauses).toEqual([
       { field: 'id', operator: Operator.equals, value: 'u1' },
       { field: 'name', operator: Operator.equals, value: 'Ann' },
     ]);

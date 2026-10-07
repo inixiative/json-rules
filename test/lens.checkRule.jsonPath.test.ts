@@ -4,9 +4,8 @@ import {
   coerceRule,
   createLens,
   describeRule,
-  exposedSurface,
   narrowRule,
-  projectByPath,
+  projectLens,
   validateRuleInLens,
 } from '../index';
 import type { FieldMap } from '../src/toPrisma/types';
@@ -313,20 +312,21 @@ describe('narrowRule — Json sub-paths', () => {
 
 describe('projection — the Json column is the leaf it already is', () => {
   test('projectByPath exposes the column and keys no path below it', () => {
-    const proj = projectByPath(lens);
-    expect([...proj.keys()]).toEqual(['User']);
-    expect(proj.get('User')?.fields.metadata).toEqual({ kind: 'scalar', type: 'Json' });
+    const proj = projectLens(lens);
+    expect(Object.keys(proj)).toEqual(['User']);
+    expect(proj['User']?.fields.metadata).toEqual({ kind: 'scalar', type: 'Json' });
   });
 
   test('picks and omits compose on the column itself', () => {
     expect(
       Object.keys(
-        projectByPath({ parent: lens, root: { omits: ['metadata'] } }).get('User')?.fields ?? {},
+        projectLens({ parent: lens, root: { omits: ['metadata'] } })['User']?.fields ?? {},
       ),
     ).not.toContain('metadata');
     expect(
       Object.keys(
-        exposedSurface({ parent: lens, root: { picks: ['metadata'] } }).maps.app.models.User.fields,
+        projectLens({ parent: lens, root: { picks: ['metadata'] } }, { by: 'model' }).maps.app
+          .models.User.fields,
       ),
     ).toEqual(['metadata']);
   });

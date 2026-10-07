@@ -1,4 +1,4 @@
-import { rollingShift } from './dateExpr';
+import { rollingExpr, rollingShift } from './dateExpr';
 import { readNumber } from './number';
 import { isCalendarUnit } from './operatorCatalog';
 import type { DateExpr, Magnitude, RelativeUnits } from './types';
@@ -52,5 +52,5 @@ export const resolveExpr = (expr: DateExpr, read: ReadSource): DateExpr<number> 
   if (!rolling) return expr as DateExpr<number>;
   const units = resolveUnits(rolling[0], read);
   if (!units) return null;
-  return rolling[1] === -1 ? { ago: units } : { ahead: units };
+  return rollingExpr(units, rolling[1]);
 };

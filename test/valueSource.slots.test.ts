@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { bindingNames, bindRule, check, requiredBindings, toPrisma, toSql } from '../index';
+import { bindRule, check, listBindings, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // One value-source type in every slot: a unit amount and the evaluation's time zone take
@@ -39,16 +39,16 @@ describe('a bound unit amount', () => {
   });
 
   test('it is a binding the tree names and requires', () => {
-    expect([...bindingNames(withinBoundHours)]).toEqual(['quietHours']);
-    expect([...requiredBindings(withinBoundHours)]).toEqual(['quietHours']);
+    expect(listBindings(withinBoundHours)).toEqual(['quietHours']);
+    expect(listBindings(withinBoundHours, { required: true })).toEqual(['quietHours']);
     const offsetAmount = rule({
       field: 'ts',
       dateOperator: 'before',
       path: 'anchor',
       offset: { value: { ahead: { days: { bind: 'grace', bindOptional: true } } } },
     });
-    expect([...bindingNames(offsetAmount)]).toEqual(['grace']);
-    expect([...requiredBindings(offsetAmount)]).toEqual([]);
+    expect(listBindings(offsetAmount)).toEqual(['grace']);
+    expect(listBindings(offsetAmount, { required: true })).toEqual([]);
   });
 
   test('bindRule rewrites it, and both compilers then agree with check()', async () => {

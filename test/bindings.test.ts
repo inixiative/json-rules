@@ -1,12 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  ArrayOperator,
-  bindingNames,
-  bindRule,
-  type Condition,
-  Operator,
-  requiredBindings,
-} from '../index';
+import { ArrayOperator, bindRule, type Condition, listBindings, Operator } from '../index';
 
 describe('requiredBindings', () => {
   test('collects bind names across nested all/any', () => {
@@ -21,13 +14,13 @@ describe('requiredBindings', () => {
         },
       ],
     };
-    expect(requiredBindings(rule)).toEqual(new Set(['brandUuid', 'region']));
+    expect(listBindings(rule, { required: true })).toEqual(['brandUuid', 'region']);
   });
 
   test('empty when there are no binds', () => {
-    expect(requiredBindings({ field: 'x', operator: Operator.equals, value: 1 })).toEqual(
-      new Set(),
-    );
+    expect(
+      listBindings({ field: 'x', operator: Operator.equals, value: 1 }, { required: true }),
+    ).toEqual([]);
   });
 });
 
@@ -46,14 +39,14 @@ describe('bindRule', () => {
         { field: 'region', operator: Operator.equals, bind: 'region' },
       ],
     });
-    expect(requiredBindings(out)).toEqual(new Set(['region']));
+    expect(listBindings(out, { required: true })).toEqual(['region']);
   });
 
   test('fully resolves to a binding-free condition', () => {
     const rule = { field: 'brandUuid', operator: Operator.equals, bind: 'brandUuid' };
     const out = bindRule(rule, { brandUuid: 'acme-1' });
     expect(out).toEqual({ field: 'brandUuid', operator: Operator.equals, value: 'acme-1' });
-    expect(requiredBindings(out)).toEqual(new Set());
+    expect(listBindings(out, { required: true })).toEqual([]);
   });
 
   test('does not mutate the input', () => {
@@ -80,23 +73,27 @@ describe('the walk covers every grammar slot', () => {
     ],
   } as never;
 
-  test('requiredBindings reaches all/any, if/then/else, condition and filter', () => {
-    expect(requiredBindings(rule)).toEqual(
-      new Set(['inAll', 'inIf', 'inThen', 'inFilter', 'inCondition']),
-    );
+  test('listBindings reaches all/any, if/then/else, condition and filter', () => {
+    expect(listBindings(rule, { required: true })).toEqual([
+      'inAll',
+      'inCondition',
+      'inFilter',
+      'inIf',
+      'inThen',
+    ]);
   });
 
   test('bindRule substitutes in every slot', () => {
     const bindings = Object.fromEntries(
       ['inAll', 'inIf', 'inThen', 'inFilter', 'inCondition'].map((n) => [n, `${n}-v`]),
     );
-    expect(requiredBindings(bindRule(rule, bindings))).toEqual(new Set());
+    expect(listBindings(bindRule(rule, bindings), { required: true })).toEqual([]);
   });
 
   test('a bind whose name is an Object.prototype key does not resolve from the prototype', () => {
     const trap: Condition = { field: 'a', operator: Operator.equals, bind: 'toString' } as never;
     expect(bindRule(trap, {})).toEqual(trap);
-    expect(requiredBindings(bindRule(trap, {}))).toEqual(new Set(['toString']));
+    expect(listBindings(bindRule(trap, {}), { required: true })).toEqual(['toString']);
   });
 });
 
@@ -108,9 +105,9 @@ describe('bindOptional — an unsupplied optional bind is null, never a missing 
     ],
   };
 
-  test('requiredBindings leaves optional names out; bindingNames keeps every name', () => {
-    expect(requiredBindings(rule)).toEqual(new Set(['brandUuid']));
-    expect(bindingNames(rule)).toEqual(new Set(['brandUuid', 'region']));
+  test('listBindings leaves optional names out; listBindings keeps every name', () => {
+    expect(listBindings(rule, { required: true })).toEqual(['brandUuid']);
+    expect(listBindings(rule)).toEqual(['brandUuid', 'region']);
   });
 
   test('a name optional at one leaf and required at another is required', () => {
@@ -120,7 +117,7 @@ describe('bindOptional — an unsupplied optional bind is null, never a missing 
         { field: 'b', operator: Operator.equals, bind: 'tenant' },
       ],
     };
-    expect(requiredBindings(mixed)).toEqual(new Set(['tenant']));
+    expect(listBindings(mixed, { required: true })).toEqual(['tenant']);
   });
 
   test('bindRule drops the flag with the token it resolves, leaves an unsupplied optional token in place', () => {

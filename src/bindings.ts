@@ -18,24 +18,22 @@ const bindTokens = (node: ConditionNode): BindSource[] =>
     typeof source.bind === 'string' ? [source as BindSource] : [],
   );
 
-const bindNames = (condition: Condition, keep: (token: BindSource) => boolean): Set<string> => {
+/**
+ * The bind names a rule reads, sorted. With `required`, only those a bindings map must cover —
+ * not `bindOptional` (unsupplied, it reads null); a name optional at one leaf and required at
+ * another is required.
+ */
+export const listBindings = (
+  condition: Condition,
+  { required = false }: { required?: boolean } = {},
+): string[] => {
   const names = new Set<string>();
   visitCondition(condition, (node) => {
-    for (const token of bindTokens(node)) if (keep(token)) names.add(token.bind);
+    for (const token of bindTokens(node))
+      if (!required || token.bindOptional !== true) names.add(token.bind);
   });
-  return names;
+  return [...names].sort();
 };
-
-/** Names of every `{ bind }` token in the tree, optional or not — what a lens declares. */
-export const bindingNames = (condition: Condition): Set<string> => bindNames(condition, () => true);
-
-/**
- * Names a bindings map must cover: every `{ bind }` token not marked `bindOptional`. A
- * name that is optional at one leaf and required at another is required. An optional
- * name left unsupplied evaluates and compiles as `null`.
- */
-export const requiredBindings = (condition: Condition): Set<string> =>
-  bindNames(condition, (token) => token.bindOptional !== true);
 
 /**
  * Substitute covered binds with their values; uncovered tokens stay in place (partial

@@ -40,7 +40,7 @@ const activeAccount: Condition = {
 describe('sources — per-field eligibility wheres in the narrowing', () => {
   test('a source where surfaces per-field in the projected visit', () => {
     const n = withParent(base, { root: { sources: { tier: activeAccount } } });
-    const root = projectByPath(n).get('User');
+    const root = projectByPath(n)['User'];
     expect(root?.sources.tier).toEqual([activeAccount]);
   });
 
@@ -50,7 +50,7 @@ describe('sources — per-field eligibility wheres in the narrowing', () => {
       mapDefaults: { app: { models: { User: { sources: { tier: floor } } } } },
       root: { sources: { tier: activeAccount } },
     });
-    expect(projectByPath(n).get('User')?.sources.tier).toEqual([floor, activeAccount]);
+    expect(projectByPath(n)['User']?.sources.tier).toEqual([floor, activeAccount]);
   });
 
   test('validateNarrowing rejects a source on an unknown field', () => {
@@ -69,21 +69,21 @@ describe('sources — SourceSpec { where, label }', () => {
     const n = withParent(base, {
       root: { sources: { tier: { where: activeAccount, label: 'id' } } },
     });
-    const root = projectByPath(n).get('User');
+    const root = projectByPath(n)['User'];
     expect(root?.sources.tier).toEqual([activeAccount]);
     expect(root?.sourceLabels.tier).toBe('id');
   });
 
   test('a SourceSpec with only a label (no where) still surfaces the field with empty clauses', () => {
     const n = withParent(base, { root: { sources: { tier: { label: 'id' } } } });
-    const root = projectByPath(n).get('User');
+    const root = projectByPath(n)['User'];
     expect(root?.sources.tier).toEqual([]);
     expect(root?.sourceLabels.tier).toBe('id');
   });
 
   test('a bare condition leaves sourceLabels empty for that field', () => {
     const n = withParent(base, { root: { sources: { tier: activeAccount } } });
-    const root = projectByPath(n).get('User');
+    const root = projectByPath(n)['User'];
     expect(root?.sourceLabels.tier).toBeUndefined();
   });
 

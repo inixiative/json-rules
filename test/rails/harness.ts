@@ -70,8 +70,10 @@ export const openRails = async (seed = '') => {
   // check() reads the rows a consumer holds: what Prisma loads, relations included.
   const rows = await prisma.user.findMany({
     include: {
-      org: { include: { users: true, parent: { include: { parent: true } } } },
-      posts: true,
+      org: {
+        include: { users: { include: { org: true } }, parent: { include: { parent: true } } },
+      },
+      posts: { include: { author: true } },
     },
     orderBy: { id: 'asc' },
   });

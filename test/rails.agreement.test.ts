@@ -267,6 +267,33 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'tags', operator: 'notEquals', value: ['a', 'b'] },
     ids: [2, 3, 4, 5],
   },
+  'a required relation exists wherever its row does': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'any',
+      condition: { field: 'author', operator: 'exists' },
+    },
+    ids: [1, 3],
+    refuses: { sql: 'relation arrays are not supported' },
+  },
+  'a required relation is never missing': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'any',
+      condition: { field: 'author', operator: 'notExists' },
+    },
+    ids: [],
+    refuses: { sql: 'relation arrays are not supported' },
+  },
+  'a required relation past an optional hop': {
+    rule: {
+      field: 'org.users',
+      arrayOperator: 'any',
+      condition: { field: 'org', operator: 'exists' },
+    },
+    ids: [1, 2, 3],
+    refuses: { sql: 'relation arrays are not supported' },
+  },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
     ids: [1, 2, 3, 5],

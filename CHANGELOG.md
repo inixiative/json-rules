@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.1
+
+- **`exists` / `notExists` on a required to-one relation compile on Prisma.** A required relation
+  is there whenever its row is, so `toPrisma` read it as `{ isNot: null }` / `{ is: null }`, which
+  Prisma rejects on a required relation's filter. It now compiles through the optional hops above
+  it alone: `exists` matches wherever none is missing, `notExists` only where one is. This is what
+  a source's carried ancestor grant (`{ field: <inverse>, operator: 'exists' }`) emits through a
+  required inverse.
+
 ## 3.0.0 — one verb, one name, one implementation
 
 A consolidation release. Every operation has one public name and one implementation;

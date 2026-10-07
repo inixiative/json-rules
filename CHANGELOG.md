@@ -56,6 +56,22 @@ engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
 `toPrisma` throws when a rule needs it and it is not set: null checks, emptiness and existence
 on Json, and every negation on a Json path (which keeps absent paths).
 
+### Security
+
+- **A value ref must read a column.** A `path` (or offset / amount ref) ending on a relation
+  passed the lens gate, and `check()` printed the whole related row — hidden columns included —
+  in its error text. The gate rejects it, `toSql` refuses it, and error text names an object
+  operand instead of printing it.
+- **A to-one relation as a field only exists or not.** Ordered and range comparisons on one
+  passed the gate and `toSql` compiled them against the relation's key, which a narrowing can
+  hide.
+- **Option lists honor every ancestor's grant.** A source declared on a relation path read its
+  model's rows with only its own visit's `where`; the grants above it (the root `where`, a
+  parent relation's) now carry down through the inverse relation, and a grant no inverse can
+  carry offers nothing.
+- **`matches` refuses patterns that backtrack exponentially** (`(a+)+`, `(a|aa)*`) on every rail;
+  `validateRule` reports `unsafe_pattern`.
+
 ### Breaking: the rails agree
 
 `check()`, `toSql` on Postgres, and `toPrisma` on Prisma 7 now agree on every rule they all

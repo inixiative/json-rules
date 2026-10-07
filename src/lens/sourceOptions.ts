@@ -1,10 +1,11 @@
-import { own } from '../own';
+import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
+import { inverseRelation } from '../toPrisma/relationUtils';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
 import { prefixConditionFields } from './narrowRule.ts';
-import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import { allOf, type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectedVisit } from './projectByPath.ts';
 import { projectByPath } from './projectByPath.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -196,6 +197,55 @@ export type SourcePlan = {
 };
 
 /** Every sourced field the lens projects, planned once for both materializers. */
+/**
+ * The grants of every visit above a source's own, as conditions on the source's rows: each
+ * ancestor's `where` carried down through the inverse of the hop below it — a to-one inverse by
+ * prefixing its fields, a to-many one through `any`. An option list never offers what the rows
+ * under the grant don't hold, so a grant no inverse can carry (none declared, a bridge, a path
+ * ref) offers nothing.
+ */
+const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[] => {
+  if (relPath.length === 0) return [];
+  const root = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
+  const { hops, end } = relationHops(policy.lens.maps, root, relPath.join('.'));
+  if (!end) return [false];
+  const visits = [root, ...hops.map((hop) => ({ mapName: hop.map, modelName: hop.model }))];
+  let carried: Condition | null = null;
+  for (let level = 0; level < relPath.length; level++) {
+    const at = visits[level];
+    const declared = resolveVisit(
+      policy,
+      at.mapName,
+      at.modelName,
+      relPath.slice(0, level),
+    ).whereClauses;
+    const grants = carried === null ? declared : [...declared, carried];
+    if (grants.length === 0) {
+      carried = null;
+      continue;
+    }
+    const map = own(policy.lens.maps, at.mapName);
+    const entry = map && fieldOf(map, at.modelName, relPath[level]);
+    const inverse =
+      map && entry && entry.kind === 'object' && visits[level + 1].mapName === at.mapName
+        ? inverseRelation(map, at.modelName, relPath[level], entry)
+        : null;
+    if (!inverse) return [false];
+    const here = allOf(grants);
+    try {
+      carried = inverse.entry.isList
+        ? ({ field: inverse.field, arrayOperator: 'any', condition: here } as Condition)
+        : allOf([
+            { field: inverse.field, operator: 'exists' } as Condition,
+            prefixConditionFields(here, inverse.field),
+          ]);
+    } catch {
+      return [false];
+    }
+  }
+  return carried === null ? [] : [carried];
+};
+
 export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   return Object.entries(projectByPath(lensOrNarrowing)).flatMap(([path, visit]) =>
@@ -213,6 +263,7 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
         label,
       );
       const allowed = own(visit.fields, field)?.values;
+      const above = ancestorGrants(policy, relPath);
       return {
         path,
         visit,
@@ -220,6 +271,7 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
         ...(label !== undefined && { label }),
         ...(groupBy !== undefined && { groupBy }),
         eligibility: [
+          ...above,
           ...sourceClauses,
           ...guards,
           ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),

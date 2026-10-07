@@ -13,6 +13,7 @@ import {
   OPERAND_OPERATORS,
   RANGE_OPERATORS,
 } from './operatorCatalog';
+import { readPattern } from './pattern';
 import { readField, type Scopes } from './scope';
 import { showValue } from './showValue';
 import type { DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
@@ -189,16 +190,14 @@ export const checkField = (
       return !containsMatch() || getError(`must not contain`);
     case Operator.matches:
       return (
-        (hasMatch(fieldValue) &&
-          (value instanceof RegExp || typeof value === 'string') &&
-          !!fieldValue.match(value)) ||
+        (hasMatch(fieldValue) && isPattern(value) && readPattern(value).test(fieldValue)) ||
         getError(`must match pattern`)
       );
     case Operator.notMatches:
       return (
         !hasMatch(fieldValue) ||
-        !(value instanceof RegExp || typeof value === 'string') ||
-        !fieldValue.match(value) ||
+        !isPattern(value) ||
+        !readPattern(value).test(fieldValue) ||
         getError(`must not match pattern`)
       );
     case Operator.between: {
@@ -282,6 +281,9 @@ const compareOrderedValues = (
 };
 
 const hasMatch = (value: unknown): value is string => typeof value === 'string';
+
+const isPattern = (value: unknown): value is string | RegExp =>
+  typeof value === 'string' || value instanceof RegExp;
 
 const normalizeRange = (value: unknown): [string | number, string | number] | null => {
   if (!Array.isArray(value) || value.length !== 2) return null;

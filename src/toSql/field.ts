@@ -3,6 +3,7 @@ import { hasNoOperand } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS, NO_VALUE_OPERATORS, RANGE_OPERATORS } from '../operatorCatalog';
+import { readPattern } from '../pattern';
 import {
   acceptsEmptyString,
   compileFieldLiteral,
@@ -130,10 +131,10 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
       return `${lc(field)} LIKE ${lc(nextParam(state, `%${escapeLikePattern(String(rhsVal))}`))}`;
 
     case Operator.matches:
-      return `${field} ~ ${nextParam(state, rhsVal)}`;
+      return `${field} ~ ${nextParam(state, sqlPattern(rhsVal))}`;
 
     case Operator.notMatches:
-      return orNull(`${field} !~ ${nextParam(state, rhsVal)}`);
+      return orNull(`${field} !~ ${nextParam(state, sqlPattern(rhsVal))}`);
 
     // Empty is NULL, '', or an empty list or Json array, as check() reads it.
     case Operator.isEmpty:
@@ -206,3 +207,10 @@ const hasString = (operand: unknown): boolean =>
   Array.isArray(operand)
     ? operand.some((item) => typeof item === 'string')
     : typeof operand === 'string';
+
+/** A pattern's source for Postgres `~`, refused when it can backtrack exponentially. */
+const sqlPattern = (value: unknown): string => {
+  if (typeof value !== 'string' && !(value instanceof RegExp))
+    throw new Error('matches requires a string or RegExp pattern');
+  return readPattern(value).source;
+};

@@ -43,3 +43,22 @@ export const relationKeys = (
     there: from,
   }));
 };
+
+/** The relation on `entry`'s target that points back at `model` — the same relation seen from
+ *  the other side (matched by `relationName` when the map gives one). Null when the map doesn't
+ *  declare it, or several fields could be it. */
+export const inverseRelation = (
+  map: FieldMap,
+  model: string,
+  field: string,
+  entry: FieldMapEntry,
+): { field: string; entry: FieldMapEntry } | null => {
+  const candidates = Object.entries(modelOf(map, entry.type)?.fields ?? {}).filter(
+    ([name, other]) =>
+      other.kind === 'object' &&
+      other.type === model &&
+      other.relationName === entry.relationName &&
+      !(entry.type === model && name === field),
+  );
+  return candidates.length === 1 ? { field: candidates[0][0], entry: candidates[0][1] } : null;
+};

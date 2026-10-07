@@ -256,3 +256,39 @@ describe('a relation is never read as a value', () => {
     expect(result).toBe('title must equal an object');
   });
 });
+
+describe("an option list on a relation reads only the rows under its ancestors' grants", () => {
+  const platform: LensNarrowing = {
+    parent: lens,
+    root: { where: rule({ field: 'score', operator: 'greaterThan', value: 5 }) },
+  };
+  const delegate: LensNarrowing = {
+    parent: platform,
+    root: {
+      relations: {
+        comments: { sources: { body: true } },
+        author: { sources: { tenantId: true } },
+      },
+    },
+  };
+  const queries = toSourceQueries(delegate);
+  const at = (model: string) => {
+    const query = queries.find((q) => q.model === model);
+    if (!query) throw new Error(`no source query on ${model}`);
+    return query;
+  };
+
+  test('a grant carries down through the inverse relation', () => {
+    const comments = at('Comment');
+    const grant = { field: 'article.score', operator: 'greaterThan', value: 5 };
+    expect(JSON.stringify(comments.composedWhere)).toContain(JSON.stringify(grant));
+    expect(check(comments.composedWhere, { article: { score: 3 } })).not.toBe(true);
+    expect(check(comments.composedWhere, { article: { score: 9 } })).toBe(true);
+    expect(check(comments.composedWhere, {})).not.toBe(true);
+    expect(comments.sql.sql).toContain('JOIN "Article"');
+  });
+
+  test('a grant no inverse can carry offers nothing', () => {
+    expect(check(at('User').composedWhere, { tenantId: 't1' })).not.toBe(true);
+  });
+});

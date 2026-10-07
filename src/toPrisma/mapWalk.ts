@@ -90,8 +90,8 @@ export const entryKind = (entry: FieldMapEntry): FieldKind | undefined => {
 /** Epoch ms of a DateTime literal through check()'s own DateTime coercion (Date, ISO with or
  *  without a zone, day-only, epoch ms or digits; zoneless anchors in UTC) — undefined when it
  *  is not a representable instant. The gate and both compilers read dates through this seam. */
-export const instantMs = (value: unknown): number | undefined => {
-  const ms = applyCoercion(value, FieldKind.DateTime);
+export const instantMs = (value: unknown, zone?: string): number | undefined => {
+  const ms = applyCoercion(value, FieldKind.DateTime, zone);
   return typeof ms === 'number' && !Number.isNaN(new Date(ms).getTime()) ? ms : undefined;
 };
 
@@ -99,10 +99,10 @@ export const instantMs = (value: unknown): number | undefined => {
 // the HOST's zone, which a `timestamp` (no time zone) column — Prisma's Postgres default —
 // silently drops; a `...Z` string casts to the same instant on either column type.
 const toInstant =
-  (field: string, target: CompileTarget) =>
+  (field: string, target: CompileTarget, zone: string) =>
   (value: unknown): unknown => {
     if (value === null || value === undefined) return value;
-    const ms = instantMs(value);
+    const ms = instantMs(value, zone);
     if (ms === undefined)
       throw new Error(`Invalid date value for DateTime field '${field}': ${String(value)}`);
     return target === 'toPrisma' ? new Date(ms) : new Date(ms).toISOString();
@@ -122,6 +122,7 @@ export const compileFieldLiteral = (
   value: unknown,
   walk: MapWalkResult | undefined,
   target: CompileTarget,
+  zone: () => string,
 ): unknown => {
   if (value === null || value === undefined || walk?.kind === 'json-path') return value;
   const entry = walk?.kind === 'direct' ? walk.entry : undefined;
@@ -133,11 +134,15 @@ export const compileFieldLiteral = (
     );
   const kind = declared ?? rule.coerceType;
   if (kind === FieldKind.DateTime) {
-    const instant = toInstant(rule.field, target);
+    const instant = toInstant(rule.field, target, zone());
     return Array.isArray(value) ? value.map(instant) : instant(value);
   }
   return rule.coerceType !== undefined && COMPILE_COERCED_KINDS.includes(rule.coerceType)
-    ? applyCoercion(value, rule.coerceType)
+    ? applyCoercion(
+        value,
+        rule.coerceType,
+        rule.coerceType === FieldKind.DateTime ? zone() : undefined,
+      )
     : value;
 };
 

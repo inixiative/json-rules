@@ -15,7 +15,7 @@ import { offsetNumber } from './offset';
 import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
-import { isMissing, type ResolvedRhs, resolveSource } from './valueSource';
+import { dateConfigOf, isMissing, type ResolvedRhs, resolveSource } from './valueSource';
 
 // The ''-branch of isEmpty/notEmpty belongs to String (and Json) columns only —
 // Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
@@ -144,7 +144,13 @@ const coerce = (rule: Rule, rhs: ResolvedRhs, state: BuilderState): ResolvedRhs 
     ? rhs
     : {
         type: 'value',
-        value: compileFieldLiteral(rule, rhs.value, fieldWalk(rule, state), 'toSql'),
+        value: compileFieldLiteral(
+          rule,
+          rhs.value,
+          fieldWalk(rule, state),
+          'toSql',
+          () => dateConfigOf(state).timeZone,
+        ),
       };
 
 /** A range's two ends, sorted, each moved by the offset; null when the range reads nothing. */

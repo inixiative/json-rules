@@ -1,3 +1,5 @@
+import { parseDateValue, resolveDateConfig } from './date';
+import { DEFAULT_ZONE } from './dateExpr';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
 import { bigIntToNumber, orderPair } from './number';
@@ -12,7 +14,7 @@ import {
   RANGE_OPERATORS,
 } from './operatorCatalog';
 import { readField, type Scopes } from './scope';
-import type { Rule, RuleValue } from './types';
+import type { DateConfig, Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
@@ -43,8 +45,6 @@ export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unk
 };
 
 // A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
-const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
-
 const fromBigInt = (value: unknown): unknown => {
   if (typeof value === 'bigint') return bigIntToNumber(value);
   return Array.isArray(value) && value.some((v) => typeof v === 'bigint')
@@ -52,7 +52,7 @@ const fromBigInt = (value: unknown): unknown => {
     : value;
 };
 
-const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
+const coerceScalar = (value: unknown, kind: FieldKind, zone: string): unknown => {
   if (value === null || value === undefined) return value;
 
   if (NUMERIC_KINDS.includes(kind)) {
@@ -66,18 +66,15 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
 
   switch (kind) {
     case 'DateTime': {
-      // Everything lands on epoch ms so equals/ordered compare across Date
-      // instances, ISO strings (any zone/format), and ms-timestamp strings.
-      // A naive (zoneless) datetime string anchors in UTC — deterministic across
-      // hosts, matching the date rail's parseDateValue default (Date.parse would
-      // anchor it in the host's local zone).
+      // Everything lands on epoch ms so equals/ordered compare across Date instances, ISO
+      // strings and ms-timestamp strings. A zoneless string anchors in the evaluation's zone,
+      // through the date rail's own parser.
       if (value instanceof Date) return value.getTime();
       if (typeof value === 'number') return value;
       if (typeof value !== 'string') return value;
       if (/^-?\d+$/.test(value)) return Number(value);
-      const anchored = NAIVE_DATETIME.test(value) ? `${value.replace(' ', 'T')}Z` : value;
-      const ms = Date.parse(anchored);
-      return Number.isNaN(ms) ? value : ms;
+      const parsed = parseDateValue(value, zone);
+      return parsed.isValid() ? parsed.valueOf() : value;
     }
     case 'Boolean':
       if (value === 'true') return true;
@@ -92,10 +89,15 @@ const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   }
 };
 
-export const applyCoercion = (value: unknown, kind: FieldKind | undefined): unknown => {
+/** A value coerced to a field kind; a zoneless DateTime string anchors in `zone`. */
+export const applyCoercion = (
+  value: unknown,
+  kind: FieldKind | undefined,
+  zone: string = DEFAULT_ZONE,
+): unknown => {
   if (kind === undefined) return value;
-  if (Array.isArray(value)) return value.map((item) => coerceScalar(item, kind));
-  return coerceScalar(value, kind);
+  if (Array.isArray(value)) return value.map((item) => coerceScalar(item, kind, zone));
+  return coerceScalar(value, kind, zone);
 };
 
 export const checkField = (
@@ -103,10 +105,18 @@ export const checkField = (
   scopes: Scopes,
   context: unknown,
   bindings?: Record<string, RuleValue>,
+  config: DateConfig = {},
 ): boolean | string => {
+  // Only a DateTime coercion reads the zone.
+  const zone =
+    condition.coerceType === 'DateTime'
+      ? resolveDateConfig(config, (source) => readValueSource(source, scopes, context, bindings))
+          .timeZone
+      : DEFAULT_ZONE;
   const fieldValue = applyCoercion(
     fromBigInt(readField(condition.field, scopes)),
     condition.coerceType,
+    zone,
   );
 
   // Operators that don't need a value
@@ -116,6 +126,7 @@ export const checkField = (
         applyCoercion(
           fromBigInt(readValueSource(condition, scopes, context, bindings)),
           condition.coerceType,
+          zone,
         ),
         condition,
         scopes,

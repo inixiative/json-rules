@@ -61,7 +61,7 @@ const evaluate = <TData extends CheckData>(
     return checkDate(conditions, opts.scopes, opts.context as Row, opts, opts.bindings);
   if ('aggregate' in conditions) return checkAggregate(conditions as AggregateRule, opts);
   if ('field' in conditions)
-    return checkField(conditions, opts.scopes, opts.context as Row, opts.bindings);
+    return checkField(conditions, opts.scopes, opts.context as Row, opts.bindings, opts);
   if ('if' in conditions) return checkIfThenElse(conditions, data, opts);
 
   return false;

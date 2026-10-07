@@ -19,7 +19,7 @@ import { compileFieldLiteral, optionalToOneHops, pastScalarError, walkFieldPath 
 import { offsetNumber } from './offset';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
-import { readSource } from './valueSource';
+import { dateConfigOf, readSource } from './valueSource';
 
 /**
  * Whether the emptiness operators may compare this column against `''`. Only a
@@ -162,6 +162,7 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
     readSource(rule, options),
     fieldWalk(rule, options),
     'toPrisma',
+    () => dateConfigOf(options).timeZone,
   );
   return rule.offset === undefined ? value : offsetNumber(value, rule.offset, options);
 };

@@ -68,6 +68,18 @@ Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
   `missing_value_source`, and `invalid_value_source` (a non-string `path`/`bind`, or
   `bindOptional` without `bind`) — for an offset too, which reported `invalid_offset` for these.
 - The missing-source error reads `No value, path or bind specified`.
+- A `$.` value path (comparison value, offset or amount) reads the row the way a `field` does on
+  `toSql`: relation hops join and a Json tail is a JSON path. It compiled to one quoted column
+  (`"t0"."rule.windowSeconds"`) before.
+- Nothing to compare against matches nothing on every rail, and a negation keeps null fields: an
+  ordered comparison or a range that reads nothing, or a range missing an end. `check()` threw on
+  a field range with a null end; `toPrisma` emitted `{ lt: undefined }` (every row) or
+  `{ lt: null }` (rejected).
+- A context path that reads nothing reads `null`, the is-null sentinel for `equals` /
+  `notEquals`, as a supplied-but-undefined binding already did.
+- Aggregate rules read `bind` on both compilers; `toPrisma` also reads a context `path`.
+- `toSql` lowercases only string comparisons under `caseInsensitive` (`LOWER(int)` failed).
+- Operator, kind and relative-unit sets are defined once in `operatorCatalog.ts`.
 
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 

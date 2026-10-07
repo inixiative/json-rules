@@ -129,6 +129,7 @@ const RELATION_AGGREGATES = 'cannot aggregate relation lists';
 const NO_COLUMN_COMPARE = 'no column-to-column comparison';
 const NO_WEEKDAY = 'has no Prisma equivalent';
 const NY = { timeZone: 'America/New_York' };
+const NOT_FOR_ENUMS = 'does not apply to the enum';
 
 const MATRIX: Record<string, Case> = {
   'date before': {
@@ -269,15 +270,15 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'role', operator: 'equals', value: 'ADMIN', caseInsensitive: true },
     ids: [1],
   },
-  'an enum contains': { rule: { field: 'role', operator: 'contains', value: 'm' }, ids: [1, 4] },
-  'an enum startsWith': { rule: { field: 'role', operator: 'startsWith', value: 'G' }, ids: [3] },
-  'an enum notContains keeps NULL': {
-    rule: { field: 'role', operator: 'notContains', value: 'm' },
-    ids: [2, 3, 5],
+  'a string operator does not apply to an enum': {
+    rule: { field: 'role', operator: 'contains', value: 'm' },
+    ids: [1, 4],
+    refuses: { sql: NOT_FOR_ENUMS, prisma: NOT_FOR_ENUMS },
   },
-  'an enum orders as text': {
+  'an ordered comparison does not apply to an enum': {
     rule: { field: 'role', operator: 'lessThan', value: 'b' },
     ids: [1, 3],
+    refuses: { sql: NOT_FOR_ENUMS, prisma: NOT_FOR_ENUMS },
   },
   'an enum in': {
     rule: { field: 'role', operator: 'in', value: ['member', 'Guest'] },
@@ -287,9 +288,10 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'role', operator: 'notIn', value: ['MEMBER'], caseInsensitive: true },
     ids: [1, 2, 3, 5],
   },
-  'an enum matches, on every rail': {
+  'a pattern does not apply to an enum': {
     rule: { field: 'role', operator: 'matches', value: '^m' },
     ids: [4],
+    refuses: { sql: NOT_FOR_ENUMS, prisma: NOT_FOR_ENUMS },
   },
   'a string literal on a number column is refused, not cast': {
     rule: { field: 'age', operator: 'equals', value: '30' },
@@ -341,6 +343,14 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'name', operator: 'matches', value: /^d/i },
     ids: [4],
     refuses: { prisma: 'no Prisma equivalent' },
+  },
+  'an enum value the enum does not declare matches nothing': {
+    rule: { field: 'role', operator: 'in', value: ['admin', 'superuser'] },
+    ids: [1],
+  },
+  'notEquals an undeclared enum value keeps every row': {
+    rule: { field: 'role', operator: 'notEquals', value: 'superuser' },
+    ids: [1, 2, 3, 4, 5],
   },
   'a list isEmpty': { rule: { field: 'tags', operator: 'isEmpty' }, ids: [2, 3, 5] },
   'a list notEmpty': { rule: { field: 'tags', operator: 'notEmpty' }, ids: [1, 4] },

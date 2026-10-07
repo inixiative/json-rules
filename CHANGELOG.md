@@ -138,10 +138,11 @@ reads off the generated client.
   not membership (`check()` lowered the needle but not the elements). On Prisma, `contains` on
   Json is `string_contains` OR `array_contains`; `notContains` and `notBetween` on Json have no
   Prisma form (its Json filters can't test a value's type) and throw.
-- **An enum compares against its declared values.** A database orders an enum by declaration
-  and has no string operators for it; a case-insensitive comparison, a string operator, a
-  pattern or an ordered comparison on an enum now compiles to the declared values `check()`
-  matches (`IN (…)`, plus the NULL arm for a negation). The map must list the values (prisma-map
+- **An enum compares exactly, as its column does.** String, pattern and ordered operators don't
+  apply to an enum (the catalog said so; the compilers emitted `LIKE` on an enum, or a filter
+  Prisma rejects) and are refused. A case-insensitive equality or membership — or one naming a
+  value the enum doesn't declare, which the database refuses to read — compiles to the declared
+  values it matches (`IN (…)`, plus the NULL arm for a negation); the map lists them (prisma-map
   does).
 - **A string literal on a number or Boolean column without `coerceType` is refused** by the
   compilers (`toSql` cast it, `toPrisma` handed it to Prisma, `check()` compared it strictly);

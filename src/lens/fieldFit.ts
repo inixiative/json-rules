@@ -7,7 +7,6 @@ import {
   NUMERIC_KINDS,
   SINGLE_VALUE_SHAPES,
 } from '../operatorCatalog';
-import { own } from '../own';
 import { entryKind, instantMs } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';

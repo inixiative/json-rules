@@ -2,7 +2,6 @@ import { windowUnsupported } from '../errors';
 import { checkField } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import { negate } from '../negate';
-import { Operator } from '../operator';
 import { NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';

@@ -89,7 +89,7 @@ export const augmentPicksWithRelations = (
   return out;
 };
 
-export const accumulatePicksOmitsInto = (
+const accumulatePicksOmitsInto = (
   state: { picks: Set<string> | null; omits: Set<string> },
   n: ModelDefaultNarrowing | ModelNarrowing,
 ): void => {
@@ -98,7 +98,7 @@ export const accumulatePicksOmitsInto = (
   if (n.omits) for (const f of n.omits) state.omits.add(f);
 };
 
-export const intersectIntoMap = (
+const intersectIntoMap = (
   map: Map<string, Set<string>>,
   key: string,
   vals: readonly string[],
@@ -106,7 +106,7 @@ export const intersectIntoMap = (
   map.set(key, intersectStringSet(map.get(key) ?? null, vals));
 };
 
-export const unionIntoMap = (
+const unionIntoMap = (
   map: Map<string, Set<string>>,
   key: string,
   vals: readonly string[],
@@ -116,7 +116,7 @@ export const unionIntoMap = (
   map.set(key, s);
 };
 
-export const accumulateEnumFields = (
+const accumulateEnumFields = (
   picksMap: Map<string, Set<string>>,
   omitsMap: Map<string, Set<string>>,
   n: ModelDefaultNarrowing | ModelNarrowing,

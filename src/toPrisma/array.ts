@@ -12,14 +12,14 @@ import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, emptinessWhere, hopArms } from './field';
 import { orWhere, overFetch } from './logical';
 import { buildCondition } from './recurse';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { PrismaBuildOptions, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
 /** A rule over an array, which check() reads as empty when a to-one relation on its path is
  *  absent: where the rule holds for an empty array, so does the row with no such relation. */
 export const buildArrayRule = (
   rule: ArrayRule,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
   const where = compileArrayRule(rule, options, state);
@@ -35,7 +35,7 @@ export const holdsForEmpty = (rule: ArrayRule | AggregateRule): boolean =>
 
 const compileArrayRule = (
   rule: ArrayRule,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
   if (hasWindow(rule)) {
@@ -62,7 +62,7 @@ const compileArrayRule = (
     if (options?.map && options?.model && state) {
       return buildCountStep(
         rule,
-        options as BuildOptions & { map: FieldMap; model: string },
+        options as PrismaBuildOptions & { map: FieldMap; model: string },
         state,
       );
     }
@@ -87,7 +87,7 @@ const compileArrayRule = (
   return buildMapAwareFilter(rule.field, filter, options);
 };
 
-const isValueArray = (field: string, options?: BuildOptions): boolean => {
+const isValueArray = (field: string, options?: PrismaBuildOptions): boolean => {
   const shape = ruleShape({ field }, options?.map as FieldMap | undefined, options?.model);
   return shape === 'list' || shape === 'json' || shape === 'json-path';
 };
@@ -98,7 +98,7 @@ const buildValueArrayRule = (
   rule: ArrayRule,
   field: string,
   shape: FieldShape,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
 ): PrismaWhere => {
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
@@ -117,7 +117,10 @@ const buildValueArrayRule = (
   }
 };
 
-const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions | undefined => {
+const childOptionsFor = (
+  rule: ArrayRule,
+  options?: PrismaBuildOptions,
+): PrismaBuildOptions | undefined => {
   if (!options?.map || !options?.model || !rule.field) return options;
   const target = relationTarget(rule.field, options.map as FieldMap, options.model);
   return target ? { ...options, model: target } : options;
@@ -125,7 +128,7 @@ const childOptionsFor = (rule: ArrayRule, options?: BuildOptions): BuildOptions 
 
 const buildArrayLeafFilter = (
   rule: ArrayRule,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
   state?: PrismaBuildState,
 ): unknown => {
   // Inner condition runs against the relation target model, not the parent.

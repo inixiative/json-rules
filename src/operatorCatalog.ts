@@ -209,7 +209,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
   },
 };
 
-export type ArrayCatalogEntry = {
+type ArrayCatalogEntry = {
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
   comparator?: Comparator;

@@ -34,25 +34,27 @@ import type { Condition, Rule } from '../types';
 import { prismaAnyNull } from './anyNull';
 import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
-import type { BuildOptions, PrismaWhere } from './types';
+import type { PrismaBuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 import { dateConfigOf, readSource } from './valueSource';
 
-const shapeOf = (rule: Pick<Rule, 'field' | 'coerceType'>, options?: BuildOptions): FieldShape =>
-  ruleShape(rule, options?.map as FieldMap | undefined, options?.model);
+const shapeOf = (
+  rule: Pick<Rule, 'field' | 'coerceType'>,
+  options?: PrismaBuildOptions,
+): FieldShape => ruleShape(rule, options?.map as FieldMap | undefined, options?.model);
 
 const isJson = (shape: FieldShape): boolean => shape === 'json' || shape === 'json-path';
 
 /** The filter value that matches a field's NULL: on Json, Prisma's AnyNull — a DB NULL, a JSON
  *  null, and an absent path all read as null in check(). */
-export const nullOf = (shape: FieldShape): unknown => {
+const nullOf = (shape: FieldShape): unknown => {
   if (!isJson(shape)) return null;
   return prismaAnyNull();
 };
 
 /** Each optional to-one hop on the path NULL: `{ rel: { col: { equals: null } } }` requires the
  *  relation to exist, so a row without it needs its own arm. */
-export const hopArms = (field: string, options?: BuildOptions): PrismaWhere[] =>
+export const hopArms = (field: string, options?: PrismaBuildOptions): PrismaWhere[] =>
   options?.map && options?.model
     ? optionalToOneHops(field, options.map as FieldMap, options.model).map((hop) =>
         buildNestedFilter(hop, { is: null }),
@@ -67,7 +69,7 @@ export const hopArms = (field: string, options?: BuildOptions): PrismaWhere[] =>
  */
 export const absentArms = (
   rule: Pick<Rule, 'field' | 'coerceType'>,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
 ): PrismaWhere[] => {
   const shape = shapeOf(rule, options);
   const nullable =
@@ -88,7 +90,7 @@ export const absentArms = (
  */
 const queryMode = (
   rule: Rule,
-  options: BuildOptions | undefined,
+  options: PrismaBuildOptions | undefined,
   shape: FieldShape,
   value: unknown,
 ): { mode?: 'insensitive' } => {
@@ -121,7 +123,7 @@ export const emptinessWhere = (
   shape: FieldShape,
   empty: boolean,
   emptyString: boolean,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
 ): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(field, filter, options);
   const values = emptyValues(shape, emptyString);
@@ -139,7 +141,7 @@ export const emptinessWhere = (
 };
 
 /** A to-one relation as a field: it exists or it doesn't. */
-const buildRelationRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+const buildRelationRule = (rule: Rule, options?: PrismaBuildOptions): PrismaWhere => {
   if (!isExistenceTest(rule)) throw relationNotValue(rule.field);
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
   // check() answers which way it asks: for a missing relation, or a present one.
@@ -148,7 +150,7 @@ const buildRelationRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
     : at({ isNot: null });
 };
 
-export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
+export const buildFieldRule = (rule: Rule, options?: PrismaBuildOptions): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
   const shape = shapeOf(rule, options);
   const arms = () => absentArms(rule, options);
@@ -269,7 +271,7 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
 };
 
 /** The comparison value: the rule's value source, coerced to the field, moved by its offset. */
-const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
+const resolveRuleValue = (rule: Rule, options?: PrismaBuildOptions): unknown => {
   const value = compileFieldLiteral(
     rule,
     readSource(rule, options),
@@ -282,7 +284,7 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
 
 /** A leaf's comparison as a Prisma field filter, in the form its field's shape takes (a negated
  *  range is its positive form; the caller negates the clause). */
-export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown => {
+export const comparisonFilter = (rule: Rule, options?: PrismaBuildOptions): unknown => {
   const fuzzy = fuzzyNotCompiled(rule);
   if (fuzzy) throw fuzzy;
   const shape = shapeOf(rule, options);
@@ -369,7 +371,7 @@ const JSON_MATCH = {
 export const buildMapAwareFilter = (
   field: string,
   filter: unknown,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
 ): PrismaWhere => {
   if (!options?.map || !options?.model) {
     return buildNestedFilter(field, filter);

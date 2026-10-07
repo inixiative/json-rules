@@ -782,7 +782,7 @@ Rules:
 - `validateRule`, `assertValidRule`, `bindRule`, `listBindings`
 - `Operator`, `ArrayOperator`, `DateOperator`
 - `Condition`, `StrictCondition`, `Rule`, `AggregateRule`, `AggregateMode`, `ArrayRule`, `DateRule`, `Row`, `CheckData`
-- `CheckOptions`, `BuildOptions`, `SqlBuildOptions`, `SqlResult`, `ToPrismaResult`, `ValidationIssue`, `ValidationResult`
+- `CheckOptions`, `PrismaBuildOptions`, `SqlBuildOptions`, `SqlResult`, `ToPrismaResult`, `ValidationIssue`, `ValidationResult`
 - `engineGlobals`, `EngineGlobalsState`, `PrismaProvider`, `FuzzyConfig`
 
 Lens & bridges:

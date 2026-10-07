@@ -108,7 +108,7 @@ export const namedPeriod = (expr: PeriodExpr): unknown =>
   'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
 
 /** A period expression's unit; an unknown one throws (dayjs would read it as a millisecond). */
-export const periodUnit = (expr: PeriodExpr): PeriodUnit => {
+const periodUnit = (expr: PeriodExpr): PeriodUnit => {
   const unit = namedPeriod(expr);
   if (typeof unit !== 'string' || !PERIOD_UNITS.includes(unit))
     throw new Error(`Unknown period unit '${String(unit)}'`);

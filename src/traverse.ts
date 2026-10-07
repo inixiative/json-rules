@@ -124,7 +124,7 @@ const sameNode = (node: ConditionNode, original: ConditionNode): boolean => {
 };
 
 /** How a slot's value is used: the comparison value, a number, a whole number, a date shift. */
-export type SourceRole = 'value' | 'number' | 'whole' | 'shift';
+type SourceRole = 'value' | 'number' | 'whole' | 'shift';
 
 type MapSource = (source: ValueSourceOf<unknown>, role: SourceRole) => ValueSourceOf<unknown>;
 
@@ -171,7 +171,7 @@ export const mapLeafSources = <T extends Record<string, unknown>>(node: T, fn: M
   return out as T;
 };
 
-export type LeafSource = { source: ValueSourceOf<unknown>; role: SourceRole };
+type LeafSource = { source: ValueSourceOf<unknown>; role: SourceRole };
 
 /** Every value source on a leaf, with how its value is used. */
 export const leafSources = (node: Record<string, unknown>): LeafSource[] => {
@@ -183,7 +183,7 @@ export const leafSources = (node: Record<string, unknown>): LeafSource[] => {
   return found;
 };
 
-export type ValueRef = { ref: string; role: SourceRole };
+type ValueRef = { ref: string; role: SourceRole };
 
 /** Every path a leaf reads on its value side, with how it is read. */
 export const valueRefRoles = (node: Record<string, unknown>): ValueRef[] =>

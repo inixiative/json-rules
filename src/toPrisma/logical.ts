@@ -3,7 +3,7 @@ import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
 import type { All, Any, Condition, IfThenElse } from '../types';
 import { buildCondition } from './recurse';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { PrismaBuildOptions, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
 /**
@@ -58,15 +58,21 @@ export const orWhere = (arms: PrismaWhere[]): PrismaWhere => {
 export const notLeaf = (where: PrismaWhere): PrismaWhere =>
   isMatchAll(where) ? where : { NOT: where };
 
-export const buildAll = (all: All, options?: BuildOptions, state?: PrismaBuildState): PrismaWhere =>
-  andWhere(all.all.map((c) => buildCondition(c, options, state)));
+export const buildAll = (
+  all: All,
+  options?: PrismaBuildOptions,
+  state?: PrismaBuildState,
+): PrismaWhere => andWhere(all.all.map((c) => buildCondition(c, options, state)));
 
-export const buildAny = (any: Any, options?: BuildOptions, state?: PrismaBuildState): PrismaWhere =>
-  orWhere(any.any.map((c) => buildCondition(c, options, state)));
+export const buildAny = (
+  any: Any,
+  options?: PrismaBuildOptions,
+  state?: PrismaBuildState,
+): PrismaWhere => orWhere(any.any.map((c) => buildCondition(c, options, state)));
 
 export const buildIfThenElse = (
   cond: IfThenElse,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
   // if → then is: (complement of if) OR then

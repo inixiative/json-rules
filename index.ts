@@ -56,6 +56,7 @@ export {
   type SourcePrismaQuery,
   type SourceQuery,
   type SourceRowShape,
+  type SourceSelect,
   type SourceSqlQuery,
   type SourceValues,
   toSourceQueries,
@@ -84,8 +85,8 @@ export {
   type ScopeRef,
 } from './src/scope';
 export type {
-  BuildOptions,
   GroupByStep,
+  PrismaBuildOptions,
   PrismaStep,
   PrismaWhere,
   StepRef,
@@ -97,6 +98,7 @@ export { type SqlBuildOptions, type SqlResult, toSql } from './src/toSql';
 export type * from './src/types';
 export {
   assertValidRule,
+  type ValidateRuleOptions,
   type ValidationIssue,
   type ValidationResult,
   validateRule,

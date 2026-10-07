@@ -14,7 +14,12 @@ export { assertValidNarrowing, validateNarrowing } from './narrowing';
 export { narrowRule } from './narrowRule';
 export { projectLens } from './projectLens';
 export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectPaths';
-export type { SourcePrismaQuery, SourceQuery, SourceSqlQuery } from './toSourceQueries';
+export type {
+  SourcePrismaQuery,
+  SourceQuery,
+  SourceSelect,
+  SourceSqlQuery,
+} from './toSourceQueries';
 export { toSourceQueries } from './toSourceQueries';
 export type {
   EnumNarrowing,

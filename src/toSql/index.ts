@@ -1,6 +1,6 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { FieldMap, FieldMapSet } from '../fieldMap/types';
-import type { Condition, DateConfig } from '../types';
+import type { Condition, DateConfig, Row } from '../types';
 import { buildCondition } from './condition';
 import type { BuilderState, SqlResult } from './types';
 
@@ -12,7 +12,7 @@ export type SqlBuildOptions = {
   mapName?: string;
   model?: string;
   alias?: string; // root table alias, defaults to 't0' when map is provided
-  context?: Record<string, unknown>;
+  context?: Row;
 } & DateConfig;
 
 /** A fresh compile: the root alias (`t0` with a map), parameters, and the join registry every

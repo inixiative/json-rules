@@ -63,9 +63,12 @@ type ValidationContext = {
   errors: ValidationIssue[];
 };
 
+/** Which engine a rule must compile for; `check` (the default) accepts every rule. */
+export type ValidateRuleOptions = { target?: RuleTarget };
+
 export const validateRule = (
   condition: unknown,
-  options: { target?: RuleTarget } = {},
+  options: ValidateRuleOptions = {},
 ): ValidationResult => {
   const context: ValidationContext = {
     target: options.target ?? 'check',

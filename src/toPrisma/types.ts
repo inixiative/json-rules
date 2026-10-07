@@ -1,6 +1,6 @@
 import type { PrismaProvider } from '../engineGlobals';
 import type { FieldMap, FieldMapSet } from '../fieldMap/types';
-import type { DateConfig } from '../types';
+import type { DateConfig, Row } from '../types';
 
 export type PrismaWhere = Record<string, unknown>;
 
@@ -30,11 +30,11 @@ export type ToPrismaResult = {
   steps: PrismaStep[];
 };
 
-export type BuildOptions = {
+export type PrismaBuildOptions = {
   map?: FieldMap | FieldMapSet;
   mapName?: string;
   model?: string;
-  context?: Record<string, unknown>;
+  context?: Row;
   datasource?: { provider?: PrismaProvider };
 } & DateConfig;
 

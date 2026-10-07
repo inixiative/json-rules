@@ -3,13 +3,17 @@ import { resolveUnits } from '../amount';
 import { shiftByUnits } from '../dateExpr';
 import { addOffset, offsetAmount, offsetShift } from '../offset';
 import type { DateOffset, NumberOffset } from '../types';
-import type { BuildOptions } from './types';
+import type { PrismaBuildOptions } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
 // An offset moves the comparison value by what its own value source reads; null when either
 // reads nothing. Prisma has no arithmetic, so every side is known at compile time.
 
-export const offsetNumber = (value: unknown, offset: NumberOffset, options?: BuildOptions) => {
+export const offsetNumber = (
+  value: unknown,
+  offset: NumberOffset,
+  options?: PrismaBuildOptions,
+) => {
   const amount = offsetAmount(readSource(offset, options));
   return amount === null ? null : addOffset(value, amount);
 };
@@ -17,7 +21,7 @@ export const offsetNumber = (value: unknown, offset: NumberOffset, options?: Bui
 export const offsetDate = (
   instant: Date | null,
   offset: DateOffset,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
 ): Date | null => {
   if (instant === null) return null;
   const move = offsetShift(readSource(offset, options));

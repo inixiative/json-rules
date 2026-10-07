@@ -9,7 +9,7 @@ import { buildNestedFilter } from './utils';
 // A count or aggregate over a relation compiles to a groupBy step on the related model and a
 // membership filter on the parent: to-one relations, then the to-many relation grouped over.
 
-export type GroupPath = {
+type GroupPath = {
   /** The dotted to-one hops before the to-many relation ('' when it is on the model itself). */
   through: string;
   /** The model grouped (the to-many relation's target). */

@@ -1,17 +1,17 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
-import type { BuildOptions, PrismaBuildState, ToPrismaResult } from './types';
+import type { PrismaBuildOptions, PrismaBuildState, ToPrismaResult } from './types';
 
-const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined =>
+const normalizeOptions = (options?: PrismaBuildOptions): PrismaBuildOptions | undefined =>
   options?.map
     ? { ...options, map: resolveFieldMap(options.map, options.mapName, 'toPrisma') }
     : options;
 
 export { executePrismaPlan } from './execute';
 export type {
-  BuildOptions,
   GroupByStep,
+  PrismaBuildOptions,
   PrismaStep,
   PrismaWhere,
   StepRef,
@@ -35,7 +35,7 @@ export type {
  * await prisma.user.findMany({ where });
  * ```
  */
-export const toPrisma = (condition: Condition, options?: BuildOptions): ToPrismaResult => {
+export const toPrisma = (condition: Condition, options?: PrismaBuildOptions): ToPrismaResult => {
   const state: PrismaBuildState = { steps: [] };
   const where = buildCondition(condition, normalizeOptions(options), state);
   return {

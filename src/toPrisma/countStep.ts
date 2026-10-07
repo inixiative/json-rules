@@ -7,7 +7,7 @@ import { holdsForEmpty } from './array';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll } from './logical';
 import { buildCondition } from './recurse';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { PrismaBuildOptions, PrismaBuildState, PrismaWhere } from './types';
 
 /**
  * Generate a multi-step groupBy plan for count-based relation filtering.
@@ -20,7 +20,7 @@ import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
  */
 export const buildCountStep = (
   rule: ArrayRule,
-  options: BuildOptions & { map: FieldMap; model: string },
+  options: PrismaBuildOptions & { map: FieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
   if (!rule.field) throw new Error('toPrisma: count-based ArrayRule requires a field path');

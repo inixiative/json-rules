@@ -9,7 +9,7 @@ import { isMissing, type ResolvedRhs } from './valueSource';
 // An operand that reads nothing matches no row, and a negation keeps the NULL fields only.
 
 /** A comparator as SQL. */
-export const SQL_COMPARATOR: Record<Comparator, string> = {
+const SQL_COMPARATOR: Record<Comparator, string> = {
   lt: '<',
   lte: '<=',
   gt: '>',

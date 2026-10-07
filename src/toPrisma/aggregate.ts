@@ -12,12 +12,12 @@ import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
 import { buildCondition } from './recurse';
-import type { BuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { PrismaBuildOptions, PrismaBuildState, PrismaWhere } from './types';
 import { settleLeaf } from './valueSource';
 
 export const buildAggregateRule = (
   rule: AggregateRule,
-  options?: BuildOptions,
+  options?: PrismaBuildOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
   if (hasWindow(rule)) {
@@ -43,14 +43,14 @@ export const buildAggregateRule = (
 
   return buildAggregateStep(
     rule,
-    options as BuildOptions & { map: FieldMap; model: string },
+    options as PrismaBuildOptions & { map: FieldMap; model: string },
     state,
   );
 };
 
 const buildAggregateStep = (
   rule: AggregateRule,
-  options: BuildOptions & { map: FieldMap; model: string },
+  options: PrismaBuildOptions & { map: FieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
   const path = groupPath(rule.field, options.map, options.model, 'Aggregate rules');

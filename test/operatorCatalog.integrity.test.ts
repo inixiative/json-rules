@@ -5,12 +5,12 @@ import {
   type CatalogEntry,
   DATE_OPERATOR_CATALOG,
   FIELD_OPERATOR_CATALOG,
+  getArrayOperators,
   getValueShape,
   isOperatorSupportedForTarget,
+  type OperatorFamily,
   RuleTarget,
   ValueShape,
-  WINDOW_SELECTOR,
-  WindowSupport,
 } from '../src/operatorCatalog';
 
 const VALUE_SHAPES = new Set<string>(Object.values(ValueShape));
@@ -19,17 +19,23 @@ const TARGETS = new Set<string>(Object.values(RuleTarget));
 type CommonEntry = Pick<CatalogEntry, 'valueShape' | 'targets'>;
 
 const cases = [
-  { name: 'Operator', enumObj: Operator, catalog: FIELD_OPERATOR_CATALOG },
-  { name: 'DateOperator', enumObj: DateOperator, catalog: DATE_OPERATOR_CATALOG },
-  { name: 'ArrayOperator', enumObj: ArrayOperator, catalog: ARRAY_OPERATOR_CATALOG },
-].map(({ name, enumObj, catalog }) => ({
+  { name: 'Operator', family: 'field', enumObj: Operator, catalog: FIELD_OPERATOR_CATALOG },
+  { name: 'DateOperator', family: 'date', enumObj: DateOperator, catalog: DATE_OPERATOR_CATALOG },
+  {
+    name: 'ArrayOperator',
+    family: 'array',
+    enumObj: ArrayOperator,
+    catalog: ARRAY_OPERATOR_CATALOG,
+  },
+].map(({ name, family, enumObj, catalog }) => ({
   name,
+  family: family as OperatorFamily,
   operators: Object.values(enumObj) as string[],
   catalog: catalog as Record<string, CommonEntry>,
 }));
 
 describe('operator catalog integrity', () => {
-  for (const { name, operators, catalog } of cases) {
+  for (const { name, family, operators, catalog } of cases) {
     describe(name, () => {
       const catalogKeys = Object.keys(catalog);
 
@@ -52,17 +58,16 @@ describe('operator catalog integrity', () => {
         }
       });
 
-      test('getValueShape resolves for every operator', () => {
-        for (const op of operators) {
-          expect(() => getValueShape(op as never)).not.toThrow();
-        }
+      test('getValueShape reads the family the operator belongs to', () => {
+        for (const op of operators)
+          expect(getValueShape(op, family)).toBe(catalog[op as keyof typeof catalog].valueShape);
       });
 
       test('isOperatorSupportedForTarget agrees with the entry targets', () => {
         for (const op of operators) {
           const entry = catalog[op as keyof typeof catalog];
           for (const target of Object.values(RuleTarget)) {
-            expect(isOperatorSupportedForTarget(op as never, target)).toBe(
+            expect(isOperatorSupportedForTarget(op, family, target)).toBe(
               entry.targets.includes(target),
             );
           }
@@ -76,15 +81,12 @@ describe('operator catalog integrity', () => {
       expect(typeof DATE_OPERATOR_CATALOG[op].acceptsExpr).toBe('boolean');
     }
   });
+});
 
-  test('window selector covers every rule type and target', () => {
-    for (const ruleType of Object.keys(
-      WINDOW_SELECTOR.support,
-    ) as (keyof typeof WINDOW_SELECTOR.support)[]) {
-      for (const target of Object.values(RuleTarget)) {
-        const support = WINDOW_SELECTOR.support[ruleType][target];
-        expect(Object.values(WindowSupport)).toContain(support);
-      }
-    }
+describe('getArrayOperators', () => {
+  test('every array operator, or those a target compiles', () => {
+    expect(getArrayOperators()).toEqual(Object.values(ArrayOperator));
+    expect(getArrayOperators('toSql')).toEqual([ArrayOperator.empty, ArrayOperator.notEmpty]);
+    expect(getArrayOperators('check')).toEqual(Object.values(ArrayOperator));
   });
 });

@@ -94,17 +94,7 @@ const validateCondition = (
   context: ValidationContext,
   depth: number,
 ): void => {
-  if (typeof condition === 'boolean') {
-    if (context.target === 'toPrisma' && condition === false) {
-      pushIssue(
-        context,
-        path,
-        'boolean_false_not_supported',
-        `Boolean 'false' is not supported by toPrisma()`,
-      );
-    }
-    return;
-  }
+  if (typeof condition === 'boolean') return;
 
   if (!isPlainObject(condition)) {
     pushIssue(context, path, 'invalid_condition', 'Condition must be a boolean or object');
@@ -367,9 +357,6 @@ const validateFieldRule = (
     pushIssue(context, `${path}.field`, 'field_required', 'Field rule requires a string field');
   }
   validateField(rule, path, context, depth);
-  if (rule.offset !== undefined && 'aggregate' in rule) {
-    pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
-  }
 
   if (typeof rule.operator !== 'string' || !FIELD_OPERATORS.has(rule.operator)) {
     pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
@@ -379,7 +366,7 @@ const validateFieldRule = (
   const operator = rule.operator as Operator;
   validateOffset(rule, 'field', operator, path, context, depth);
 
-  if (!isOperatorSupportedForTarget(operator, context.target)) {
+  if (!isOperatorSupportedForTarget(operator, 'field', context.target)) {
     pushIssue(
       context,
       `${path}.operator`,
@@ -400,7 +387,7 @@ const validateFieldRule = (
     );
   }
 
-  const shape = getValueShape(operator);
+  const shape = getValueShape(operator, 'field');
 
   if (shape === 'none') {
     forbidValueAndPath(rule, path, context);
@@ -482,6 +469,8 @@ const validateAggregateRule = (
   context: ValidationContext,
   depth: number,
 ): void => {
+  if (rule.offset !== undefined)
+    pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
   validateWindow(rule, path, context, depth);
 
   if (typeof rule.field !== 'string') {
@@ -610,7 +599,7 @@ const validateArrayRule = (
 
   const operator = rule.arrayOperator as ArrayOperator;
 
-  if (!isOperatorSupportedForTarget(operator, context.target)) {
+  if (!isOperatorSupportedForTarget(operator, 'array', context.target)) {
     pushIssue(
       context,
       `${path}.arrayOperator`,
@@ -671,8 +660,16 @@ const validateArrayRule = (
           'missing_count',
           `Array operator '${operator}' requires count`,
         );
-      } else if ('count' in rule && rule.count !== undefined && typeof rule.count !== 'number') {
-        pushIssue(context, `${path}.count`, 'invalid_count', 'count must be a number');
+      } else if (
+        rule.count !== undefined &&
+        !(typeof rule.count === 'number' && Number.isInteger(rule.count) && rule.count >= 0)
+      ) {
+        pushIssue(
+          context,
+          `${path}.count`,
+          'invalid_count',
+          'count must be a non-negative whole number',
+        );
       }
       if (context.target === 'check' && (!('condition' in rule) || rule.condition === undefined)) {
         pushIssue(
@@ -707,7 +704,7 @@ const validateDateRule = (
   const operator = rule.dateOperator as DateOperator;
   validateOffset(rule, 'date', operator, path, context, depth);
 
-  if (!isOperatorSupportedForTarget(operator, context.target)) {
+  if (!isOperatorSupportedForTarget(operator, 'date', context.target)) {
     pushIssue(
       context,
       `${path}.dateOperator`,
@@ -716,7 +713,7 @@ const validateDateRule = (
     );
   }
 
-  const shape = getValueShape(operator);
+  const shape = getValueShape(operator, 'date');
 
   if (shape === 'dayList') {
     if (validateSource(rule, path, context, depth) !== 'value') return;

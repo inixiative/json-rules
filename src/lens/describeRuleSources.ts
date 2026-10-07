@@ -1,9 +1,4 @@
-import {
-  type CatalogEntry,
-  DATE_OPERATOR_CATALOG,
-  FIELD_OPERATOR_CATALOG,
-  ValueShape,
-} from '../operatorCatalog';
+import { type CatalogEntry, catalogEntry, ValueShape } from '../operatorCatalog';
 import { own } from '../own';
 import { readScopeRef } from '../scope';
 import {
@@ -54,11 +49,12 @@ const ENUMERABLE_SHAPES = new Set<string>([
 /** Shapes whose `value` is not about the field's values at all (a flag, a cardinality). */
 const VALUELESS_SHAPES = new Set<string>([ValueShape.none, ValueShape.count]);
 
-const catalogEntry = (node: ConditionNode): CatalogEntry | undefined => {
-  if (typeof node.operator === 'string') return own(FIELD_OPERATOR_CATALOG, node.operator);
-  if (typeof node.dateOperator === 'string') return own(DATE_OPERATOR_CATALOG, node.dateOperator);
-  return undefined;
-};
+const leafEntry = (node: ConditionNode): CatalogEntry | undefined =>
+  (typeof node.operator === 'string'
+    ? catalogEntry(node.operator, 'field')
+    : typeof node.dateOperator === 'string'
+      ? catalogEntry(node.dateOperator, 'date')
+      : undefined) as CatalogEntry | undefined;
 
 const literals = (value: unknown): RuleValue[] =>
   Array.isArray(value) ? value.flatMap(literals) : [value as RuleValue];
@@ -73,7 +69,7 @@ const contribution = (node: ConditionNode): Contribution => {
     leafSources(node).some(({ source }) => source.value === undefined)
   )
     return { values: [], dynamic: true };
-  const entry = catalogEntry(node);
+  const entry = leafEntry(node);
   if (!entry) return { values: [], dynamic: true };
   if (VALUELESS_SHAPES.has(entry.valueShape)) return { values: [], dynamic: false };
   if (!ENUMERABLE_SHAPES.has(entry.valueShape)) return { values: [], dynamic: true };

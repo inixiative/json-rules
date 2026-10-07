@@ -19,16 +19,20 @@ import { at } from './fixtures/helpers';
 // Bug #1: prototype keys must not be treated as operators
 describe('Bug #1 — catalog rejects prototype keys', () => {
   test('getValueShape throws on prototype keys', () => {
-    expect(() => getValueShape('toString' as never)).toThrow(/Unknown operator/);
-    expect(() => getValueShape('__proto__' as never)).toThrow(/Unknown operator/);
-    expect(() => getValueShape('constructor' as never)).toThrow(/Unknown operator/);
-    expect(() => getValueShape('hasOwnProperty' as never)).toThrow(/Unknown operator/);
+    expect(() => getValueShape('toString', 'field')).toThrow(/Unknown (field|date|array) operator/);
+    expect(() => getValueShape('__proto__', 'date')).toThrow(/Unknown (field|date|array) operator/);
+    expect(() => getValueShape('constructor', 'array')).toThrow(
+      /Unknown (field|date|array) operator/,
+    );
+    expect(() => getValueShape('hasOwnProperty', 'field')).toThrow(
+      /Unknown (field|date|array) operator/,
+    );
   });
 
   test('isOperatorSupportedForTarget returns false on prototype keys (does not throw)', () => {
-    expect(isOperatorSupportedForTarget('toString' as never, 'check')).toBe(false);
-    expect(isOperatorSupportedForTarget('__proto__' as never, 'check')).toBe(false);
-    expect(isOperatorSupportedForTarget('constructor' as never, 'check')).toBe(false);
+    expect(isOperatorSupportedForTarget('toString', 'field', 'check')).toBe(false);
+    expect(isOperatorSupportedForTarget('__proto__', 'date', 'check')).toBe(false);
+    expect(isOperatorSupportedForTarget('constructor', 'array', 'check')).toBe(false);
   });
 
   test('catalog membership checks reject prototype keys', () => {

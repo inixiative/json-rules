@@ -1,4 +1,8 @@
-import { isOperatorSupportedForTarget, type RuleTarget } from '../operatorCatalog';
+import {
+  isOperatorSupportedForTarget,
+  type OperatorFamily,
+  type RuleTarget,
+} from '../operatorCatalog';
 import { parseScopeRef, readScopeRef } from '../scope';
 import { isLogicalNode, valueRefRoles, valueRefs, visitCondition } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
@@ -24,9 +28,9 @@ type Acc = {
   violations: string[];
 };
 
-const restrictByOperator = (acc: Acc, operator: string): void => {
+const restrictByOperator = (acc: Acc, operator: string, family: OperatorFamily): void => {
   for (const t of [...acc.targets]) {
-    if (!isOperatorSupportedForTarget(operator as never, t)) acc.targets.delete(t);
+    if (!isOperatorSupportedForTarget(operator, family, t)) acc.targets.delete(t);
   }
 };
 
@@ -61,9 +65,10 @@ const visit = (rule: Condition, acc: Acc): void =>
     (node, scopes) => {
       acc.sources.add(scopes[scopes.length - 1].mapName);
       if (isLogicalNode(node)) return;
-      if (typeof node.operator === 'string') restrictByOperator(acc, node.operator);
-      if (typeof node.dateOperator === 'string') restrictByOperator(acc, node.dateOperator);
-      if (typeof node.arrayOperator === 'string') restrictByOperator(acc, node.arrayOperator);
+      if (typeof node.operator === 'string') restrictByOperator(acc, node.operator, 'field');
+      if (typeof node.dateOperator === 'string') restrictByOperator(acc, node.dateOperator, 'date');
+      if (typeof node.arrayOperator === 'string')
+        restrictByOperator(acc, node.arrayOperator, 'array');
       restrictByWindow(acc, node);
       restrictByScopeRefs(acc, node);
 

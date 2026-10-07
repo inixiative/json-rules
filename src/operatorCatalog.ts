@@ -197,36 +197,6 @@ export const ARRAY_OPERATOR_CATALOG: Record<ArrayOperator, ArrayCatalogEntry> = 
   [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none' },
 };
 
-export const WindowSupport = {
-  full: 'full',
-  extremal: 'extremal',
-  none: 'none',
-} as const;
-
-export type WindowSupport = (typeof WindowSupport)[keyof typeof WindowSupport];
-
-export const WINDOW_SELECTOR = {
-  fields: ['filter', 'orderBy', 'take', 'skip'],
-  sortDirs: ['asc', 'desc'],
-  support: {
-    array: {
-      check: WindowSupport.full,
-      toPrisma: WindowSupport.extremal,
-      toSql: WindowSupport.none,
-    },
-    aggregate: {
-      check: WindowSupport.full,
-      toPrisma: WindowSupport.none,
-      toSql: WindowSupport.none,
-    },
-  },
-} as const;
-
-export type WindowRuleType = keyof typeof WINDOW_SELECTOR.support;
-
-export const getWindowSupport = (ruleType: WindowRuleType, target: RuleTarget): WindowSupport =>
-  WINDOW_SELECTOR.support[ruleType][target];
-
 const AGGREGATE_SINGLE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['scalar', 'ordered']);
 const AGGREGATE_RANGE_VALUE_SHAPES: ReadonlySet<ValueShape> = new Set(['range']);
 
@@ -270,34 +240,33 @@ export const isAggregateRangeOperator = (operator: Operator): boolean => {
   return AGGREGATE_RANGE_VALUE_SHAPES.has(entry.valueShape);
 };
 
-export const getValueShape = (operator: Operator | DateOperator | ArrayOperator): ValueShape => {
-  if (Object.hasOwn(FIELD_OPERATOR_CATALOG, operator)) {
-    return FIELD_OPERATOR_CATALOG[operator as Operator].valueShape;
-  }
-  if (Object.hasOwn(DATE_OPERATOR_CATALOG, operator)) {
-    return DATE_OPERATOR_CATALOG[operator as DateOperator].valueShape;
-  }
-  if (Object.hasOwn(ARRAY_OPERATOR_CATALOG, operator)) {
-    return ARRAY_OPERATOR_CATALOG[operator as ArrayOperator].valueShape;
-  }
-  throw new Error(`Unknown operator: ${operator}`);
+/** Which catalog an operator belongs to — `between` is both a field and a date operator. */
+export type OperatorFamily = 'field' | 'date' | 'array';
+
+const CATALOGS: Record<OperatorFamily, Record<string, CatalogEntry | ArrayCatalogEntry>> = {
+  field: FIELD_OPERATOR_CATALOG,
+  date: DATE_OPERATOR_CATALOG,
+  array: ARRAY_OPERATOR_CATALOG,
+};
+
+/** An operator's catalog entry within its family; undefined when the family doesn't have it. */
+export const catalogEntry = (
+  operator: string,
+  family: OperatorFamily,
+): CatalogEntry | ArrayCatalogEntry | undefined =>
+  Object.hasOwn(CATALOGS[family], operator) ? CATALOGS[family][operator] : undefined;
+
+export const getValueShape = (operator: string, family: OperatorFamily): ValueShape => {
+  const entry = catalogEntry(operator, family);
+  if (!entry) throw new Error(`Unknown ${family} operator: ${operator}`);
+  return entry.valueShape;
 };
 
 export const isOperatorSupportedForTarget = (
-  operator: Operator | DateOperator | ArrayOperator,
+  operator: string,
+  family: OperatorFamily,
   target: RuleTarget,
-): boolean => {
-  if (Object.hasOwn(FIELD_OPERATOR_CATALOG, operator)) {
-    return FIELD_OPERATOR_CATALOG[operator as Operator].targets.includes(target);
-  }
-  if (Object.hasOwn(DATE_OPERATOR_CATALOG, operator)) {
-    return DATE_OPERATOR_CATALOG[operator as DateOperator].targets.includes(target);
-  }
-  if (Object.hasOwn(ARRAY_OPERATOR_CATALOG, operator)) {
-    return ARRAY_OPERATOR_CATALOG[operator as ArrayOperator].targets.includes(target);
-  }
-  return false;
-};
+): boolean => catalogEntry(operator, family)?.targets.includes(target) ?? false;
 
 export const getOperatorsForKind = (
   kind: FieldKind,

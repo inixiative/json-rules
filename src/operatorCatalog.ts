@@ -78,11 +78,18 @@ export type CatalogEntry = {
   valueShape: ValueShape;
   acceptsExpr?: boolean;
   comparator?: Comparator;
+  /** The positive operator this one negates: its exact complement, keeping NULL fields. */
+  negates?: string;
 };
 
 export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
   [Operator.equals]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'scalar' },
-  [Operator.notEquals]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'scalar' },
+  [Operator.notEquals]: {
+    negates: Operator.equals,
+    kinds: EQUATABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'scalar',
+  },
   [Operator.lessThan]: {
     kinds: ORDERABLE_KINDS,
     targets: ALL_TARGETS,
@@ -108,21 +115,47 @@ export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
     comparator: 'gte',
   },
   [Operator.in]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'array' },
-  [Operator.notIn]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'array' },
+  [Operator.notIn]: {
+    negates: Operator.in,
+    kinds: EQUATABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'array',
+  },
   [Operator.contains]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
-  [Operator.notContains]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notContains]: {
+    negates: Operator.contains,
+    kinds: STRINGY_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'string',
+  },
   [Operator.startsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
-  [Operator.notStartsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notStartsWith]: {
+    negates: Operator.startsWith,
+    kinds: STRINGY_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'string',
+  },
   [Operator.endsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
-  [Operator.notEndsWith]: { kinds: STRINGY_KINDS, targets: ALL_TARGETS, valueShape: 'string' },
+  [Operator.notEndsWith]: {
+    negates: Operator.endsWith,
+    kinds: STRINGY_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'string',
+  },
   [Operator.matches]: { kinds: STRINGY_KINDS, targets: NON_PRISMA_TARGETS, valueShape: 'pattern' },
   [Operator.notMatches]: {
+    negates: Operator.matches,
     kinds: STRINGY_KINDS,
     targets: NON_PRISMA_TARGETS,
     valueShape: 'pattern',
   },
   [Operator.between]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'range' },
-  [Operator.notBetween]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'range' },
+  [Operator.notBetween]: {
+    negates: Operator.between,
+    kinds: ORDERABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'range',
+  },
   [Operator.isEmpty]: { kinds: NULLABLE_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
   [Operator.notEmpty]: { kinds: NULLABLE_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
   [Operator.exists]: { kinds: ALL_KINDS, targets: ALL_TARGETS, valueShape: 'none' },
@@ -159,6 +192,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     comparator: 'gte',
   },
   [DateOperator.notBefore]: {
+    negates: DateOperator.before,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
@@ -166,6 +200,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     comparator: 'gte',
   },
   [DateOperator.notAfter]: {
+    negates: DateOperator.after,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
@@ -179,6 +214,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     acceptsExpr: true,
   },
   [DateOperator.notWithin]: {
+    negates: DateOperator.within,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateWindow',
@@ -191,6 +227,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     acceptsExpr: true,
   },
   [DateOperator.notBetween]: {
+    negates: DateOperator.between,
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateRange',
@@ -203,6 +240,7 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     acceptsExpr: false,
   },
   [DateOperator.dayNotIn]: {
+    negates: DateOperator.dayIn,
     kinds: ['DateTime'],
     targets: NON_PRISMA_TARGETS,
     valueShape: 'dayList',
@@ -361,19 +399,9 @@ export const ARRAY_MONOTONE_OPERATORS: readonly string[] = [
 /** The negations: each is the complement of its positive form and keeps NULL fields
  *  (the 2.19.0 ruling). */
 export const NEGATED_OPERATORS: readonly string[] = [
-  Operator.notEquals,
-  Operator.notIn,
-  Operator.notContains,
-  Operator.notStartsWith,
-  Operator.notEndsWith,
-  Operator.notMatches,
-  Operator.notBetween,
-  DateOperator.notBefore,
-  DateOperator.notAfter,
-  DateOperator.notWithin,
-  DateOperator.notBetween,
-  DateOperator.dayNotIn,
-];
+  ...Object.entries(FIELD_OPERATOR_CATALOG),
+  ...Object.entries(DATE_OPERATOR_CATALOG),
+].flatMap(([operator, entry]) => (entry.negates ? [operator] : []));
 /** Negations of a string operator: `notContains`, `notStartsWith`, `notEndsWith`. */
 export const NEGATED_STRING_OPERATORS = NEGATED_OPERATORS.filter((op) =>
   withShape('string').includes(op),
@@ -473,39 +501,30 @@ export const isDayName = (name: string): boolean =>
 // a flip is exact; an ordered comparison has no negated twin, so its complement is the opposite
 // comparison or an absent field.
 
-export const COMPLEMENT_OPERATORS: Readonly<Record<string, string>> = {
-  [Operator.equals]: Operator.notEquals,
-  [Operator.notEquals]: Operator.equals,
-  [Operator.in]: Operator.notIn,
-  [Operator.notIn]: Operator.in,
-  [Operator.contains]: Operator.notContains,
-  [Operator.notContains]: Operator.contains,
-  [Operator.startsWith]: Operator.notStartsWith,
-  [Operator.notStartsWith]: Operator.startsWith,
-  [Operator.endsWith]: Operator.notEndsWith,
-  [Operator.notEndsWith]: Operator.endsWith,
-  [Operator.matches]: Operator.notMatches,
-  [Operator.notMatches]: Operator.matches,
-  [Operator.between]: Operator.notBetween,
-  [Operator.notBetween]: Operator.between,
-  [Operator.isEmpty]: Operator.notEmpty,
-  [Operator.notEmpty]: Operator.isEmpty,
-  [Operator.exists]: Operator.notExists,
-  [Operator.notExists]: Operator.exists,
-};
+/** A catalog's negation pairs both ways, plus `extra` pairs that complement without being a
+ *  NULL-keeping negation. */
+const complements = (
+  catalog: Record<string, CatalogEntry>,
+  extra: readonly [string, string][] = [],
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    [
+      ...Object.entries(catalog).flatMap(([op, entry]) =>
+        entry.negates ? [[entry.negates, op] as [string, string]] : [],
+      ),
+      ...extra,
+    ].flatMap(([a, b]) => [
+      [a, b],
+      [b, a],
+    ]),
+  );
 
-export const COMPLEMENT_DATE_OPERATORS: Readonly<Record<string, string>> = {
-  [DateOperator.before]: DateOperator.notBefore,
-  [DateOperator.notBefore]: DateOperator.before,
-  [DateOperator.after]: DateOperator.notAfter,
-  [DateOperator.notAfter]: DateOperator.after,
-  [DateOperator.within]: DateOperator.notWithin,
-  [DateOperator.notWithin]: DateOperator.within,
-  [DateOperator.between]: DateOperator.notBetween,
-  [DateOperator.notBetween]: DateOperator.between,
-  [DateOperator.dayIn]: DateOperator.dayNotIn,
-  [DateOperator.dayNotIn]: DateOperator.dayIn,
-};
+export const COMPLEMENT_OPERATORS = complements(FIELD_OPERATOR_CATALOG, [
+  [Operator.isEmpty, Operator.notEmpty],
+  [Operator.exists, Operator.notExists],
+]);
+
+export const COMPLEMENT_DATE_OPERATORS = complements(DATE_OPERATOR_CATALOG);
 
 /** The opposite of a comparison with no negated twin: its complement, less the absent field. */
 export const OPPOSITE_OPERATORS: Readonly<Record<string, string>> = {

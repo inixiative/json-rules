@@ -1,3 +1,4 @@
+import { ArrayOperator } from './operator';
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import { readOwnPath } from './scope';
 import { allOf, conditionShape } from './traverse';
@@ -40,9 +41,9 @@ const extremalRewrite = (rule: ArrayRule): Condition | null => {
   if (dir !== 'asc' && dir !== 'desc') return null;
 
   let kind: 'all' | 'any' | null = null;
-  if (rule.arrayOperator === 'all') kind = 'all';
-  else if (rule.arrayOperator === 'any') kind = 'any';
-  else if (rule.arrayOperator === 'atLeast' && rule.count === 1) kind = 'any';
+  if (rule.arrayOperator === ArrayOperator.all) kind = 'all';
+  else if (rule.arrayOperator === ArrayOperator.any) kind = 'any';
+  else if (rule.arrayOperator === ArrayOperator.atLeast && rule.count === 1) kind = 'any';
   if (!kind) return null;
 
   const cof = conditionOpAndField(rule.condition);
@@ -57,7 +58,7 @@ const extremalRewrite = (rule: ArrayRule): Condition | null => {
   if (!aligned) return null;
 
   const { orderBy, take, skip, count, ...rest } = rule;
-  if (kind === 'any') return { ...rest, arrayOperator: 'any' } as ArrayRule;
+  if (kind === 'any') return { ...rest, arrayOperator: ArrayOperator.any } as ArrayRule;
   const present = { field: orderField, operator: 'exists' } as Condition;
   return {
     any: [

@@ -6,9 +6,11 @@ import utc from 'dayjs/plugin/utc.js';
 import { isPlainObject } from 'lodash-es';
 import {
   type INTERVAL_FIELDS,
+  leafCatalogEntry,
   PERIOD_UNITS,
   RELATIVE_UNITS,
   type RelativeUnit,
+  UPPER_BOUND_OPERATORS,
 } from './operatorCatalog';
 import type {
   DateConfig,
@@ -170,10 +172,9 @@ export const resolvePointForOperator = (
 ): dayjs.Dayjs => {
   if (isPeriodExpr(expr)) {
     const [start, end] = resolvePeriodRange(expr, config);
-    // A complement anchors to the same edge as its positive form: notBefore is the start.
-    return operator === 'before' || operator === 'onOrBefore' || operator === 'notBefore'
-      ? start
-      : end;
+    // An upper bound anchors at the start; a negation at its positive form's edge.
+    const positive = leafCatalogEntry({ dateOperator: operator })?.negates ?? operator;
+    return UPPER_BOUND_OPERATORS.includes(positive) ? start : end;
   }
   return resolveDateExpr(expr, config);
 };

@@ -1,4 +1,4 @@
-import { own } from '../own';
+import { modelOf, own } from '../own';
 import { resolveScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
@@ -156,8 +156,8 @@ export const resolveVisit = (
     relations: new Map(),
   };
 
-  const fieldMap: FieldMap | undefined = policy.lens.maps[mapName];
-  const model = fieldMap?.models[modelName];
+  const fieldMap: FieldMap | undefined = own(policy.lens.maps, mapName);
+  const model = modelOf(fieldMap, modelName);
   if (!model) return out;
 
   const fieldEnumPicks = new Map<string, Set<string>>();
@@ -171,9 +171,9 @@ export const resolveVisit = (
   };
 
   for (const narrowing of policy.chain) {
-    const visitMapDefaults = narrowing.mapDefaults?.[mapName];
+    const visitMapDefaults = own(narrowing.mapDefaults, mapName);
     if (visitMapDefaults) {
-      const dflt = visitMapDefaults.models?.[modelName];
+      const dflt = own(visitMapDefaults.models, modelName);
       if (dflt) applyNode(dflt);
       for (const [enumName, enumN] of Object.entries(visitMapDefaults.enums ?? {})) {
         if (enumN.picks) intersectIntoMap(typeEnumPicks, enumName, enumN.picks);
@@ -189,7 +189,7 @@ export const resolveVisit = (
       }
     } else {
       for (const seg of relPath) {
-        node = node?.relations?.[seg];
+        node = own(node?.relations, seg);
         if (!node) break;
       }
       if (node) {
@@ -207,7 +207,7 @@ export const resolveVisit = (
     // test/lens.sourceOptionsGating.test.ts).
     const optionValues = entry.options?.map((o) => o.value);
     const baseValues =
-      optionValues ?? (isEnum ? (entry.values ?? fieldMap?.enums?.[entry.type]) : entry.values);
+      optionValues ?? (isEnum ? (entry.values ?? own(fieldMap?.enums, entry.type)) : entry.values);
     if (!baseValues) continue;
     let vals: readonly string[] = baseValues;
     if (isEnum) {
@@ -271,7 +271,7 @@ export const resolvePolicyPath = (
   const effects: VisitEffect[] = [];
 
   for (let i = 0; i < parts.length; i++) {
-    const model = policy.lens.maps[mapName]?.models[modelName];
+    const model = modelOf(own(policy.lens.maps, mapName), modelName);
     if (!model) return { resolution: { outcome: 'missing', index: i, hops }, effects };
     const effect = resolveVisit(policy, mapName, modelName, relPath);
     const fieldName = parts[i];

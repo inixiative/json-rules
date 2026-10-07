@@ -1,7 +1,6 @@
-import { get } from 'lodash-es';
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
+import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
 import { resolveFieldSql } from './join';
@@ -29,13 +28,7 @@ export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
     return { type: 'column', sql: resolveFieldSql(scoped.path, state) };
   }
-  if (!state.context) {
-    throw new Error(
-      `BuilderState.context is required to resolve path '${ref}'. ` +
-        `Pass context in options when calling toSql().`,
-    );
-  }
-  return { type: 'value', value: get(state.context, ref) ?? null };
+  return { type: 'value', value: readContextRef(ref, state.context, 'toSql') };
 };
 
 /** A value source on the SQL rail: a parameter, or a `$.` column. */

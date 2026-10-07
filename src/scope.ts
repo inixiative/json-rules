@@ -1,5 +1,3 @@
-import { get } from 'lodash-es';
-
 export type Scopes = readonly unknown[];
 
 export type ScopeRef = { depth: number; path: string };
@@ -31,16 +29,28 @@ export const resolveScopeRef = <S>(
   return { scope: scopes[scopes.length - parsed.depth], path: parsed.path };
 };
 
+/** A dotted path read, own-property only: a name on Object.prototype reads as absent. */
+export const readOwnPath = (root: unknown, path: string): unknown =>
+  path
+    .split('.')
+    .reduce<unknown>(
+      (at, key) =>
+        at !== null && typeof at === 'object' && Object.hasOwn(at, key)
+          ? (at as Record<string, unknown>)[key]
+          : undefined,
+      root,
+    );
+
 const readScoped = (ref: string, scopes: Scopes): unknown => {
   const target = resolveScopeRef(ref, scopes);
   if ('outOfBounds' in target) throw new Error(target.outOfBounds);
-  return get(target.scope, target.path);
+  return readOwnPath(target.scope, target.path);
 };
 
 export const readField = (ref: string, scopes: Scopes): unknown => readScoped(ref, scopes);
 
 export const readPath = (ref: string, scopes: Scopes, context: unknown): unknown =>
-  parseScopeRef(ref) ? readScoped(ref, scopes) : get(context, ref);
+  parseScopeRef(ref) ? readScoped(ref, scopes) : readOwnPath(context, ref);
 
 export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): string =>
   `Scope ref '${ref}' is not supported by ${rail}(); evaluate with check()`;
@@ -48,4 +58,18 @@ export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): stri
 export const rejectScopedField = (condition: object, rail: 'toSql' | 'toPrisma'): void => {
   if (!('field' in condition) || typeof condition.field !== 'string') return;
   if (parseScopeRef(condition.field)) throw new Error(checkOnlyScopeRef(condition.field, rail));
+};
+
+/** A compiler's bare (context) ref: the context it was given, which must be there. A path that
+ *  reads nothing reads null. */
+export const readContextRef = (
+  ref: string,
+  context: unknown,
+  rail: 'toSql' | 'toPrisma',
+): unknown => {
+  if (!context)
+    throw new Error(
+      `context is required to resolve path '${ref}'. Pass context when calling ${rail}().`,
+    );
+  return readOwnPath(context, ref) ?? null;
 };

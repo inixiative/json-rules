@@ -1,4 +1,4 @@
-import { own } from '../own';
+import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { validateBindNames } from './bindings.ts';
@@ -72,7 +72,7 @@ const validateSourceTargetVisibility = (
 ): void => {
   const defaultsFor = (map: string, model: string): ModelDefaultNarrowing[] =>
     ancestorLayers
-      .map((layer) => layer.mapDefaults?.[map]?.models?.[model])
+      .map((layer) => own(own(layer.mapDefaults, map)?.models, model))
       .filter((x): x is ModelDefaultNarrowing => x !== undefined);
 
   // Descend a dotted materialization path, checking each segment against the removals
@@ -90,11 +90,11 @@ const validateSourceTargetVisibility = (
         break;
       }
       if (i === segments.length - 1) break;
-      const fieldEntry = own(maps[curMap]?.models[curModel]?.fields, seg);
+      const fieldEntry = fieldOf(own(maps, curMap), curModel, seg);
       const target = fieldEntry ? resolveRelationTarget(fieldEntry, curMap) : null;
       if (!target) break; // path resolvability is validated by toOnePathError
       nodes = nodes
-        .map((n) => ('relations' in n ? n.relations?.[seg] : undefined))
+        .map((n) => ('relations' in n ? own(n.relations, seg) : undefined))
         .filter((x): x is ModelNarrowing => x !== undefined);
       curMap = target.mapName;
       curModel = target.modelName;
@@ -148,7 +148,7 @@ const toOnePathError = (
   let curMap = mapName;
   let curModel = modelName;
   for (let i = 0; i < segments.length; i++) {
-    const entry = own(maps[curMap]?.models[curModel]?.fields, segments[i]);
+    const entry = fieldOf(own(maps, curMap), curModel, segments[i]);
     if (!entry) return `${kind} segment '${segments[i]}' not on model '${curModel}'`;
     const isLast = i === segments.length - 1;
     if (entry.kind === 'object' || entry.kind === 'bridge') {
@@ -191,7 +191,7 @@ const validateModelNode = (
   }
 
   for (const f of narrowing.picks ?? []) {
-    if (!modelFields[f]) {
+    if (!own(modelFields, f)) {
       errors.push(`${position}.picks: field '${f}' not on model`);
       continue;
     }
@@ -219,7 +219,7 @@ const validateModelNode = (
   }
 
   for (const f of narrowing.omits ?? []) {
-    if (!modelFields[f]) {
+    if (!own(modelFields, f)) {
       errors.push(`${position}.omits: field '${f}' not on model`);
       continue;
     }
@@ -251,7 +251,7 @@ const validateModelNode = (
     fieldName: string,
     values: readonly string[],
   ): void => {
-    const fieldEntry = modelFields[fieldName];
+    const fieldEntry = own(modelFields, fieldName);
     if (!fieldEntry) {
       errors.push(`${position}.${op}: field '${fieldName}' not on model`);
       return;
@@ -279,7 +279,7 @@ const validateModelNode = (
   validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
-    if (!modelFields[field]) {
+    if (!own(modelFields, field)) {
       errors.push(`${position}.sources: field '${field}' not on model`);
       continue;
     }
@@ -289,7 +289,7 @@ const validateModelNode = (
       if (dottedLabel) {
         const err = toOnePathError(dottedLabel, maps, mapName, modelName, 'label');
         if (err) errors.push(`${position}.sources.${field}: ${err}`);
-      } else if (!modelFields[spec.label]) {
+      } else if (!own(modelFields, spec.label)) {
         errors.push(`${position}.sources.${field}: label column '${spec.label}' not on model`);
       }
     }
@@ -467,17 +467,17 @@ const validatePathNarrowing = (
   parentPolicy: Policy,
   relPath: readonly string[],
 ): void => {
-  const fieldMap = maps[mapName];
-  const model = fieldMap?.models[modelName];
+  const fieldMap = own(maps, mapName);
+  const model = modelOf(fieldMap, modelName);
   if (!model) return;
 
-  const sameLayerDefaultsForModel = current.mapDefaults?.[mapName]?.models?.[modelName];
+  const sameLayerDefaultsForModel = own(own(current.mapDefaults, mapName)?.models, modelName);
   const ancestorDefaultsForModel = chain
-    .map((a) => a.mapDefaults?.[mapName]?.models?.[modelName])
+    .map((a) => own(own(a.mapDefaults, mapName)?.models, modelName))
     .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-  const sameLayerDefaultsEnums: TypeEnumMap | undefined = current.mapDefaults?.[mapName]?.enums;
+  const sameLayerDefaultsEnums: TypeEnumMap | undefined = own(current.mapDefaults, mapName)?.enums;
   const ancestorDefaultsEnums: TypeEnumMap[] = chain
-    .map((a) => a.mapDefaults?.[mapName]?.enums)
+    .map((a) => own(a.mapDefaults, mapName)?.enums)
     .filter((x): x is TypeEnumMap => x !== undefined);
 
   const synthAncestors = [
@@ -536,12 +536,12 @@ const validatePathNarrowing = (
     }
     const target = resolveRelationTarget(entry, mapName);
     if (!target) continue;
-    if (!maps[target.mapName]?.models[target.modelName]) {
+    if (!modelOf(own(maps, target.mapName), target.modelName)) {
       errors.push(`${position}.relations.${relField}: target model not found in lens`);
       continue;
     }
     const childAncestorChain = ancestorChain
-      .map((anc) => anc.relations?.[relField])
+      .map((anc) => own(anc.relations, relField))
       .filter((x): x is ModelNarrowing => x !== undefined);
     validatePathNarrowing(
       sub,
@@ -567,24 +567,24 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   const parentVisits = projectByPath(narrowing.parent);
 
   for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
-    const fieldMap = set.maps[mapName];
+    const fieldMap = own(set.maps, mapName);
     if (!fieldMap) {
       errors.push(`mapDefaults.${mapName}: not in lens`);
       continue;
     }
 
     const ancestorDefaultsEnums = ancestors
-      .map((anc) => anc.mapDefaults?.[mapName]?.enums)
+      .map((anc) => own(anc.mapDefaults, mapName)?.enums)
       .filter((x): x is NonNullable<typeof x> => x !== undefined);
 
     for (const [modelName, dflt] of Object.entries(defaults.models ?? {})) {
-      const model = fieldMap.models[modelName];
+      const model = modelOf(fieldMap, modelName);
       if (!model) {
         errors.push(`mapDefaults.${mapName}.models.${modelName}: not in fieldMap`);
         continue;
       }
       const ancestorDefaultsForModel = ancestors
-        .map((anc) => anc.mapDefaults?.[mapName]?.models?.[modelName])
+        .map((anc) => own(own(anc.mapDefaults, mapName)?.models, modelName))
         .filter((x): x is ModelDefaultNarrowing => x !== undefined);
       // A model default applies at EVERY visit of the model: the model-intrinsic (off-path)
       // visit plus each path the parent declares for it, so its where must resolve at all.
@@ -640,10 +640,10 @@ export const validateNarrowing = (narrowing: LensNarrowing): void => {
   if (narrowing.root) {
     const lensMapName = set.mapName;
     const lensModel = set.model;
-    const fieldMap = set.maps[lensMapName];
+    const fieldMap = own(set.maps, lensMapName);
     if (!fieldMap) {
       errors.push(`root: lens map '${lensMapName}' not in lens`);
-    } else if (!fieldMap.models[lensModel]) {
+    } else if (!modelOf(fieldMap, lensModel)) {
       errors.push(`root: lens model '${lensModel}' not in fieldMap`);
     } else {
       const ancestorChainForRoot = ancestors

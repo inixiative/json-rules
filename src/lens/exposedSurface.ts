@@ -1,4 +1,5 @@
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
+import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import { isFieldVisible, OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectOptions } from './projectByPath.ts';
@@ -70,7 +71,7 @@ export const exposedSurface = (
 
   while (queue.length > 0) {
     const { mapName, modelName, relPath, declared } = queue.shift() as Visit;
-    const model = lens.maps[mapName]?.models[modelName];
+    const model = modelOf(own(lens.maps, mapName), modelName);
     if (!model) continue;
 
     const key = modelKey(mapName, modelName);
@@ -138,7 +139,7 @@ export const exposedSurface = (
 
   const maps: Record<string, FieldMap> = {};
   for (const { mapName, modelName, fields } of surface.values()) {
-    let surfaceMap = maps[mapName];
+    let surfaceMap = own(maps, mapName);
     if (!surfaceMap) {
       surfaceMap = { models: {} };
       maps[mapName] = surfaceMap;
@@ -160,7 +161,7 @@ export const exposedSurface = (
       }
     }
     surfaceMap.models[modelName] = {
-      ...lens.maps[mapName]?.models[modelName],
+      ...modelOf(own(lens.maps, mapName), modelName),
       fields: fieldRecord,
     };
 
@@ -174,8 +175,8 @@ export const exposedSurface = (
   // touches unexposed surface and its `on` keys would leak).
   const bridges: Bridge[] | undefined = lens.bridges?.filter((b) => {
     const [a, bb] = b.endpoints;
-    const aExposesB = maps[a.fieldMap]?.models[a.model]?.fields[`${bb.fieldMap}:${bb.model}`];
-    const bExposesA = maps[bb.fieldMap]?.models[bb.model]?.fields[`${a.fieldMap}:${a.model}`];
+    const aExposesB = fieldOf(own(maps, a.fieldMap), a.model, `${bb.fieldMap}:${bb.model}`);
+    const bExposesA = fieldOf(own(maps, bb.fieldMap), bb.model, `${a.fieldMap}:${a.model}`);
     return aExposesB !== undefined || bExposesA !== undefined;
   });
 

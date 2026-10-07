@@ -1,7 +1,6 @@
-import { get } from 'lodash-es';
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
+import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
 import type { BuildOptions } from './types';
@@ -17,12 +16,7 @@ const readPathValue = (ref: string, options?: BuildOptions): unknown => {
         `comparison or arithmetic. Use toSql() or prisma.$queryRaw.`,
     );
   }
-  if (!options?.context) {
-    throw new Error(
-      `options.context is required to resolve path '${ref}'. Pass context when calling toPrisma().`,
-    );
-  }
-  return get(options.context, ref) ?? null;
+  return readContextRef(ref, options?.context, 'toPrisma');
 };
 
 /** A value source on the Prisma rail: its value, a context read, or an unresolved bind. */

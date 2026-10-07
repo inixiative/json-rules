@@ -1,3 +1,4 @@
+import { modelOf, own } from '../own';
 import type { FieldMapSet } from './types.ts';
 
 export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
@@ -8,8 +9,8 @@ export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
 
   for (const bridge of set.bridges ?? []) {
     const [a, b] = bridge.endpoints;
-    const aOwner = out.maps[a.fieldMap]?.models[a.model];
-    const bOwner = out.maps[b.fieldMap]?.models[b.model];
+    const aOwner = modelOf(own(out.maps, a.fieldMap), a.model);
+    const bOwner = modelOf(own(out.maps, b.fieldMap), b.model);
     if (!aOwner) {
       throw new Error(`stitchFieldMaps: endpoint '${a.fieldMap}:${a.model}' not found`);
     }
@@ -21,12 +22,12 @@ export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
         `stitchFieldMaps: self-bridge '${a.fieldMap}:${a.model}' to itself is not supported`,
       );
     }
-    if (!aOwner.fields[a.on]) {
+    if (!own(aOwner.fields, a.on)) {
       throw new Error(
         `stitchFieldMaps: endpoint '${a.fieldMap}:${a.model}' has no field '${a.on}' for join`,
       );
     }
-    if (!bOwner.fields[b.on]) {
+    if (!own(bOwner.fields, b.on)) {
       throw new Error(
         `stitchFieldMaps: endpoint '${b.fieldMap}:${b.model}' has no field '${b.on}' for join`,
       );
@@ -35,10 +36,10 @@ export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
     const aKey = `${a.fieldMap}:${a.model}`;
     const bKey = `${b.fieldMap}:${b.model}`;
 
-    if (aOwner.fields[bKey]) {
+    if (own(aOwner.fields, bKey)) {
       throw new Error(`stitchFieldMaps: bridge '${bKey}' already injected on '${aKey}'`);
     }
-    if (bOwner.fields[aKey]) {
+    if (own(bOwner.fields, aKey)) {
       throw new Error(`stitchFieldMaps: bridge '${aKey}' already injected on '${bKey}'`);
     }
 

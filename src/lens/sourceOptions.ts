@@ -1,4 +1,4 @@
-import { own } from '../own';
+import { fieldOf, own } from '../own';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
@@ -38,7 +38,7 @@ const foldPathGuards = (
   const relPath = [...baseRelPath];
   // The last segment is the column; guards live on the traversed models.
   for (let i = 0; i < segments.length - 1; i++) {
-    const entry = own(policy.lens.maps[curMap]?.models[curModel]?.fields, segments[i]);
+    const entry = fieldOf(own(policy.lens.maps, curMap), curModel, segments[i]);
     const target = entry ? resolveRelationTarget(entry, curMap) : null;
     if (!target) {
       if (strict) {

@@ -1,5 +1,6 @@
 import { orderBy as lodashOrderBy } from 'lodash-es';
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
+import { readOwnPath } from './scope';
 import type { ArrayRule, WindowFields } from './types';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
@@ -75,7 +76,7 @@ export const applyWindow = <T>(
   if (rule.orderBy?.length) {
     out = lodashOrderBy(
       out,
-      rule.orderBy.map((o) => o.field),
+      rule.orderBy.map((o) => (item: unknown) => readOwnPath(item, o.field)),
       rule.orderBy.map((o) => o.dir),
     );
   }

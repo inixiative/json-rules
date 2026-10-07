@@ -1,4 +1,4 @@
-import { own } from '../own';
+import { modelOf, own } from '../own';
 import { findReverseRelation } from '../toPrisma/relationUtils';
 import type { FieldMapEntry } from '../toPrisma/types';
 import { escapeIdentifier } from './escape';
@@ -24,7 +24,7 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
   let currentAlias = state.currentAlias;
 
   for (let i = 0; i < parts.length; i++) {
-    const modelEntry = state.map.models[currentModel];
+    const modelEntry = modelOf(state.map, currentModel);
     if (!modelEntry) return quoteField(field); // fallback
 
     const fieldEntry = own(modelEntry.fields, parts[i]);
@@ -82,7 +82,7 @@ const buildJoinClause = (
   targetAlias: string,
 ): string | null => {
   const targetModel = fieldEntry.type;
-  const targetDbName = map.models[targetModel]?.dbName ?? targetModel;
+  const targetDbName = modelOf(map, targetModel)?.dbName ?? targetModel;
 
   let onCondition: string;
 

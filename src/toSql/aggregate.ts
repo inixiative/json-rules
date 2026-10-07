@@ -1,5 +1,6 @@
 import { orderPair } from '../number';
 import { Operator } from '../operator';
+import { fieldOf } from '../own';
 import type { AggregateRule } from '../types';
 import { hasWindow } from '../window';
 import { compareSql, ORDERED_SQL } from './compare';
@@ -30,7 +31,7 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
   const { mode, field: itemField } = rule.aggregate;
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
 
-  const fieldEntry = state.map?.models[state.currentModel ?? '']?.fields[rule.field];
+  const fieldEntry = fieldOf(state.map, state.currentModel ?? '', rule.field);
 
   if (fieldEntry?.kind === 'object') {
     throw new Error(

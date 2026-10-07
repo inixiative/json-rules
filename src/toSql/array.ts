@@ -1,4 +1,5 @@
 import { ArrayOperator } from '../operator';
+import { fieldOf } from '../own';
 import type { ArrayRule } from '../types';
 import { hasWindow } from '../window';
 import { quoteField } from './quoting';
@@ -13,7 +14,7 @@ export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => 
     throw new Error('toSql: ArrayRule.field is required (fieldless arrayOps are check-only)');
   }
   const field = quoteField(rule.field);
-  const fieldEntry = state.map?.models[state.currentModel ?? '']?.fields[rule.field];
+  const fieldEntry = fieldOf(state.map, state.currentModel ?? '', rule.field);
   const isNative = fieldEntry?.kind === 'scalar' && fieldEntry?.isList === true;
 
   // Different length functions for JSONB vs native PostgreSQL arrays

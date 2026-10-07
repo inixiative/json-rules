@@ -115,3 +115,13 @@ describe('projectByPath — picks/omits composition', () => {
     expect(fieldsAt(n2, 'Post')).toEqual(['author', 'id']);
   });
 });
+
+describe('projectByPath — a relation the visit hides is not projected', () => {
+  test('a child layer omits a relation the parent declared', () => {
+    const parent = withParent(lens, { root: { relations: { author: { picks: ['name'] } } } });
+    expect(projectByPath(parent).has('Post.author')).toBe(true);
+    const child = withParent(parent, { root: { omits: ['author'] } });
+    expect(projectByPath(child).has('Post.author')).toBe(false);
+    expect(fieldsAt(child, 'Post')).toEqual(['id', 'secret', 'title']);
+  });
+});

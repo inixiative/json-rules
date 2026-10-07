@@ -1,3 +1,4 @@
+import { own } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere } from '../toPrisma/types.ts';
 import { buildCondition } from '../toSql/condition.ts';
@@ -117,7 +118,7 @@ const compileOne = (
       const state: BuilderState = {
         params: [],
         paramIndex: 0,
-        map: lens.maps[mapName],
+        map: own(lens.maps, mapName),
         currentModel: model,
         currentAlias: 't0',
         joinCounter: { n: 0 },
@@ -130,7 +131,7 @@ const compileOne = (
       params = state.params;
       joins = state.joins ?? [];
     } else {
-      ({ sql, params, joins } = toSql(where, { map: lens.maps[mapName], model, alias: 't0' }));
+      ({ sql, params, joins } = toSql(where, { map: own(lens.maps, mapName), model, alias: 't0' }));
     }
     const joinSql = joins.length ? ` ${joins.join(' ')}` : '';
     const whereSql = sql?.trim() ? ` WHERE ${sql}` : '';

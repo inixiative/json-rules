@@ -1,5 +1,6 @@
 import { orderPair } from '../number';
 import { Operator } from '../operator';
+import { fieldOf } from '../own';
 import type { AggregateRule, Condition } from '../types';
 import { hasWindow } from '../window';
 import { findReverseRelation } from './relationUtils';
@@ -82,7 +83,7 @@ const walkAggregateFieldPath = (
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    const fieldEntry = map.models[currentModel]?.fields[seg];
+    const fieldEntry = fieldOf(map, currentModel, seg);
     if (!fieldEntry || fieldEntry.kind !== 'object') {
       throw new Error(
         `Field '${seg}' is not a relation in model '${currentModel}'. ` +
@@ -134,7 +135,7 @@ const buildAggregateStep = (
   const targetModel = terminalEntry.type;
   const itemField = rule.aggregate.field ?? '';
 
-  const targetFieldEntry = map.models[targetModel]?.fields[itemField];
+  const targetFieldEntry = fieldOf(map, targetModel, itemField);
   if (!targetFieldEntry) {
     throw new Error(`aggregate.field '${itemField}' does not exist on model '${targetModel}'.`);
   }

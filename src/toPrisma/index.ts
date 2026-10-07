@@ -1,3 +1,4 @@
+import { own } from '../own';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
 import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from './types';
@@ -14,7 +15,7 @@ const normalizeOptions = (options?: BuildOptions): BuildOptions | undefined => {
     );
   }
   if (!mapIsSet || !options.mapName) return options;
-  const resolved = (options.map as { maps: Record<string, FieldMap> }).maps[options.mapName];
+  const resolved = own((options.map as { maps: Record<string, FieldMap> }).maps, options.mapName);
   if (!resolved) {
     throw new Error(`toPrisma: fieldMap set has no entry for '${options.mapName}'`);
   }

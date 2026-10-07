@@ -1,3 +1,4 @@
+import { modelOf } from '../own';
 import type { FieldMap, FieldMapEntry } from './types';
 
 export const findReverseRelation = (
@@ -6,7 +7,7 @@ export const findReverseRelation = (
   currentModel: string,
   relationName?: string,
 ): FieldMapEntry | null => {
-  const targetEntry = map.models[targetModel];
+  const targetEntry = modelOf(map, targetModel);
   if (!targetEntry) return null;
 
   for (const fieldDef of Object.values(targetEntry.fields)) {

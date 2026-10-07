@@ -1,3 +1,4 @@
+import { own } from '../own';
 import type { FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
 import { isFieldVisible, resolvePolicy, resolveVisit } from './policy.ts';
@@ -55,7 +56,7 @@ export const projectByPath = (
     dottedPath: string,
   ): void => {
     if (out.has(dottedPath)) return;
-    const model = policy.lens.maps[mapName]?.models[modelName];
+    const model = own(own(policy.lens.maps, mapName)?.models ?? {}, modelName);
     if (!model) return;
 
     const effect = resolveVisit(policy, mapName, modelName, relPath);
@@ -99,7 +100,9 @@ export const projectByPath = (
     });
 
     for (const relField of effect.relations.keys()) {
-      const entry = model.fields[relField];
+      // A relation this visit hides is not projected, as exposedSurface skips it.
+      if (!isFieldVisible(effect, relField)) continue;
+      const entry = own(model.fields, relField);
       if (!entry) continue;
       const target = resolveRelationTarget(entry, mapName);
       if (!target) continue;

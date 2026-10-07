@@ -369,7 +369,7 @@ const validateFieldRule = (
 
   if (
     rule.coerceType !== undefined &&
-    !(typeof rule.coerceType === 'string' && rule.coerceType in FieldKind)
+    !(typeof rule.coerceType === 'string' && Object.hasOwn(FieldKind, rule.coerceType))
   ) {
     pushIssue(
       context,

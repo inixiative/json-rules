@@ -1,5 +1,5 @@
 import { ArrayOperator } from '../operator.ts';
-import { own } from '../own';
+import { fieldOf, own } from '../own';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
@@ -114,7 +114,7 @@ const anchorOf = (
   let at: Visit = target.scope;
   const hops: RelationHop[] = [];
   for (let i = 0; i < parts.length; i++) {
-    const entry = own(policy.lens.maps[at.mapName]?.models[at.modelName]?.fields ?? {}, parts[i]);
+    const entry = fieldOf(own(policy.lens.maps, at.mapName), at.modelName, parts[i]);
     const relation = entry && resolveRelationTarget(entry, at.mapName);
     if (!entry || !relation) break;
     at = { ...relation, relPath: [...at.relPath, parts[i]] };

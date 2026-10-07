@@ -1,9 +1,9 @@
-import { get, isObject, some } from 'lodash-es';
+import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
 import { orderPair } from './number';
 import { ArrayOperator, Operator } from './operator';
-import { readField, type Scopes } from './scope';
+import { readField, readOwnPath, type Scopes } from './scope';
 import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
 import { readValueSource } from './valueSource';
 import { applyWindow } from './window';
@@ -153,7 +153,7 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
     : arrayValue;
 
   const numbers: number[] = filtered.map((item, index) => {
-    const raw = itemField ? get(item as Row, itemField) : item;
+    const raw = itemField ? readOwnPath(item, itemField) : item;
     if (typeof raw !== 'number' || !Number.isFinite(raw)) {
       const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
       throw new Error(`${loc} must be a finite number`);

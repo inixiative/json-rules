@@ -1,6 +1,6 @@
 import { applyCoercion } from '../field';
 import { COMPILE_COERCED_KINDS, FieldKind } from '../operatorCatalog';
-import { own } from '../own';
+import { modelOf, own } from '../own';
 import { someCondition } from '../traverse';
 import type { Condition, Rule } from '../types';
 import type { FieldMap, FieldMapEntry } from './types';
@@ -32,10 +32,10 @@ export const optionalToOneHops = (field: string, map: FieldMap, rootModel: strin
   const hops: string[] = [];
   let currentModel = rootModel;
   for (let i = 0; i < parts.length - 1; i++) {
-    const modelEntry = map.models[currentModel];
+    const modelEntry = modelOf(map, currentModel);
     if (!modelEntry) return hops;
     const fieldEntry = own(modelEntry.fields, parts[i]);
-    if (fieldEntry?.kind !== 'object' || !map.models[fieldEntry.type]) return hops;
+    if (fieldEntry?.kind !== 'object' || !modelOf(map, fieldEntry.type)) return hops;
     if (!fieldEntry.isList && fieldEntry.isRequired === false)
       hops.push(parts.slice(0, i + 1).join('.'));
     currentModel = fieldEntry.type;
@@ -48,7 +48,7 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
   let currentModel = rootModel;
 
   for (let i = 0; i < parts.length; i++) {
-    const modelEntry = map.models[currentModel];
+    const modelEntry = modelOf(map, currentModel);
     if (!modelEntry) return { kind: 'fallback' };
 
     const fieldEntry = own(modelEntry.fields, parts[i]);
@@ -62,7 +62,7 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
     }
 
     if (fieldEntry.kind === 'object') {
-      if (!map.models[fieldEntry.type]) return { kind: 'fallback' };
+      if (!modelOf(map, fieldEntry.type)) return { kind: 'fallback' };
       if (i === parts.length - 1) return { kind: 'direct', entry: fieldEntry };
       currentModel = fieldEntry.type;
       continue;

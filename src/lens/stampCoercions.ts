@@ -1,5 +1,5 @@
 import { COERCIBLE_KINDS, type FieldKind } from '../operatorCatalog.ts';
-import { own } from '../own';
+import { fieldOf, own } from '../own';
 import { resolveScopeRef } from '../scope';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
@@ -25,7 +25,7 @@ const resolveField = (
   const segments = target.path.split('.');
   let { mapName, modelName } = target.scope;
   for (let i = 0; i < segments.length; i += 1) {
-    const entry = own(lens.maps[mapName]?.models[modelName]?.fields, segments[i]);
+    const entry = fieldOf(own(lens.maps, mapName), modelName, segments[i]);
     if (!entry) return undefined;
     if (i === segments.length - 1) return { entry, mapName };
     if (entry.kind !== 'object' && entry.kind !== 'bridge') return undefined;

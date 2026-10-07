@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { check, toPrisma, toSql, validateRule } from '../index';
 import { checkRuleAgainstLens } from '../src/lens/checkRule';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
 import { walkFieldPath } from '../src/toPrisma/mapWalk';
 import type { FieldMap } from '../src/toPrisma/types';
+import { getWhere } from './fixtures/helpers';
 
 // Field maps are plain object literals, so a bare `fields[name]` resolves every
 // Object.prototype member name as a truthy "entry" nobody declared — and the policy
@@ -44,5 +46,32 @@ describe('prototype-named fields never resolve', () => {
   test('the field-path walker does not resolve them', () => {
     expect(walkFieldPath('email', map, 'User').kind).toBe('direct');
     for (const name of PROTO_NAMES) expect(walkFieldPath(name, map, 'User').kind).toBe('fallback');
+  });
+});
+
+describe('prototype names read as absent on every rail', () => {
+  test('a context path', () => {
+    const rule = { field: 'email', operator: Operator.equals, path: 'toString' } as never;
+    expect(check(rule, { email: null }, { context: {} })).toBe(true);
+    expect(toSql(rule, { context: {} }).sql).toBe('"email" IS NULL');
+    expect(getWhere(toPrisma(rule, { context: {} }))).toEqual({ email: { equals: null } });
+  });
+
+  test('a row path and an array item field', () => {
+    expect(
+      check({ field: 'email', operator: Operator.equals, path: '$.constructor' } as never, {
+        email: null,
+      }),
+    ).toBe(true);
+  });
+
+  test('validateRule refuses a prototype coerceType', () => {
+    const { errors } = validateRule({
+      field: 'email',
+      operator: Operator.equals,
+      value: 'x',
+      coerceType: 'toString',
+    } as never);
+    expect(errors.map((e) => e.code)).toContain('invalid_coerce_type');
   });
 });

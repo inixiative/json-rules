@@ -1,6 +1,5 @@
 export { bindLens, listLensBindings } from './bindings';
 export { coerceRule } from './coerceRule';
-export type { CreateLensInput } from './createLens';
 export { createLens } from './createLens';
 export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';

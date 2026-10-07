@@ -36,7 +36,6 @@ export type {
 export {
   assertValidNarrowing,
   bindLens,
-  type CreateLensInput,
   coerceRule,
   createLens,
   describeRule,

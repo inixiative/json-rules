@@ -43,6 +43,7 @@ express a rule.
 | `FIELD_OPERATOR_CATALOG`, `DATE_OPERATOR_CATALOG`, `ARRAY_OPERATOR_CATALOG`, `CatalogEntry`, `ArrayCatalogEntry` | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape` |
 | `BuildOptions`, `SqlResult` | `ToPrismaOptions`, `ToSqlResult` — beside `ToSqlOptions`, all named for their verb; both options extend `CompileOptions`, whose `context` is a `Row` |
 | `ProjectOptions` | `ProjectLensOptions` |
+| `CreateLensInput` | `Lens` — `createLens` takes and returns one |
 | `ProjectedVisit.modelName`, `LensPathHop.modelName` | `model`, as on `Lens`, `SourceQuery` and the compile options |
 | `SourceValue` (a `sources` entry), `RuleSourceValues` | `SourceEntry`, `RuleSourceDescription` — `SourceValues` (materialized options) keeps its name |
 | `FieldMap`, `FieldMapEntry`, `SourceOption` from the `toPrisma` / `toSql` entry points | one export each from the package root, with `ModelEntry` |

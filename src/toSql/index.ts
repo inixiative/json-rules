@@ -1,14 +1,9 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { CompileOptions, Condition } from '../types';
 import { buildCondition } from './condition';
-import type { BuilderState, ToSqlResult } from './types';
+import type { BuilderState, ToSqlOptions, ToSqlResult } from './types';
 
-export type { ToSqlResult } from './types';
-
-export type ToSqlOptions = CompileOptions & {
-  /** The root table alias; `t0` when a map is given. */
-  alias?: string;
-};
+export type { ToSqlOptions, ToSqlResult } from './types';
 
 /** A fresh compile: the root alias (`t0` with a map), parameters, and the join registry every
  *  field resolved against it shares. */

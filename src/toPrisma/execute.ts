@@ -18,11 +18,11 @@ import type { GroupByStep, ToPrismaResult, WhereStep } from './types';
  * await prisma.user.findMany({ where });
  */
 export const executePrismaPlan = async (
-  result: ToPrismaResult,
+  plan: ToPrismaResult,
   prismaDelegate: Record<string, Record<string, (...args: unknown[]) => unknown>>,
 ): Promise<Record<string, unknown>> => {
-  const groupBySteps = result.steps.filter((s): s is GroupByStep => s.operation === 'groupBy');
-  const whereStep = result.steps.find((s): s is WhereStep => s.operation === 'where');
+  const groupBySteps = plan.steps.filter((s): s is GroupByStep => s.operation === 'groupBy');
+  const whereStep = plan.steps.find((s): s is WhereStep => s.operation === 'where');
 
   if (!whereStep) {
     throw new Error('executePrismaPlan: result has no where step');

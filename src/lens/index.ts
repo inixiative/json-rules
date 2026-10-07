@@ -5,7 +5,7 @@ export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
 export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
-export type { SourceRowShape } from './materializeSourceQuery';
+export type { MaterializeSourceQueryOptions, SourceRowShape } from './materializeSourceQuery';
 export { materializeSourceQuery } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';

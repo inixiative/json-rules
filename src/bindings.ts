@@ -21,9 +21,12 @@ const bindTokens = (node: ConditionNode): BindSource[] =>
  * not `bindOptional` (unsupplied, it reads null); a name optional at one leaf and required at
  * another is required.
  */
+/** `required`: leave out the names an optional bind (`bindOptional`) may go unsupplied. */
+export type ListBindingsOptions = { required?: boolean };
+
 export const listBindings = (
   condition: Condition,
-  { required = false }: { required?: boolean } = {},
+  { required = false }: ListBindingsOptions = {},
 ): string[] => {
   const names = new Set<string>();
   visitCondition(condition, (node) => {

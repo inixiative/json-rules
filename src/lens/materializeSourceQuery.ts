@@ -15,10 +15,13 @@ export type SourceRowShape = 'prisma' | 'sql';
  * statement's `__group_i` / `__label` aliases. Grouped queries fetch without
  * DISTINCT, so dedup per (groups, value) happens here.
  */
+/** `rowShape`: how the rows came back — nested Prisma rows (the default) or flat SQL rows. */
+export type MaterializeSourceQueryOptions = { rowShape?: SourceRowShape };
+
 export const materializeSourceQuery = (
   query: SourceQuery,
   rows: readonly Row[],
-  opts: { rowShape?: SourceRowShape } = {},
+  opts: MaterializeSourceQueryOptions = {},
 ): SourceValues => {
   const rowShape = opts.rowShape ?? 'prisma';
   const byKey = new Map<string, SourceOption>();

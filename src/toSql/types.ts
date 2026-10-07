@@ -1,5 +1,5 @@
 import type { FieldMap } from '../fieldMap/types';
-import type { DateConfig, Row } from '../types';
+import type { CompileOptions, DateConfig, Row } from '../types';
 
 export type ToSqlResult = {
   sql: string;
@@ -20,4 +20,9 @@ export type BuilderState = {
   joins?: string[];
   // Registry: "parentAlias.fieldName" → assigned alias (prevents duplicate JOINs)
   joinRegistry?: Map<string, string>;
+};
+
+export type ToSqlOptions = CompileOptions & {
+  /** The root table alias; `t0` when a map is given. */
+  alias?: string;
 };

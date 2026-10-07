@@ -1,6 +1,5 @@
-import { own } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
-import type { PrismaStep, PrismaWhere } from '../toPrisma/types.ts';
+import type { PrismaStep, PrismaWhere, WhereStep } from '../toPrisma/types.ts';
 import { buildCondition } from '../toSql/condition.ts';
 import { escapeIdentifier } from '../toSql/escape.ts';
 import { builderState } from '../toSql/index.ts';
@@ -76,8 +75,8 @@ const compileOne = (
   where: Condition,
 ): { prisma: SourcePrismaQuery; sql: SourceSqlQuery } => {
   const plan = toPrisma(where, { map: lens, mapName, model });
-  const last = plan.steps[plan.steps.length - 1];
-  const prismaWhere = (last && 'where' in last ? last.where : {}) as PrismaWhere;
+  // A plan ends on its where step.
+  const prismaWhere = (plan.steps.at(-1) as WhereStep).where;
   const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
   // A dotted label materializes exactly like a groupBy axis — same nested select
   // (merged with any axis sharing its prefix), same joined SQL column.
@@ -100,7 +99,7 @@ const compileOne = (
   try {
     // The where and the materialized columns resolve against one state, so a label or axis
     // path reuses (and extends) the where's joins.
-    const state = builderState({ map: own(lens.maps, mapName), model, alias: 't0' });
+    const state = builderState({ map: lens, mapName, model, alias: 't0' });
     const sql = buildCondition(where, state);
     const labelCol = labelPath ? resolveFieldSql(labelPath, state) : undefined;
     const groupCols = groupBy?.map((axis) => resolveFieldSql(axis, state));

@@ -51,9 +51,10 @@ window off a related row:
     value; `start of this month + 4 days` needs it. A date offset read per row is check-only.
   - Applies to the comparison operators (`equals` … `greaterThanEquals`, date
     `before` … `notAfter`) and to each endpoint of `between` / `notBetween`.
-- **Magnitudes take `{ path }`.** Any `RelativeUnits` amount (in a `value` expression or an
-  `offset`) and a numeric offset accept `{ path }` as well as a literal. Path, not bind: the
-  value is a fact on a related row, so the declaration stays self-contained.
+- **One value-source type** (revised 2026-10-07). `{ value } | { path } | { bind }` is one type,
+  `ValueSourceOf<T>`, in every slot that reads a value: the comparison value, an offset, each
+  unit amount, the evaluation's `timeZone`. No slot takes a partial copy of it. Offset and
+  unit amounts are consumers of the type, not part of it.
 - **Units apply in a fixed order**: months (years, quarters, months), then days (weeks, days),
   then time — Postgres interval arithmetic, so `check()` and `toSql` agree at month ends.
 - **NULL fails closed.** A null comparison value, offset or magnitude makes the comparison a

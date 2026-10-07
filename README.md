@@ -279,7 +279,7 @@ toSql(rule, { now });
 | Option | Default | Governs |
 | --- | --- | --- |
 | `now` | — (required when a relative/period expression is present) | the anchor instant |
-| `timeZone` | `'UTC'` | how `now` and period boundaries localize |
+| `timeZone` | `'UTC'` | how `now` and period boundaries localize — a zone name, or a value source read from context or bindings |
 | `weekStart` | `'monday'` (ISO / isoWeek) | start of `week` for `this`/`last`/`next` |
 
 Compilers resolve expressions to concrete `Date` bounds at compile time, so
@@ -369,7 +369,7 @@ like any absent field.
 `toSql()` keeps `path: '$.x'` as a same-row column comparison. Every other scope ref — a
 `$$.` path or any prefixed `field` — is check-only; both compilers throw.
 
-### Offsets and Path Magnitudes
+### Offsets and Unit Amounts
 
 An `offset` moves the comparison value. It is a value source of its own, with the comparison
 value's contract: `{ value }`, `{ path }` (`$.` from the row, bare from context) or `{ bind }`
@@ -399,9 +399,9 @@ instead of `now`:
 `bindingNames` / `requiredBindings` list it. A date offset read per row (a column holding
 `{ ago: … }`) is check-only; to size a shift from the row, read the amount instead.
 
-Any relative-date unit — in a `value` expression or an offset's rolling shift — can itself be a
-`{ path }`, read from the row (`$.`) or from context. A relative window can take its size from
-the row it judges:
+Any relative-date unit — in a `value` expression or an offset's rolling shift — is a number or a
+value source: `{ path }` from the row (`$.`) or context, `{ bind }`, or `{ value }`. A relative
+window can take its size from the row it judges:
 
 ```ts
 // quiet for longer than this incident's rule allows
@@ -607,8 +607,8 @@ Not every backend supports every rule shape.
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
 | Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
-| `offset` and `{ path }` amounts — value, bind or context | Yes | Yes | Yes |
-| `offset` and `{ path }` amounts — `$.` row refs | Yes | No | Yes (not a date offset's) |
+| `offset` and unit amounts — value, bind or context | Yes | Yes | Yes |
+| `offset` and unit amounts — `$.` row refs | Yes | No | Yes (not a date offset's) |
 | `$$.` scope refs and `$`-prefixed `field` | Yes | No | No |
 
 ### NULL Semantics

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.27.0 — one value-source reader; `offset` on path and bind; path-valued magnitudes
+## 2.27.0 — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
 
 **First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident
 lifecycle is a `@inixiative/transitions` map, and its auto-resolve guard reads its window off
@@ -13,8 +13,13 @@ the incident's own rule — self-contained, no caller-supplied bind:
 
 Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
 
-- **One reader.** `check()` resolves `value` / `bind` / `path` in one place for field, date and
-  aggregate rules (`readValueSource`, over the new `readBinding`). Date and aggregate rules
+- **One type, one reader.** `ValueSourceOf<T>` — `{ value } | { path } | { bind }` (with
+  `bindOptional`) — is the shape of every slot that reads a value: a rule's comparison value,
+  an `offset`, each unit amount, the evaluation's `timeZone`. The loose rule types share
+  `ValueSourceFields<T>`; `PathRef` and the bind-only `TimeZoneConfig` are gone. Each rail reads
+  it in one place (`check()`: `readValueSource`; the compilers' bind is a compile error unless
+  optional), and a leaf's value-source slots are listed once, so `resolveBindings`,
+  `bindingNames` and `requiredBindings` reach every one. Date and aggregate rules
   with a `bind` threw on `check()` while they compiled after `resolveBindings`; they now
   resolve with the field rule's key-presence contract (`Missing binding for "<name>"` unless
   `bindOptional`; a supplied `undefined` is `null`). A bound date value can be a date, a date
@@ -26,8 +31,12 @@ Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
   comparison operators and both ends of `between` / `notBetween`, on any comparison value — a
   literal plus an offset names what the grammar can't alone (`start of this month + 4 days`).
   `resolveBindings`, `bindingNames` and `requiredBindings` cover offset binds.
-- **`{ path }` magnitudes.** Every `RelativeUnits` amount (in a `value` expression or a date
-  offset) takes `{ path }` — `$.` from the row, bare from context.
+- **Unit amounts are value sources.** Every `RelativeUnits` amount (in a `value` expression or a
+  date offset) is a number or a value source — `{ path }` (`$.` from the row, bare from
+  context), `{ bind }` or `{ value }`.
+- **`timeZone` is a value source.** `string | { value } | { path } | { bind }`: read from context
+  or bindings, once per evaluation (a `$.` path throws), on every rail. The compilers used to
+  ignore a `{ bind }` zone and compile in UTC.
 - **Rails.** `toSql` compiles a `$.` amount to `col ± make_interval(…)` / `col + n` and
   resolves a context amount; `toPrisma` resolves a context amount and throws on a `$.` one.
   Both compilers now refuse an unresolved required date bind, as they already did for fields.
@@ -52,6 +61,13 @@ Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
   interval `AT TIME ZONE`: a day is 23 hours on a spring-forward day.
 - Calendar units (years, quarters, months, weeks, days) are whole numbers: a fractional literal
   is an `invalid_relative_magnitude` and throws at evaluation (dayjs rounded it before).
+- A `timeZone: { bind }` with no binding throws `Missing binding`, as every bind does; it fell
+  back to UTC before. Mark it `bindOptional` for the UTC fallback. The compilers throw on an
+  unresolved zone bind instead of silently using UTC.
+- `validateRule` validates every value source alike: `ambiguous_value_source`,
+  `missing_value_source`, and `invalid_value_source` (a non-string `path`/`bind`, or
+  `bindOptional` without `bind`) — for an offset too, which reported `invalid_offset` for these.
+- The missing-source error reads `No value, path or bind specified`.
 
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 

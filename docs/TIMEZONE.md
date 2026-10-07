@@ -14,21 +14,21 @@ so results are deterministic — never dependent on the host machine's timezone.
   and the field value.
 - **`dayIn` / `dayNotIn` weekdays are computed in that same timezone**, not host-local.
 
-## Resolving the zone (`resolveTimeZone`)
+## Resolving the zone (`resolveDateConfig`)
 
-There is a single resolver seam (`resolveTimeZone` in `src/date.ts`). It resolves the
-anchoring zone for **one evaluation**, with this precedence:
+There is a single resolver seam (`resolveDateConfig` in `src/date.ts`). It reads the zone for
+**one evaluation**:
 
-1. **Bound zone** — when `config.timeZone` is `{ bind: '<key>' }` and the key is present in
-   the evaluation's `bindings`, that bound string wins. This reuses the same bind mechanism
-   rule values use, so the zone can travel with the request/context rather than being
-   hard-coded.
-2. **Literal zone** — a plain IANA string `config.timeZone`.
-3. **`'UTC'`** — the default, including when a bound key is absent.
+1. **A zone name** — a plain IANA string `config.timeZone`.
+2. **A value source** — `{ value }`, `{ path }` (context) or `{ bind }` (with `bindOptional`),
+   the shape every value slot takes, read with the same contract: a missing required binding
+   throws, an optional one reads nothing. The compilers have no bindings, so an unresolved
+   zone bind throws there. A `$.` path throws: there is one zone per evaluation, not per row.
+3. **`'UTC'`** — when nothing is set, or the source reads nothing.
 
-`config.timeZone` is therefore typed `string | { bind: string }` (`TimeZoneConfig`). The
-date-expression layer (`now`, `this month`, …) and the SQL/Prisma compilers see a concrete
-string: `checkDate` normalizes the bound form to a resolved string before threading it down.
+`config.timeZone` is typed `string | ValueSourceOf<string>` (`TimeZoneConfig`). The
+date-expression layer (`now`, `this month`, …) takes a `ResolvedDateConfig`, whose zone is a
+plain string, so it never sees an unread source.
 
 ## Not built: per-record (companion-column) zones
 

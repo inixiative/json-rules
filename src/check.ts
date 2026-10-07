@@ -9,7 +9,7 @@ import {
   ARRAY_COUNT_OPERATORS,
 } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
-import { conditionShape } from './traverse';
+import { conditionShape, visitCondition } from './traverse';
 import type {
   AggregateRule,
   All,
@@ -31,19 +31,16 @@ export type CheckOptions = {
 
 type EvalOptions = CheckOptions & { context: CheckData; scopes: Scopes };
 
-const validateRootArrayShape = (rule: Condition): void => {
-  if (typeof rule === 'boolean') return;
-  const shape = conditionShape(rule as Record<string, unknown>);
-  if (shape === 'all' || shape === 'any') {
-    for (const child of shape === 'all' ? (rule as All).all : (rule as Any).any)
-      validateRootArrayShape(child);
-    return;
-  }
-  if (shape === 'array' && !('field' in rule)) return;
-  throw new Error(
-    'check: when data is an array, every leaf must be a fieldless arrayOperator (composable with all/any)',
-  );
-};
+// Over a root array, every leaf is a fieldless array rule, composed with all / any only.
+const validateRootArrayShape = (rule: Condition): void =>
+  visitCondition(rule, (node) => {
+    const shape = conditionShape(node as Record<string, unknown>);
+    if (shape === 'all' || shape === 'any') return;
+    if (shape === 'array' && !('field' in node)) return false;
+    throw new Error(
+      'check: when data is an array, every leaf must be a fieldless arrayOperator (composable with all/any)',
+    );
+  });
 
 export const check = <TData extends CheckData>(
   conditions: Condition,

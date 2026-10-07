@@ -7,8 +7,7 @@ import { resolveFieldSql } from '../toSql/join.ts';
 import type { BuilderState } from '../toSql/types.ts';
 import type { Condition } from '../types.ts';
 import { allOf, resolvePolicy } from './policy.ts';
-import { projectByPath } from './projectByPath.ts';
-import { traversalGuards } from './sourceOptions.ts';
+import { sourcePlans } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /** Prisma `select` shape — nested for a grouped source's relation path. */
@@ -151,46 +150,28 @@ const compileOne = (
  * to `materializeSourceQuery`.
  */
 export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
-  const policy = resolvePolicy(lensOrNarrowing);
-  const { lens } = policy;
-  const projection = projectByPath(lensOrNarrowing);
-  const out: SourceQuery[] = [];
-  for (const [path, visit] of Object.entries(projection)) {
-    const relPath = path.split('.').slice(1);
-    for (const [field, sourceClauses] of Object.entries(visit.sources)) {
-      const label = visit.sourceLabels[field];
-      const groupBy = visit.sourceGroupBys[field];
-      const guards = traversalGuards(
-        policy,
-        visit.mapName,
-        visit.modelName,
-        relPath,
-        groupBy ?? [],
-        sourceClauses,
-        label,
-      );
-      const composedWhere = allOf([...visit.whereClauses, ...[...sourceClauses, ...guards]]);
-      const { prisma, sql } = compileOne(
-        lens,
-        visit.mapName,
-        visit.modelName,
-        field,
-        label,
-        groupBy,
-        composedWhere,
-      );
-      out.push({
-        path,
-        mapName: visit.mapName,
-        model: visit.modelName,
-        field,
-        ...(label !== undefined ? { label } : {}),
-        ...(groupBy !== undefined ? { groupBy } : {}),
-        composedWhere,
-        prisma,
-        sql,
-      });
-    }
-  }
-  return out;
+  const { lens } = resolvePolicy(lensOrNarrowing);
+  return sourcePlans(lensOrNarrowing).map(({ path, visit, field, label, groupBy, eligibility }) => {
+    const composedWhere = allOf([...visit.whereClauses, ...eligibility]);
+    const { prisma, sql } = compileOne(
+      lens,
+      visit.mapName,
+      visit.modelName,
+      field,
+      label,
+      groupBy,
+      composedWhere,
+    );
+    return {
+      path,
+      mapName: visit.mapName,
+      model: visit.modelName,
+      field,
+      ...(label !== undefined ? { label } : {}),
+      ...(groupBy !== undefined ? { groupBy } : {}),
+      composedWhere,
+      prisma,
+      sql,
+    };
+  });
 };

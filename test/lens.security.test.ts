@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, FieldMap, Lens, LensNarrowing } from '../index';
-import { check, narrowRule, toSourceQueries } from '../index';
+import {
+  check,
+  materializeSources,
+  narrowRule,
+  projectLens,
+  toSourceQueries,
+  validateRuleInLens,
+} from '../index';
 
 // What the lens hides stays hidden — through a child layer's own conditions, value-side refs,
 // window and aggregate fields, Json-array scopes, and option lists.
@@ -147,5 +154,62 @@ describe('refs that cross a relation carry its grant', () => {
     });
     expect(check(r, orderedRow)).toBe(true);
     expect(check(narrowRule(r, granted), orderedRow)).not.toBe(true);
+  });
+});
+
+describe('option lists never offer what the lens hides', () => {
+  const people: FieldMap = {
+    enums: { Status: ['OPEN', 'SECRET'] },
+    models: {
+      Person: {
+        fields: {
+          id: { kind: 'scalar', type: 'String' },
+          name: { kind: 'scalar', type: 'String' },
+          ssn: { kind: 'scalar', type: 'String' },
+          status: { kind: 'enum', type: 'Status' },
+          team: { kind: 'scalar', type: 'String' },
+        },
+      },
+    },
+  };
+  const base: Lens = { maps: { app: people }, mapName: 'app', model: 'Person' };
+  const rows = [
+    { id: '1', name: 'a', ssn: '111-22-3333', status: 'SECRET', team: 'x' },
+    { id: '2', name: 'b', ssn: '999', status: 'OPEN', team: 'y' },
+  ];
+
+  test('an omitted enum value is not an option, fetched or projected', () => {
+    const n: LensNarrowing = {
+      parent: base,
+      root: { enumOmits: { status: ['SECRET'] }, sources: { status: true } },
+    };
+    const values = materializeSources(n, rows);
+    expect(values[0].options.map((o) => o.value)).toEqual(['OPEN']);
+    expect(JSON.stringify(toSourceQueries(n)[0].composedWhere)).toContain('"in"');
+    const leaked = [{ ...values[0], options: [{ value: 'OPEN' }, { value: 'SECRET' }] }];
+    expect(projectLens(n, { sourceValues: leaked }).Person.fields.status.options).toEqual([
+      { value: 'OPEN' },
+    ]);
+  });
+
+  test("a child that hides the parent source's label and axis drops them", () => {
+    const parent: LensNarrowing = {
+      parent: base,
+      root: { sources: { name: { where: true, label: 'ssn', groupBy: 'team' } } },
+    };
+    const child: LensNarrowing = { parent, root: { omits: ['ssn', 'team'] } };
+    expect(projectLens(parent).Person.sourceLabels).toEqual({ name: 'ssn' });
+    expect(projectLens(child).Person.sourceLabels).toEqual({});
+    expect(projectLens(child).Person.sourceGroupBys).toEqual({});
+    expect(JSON.stringify(materializeSources(child, rows))).not.toContain('111-22-3333');
+  });
+});
+
+describe('the gate refuses a node that is both logical and a leaf', () => {
+  test('if + field', () => {
+    const r = rule({ if: true, then: true, field: 'author.salary', operator: 'equals', value: 1 });
+    expect(validateRuleInLens(r, granted).errors.map((e) => e.code)).toContain(
+      'ambiguous_condition',
+    );
   });
 });

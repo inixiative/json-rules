@@ -1,9 +1,13 @@
+import { own } from '../own';
 import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import { visitCondition } from '../traverse.ts';
 import type { Condition } from '../types.ts';
 import { prefixConditionFields } from './narrowRule.ts';
-import { type Policy, relationHops, resolveVisit } from './policy.ts';
+import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import type { ProjectedVisit } from './projectByPath.ts';
+import { projectByPath } from './projectByPath.ts';
+import type { Lens, LensNarrowing } from './types.ts';
 
 type Row = Record<string, unknown>;
 
@@ -51,6 +55,11 @@ const foldPathGuards = (
     if (seen.has(hopKey)) continue;
     seen.add(hopKey);
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
+    // A to-many hop has no single row to AND its grant against: fail closed, as narrowRule does.
+    if (hop.isList && effect.whereClauses.length)
+      throw new Error(
+        `source path '${dotted}': cannot enforce the grant on to-many relation '${hop.prefix}' in a dotted path`,
+      );
     for (const where of effect.whereClauses) out.push(prefixConditionFields(where, hop.prefix));
   }
 };
@@ -173,3 +182,49 @@ export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
     }
     return (a.label ?? a.value).localeCompare(b.label ?? b.value, 'en', { numeric: true });
   });
+
+/** One sourced field to materialize: where it sits, its label and axes, and its eligibility —
+ *  its source where(s), the guards of every relation they or the label / axes cross, and, for a
+ *  value-gated field, the values the lens allows. */
+export type SourcePlan = {
+  path: string;
+  visit: ProjectedVisit;
+  field: string;
+  label?: string;
+  groupBy?: string[];
+  eligibility: Condition[];
+};
+
+/** Every sourced field the lens projects, planned once for both materializers. */
+export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] => {
+  const policy = resolvePolicy(lensOrNarrowing);
+  return Object.entries(projectByPath(lensOrNarrowing)).flatMap(([path, visit]) =>
+    Object.entries(visit.sources).map(([field, sourceClauses]) => {
+      const label = visit.sourceLabels[field];
+      const groupBy = visit.sourceGroupBys[field];
+      const relPath = path.split('.').slice(1);
+      const guards = traversalGuards(
+        policy,
+        visit.mapName,
+        visit.modelName,
+        relPath,
+        groupBy ?? [],
+        sourceClauses,
+        label,
+      );
+      const allowed = own(visit.fields, field)?.values;
+      return {
+        path,
+        visit,
+        field,
+        ...(label !== undefined && { label }),
+        ...(groupBy !== undefined && { groupBy }),
+        eligibility: [
+          ...sourceClauses,
+          ...guards,
+          ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
+        ],
+      };
+    }),
+  );
+};

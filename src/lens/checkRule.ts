@@ -27,7 +27,17 @@ const visit = (
   visitCondition<readonly VisitScope[]>(
     rule,
     (node, scopes) => {
-      if (isLogicalNode(node)) return;
+      if (isLogicalNode(node)) {
+        // A node that is both logical and a leaf evaluates as one or the other depending on the
+        // rail; the gate refuses it rather than vouch for half of it.
+        if ('field' in node)
+          violations.push({
+            path: String(node.field),
+            code: 'ambiguous_condition',
+            message: 'a condition is either logical (all / any / if) or a leaf, not both',
+          });
+        return;
+      }
       const cond = node as unknown as Exclude<Condition, boolean>;
 
       // A bare ref resolves at the current visit; `$`-prefixed refs count scopes up the stack.

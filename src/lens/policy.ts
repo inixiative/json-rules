@@ -24,6 +24,9 @@ export type VisitEffect = {
   sourceLabels: Map<string, string>;
   /** Per-field option-partition axes (from a SourceSpec's `groupBy`, normalized); a later layer wins. */
   sourceGroupBys: Map<string, string[]>;
+  /** The chain index of the layer that declared each source's label / axes: a later layer that
+   *  hides one of those columns drops it. */
+  sourceLayers: Map<string, number>;
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -128,6 +131,7 @@ const accumulateInto = (
   out: VisitEffect,
   n: ModelDefaultNarrowing | ModelNarrowing,
   narrow: (condition: Condition) => Condition,
+  layer: number,
 ): void => {
   accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined) out.whereClauses.push(narrow(n.where));
@@ -137,6 +141,8 @@ const accumulateInto = (
       const clauses = out.sources.get(field) ?? [];
       if (spec.where !== undefined) clauses.push(narrow(spec.where));
       out.sources.set(field, clauses); // register the field even when only a label is set
+      if (spec.label !== undefined || spec.groupBy !== undefined)
+        out.sourceLayers.set(field, layer);
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       const axes = normalizeGroupBy(spec.groupBy);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);
@@ -158,6 +164,7 @@ export const resolveVisit = (
     sources: new Map(),
     sourceLabels: new Map(),
     sourceGroupBys: new Map(),
+    sourceLayers: new Map(),
     relations: new Map(),
   };
 
@@ -173,12 +180,14 @@ export const resolveVisit = (
   // A layer's own conditions read through its parent: the relations they reach carry the
   // grants of every layer above, as a user rule's do — a child can't see what its parent hides.
   let narrow = (condition: Condition): Condition => condition;
+  let current = 0;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow);
+    accumulateInto(out, n, narrow, current);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
   for (const [layer, narrowing] of policy.chain.entries()) {
+    current = layer;
     const parent: Policy = { lens: policy.lens, chain: policy.chain.slice(0, layer) };
     narrow = (condition) =>
       layer === 0 ? condition : narrowAt(condition, parent, { mapName, modelName, relPath });

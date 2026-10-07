@@ -2,14 +2,14 @@ import { type CheckOptions, check } from '../check.ts';
 import { readOwnPath } from '../scope';
 import type { SourceOption } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
-import { allOf, resolvePolicy } from './policy.ts';
-import { projectByPath, type SourceValues } from './projectByPath.ts';
+import { allOf } from './policy.ts';
+import type { SourceValues } from './projectByPath.ts';
 import {
   accumulateRow,
   groupAtPath,
   groupsAtPaths,
   sortOptions,
-  traversalGuards,
+  sourcePlans,
 } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -40,60 +40,33 @@ const rowsAtPath = (rows: readonly Row[], path: string): Row[] => {
  * `check()` (`options` feeds `{bind}` clauses). Scalar-list fields contribute one
  * option per element, labels take the first non-null value of the label column
  * (a sibling, or a dotted to-one path read through the nested rows), and sorting is
- * numeric-aware in a fixed locale. Feed the result to `exposedSurface` /
- * `projectByPath` as `{ sourceValues }`.
+ * numeric-aware in a fixed locale. Feed the result to `projectLens` as `{ sourceValues }`.
  */
 export const materializeSources = (
   lensOrNarrowing: Lens | LensNarrowing,
   rows: readonly Row[],
   options?: CheckOptions,
-): SourceValues[] => {
-  const out: SourceValues[] = [];
-
-  const policy = resolvePolicy(lensOrNarrowing);
-  for (const [path, visit] of Object.entries(projectByPath(lensOrNarrowing))) {
-    const sourceFields = Object.entries(visit.sources);
-    if (sourceFields.length === 0) continue;
-
-    const anchors = rowsAtPath(rows, path);
-    const relPath = path.split('.').slice(1);
-    for (const [field, sourceClauses] of sourceFields) {
-      const label = visit.sourceLabels[field];
-      const groupBy = visit.sourceGroupBys[field];
-      const guards = traversalGuards(
-        policy,
-        visit.mapName,
-        visit.modelName,
-        relPath,
-        groupBy ?? [],
-        sourceClauses,
-        label,
-      );
-      const where = allOf([...sourceClauses, ...guards]);
-
-      const byKey = new Map<string, SourceOption>();
-      for (const row of anchors) {
-        if (check(where, row, options) !== true) continue;
-        // A dotted label reads through the same nested rows a groupBy axis does; an
-        // unreachable axis (null hop) leaves the option ungrouped, never partial.
-        accumulateRow(
-          byKey,
-          row,
-          field,
-          label === undefined ? undefined : groupAtPath(row, label),
-          groupBy === undefined ? undefined : groupsAtPaths(row, groupBy),
-        );
-      }
-
-      out.push({
-        path,
-        mapName: visit.mapName,
-        model: visit.modelName,
+): SourceValues[] =>
+  sourcePlans(lensOrNarrowing).map(({ path, visit, field, label, groupBy, eligibility }) => {
+    const where = allOf(eligibility);
+    const byKey = new Map<string, SourceOption>();
+    for (const row of rowsAtPath(rows, path)) {
+      if (check(where, row, options) !== true) continue;
+      // A dotted label reads through the same nested rows a groupBy axis does; an
+      // unreachable axis (null hop) leaves the option ungrouped, never partial.
+      accumulateRow(
+        byKey,
+        row,
         field,
-        options: sortOptions(byKey),
-      });
+        label === undefined ? undefined : groupAtPath(row, label),
+        groupBy === undefined ? undefined : groupsAtPaths(row, groupBy),
+      );
     }
-  }
-
-  return out;
-};
+    return {
+      path,
+      mapName: visit.mapName,
+      model: visit.modelName,
+      field,
+      options: sortOptions(byKey),
+    };
+  });

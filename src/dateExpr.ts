@@ -35,16 +35,16 @@ export const isDateExpr = (value: unknown): value is DateExpr => {
   );
 };
 
+/** The zone an evaluation reads in when none is set: never the host's. */
+export const DEFAULT_ZONE = 'UTC';
+
 /** A date config with its zone read: the expression layer never sees a value source. */
-export type ResolvedDateConfig = Omit<DateConfig, 'timeZone'> & { timeZone?: string };
+export type ResolvedDateConfig = Omit<DateConfig, 'timeZone'> & { timeZone: string };
 
 export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
     throw new Error('date expressions require `now` to be supplied to the evaluator');
-  // Only a literal zone string anchors `now` here; the bind form is resolved upstream (in
-  // checkDate, which normalizes config.timeZone to a concrete string) — there are no
-  // bindings at this layer (compilers), so a non-string zone means "no static anchor".
-  const base = config.timeZone ? dayjs(config.now).tz(config.timeZone) : dayjs(config.now);
+  const base = dayjs(config.now).tz(config.timeZone);
   if (!base.isValid()) throw new Error(`invalid \`now\`: ${String(config.now)}`);
   return base;
 };
@@ -84,9 +84,6 @@ export const shiftByUnits = (
   if (seconds) wall = wall.add(direction * seconds * 1000, 'millisecond');
   return dayjs.tz(wall.format(WALL), zone);
 };
-
-/** The zone a shift's wall clock reads in: the evaluation's zone, else UTC. */
-export const zoneOf = (config: ResolvedDateConfig): string => config.timeZone ?? 'UTC';
 
 export const isRollingExpr = <A>(e: DateExpr<A>): e is RollingExpr<A> => 'ago' in e || 'ahead' in e;
 /** A rolling expression's units and direction: `ago` moves back (-1), `ahead` forward (1). */
@@ -129,7 +126,7 @@ export const resolveDateExpr = (
   config: ResolvedDateConfig,
 ): dayjs.Dayjs => {
   const rolling = rollingShift(expr);
-  if (rolling) return shiftByUnits(requireNow(config), ...rolling, zoneOf(config));
+  if (rolling) return shiftByUnits(requireNow(config), ...rolling, config.timeZone);
   if (isEdgeExpr(expr)) {
     const period = 'start' in expr ? expr.start : expr.end;
     const [start, end] = resolvePeriodRange(period, config);
@@ -172,7 +169,7 @@ export const resolveDateExprRange = (
   const rolling = rollingShift(expr);
   if (rolling) {
     const now = requireNow(config);
-    const moved = shiftByUnits(now, ...rolling, zoneOf(config));
+    const moved = shiftByUnits(now, ...rolling, config.timeZone);
     return rolling[1] === -1 ? [moved, now] : [now, moved];
   }
   throw new Error('`within` requires a range expression (period or rolling), not an edge point');

@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { resolveUnits } from '../amount';
-import { shiftByUnits, zoneOf } from '../dateExpr';
+import { shiftByUnits } from '../dateExpr';
 import { addOffset, offsetAmount, offsetShift } from '../offset';
 import type { DateOffset, NumberOffset } from '../types';
 import type { BuildOptions } from './types';
@@ -23,5 +23,5 @@ export const offsetDate = (
   const move = offsetShift(readSource(offset, options));
   const units = move && resolveUnits(move[0], prismaRead(options));
   if (!move || !units) return null;
-  return shiftByUnits(dayjs(instant), units, move[1], zoneOf(dateConfigOf(options))).toDate();
+  return shiftByUnits(dayjs(instant), units, move[1], dateConfigOf(options).timeZone).toDate();
 };

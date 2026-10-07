@@ -1,6 +1,6 @@
 import { resolveExpr } from '../amount';
 import { coerceDateLiteral } from '../date';
-import { isDateExpr, resolveDateExprRange, resolvePointForOperator, zoneOf } from '../dateExpr';
+import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
 import { orderPair } from '../number';
 import { DateOperator } from '../operator';
 import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
@@ -36,7 +36,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
     rule.offset === undefined ? instant : offsetDate(instant, rule.offset, options);
   const instantOf = (value: unknown): Date | null => {
     if (value === null || value === undefined) return null;
-    if (!isDateExpr(value)) return coerceDateLiteral(value, zoneOf(config));
+    if (!isDateExpr(value)) return coerceDateLiteral(value, config.timeZone);
     const expr = resolveExpr(value, read);
     return expr && resolvePointForOperator(expr, rule.dateOperator, config).toDate();
   };

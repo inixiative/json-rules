@@ -1,6 +1,6 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { isDateInputValue, parseDateValue } from './date';
-import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
+import { DEFAULT_ZONE, isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
@@ -751,7 +751,7 @@ const validateDateRule = (
     (rule.value as unknown[]).forEach((item, i) => {
       if (isDateExpr(item)) {
         validateDateExpr(item, operator, `${path}.value[${i}]`, context, depth);
-      } else if (isDateInputValue(item) && !parseDateValue(item, 'UTC').isValid()) {
+      } else if (isDateInputValue(item) && !parseDateValue(item, DEFAULT_ZONE).isValid()) {
         pushIssue(
           context,
           `${path}.value[${i}]`,
@@ -775,7 +775,7 @@ const validateDateRule = (
 
   // A date-like value must actually parse — a string that survives validation but
   // fails the compilers/check() would persist clean and then fail at evaluation.
-  if (!parseDateValue(rule.value, 'UTC').isValid()) {
+  if (!parseDateValue(rule.value, DEFAULT_ZONE).isValid()) {
     pushIssue(
       context,
       `${path}.value`,

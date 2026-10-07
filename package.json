@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "test": "bun test",
+    "test": "TZ=Pacific/Kiritimati bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",

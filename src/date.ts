@@ -5,13 +5,13 @@ import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { resolveExpr, resolveUnits } from './amount';
 import {
+  DEFAULT_ZONE,
   isDateExpr,
   type ResolvedDateConfig,
   resolveDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
   shiftByUnits,
-  zoneOf,
 } from './dateExpr';
 import { orderPair } from './number';
 import { offsetShift } from './offset';
@@ -40,7 +40,7 @@ export const checkDate = (
   const exprConfig = resolveDateConfig(config, (source) =>
     readValueSource(source, scopes, context, bindings),
   );
-  const tz = zoneOf(exprConfig);
+  const tz = exprConfig.timeZone;
 
   // Null: non-match for positive operators, match for negated ones (2.19.0 negation
   // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
@@ -229,13 +229,14 @@ const parseCompareDates = (
  */
 export const resolveDateConfig = (config: DateConfig, read: ReadSource): ResolvedDateConfig => {
   const zone = config.timeZone;
-  if (zone === undefined || typeof zone === 'string') return { ...config, timeZone: zone };
+  if (zone === undefined || typeof zone === 'string')
+    return { ...config, timeZone: zone ?? DEFAULT_ZONE };
   if (rowRef(zone))
     throw new Error(`timeZone is one per evaluation; read it from context, not '${zone.path}'`);
   const read_ = read(zone);
   if (read_ !== null && read_ !== undefined && typeof read_ !== 'string')
     throw new Error(`timeZone reads a zone name (got ${String(read_)})`);
-  return { ...config, timeZone: read_ ?? 'UTC' };
+  return { ...config, timeZone: read_ ?? DEFAULT_ZONE };
 };
 
 // Detects an explicit zone on a date STRING only (never String(Date), whose render is

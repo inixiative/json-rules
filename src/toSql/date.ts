@@ -6,7 +6,6 @@ import {
   resolveDateExprRange,
   resolvePointForOperator,
   rollingShift,
-  zoneOf,
 } from '../dateExpr';
 import { orderPair } from '../number';
 import { DateOperator } from '../operator';
@@ -57,7 +56,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
       if (!Array.isArray(rule.value)) {
         throw new Error(`${rule.dateOperator} operator requires an array of day names`);
       }
-      const zone = nextParam(state, zoneOf(dateConfigOf(state)));
+      const zone = nextParam(state, dateConfigOf(state).timeZone);
       const days = nextParam(state, mapDayNames(rule.value.map((day) => String(day))));
       const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
       return rule.dateOperator === DateOperator.dayIn
@@ -89,7 +88,7 @@ const expressionPoint = (expr: DateExpr, operator: string, state: BuilderState):
 const toPoint = (value: unknown, operator: string, state: BuilderState): ResolvedRhs => {
   if (value === null || value === undefined) return NO_VALUE;
   if (isDateExpr(value)) return expressionPoint(value, operator, state);
-  return { type: 'value', value: coerceDateLiteral(value, zoneOf(dateConfigOf(state))) };
+  return { type: 'value', value: coerceDateLiteral(value, dateConfigOf(state).timeZone) };
 };
 
 const withOffset = (rhs: ResolvedRhs, rule: DateRule, state: BuilderState): ResolvedRhs =>

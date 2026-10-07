@@ -171,3 +171,16 @@ describe('checkDate — bindable anchoring zone', () => {
     expect(out).toBe(true);
   });
 });
+
+describe('a period with no timeZone reads in UTC, never the host zone', () => {
+  test('this day', () => {
+    const now = '2026-10-06T23:30:00Z';
+    const rule = {
+      field: 'ts',
+      dateOperator: DateOperator.within,
+      value: { this: 'day' },
+    } as const;
+    expect(check(rule, { ts: '2026-10-06T00:15:00Z' }, { now })).toBe(true);
+    expect(check(rule, { ts: '2026-10-05T23:45:00Z' }, { now })).not.toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { resolveMagnitude, resolveUnits } from '../amount';
-import { shiftByUnits, zoneOf } from '../dateExpr';
+import { shiftByUnits } from '../dateExpr';
 import {
   INTERVAL_FIELDS,
   isCalendarUnit,
@@ -74,7 +74,7 @@ export const shiftDate = (
   direction: 1 | -1,
   state: BuilderState,
 ): ResolvedRhs => {
-  const zone = zoneOf(dateConfigOf(state));
+  const zone = dateConfigOf(state).timeZone;
   if (rhs.type === 'value' && !readsRow(units)) {
     const resolved = resolveUnits(units, compileTimeRead(state));
     if (rhs.value === null || rhs.value === undefined || resolved === null) return NO_VALUE;

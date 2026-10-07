@@ -2,6 +2,7 @@ import { fieldOf, modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
+import { narrowAt } from './narrowRule.ts';
 import type {
   Lens,
   LensNarrowing,
@@ -123,14 +124,18 @@ export const accumulateEnumFields = (
   }
 };
 
-const accumulateInto = (out: VisitEffect, n: ModelDefaultNarrowing | ModelNarrowing): void => {
+const accumulateInto = (
+  out: VisitEffect,
+  n: ModelDefaultNarrowing | ModelNarrowing,
+  narrow: (condition: Condition) => Condition,
+): void => {
   accumulatePicksOmitsInto(out, n);
-  if (n.where !== undefined) out.whereClauses.push(n.where);
+  if (n.where !== undefined) out.whereClauses.push(narrow(n.where));
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
-      if (spec.where !== undefined) clauses.push(spec.where);
+      if (spec.where !== undefined) clauses.push(narrow(spec.where));
       out.sources.set(field, clauses); // register the field even when only a label is set
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       const axes = normalizeGroupBy(spec.groupBy);
@@ -165,12 +170,18 @@ export const resolveVisit = (
   const typeEnumPicks = new Map<string, Set<string>>();
   const typeEnumOmits = new Map<string, Set<string>>();
 
+  // A layer's own conditions read through its parent: the relations they reach carry the
+  // grants of every layer above, as a user rule's do — a child can't see what its parent hides.
+  let narrow = (condition: Condition): Condition => condition;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n);
+    accumulateInto(out, n, narrow);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
-  for (const narrowing of policy.chain) {
+  for (const [layer, narrowing] of policy.chain.entries()) {
+    const parent: Policy = { lens: policy.lens, chain: policy.chain.slice(0, layer) };
+    narrow = (condition) =>
+      layer === 0 ? condition : narrowAt(condition, parent, { mapName, modelName, relPath });
     const visitMapDefaults = own(narrowing.mapDefaults, mapName);
     if (visitMapDefaults) {
       const dflt = own(visitMapDefaults.models, modelName);

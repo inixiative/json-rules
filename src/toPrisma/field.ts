@@ -195,6 +195,16 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   if (hasNoOperand(rule, value))
     return orWhere(NEGATED_OPERATORS.includes(rule.operator) ? arms() : []);
 
+  // Prisma's list filters have no case-insensitive mode.
+  if (
+    shape === 'list' &&
+    resolveCaseInsensitive(rule.caseInsensitive) &&
+    comparesText('text', value)
+  )
+    throw new Error(
+      `A case-insensitive comparison on the list '${rule.field}' has no Prisma form; use toSql() or check().`,
+    );
+
   // An enum compares against its declared values (see enumMatches).
   const enumEntry =
     shape === 'enum'

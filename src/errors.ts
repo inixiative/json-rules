@@ -1,5 +1,6 @@
 import { resolveFuzzy } from './engineGlobals';
 import type { FuzzyConfig } from './fuzzy';
+import { CONTAINS_OPERATORS } from './operatorCatalog';
 // Error texts every rail raises the same way.
 
 /** A rule kind a compiler compiles only with a field (check() also takes a root array). */
@@ -25,7 +26,7 @@ export const relationsNotValue = (field: string): Error =>
 /** Fuzzy matching (a rule's `fuzzy`, or the engine-global default) on a compiler: it has no
  *  compiled form, so the compilers refuse what check() would match fuzzily. */
 export const fuzzyNotCompiled = (rule: { fuzzy?: unknown; operator: string }): Error | null =>
-  (rule.operator === 'contains' || rule.operator === 'notContains') &&
+  CONTAINS_OPERATORS.includes(rule.operator) &&
   resolveFuzzy(rule.fuzzy as boolean | FuzzyConfig | undefined)
     ? new Error('Fuzzy matching has no compiled form — evaluate it in memory with check().')
     : null;

@@ -161,9 +161,11 @@ export const checkField = (
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
-  const lower = (v: unknown): unknown => (ci && typeof v === 'string' ? v.toLowerCase() : v);
+  // Case-insensitivity lowers every string on both sides, a list's members included.
+  const lower = (v: unknown): unknown =>
+    !ci ? v : typeof v === 'string' ? v.toLowerCase() : Array.isArray(v) ? v.map(lower) : v;
   const lhs = lower(fieldValue);
-  const rhs = Array.isArray(value) ? value.map(lower) : lower(value);
+  const rhs = lower(value);
 
   // Fuzzy applies to containment search: typo-tolerant token match over strings, else the
   // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive. A
@@ -173,7 +175,7 @@ export const checkField = (
     fuzzy && typeof fieldValue === 'string' && typeof value === 'string'
       ? fuzzyContains(fieldValue, value, fuzzy)
       : Array.isArray(fieldValue)
-        ? fieldValue.some((item) => isEqual(item, value))
+        ? (lhs as unknown[]).some((item) => isEqual(item, rhs))
         : containsValue(lhs, rhs);
 
   switch (condition.operator) {

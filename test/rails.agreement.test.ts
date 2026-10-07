@@ -352,6 +352,21 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'role', operator: 'notEquals', value: 'superuser' },
     ids: [1, 2, 3, 4, 5],
   },
+  'a list contains, case-insensitive': {
+    rule: { field: 'tags', operator: 'contains', value: 'A', caseInsensitive: true },
+    ids: [1],
+    refuses: { prisma: 'no Prisma form' },
+  },
+  'a list notContains, case-insensitive': {
+    rule: { field: 'tags', operator: 'notContains', value: 'C', caseInsensitive: true },
+    ids: [1, 2, 3, 5],
+    refuses: { prisma: 'no Prisma form' },
+  },
+  'a list equals, case-insensitive': {
+    rule: { field: 'tags', operator: 'equals', value: ['A', 'B'], caseInsensitive: true },
+    ids: [1],
+    refuses: { prisma: 'no Prisma form' },
+  },
   'a list isEmpty': { rule: { field: 'tags', operator: 'isEmpty' }, ids: [2, 3, 5] },
   'a list notEmpty': { rule: { field: 'tags', operator: 'notEmpty' }, ids: [1, 4] },
   'a relation exists': { rule: { field: 'org', operator: 'exists' }, ids: [1, 2, 3] },

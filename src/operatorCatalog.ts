@@ -333,6 +333,8 @@ export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
 /** Operators a null operand leaves with nothing to compare against — unlike `equals` /
  *  `notEquals`, where null is the is-null sentinel. */
 export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'array');
+/** Containment — of a substring, or of a list's member: `contains` / `notContains`. */
+export const CONTAINS_OPERATORS: readonly string[] = [Operator.contains, Operator.notContains];
 /** Equality with one value: `equals` / `notEquals`. */
 export const EQUALITY_OPERATORS = withShape('scalar');
 /** Membership in a list: `in` / `notIn`. */

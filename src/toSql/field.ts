@@ -4,7 +4,13 @@ import { fuzzyNotCompiled, relationNotValue } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
-import { NEGATED_OPERATORS, NO_VALUE_OPERATORS, RANGE_OPERATORS } from '../operatorCatalog';
+import {
+  CONTAINS_OPERATORS,
+  EQUALITY_OPERATORS,
+  NEGATED_OPERATORS,
+  NO_VALUE_OPERATORS,
+  RANGE_OPERATORS,
+} from '../operatorCatalog';
 import { readPattern } from '../pattern';
 import {
   acceptsEmptyString,
@@ -86,11 +92,26 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     lower ? values.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)) : values;
 
   // A scalar list contains a member, as check() reads a list; NULL elements and a NULL list
-  // contain nothing.
-  if (resolved.shape === 'list' && rule.operator === Operator.contains)
-    return `array_position(${field}, ${nextParam(state, rhs.type === 'value' ? rhs.value : null)}) IS NOT NULL`;
-  if (resolved.shape === 'list' && rule.operator === Operator.notContains)
-    return `array_position(${field}, ${nextParam(state, rhs.type === 'value' ? rhs.value : null)}) IS NULL`;
+  // contain nothing. Case-insensitively, its members compare lowered.
+  if (resolved.shape === 'list' && rhs.type === 'value') {
+    const listLower =
+      resolveCaseInsensitive(rule.caseInsensitive) && comparesText('text', rhs.value);
+    if (CONTAINS_OPERATORS.includes(rule.operator)) {
+      const member = nextParam(state, rhs.value);
+      const has = listLower
+        ? `EXISTS (SELECT 1 FROM unnest(${field}) AS e WHERE LOWER(e) = LOWER(${member}))`
+        : `array_position(${field}, ${member}) IS NOT NULL`;
+      return rule.operator === Operator.contains ? has : `NOT ${has}`;
+    }
+    if (listLower && EQUALITY_OPERATORS.includes(rule.operator) && Array.isArray(rhs.value)) {
+      const lowered = nextParam(
+        state,
+        rhs.value.map((v) => (typeof v === 'string' ? v.toLowerCase() : v)),
+      );
+      const same = `(${field} IS NOT NULL AND ARRAY(SELECT LOWER(e) FROM unnest(${field}) AS e) = ${lowered})`;
+      return rule.operator === Operator.equals ? same : orNullSql(field, `NOT ${same}`);
+    }
+  }
 
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;

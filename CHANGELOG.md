@@ -134,8 +134,10 @@ reads off the generated client.
   range only holds between two numbers, two strings or two dates (`check()` coerced `"3" > 1`).
   `toSql` compares a Json value as `jsonb` against the operand's JSON (it compared `->>` text, so
   `3` equalled `"3"` and `true` equalled `"true"`); string operators read strings only.
-- **`contains` on a list or a Json array is exact membership**; `caseInsensitive` applies to text,
-  not membership (`check()` lowered the needle but not the elements). On Prisma, `contains` on
+- **`contains` on a list or a Json array is membership**, and `caseInsensitive` applies to it like
+  to any text: `check()` lowers every string on both sides, a list's members included (it lowered
+  the operand only); SQL compares lowered members. Prisma's list filters have no case-insensitive
+  mode, so a case-insensitive list comparison is refused there. On Prisma, `contains` on
   Json is `string_contains` OR `array_contains`; `notContains` and `notBetween` on Json have no
   Prisma form (its Json filters can't test a value's type) and throw.
 - **An enum compares exactly, as its column does.** String, pattern and ordered operators don't

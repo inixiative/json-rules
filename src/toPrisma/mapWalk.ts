@@ -1,5 +1,5 @@
 import { applyCoercion } from '../field';
-import { FieldKind } from '../operatorCatalog';
+import { COMPILE_COERCED_KINDS, FieldKind } from '../operatorCatalog';
 import { own } from '../own';
 import type { Rule } from '../types';
 import type { FieldMap, FieldMapEntry } from './types';
@@ -106,17 +106,6 @@ const toInstant =
 
 type CompileTarget = 'toPrisma' | 'toSql';
 
-// Kinds whose stamped literal the compilers coerce exactly as check() does — Prisma rejects a
-// string on Int/Float/Boolean. BigInt compares as Int. Decimal keeps its literal: Prisma and
-// Postgres take the numeric string losslessly, and coercing it to a JS number would not be.
-const COMPILE_COERCED: ReadonlySet<FieldKind> = new Set([
-  FieldKind.Int,
-  FieldKind.BigInt,
-  FieldKind.Float,
-  FieldKind.Boolean,
-  FieldKind.String,
-]);
-
 /**
  * A field rule's comparison value as a compiler must emit it for the column `walk` reached. The
  * compiled query compares the column as stored, so a `coerceType` that overrides the declared
@@ -143,7 +132,7 @@ export const compileFieldLiteral = (
     const instant = toInstant(rule.field, target);
     return Array.isArray(value) ? value.map(instant) : instant(value);
   }
-  return rule.coerceType !== undefined && COMPILE_COERCED.has(rule.coerceType)
+  return rule.coerceType !== undefined && COMPILE_COERCED_KINDS.includes(rule.coerceType)
     ? applyCoercion(value, rule.coerceType)
     : value;
 };

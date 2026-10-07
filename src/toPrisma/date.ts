@@ -1,8 +1,9 @@
 import { resolveExpr } from '../amount';
-import { coerceDateLiteral, NEGATED_DATE_OPERATORS } from '../date';
+import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator, zoneOf } from '../dateExpr';
 import { orderPair } from '../number';
 import { DateOperator } from '../operator';
+import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import type { DateRule } from '../types';
 import { absentArms } from './field';
 import { matchNothing } from './logical';
@@ -14,17 +15,12 @@ import { dateConfigOf, prismaRead, readSource } from './valueSource';
 // The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the
 // column-nullability licensing is the same as the scalar negations in ./field.ts.
 // The two range complements, hoisted to the WHERE level for the same reason as ./field.ts's
-// RANGE_COMPLEMENT: Prisma distributes a field-level `not` over the nested filter's keys, so
+// NEGATED_RANGE_OPERATORS: Prisma distributes a field-level `not` over the nested filter's keys, so
 // `{ col: { not: { gte, lte } } }` asks for `NOT(col >= a) AND NOT(col <= b)` — no row satisfies
 // it, and nothing complains. The single-boundary complements (notBefore/notAfter) compile to a
 // plain `gte`/`lte` and need no negation at all.
-const RANGE_COMPLEMENT_DATE_OPERATORS: readonly DateOperator[] = [
-  DateOperator.notWithin,
-  DateOperator.notBetween,
-];
-
 export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhere => {
-  const arms = NEGATED_DATE_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
+  const arms = NEGATED_OPERATORS.includes(rule.dateOperator) ? absentArms(rule, options) : [];
   const filter = buildDateLeafFilter(rule, options);
   // Nothing to compare against — a null path, bind, offset or magnitude: no row matches, and a
   // negation keeps the absent rows only, as on the other rails.
@@ -33,9 +29,7 @@ export const buildDateRule = (rule: DateRule, options?: BuildOptions): PrismaWhe
     return arms.length === 1 ? arms[0] : { OR: arms };
   }
   const positive = buildNestedFilter(rule.field, filter);
-  const nested = RANGE_COMPLEMENT_DATE_OPERATORS.includes(rule.dateOperator)
-    ? { NOT: positive }
-    : positive;
+  const nested = NEGATED_RANGE_OPERATORS.includes(rule.dateOperator) ? { NOT: positive } : positive;
   if (arms.length) return { OR: [nested, ...arms] };
   return nested;
 };

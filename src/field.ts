@@ -1,9 +1,16 @@
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
-import { bigIntToNumber } from './number';
-import { addOffset, isNegatedOffsetOperator, offsetAmount } from './offset';
+import { bigIntToNumber, orderPair } from './number';
+import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
-import type { FieldKind } from './operatorCatalog';
+import {
+  type FieldKind,
+  NEGATED_COMPARISON_OPERATORS,
+  NO_VALUE_OPERATORS,
+  NUMERIC_KINDS,
+  ORDERED_OPERATORS,
+  RANGE_OPERATORS,
+} from './operatorCatalog';
 import { readField, type Scopes } from './scope';
 import type { Rule, RuleValue } from './types';
 import { readValueSource } from './valueSource';
@@ -19,7 +26,21 @@ const isEmptyValue = (value: unknown): boolean =>
 // (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
 // kinds pass through, and an uncoercible value returns unchanged so the comparison
 // fails with the rule's normal error instead of throwing on one dirty row.
-export const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
+/**
+ * Nothing to compare against — no row matches on any rail, as SQL's NULL comparison and
+ * arithmetic never do: an ordered comparison or a range that reads nothing (or a range missing
+ * an end), or an offset that moved nothing. `equals` / `notEquals` against a plain null stay the
+ * is-null sentinel.
+ */
+export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unknown): boolean => {
+  const missing = value === null || value === undefined;
+  if (missing && (rule.offset !== undefined || ORDERED_OPERATORS.includes(rule.operator)))
+    return true;
+  if (!RANGE_OPERATORS.includes(rule.operator)) return false;
+  return (
+    missing || (Array.isArray(value) && value.some((end) => end === null || end === undefined))
+  );
+};
 
 // A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
 const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
@@ -34,7 +55,7 @@ const fromBigInt = (value: unknown): unknown => {
 const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   if (value === null || value === undefined) return value;
 
-  if (NUMERIC_COERCE_KINDS.includes(kind)) {
+  if (NUMERIC_KINDS.includes(kind)) {
     if (typeof value !== 'string' || value.trim() === '') return value;
     // A BigInt digit string past the safe range would round: refuse it, as for a bigint.
     if (kind === 'BigInt' && /^-?\d+$/.test(value.trim()))
@@ -89,13 +110,7 @@ export const checkField = (
   );
 
   // Operators that don't need a value
-  const noValueOps: Operator[] = [
-    Operator.isEmpty,
-    Operator.notEmpty,
-    Operator.exists,
-    Operator.notExists,
-  ];
-  const needsValue = !noValueOps.includes(condition.operator);
+  const needsValue = !NO_VALUE_OPERATORS.includes(condition.operator);
   const value = needsValue
     ? shift(
         applyCoercion(
@@ -109,13 +124,8 @@ export const checkField = (
       )
     : undefined;
 
-  // An offset moved nothing: the comparison fails closed, as SQL's NULL arithmetic does. A
-  // negation still keeps a null field (the 2.19.0 ruling).
-  if (condition.offset !== undefined && (value === null || value === undefined)) {
-    if (
-      isNegatedOffsetOperator(condition.operator) &&
-      (fieldValue === null || fieldValue === undefined)
-    )
+  if (needsValue && hasNoOperand(condition, value)) {
+    if (NEGATED_COMPARISON_OPERATORS.includes(condition.operator) && fieldValue == null)
       return true;
     return condition.error || `${condition.field} has no comparison value`;
   }
@@ -268,9 +278,7 @@ const normalizeRange = (value: unknown): [string | number, string | number] | nu
   const [rawMin, rawMax] = value;
   if (!isOrderedValue(rawMin) || !isOrderedValue(rawMax)) return null;
 
-  const min = toOrderedPrimitive(rawMin);
-  const max = toOrderedPrimitive(rawMax);
-  return min <= max ? [min, max] : [max, min];
+  return orderPair([toOrderedPrimitive(rawMin), toOrderedPrimitive(rawMax)]);
 };
 
 const containsValue = (container: unknown, search: unknown): boolean => {

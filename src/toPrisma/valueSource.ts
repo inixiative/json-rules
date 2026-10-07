@@ -22,7 +22,7 @@ const readPathValue = (ref: string, options?: BuildOptions): unknown => {
       `options.context is required to resolve path '${ref}'. Pass context when calling toPrisma().`,
     );
   }
-  return get(options.context, ref);
+  return get(options.context, ref) ?? null;
 };
 
 /** A value source on the Prisma rail: its value, a context read, or an unresolved bind. */

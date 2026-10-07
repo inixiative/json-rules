@@ -1,8 +1,6 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
-import { isCalendarUnit } from './amount';
-import { isDateInputValue, isRangeOperator, parseDateValue } from './date';
+import { isDateInputValue, parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
-import { OFFSET_OPERATORS } from './offset';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
@@ -13,35 +11,20 @@ import {
   getValueShape,
   isAggregateRangeOperator,
   isAggregateSingleOperator,
+  isCalendarUnit,
   isOperatorSupportedForTarget,
+  isRelativeUnit,
+  OFFSET_OPERATORS,
+  PERIOD_UNITS,
+  RANGE_OPERATORS,
   type RuleTarget,
   type ValueShape,
+  WINDOW_OPERATORS,
 } from './operatorCatalog';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
+import { rowRef, SOURCE_FORMS } from './valueSource';
 import { extremalRewrite } from './window';
-
-const PERIOD_UNITS = new Set([
-  'year',
-  'quarter',
-  'month',
-  'week',
-  'isoWeek',
-  'day',
-  'hour',
-  'minute',
-  'second',
-]);
-const RELATIVE_UNIT_KEYS = new Set([
-  'years',
-  'quarters',
-  'months',
-  'weeks',
-  'days',
-  'hours',
-  'minutes',
-  'seconds',
-]);
 
 export type ValidationIssue = {
   path: string;
@@ -233,7 +216,6 @@ const validateRef = (
   }
 };
 
-const SOURCE_FORMS = ['value', 'path', 'bind'] as const;
 type SourceForm = (typeof SOURCE_FORMS)[number];
 
 // One value source — `{ value } | { path } | { bind }` — wherever it appears: a rule's comparison
@@ -255,8 +237,8 @@ const validateSource = (
     return null;
   }
   const [form] = forms;
-  if (form !== 'value' && typeof source[form] !== 'string') {
-    pushIssue(context, `${at}.${form}`, 'invalid_value_source', `${form} is a string`);
+  if (form !== 'value' && (typeof source[form] !== 'string' || source[form] === '')) {
+    pushIssue(context, `${at}.${form}`, 'invalid_value_source', `${form} is a non-empty string`);
     return null;
   }
   if (
@@ -302,7 +284,7 @@ const validateOffset = (
   const form = validateSource(offset, at, context, depth);
   if (form === 'path') {
     const ref = offset.path as string;
-    const scoped = parseScopeRef(ref);
+    const scoped = rowRef(offset);
     if (kind === 'date' && scoped && scoped.depth <= 1 && context.target === 'toSql')
       pushIssue(
         context,
@@ -334,6 +316,23 @@ const validateOffset = (
     `${at}.value.${units[0]}`,
     context,
     depth,
+  );
+};
+
+// A range read from a row column is a scalar, not a pair: toSql has no form for it.
+const rejectSqlRowRange = (
+  rule: Record<string, unknown>,
+  operator: string,
+  path: string,
+  context: ValidationContext,
+): void => {
+  if (context.target !== 'toSql' || !RANGE_OPERATORS.includes(operator)) return;
+  if (!rowRef(rule)) return;
+  pushIssue(
+    context,
+    `${path}.path`,
+    'unsupported_sql_path',
+    `A range read from the row ('${rule.path}') is not supported by toSql()`,
   );
 };
 
@@ -388,6 +387,7 @@ const validateFieldRule = (
   }
 
   if (validateSource(rule, path, context, depth) === null) return;
+  rejectSqlRowRange(rule, operator, path, context);
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   validateValueShape(shape, rule.value, operator, `${path}.value`, context);
@@ -718,6 +718,7 @@ const validateDateRule = (
   }
 
   if (validateSource(rule, path, context, depth) === null) return;
+  rejectSqlRowRange(rule, operator, path, context);
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
@@ -726,7 +727,7 @@ const validateDateRule = (
     return;
   }
 
-  if (isRangeOperator(operator)) {
+  if (WINDOW_OPERATORS.includes(operator)) {
     // The range operators only accept an expression range (period or rolling), not a literal pair.
     pushIssue(
       context,
@@ -801,7 +802,7 @@ const validateRelativeUnits = (
     return;
   }
   for (const [key, magnitude] of Object.entries(units)) {
-    if (!RELATIVE_UNIT_KEYS.has(key)) {
+    if (!isRelativeUnit(key)) {
       pushIssue(
         context,
         `${path}.${key}`,
@@ -833,7 +834,7 @@ const validateRelativeUnits = (
 };
 
 const validatePeriodUnit = (unit: unknown, path: string, context: ValidationContext): void => {
-  if (typeof unit !== 'string' || !PERIOD_UNITS.has(unit)) {
+  if (typeof unit !== 'string' || !PERIOD_UNITS.includes(unit)) {
     pushIssue(context, path, 'invalid_period_unit', `Unknown period unit '${String(unit)}'`);
   }
 };
@@ -845,7 +846,7 @@ const validateDateExpr = (
   context: ValidationContext,
   depth: number,
 ): void => {
-  const isRange = isRangeOperator(operator);
+  const isRange = WINDOW_OPERATORS.includes(operator);
 
   if (isRollingExpr(expr)) {
     validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context, depth);

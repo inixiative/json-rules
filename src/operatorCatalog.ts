@@ -324,3 +324,127 @@ export const getArrayOperators = (target?: RuleTarget): ArrayOperator[] => {
     return ARRAY_OPERATOR_CATALOG[op].targets.includes(target);
   });
 };
+
+// --- Operator sets ---------------------------------------------------------------------------
+// Every set of operators the rails and validation branch on, defined here once. Sets that
+// follow from an entry's value shape are derived; the rest are listed.
+
+const OPERATOR_ENTRIES: readonly [string, CatalogEntry][] = [
+  ...Object.entries(FIELD_OPERATOR_CATALOG),
+  ...Object.entries(DATE_OPERATOR_CATALOG),
+];
+const withShape = (...shapes: ValueShape[]): readonly string[] =>
+  OPERATOR_ENTRIES.flatMap(([operator, entry]) =>
+    shapes.includes(entry.valueShape) ? [operator] : [],
+  );
+
+/** Operators that read no comparison value. */
+export const NO_VALUE_OPERATORS = withShape('none');
+/** Field comparisons with an order: `<`, `<=`, `>`, `>=`. */
+export const ORDERED_OPERATORS = withShape('ordered');
+/** A window expression (`within`), not a pair. */
+export const WINDOW_OPERATORS = withShape('dateWindow');
+/** Operators that compare against two ends. */
+export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
+/** Operators with a point to move: the comparisons and both ends of a pair. */
+export const OFFSET_OPERATORS = withShape('scalar', 'ordered', 'range', 'dateValue', 'dateRange');
+
+/** The negations: each is the complement of its positive form and keeps NULL fields
+ *  (the 2.19.0 ruling). */
+export const NEGATED_OPERATORS: readonly string[] = [
+  Operator.notEquals,
+  Operator.notIn,
+  Operator.notContains,
+  Operator.notMatches,
+  Operator.notBetween,
+  DateOperator.notBefore,
+  DateOperator.notAfter,
+  DateOperator.notWithin,
+  DateOperator.notBetween,
+  DateOperator.dayNotIn,
+];
+/** Negations of a two-ended range. */
+export const NEGATED_RANGE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
+  RANGE_OPERATORS.includes(op),
+);
+/** Negated comparisons an offset can move; with nothing to compare against they still keep a
+ *  null field. */
+export const NEGATED_COMPARISON_OPERATORS = NEGATED_OPERATORS.filter((op) =>
+  OFFSET_OPERATORS.includes(op),
+);
+/** Negations of one literal (`notEquals`, `notContains`). */
+export const NEGATED_SINGLE_VALUE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
+  withShape('scalar', 'string').includes(op),
+);
+
+/** Comparisons that bound a field from above / below — what a window's extremal rewrite reads. */
+export const UPPER_BOUND_OPERATORS: readonly string[] = [
+  DateOperator.before,
+  DateOperator.onOrBefore,
+  Operator.lessThan,
+  Operator.lessThanEquals,
+];
+export const LOWER_BOUND_OPERATORS: readonly string[] = [
+  DateOperator.after,
+  DateOperator.onOrAfter,
+  Operator.greaterThan,
+  Operator.greaterThanEquals,
+];
+
+// --- Kind sets -------------------------------------------------------------------------------
+
+/** Kinds a calendar unit amount can read: whole numbers. */
+export const INTEGER_KINDS: readonly FieldKind[] = ['Int', 'BigInt'];
+/** Kinds check() coerces a literal to (see coerceScalar in src/field.ts). */
+export const COERCIBLE_KINDS: readonly FieldKind[] = [
+  ...NUMERIC_KINDS,
+  'DateTime',
+  'Boolean',
+  'String',
+];
+/** Kinds whose literal the compilers coerce exactly as check() does — Prisma rejects a string on
+ *  Int/Float/Boolean; BigInt compares as Int. Decimal keeps its literal: Prisma and Postgres take
+ *  the numeric string losslessly, and a JS number would not. */
+export const COMPILE_COERCED_KINDS: readonly FieldKind[] = [
+  'Int',
+  'BigInt',
+  'Float',
+  'Boolean',
+  'String',
+];
+
+/** Value shapes that take one literal. */
+export const SINGLE_VALUE_SHAPES: readonly ValueShape[] = ['scalar', 'ordered', 'string'];
+
+// --- Date units ------------------------------------------------------------------------------
+
+/** Each relative unit: the Postgres interval field it adds to, its size there, and whether it is
+ *  a calendar unit (whole steps). Applied months, then days, then time, as Postgres does. */
+export const RELATIVE_UNITS = {
+  years: { interval: 'months', factor: 12, calendar: true },
+  quarters: { interval: 'months', factor: 3, calendar: true },
+  months: { interval: 'months', factor: 1, calendar: true },
+  weeks: { interval: 'days', factor: 7, calendar: true },
+  days: { interval: 'days', factor: 1, calendar: true },
+  hours: { interval: 'secs', factor: 3600, calendar: false },
+  minutes: { interval: 'secs', factor: 60, calendar: false },
+  seconds: { interval: 'secs', factor: 1, calendar: false },
+} as const;
+export type RelativeUnit = keyof typeof RELATIVE_UNITS;
+export const INTERVAL_FIELDS = ['months', 'days', 'secs'] as const;
+export const isRelativeUnit = (unit: string): unit is RelativeUnit =>
+  Object.hasOwn(RELATIVE_UNITS, unit);
+export const isCalendarUnit = (unit: string): boolean =>
+  isRelativeUnit(unit) && RELATIVE_UNITS[unit].calendar;
+
+export const PERIOD_UNITS: readonly string[] = [
+  'year',
+  'quarter',
+  'month',
+  'week',
+  'isoWeek',
+  'day',
+  'hour',
+  'minute',
+  'second',
+];

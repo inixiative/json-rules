@@ -1,5 +1,4 @@
-import { NUMERIC_COERCE_KINDS } from '../field';
-import { FieldKind } from '../operatorCatalog';
+import { INTEGER_KINDS, NUMERIC_KINDS } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
@@ -10,8 +9,6 @@ import type { Policy } from './policy.ts';
 import { allowedEnumValues, resolvePolicy, resolveVisit, walkLensPath } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { isJsonEntry } from './walk.ts';
-
-const WHOLE_KINDS: readonly FieldKind[] = [FieldKind.Int, FieldKind.BigInt];
 
 export type RuleLensViolation = {
   path: string;
@@ -148,8 +145,7 @@ const visit = (
     }
     const kind = entryKind(walked.entry);
     if (role === 'value' || role === 'shift' || kind === undefined) continue;
-    const fits =
-      role === 'whole' ? WHOLE_KINDS.includes(kind) : NUMERIC_COERCE_KINDS.includes(kind);
+    const fits = role === 'whole' ? INTEGER_KINDS.includes(kind) : NUMERIC_KINDS.includes(kind);
     if (!fits)
       violations.push({
         path: ref,

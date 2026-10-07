@@ -1,8 +1,11 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
-import { orderPair } from '../number';
-import { isNegatedOffsetOperator } from '../offset';
+import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
-import { FIELD_OPERATOR_CATALOG } from '../operatorCatalog';
+import {
+  NEGATED_COMPARISON_OPERATORS,
+  NO_VALUE_OPERATORS,
+  RANGE_OPERATORS,
+} from '../operatorCatalog';
 import { compileFieldLiteral, walkFieldPath } from '../toPrisma/mapWalk';
 import type { FieldMap } from '../toPrisma/types';
 import type { Rule } from '../types';
@@ -40,10 +43,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   if (rule.fuzzy)
     throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
   const field = resolveFieldSql(rule.field, state);
-  const lc = (expr: string): string =>
-    resolveCaseInsensitive(rule.caseInsensitive) ? `LOWER(${expr})` : expr;
-  const ranged = rule.operator === Operator.between || rule.operator === Operator.notBetween;
-  if (ranged)
+  if (RANGE_OPERATORS.includes(rule.operator))
     return rangeSql(field, resolveRange(rule, state), rule.operator === Operator.notBetween, state);
   const rhs = resolveComparison(rule, state);
   const ordered = ORDERED_SQL[rule.operator];
@@ -51,8 +51,13 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   // An offset compares against arithmetic: NULL there is nothing to compare against, never
   // the is-null sentinel.
   if (rule.offset !== undefined && isMissing(rhs))
-    return noOperandSql(field, isNegatedOffsetOperator(rule.operator));
+    return noOperandSql(field, NEGATED_COMPARISON_OPERATORS.includes(rule.operator));
   const arithmetic = rhs.type === 'column' && rhs.computed === true;
+  // Case-insensitive compares strings, as check() lowercases only strings.
+  const lower =
+    resolveCaseInsensitive(rule.caseInsensitive) &&
+    (rhs.type === 'column' ? !arithmetic : typeof rhs.value === 'string');
+  const lc = (expr: string): string => (lower ? `LOWER(${expr})` : expr);
 
   // Extract both variants up front so TypeScript doesn't need to narrow inside each case
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
@@ -63,13 +68,13 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
 
   switch (rule.operator) {
     case Operator.equals:
-      if (arithmetic) return `${lc(field)} = ${lc(rhsCol as string)}`;
+      if (arithmetic) return `${field} = ${rhsCol}`;
       if (rhsCol !== undefined) return `${lc(field)} IS NOT DISTINCT FROM ${lc(rhsCol)}`;
       if (rhsVal === null) return `${field} IS NULL`;
       return `${lc(field)} = ${lc(nextParam(state, rhsVal))}`;
 
     case Operator.notEquals:
-      if (arithmetic) return orNull(`${lc(field)} <> ${lc(rhsCol as string)}`);
+      if (arithmetic) return orNull(`${field} <> ${rhsCol}`);
       if (rhsCol !== undefined) return `${lc(field)} IS DISTINCT FROM ${lc(rhsCol)}`;
       if (rhsVal === null) return `${field} IS NOT NULL`;
       return orNull(`${lc(field)} <> ${lc(nextParam(state, rhsVal))}`);
@@ -127,16 +132,9 @@ export const buildFieldRule = (rule: Rule, state: BuilderState): string => {
   }
 };
 
-const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
-  if (!Array.isArray(list)) return { values: [], hasNull: false };
-  const values = list.filter((v) => v !== null);
-  return { values, hasNull: values.length !== list.length };
-};
-
 /** The comparison operand: the rule's value source, coerced to the field, moved by its offset. */
 const resolveComparison = (rule: Rule, state: BuilderState): ResolvedRhs => {
-  if (FIELD_OPERATOR_CATALOG[rule.operator]?.valueShape === 'none')
-    return { type: 'value', value: undefined };
+  if (NO_VALUE_OPERATORS.includes(rule.operator)) return { type: 'value', value: undefined };
   const rhs = coerce(rule, resolveSource(rule, state), state);
   return rule.offset === undefined ? rhs : offsetNumber(rhs, rule.offset, state);
 };
@@ -153,7 +151,7 @@ const coerce = (rule: Rule, rhs: ResolvedRhs, state: BuilderState): ResolvedRhs 
 const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRhs] | null => {
   const rhs = coerce(rule, resolveSource(rule, state), state);
   const range = rhs.type === 'value' ? rhs.value : undefined;
-  if (rule.offset !== undefined && range === null) return null;
+  if (range === null || range === undefined) return null;
   if (!Array.isArray(range) || range.length !== 2)
     throw new Error(`${rule.operator} operator requires an array of two values`);
   return orderPair(range).map((value) => {

@@ -1,4 +1,5 @@
 import { orderBy as lodashOrderBy } from 'lodash-es';
+import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import type { ArrayRule, WindowFields } from './types';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
@@ -7,9 +8,6 @@ export const hasWindow = (rule: WindowFields): boolean =>
   !!rule.orderBy?.length ||
   rule.take !== undefined ||
   rule.skip !== undefined;
-
-const UPPER_BOUND_OPS = new Set(['before', 'onOrBefore', 'lessThan', 'lessThanEquals']);
-const LOWER_BOUND_OPS = new Set(['after', 'onOrAfter', 'greaterThan', 'greaterThanEquals']);
 
 const conditionOpAndField = (condition: unknown): { op: string; field: string } | null => {
   if (typeof condition !== 'object' || condition === null) return null;
@@ -48,8 +46,8 @@ export const extremalRewrite = (rule: ArrayRule): ArrayRule | null => {
 
   const cof = conditionOpAndField(rule.condition);
   if (!cof || cof.field !== orderField) return null;
-  const isUpper = UPPER_BOUND_OPS.has(cof.op);
-  const isLower = LOWER_BOUND_OPS.has(cof.op);
+  const isUpper = UPPER_BOUND_OPERATORS.includes(cof.op);
+  const isLower = LOWER_BOUND_OPERATORS.includes(cof.op);
   if (!isUpper && !isLower) return null;
 
   const max = dir === 'desc';

@@ -16,31 +16,15 @@ import {
 import { orderPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
+import { NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
 import { parseScopeRef, readField, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
-import { type ReadSource, readValueSource } from './valueSource';
+import { type ReadSource, readValueSource, rowRef } from './valueSource';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
-
-export const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
-  DateOperator.notBefore,
-  DateOperator.notAfter,
-  DateOperator.notWithin,
-  DateOperator.notBetween,
-  DateOperator.dayNotIn,
-];
-
-// `within` and its complement take a RANGE expression (period or rolling window), never a
-// point or a literal pair — the one date shape the compilers resolve to two bounds.
-export const RANGE_DATE_OPERATORS: readonly DateOperator[] = [
-  DateOperator.within,
-  DateOperator.notWithin,
-];
-export const isRangeOperator = (operator: string): boolean =>
-  (RANGE_DATE_OPERATORS as readonly string[]).includes(operator);
 
 export const checkDate = (
   condition: DateRule,
@@ -51,22 +35,22 @@ export const checkDate = (
 ): boolean | string => {
   const fieldValue = readField(condition.field, scopes);
 
-  // Null: non-match for positive operators, match for negated ones (2.19.0 negation
-  // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
-  // real instant and compares; '' falls to the validity error below.
-  if (fieldValue == null) {
-    if (NEGATED_DATE_OPERATORS.includes(condition.dateOperator)) return true;
-    return condition.error || `${condition.field} has no value`;
-  }
-  if (!isDateInputValue(fieldValue))
-    throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
-
   // Read the zone ONCE. Left unset when the caller set none, so expression `now` keeps its
   // prior behavior; anchoring and shifts default to UTC.
   const exprConfig = resolveDateConfig(config, (source) =>
     readValueSource(source, scopes, context, bindings),
   );
   const tz = zoneOf(exprConfig);
+
+  // Null: non-match for positive operators, match for negated ones (2.19.0 negation
+  // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
+  // real instant and compares; '' falls to the validity error below.
+  if (fieldValue == null) {
+    if (NEGATED_OPERATORS.includes(condition.dateOperator)) return true;
+    return condition.error || `${condition.field} has no value`;
+  }
+  if (!isDateInputValue(fieldValue))
+    throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
   // A naive field string is anchored in the resolved zone (default UTC); an absolute
   // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
@@ -194,7 +178,7 @@ const parseCompareDates = (
     return units && shiftByUnits(point, units, move[1], tz);
   };
 
-  if (isRangeOperator(operator)) {
+  if (WINDOW_OPERATORS.includes(operator)) {
     if (!isDateExpr(raw)) throw new Error(`${operator} operator requires a range date expression`);
     const expr = resolveExpr(raw, read);
     return expr && resolveDateExprRange(expr, config);
@@ -246,7 +230,7 @@ const parseCompareDates = (
 export const resolveDateConfig = (config: DateConfig, read: ReadSource): ResolvedDateConfig => {
   const zone = config.timeZone;
   if (zone === undefined || typeof zone === 'string') return { ...config, timeZone: zone };
-  if (zone.path !== undefined && parseScopeRef(zone.path))
+  if (rowRef(zone))
     throw new Error(`timeZone is one per evaluation; read it from context, not '${zone.path}'`);
   const read_ = read(zone);
   if (read_ !== null && read_ !== undefined && typeof read_ !== 'string')

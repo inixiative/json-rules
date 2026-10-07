@@ -30,3 +30,10 @@ export const readNumber = (raw: unknown, what: string): number | null => {
 /** A pair in ascending order — a range's ends, however authored. */
 export const orderPair = <T>([a, b]: readonly [T, T] | T[]): [T, T] =>
   (b as never) < (a as never) ? [b, a] : [a, b];
+
+/** A list's non-null members, and whether it held a null. */
+export const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
+  if (!Array.isArray(list)) return { values: [], hasNull: false };
+  const values = list.filter((v) => v !== null);
+  return { values, hasNull: values.length !== list.length };
+};

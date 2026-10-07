@@ -4,9 +4,15 @@ import {
   resolveCaseInsensitive,
   supportsQueryMode,
 } from '../engineGlobals';
-import { orderPair } from '../number';
-import { isNegatedOffsetOperator } from '../offset';
+import { hasNoOperand } from '../field';
+import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
+import {
+  NEGATED_COMPARISON_OPERATORS,
+  NEGATED_RANGE_OPERATORS,
+  NEGATED_SINGLE_VALUE_OPERATORS,
+  NO_VALUE_OPERATORS,
+} from '../operatorCatalog';
 import type { Rule } from '../types';
 import { matchNothing } from './logical';
 import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
@@ -75,8 +81,6 @@ export const absentArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): P
 const orWith = (head: PrismaWhere, arms: PrismaWhere[]): PrismaWhere =>
   arms.length ? { OR: [head, ...arms] } : head;
 
-const NEGATED: readonly Operator[] = [Operator.notEquals, Operator.notContains];
-
 /**
  * The complement of a BOUNDED range, which Prisma can only express at the WHERE level.
  *
@@ -88,15 +92,8 @@ const NEGATED: readonly Operator[] = [Operator.notEquals, Operator.notContains];
  * (`NOT BETWEEN`). Same WHERE-level hoist the emptiness operators need above, for the same class
  * of reason.
  *
- * These carry their own `equals: null` arm below, so they are deliberately not in `NEGATED`.
+ * These carry their own `equals: null` arm below, so they are deliberately not in NEGATED_SINGLE_VALUE_OPERATORS.
  */
-const RANGE_COMPLEMENT: readonly Operator[] = [Operator.notBetween];
-
-const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
-  if (!Array.isArray(list)) return { values: [], hasNull: false };
-  const values = list.filter((v) => v !== null);
-  return { values, hasNull: values.length !== list.length };
-};
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
@@ -137,20 +134,27 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return orWith(notInList, arms);
   }
 
-  // An offset moved nothing: no row matches, as SQL's NULL arithmetic; a negation keeps the
+  // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the
   // absent rows only.
-  if (rule.offset !== undefined && resolveRuleValue(rule, options) === null) {
-    if (!isNegatedOffsetOperator(rule.operator) || !arms.length) return matchNothing();
+  if (
+    !NO_VALUE_OPERATORS.includes(rule.operator) &&
+    hasNoOperand(rule, resolveRuleValue(rule, options))
+  ) {
+    if (!NEGATED_COMPARISON_OPERATORS.includes(rule.operator) || !arms.length)
+      return matchNothing();
     return arms.length === 1 ? arms[0] : { OR: arms };
   }
 
-  if (RANGE_COMPLEMENT.includes(rule.operator)) {
+  if (NEGATED_RANGE_OPERATORS.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
     return orWith({ NOT: at(buildLeafFilter(rule, options)) }, arms);
   }
 
   const filter = at(buildLeafFilter(rule, options));
-  if (NEGATED.includes(rule.operator) && resolveRuleValue(rule, options) !== null) {
+  if (
+    NEGATED_SINGLE_VALUE_OPERATORS.includes(rule.operator) &&
+    resolveRuleValue(rule, options) !== null
+  ) {
     return orWith(filter, arms);
   }
   return filter;
@@ -230,7 +234,7 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
       );
 
     // The POSITIVE range for both: `buildFieldRule` negates the whole clause for notBetween
-    // (see RANGE_COMPLEMENT), because a field filter cannot carry a two-sided negation.
+    // (see NEGATED_RANGE_OPERATORS), because a field filter cannot carry a two-sided negation.
     case Operator.between:
     case Operator.notBetween: {
       const v = val();

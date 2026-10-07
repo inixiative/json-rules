@@ -4,8 +4,7 @@ import type { ResolvedDateConfig } from '../dateExpr';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
-import { escapeIdentifier } from './escape';
-import { quoteField } from './quoting';
+import { resolveFieldSql } from './join';
 import type { BuilderState } from './types';
 
 /**
@@ -22,15 +21,13 @@ export const NO_VALUE: ResolvedRhs = { type: 'value', value: null };
 export const isMissing = (rhs: ResolvedRhs): boolean =>
   rhs.type === 'value' && (rhs.value === null || rhs.value === undefined);
 
-/** A ref on the SQL rail: `$.x` is a column of the current row; a bare ref reads context. */
+/** A ref on the SQL rail: `$.x` reads the current row the way a `field` does — relation hops
+ *  join, a Json column's tail is a JSON path; a bare ref reads context. */
 export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
-    const sql = state.currentAlias
-      ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(scoped.path)}`
-      : quoteField(scoped.path);
-    return { type: 'column', sql };
+    return { type: 'column', sql: resolveFieldSql(scoped.path, state) };
   }
   if (!state.context) {
     throw new Error(
@@ -38,7 +35,7 @@ export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
         `Pass context in options when calling toSql().`,
     );
   }
-  return { type: 'value', value: get(state.context, ref) };
+  return { type: 'value', value: get(state.context, ref) ?? null };
 };
 
 /** A value source on the SQL rail: a parameter, or a `$.` column. */

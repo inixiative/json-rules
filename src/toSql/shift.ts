@@ -1,8 +1,14 @@
 import dayjs from 'dayjs';
-import { isCalendarUnit, resolveMagnitude, resolveUnits } from '../amount';
+import { resolveMagnitude, resolveUnits } from '../amount';
 import { shiftByUnits, zoneOf } from '../dateExpr';
-import { parseScopeRef } from '../scope';
+import {
+  INTERVAL_FIELDS,
+  isCalendarUnit,
+  RELATIVE_UNITS,
+  type RelativeUnit,
+} from '../operatorCatalog';
 import type { Magnitude, RelativeUnits } from '../types';
+import { rowRef } from '../valueSource';
 import { nextParam } from './params';
 import type { BuilderState } from './types';
 import {
@@ -18,9 +24,7 @@ import {
 // base is read per row.
 
 const isRowRef = (magnitude: Magnitude | undefined): boolean =>
-  typeof magnitude === 'object' &&
-  magnitude.path !== undefined &&
-  parseScopeRef(magnitude.path) !== null;
+  typeof magnitude === 'object' && rowRef(magnitude) !== null;
 
 /** True when any unit is read per row — so the shift must compile to SQL. */
 export const readsRow = (units: RelativeUnits): boolean => Object.values(units).some(isRowRef);
@@ -41,22 +45,17 @@ const magnitudeSql = (
   return `(CASE WHEN ${usable} THEN ${c} END)::${cast}`;
 };
 
-const GROUPS: { arg: string; scale: Partial<Record<keyof RelativeUnits, number>> }[] = [
-  { arg: 'months', scale: { years: 12, quarters: 3, months: 1 } },
-  { arg: 'days', scale: { weeks: 7, days: 1 } },
-  { arg: 'secs', scale: { hours: 3600, minutes: 60, seconds: 1 } },
-];
-
 /** `units` as a Postgres interval; NULL when an amount reads NULL. */
 const intervalSql = (units: RelativeUnits, state: BuilderState): string => {
-  const args = GROUPS.flatMap(({ arg, scale }) => {
-    const terms = (Object.entries(scale) as [keyof RelativeUnits, number][])
-      .filter(([unit]) => units[unit] !== undefined)
-      .map(([unit, factor]) => {
+  const args = INTERVAL_FIELDS.flatMap((field) => {
+    const terms = (Object.keys(units) as RelativeUnit[])
+      .filter((unit) => units[unit] !== undefined && RELATIVE_UNITS[unit].interval === field)
+      .map((unit) => {
         const term = magnitudeSql(units[unit] as Magnitude, state, unit);
+        const { factor } = RELATIVE_UNITS[unit];
         return factor === 1 ? term : `${factor} * ${term}`;
       });
-    return terms.length ? [`${arg} => ${terms.join(' + ')}`] : [];
+    return terms.length ? [`${field} => ${terms.join(' + ')}`] : [];
   });
   return `make_interval(${args.join(', ')})`;
 };

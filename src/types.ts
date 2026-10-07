@@ -18,19 +18,18 @@ export type DateInputValue = string | number | Date;
 // Where a value comes from: a literal, a path read (`$.` from the row or an enclosing scope,
 // bare from context), or a bound value. Every slot that reads a value takes this one shape: a
 // comparison value, an offset, a unit amount, the evaluation's time zone.
+type SourceSlots<TValue> = { value: TValue; path: string; bind: string; bindOptional: boolean };
+type Never<K extends PropertyKey> = { [P in K]?: never };
 export type ValueSourceOf<TValue> =
-  | { value: TValue; path?: never; bind?: never; bindOptional?: never }
-  | { path: string; value?: never; bind?: never; bindOptional?: never }
-  | { bind: string; bindOptional?: boolean; value?: never; path?: never };
+  | (Pick<SourceSlots<TValue>, 'value'> & Never<'path' | 'bind' | 'bindOptional'>)
+  | (Pick<SourceSlots<TValue>, 'path'> & Never<'value' | 'bind' | 'bindOptional'>)
+  | (Pick<SourceSlots<TValue>, 'bind'> &
+      Partial<Pick<SourceSlots<TValue>, 'bindOptional'>> &
+      Never<'value' | 'path'>);
 
 // The same slot on the loose rule types; validateRule enforces exactly one. An unsupplied
 // binding is a caller bug unless `bindOptional`, which reads an absent name as `null`.
-export type ValueSourceFields<TValue> = {
-  value?: TValue;
-  path?: string;
-  bind?: string;
-  bindOptional?: boolean;
-};
+export type ValueSourceFields<TValue> = Partial<SourceSlots<TValue>>;
 
 // A unit amount: a literal number, or a value source that reads one.
 export type Magnitude = number | ValueSourceOf<number>;
@@ -94,13 +93,7 @@ type ValueSource<TValue, TOffset = never> = ValueSourceOf<TValue> & { offset?: T
 // (`{ ago }` / `{ ahead }`) anchored on the comparison value instead of now.
 export type NumberOffset = ValueSourceOf<number>;
 export type DateOffset = ValueSourceOf<RollingExpr>;
-type NoValueSource = {
-  value?: never;
-  path?: never;
-  bind?: never;
-  bindOptional?: never;
-  offset?: never;
-};
+type NoValueSource = Never<keyof SourceSlots<unknown> | 'offset'>;
 type RuleBase<TOperator extends Operator> = {
   field: string;
   operator: TOperator;

@@ -1,12 +1,12 @@
-import { get } from 'lodash-es';
+import { orderPair } from '../number';
 import { Operator } from '../operator';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { AggregateRule } from '../types';
 import { hasWindow } from '../window';
-import { escapeIdentifier } from './escape';
+import { compareSql, ORDERED_SQL } from './compare';
 import { nextParam } from './params';
 import { quoteField, quoteFieldAsJsonb } from './quoting';
 import type { BuilderState } from './types';
+import { resolveSource } from './valueSource';
 
 export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): string => {
   if (hasWindow(rule))
@@ -69,40 +69,17 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
   return `(SELECT ${agg} FROM jsonb_array_elements_text(${field}) AS elem)`;
 };
 
-type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
-
-const resolveRhs = (rule: AggregateRule, state: BuilderState): ResolvedRhs => {
-  if (rule.value !== undefined) return { type: 'value', value: rule.value };
-
-  if (rule.path) {
-    const scoped = parseScopeRef(rule.path);
-    if (scoped) {
-      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toSql'));
-      const refField = scoped.path;
-      const sql = state.currentAlias
-        ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(refField)}`
-        : quoteField(refField);
-      return { type: 'column', sql };
-    }
-    if (!state.context) {
-      throw new Error(
-        `BuilderState.context is required to resolve path '${rule.path}'. Pass context in options.`,
-      );
-    }
-    return { type: 'value', value: get(state.context, rule.path) };
-  }
-
-  throw new Error('Aggregate rule requires value or path');
-};
-
 const buildAggregateComparison = (
   lhs: string,
   rule: AggregateRule,
   state: BuilderState,
 ): string => {
-  const rhs = resolveRhs(rule, state);
+  const rhs = resolveSource(rule, state);
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
+
+  const ordered = ORDERED_SQL[rule.operator];
+  if (ordered) return compareSql(lhs, ordered.symbol, rhs, false, state);
 
   switch (rule.operator) {
     case Operator.equals:
@@ -113,28 +90,16 @@ const buildAggregateComparison = (
       if (rhsCol) return `${lhs} <> ${rhsCol}`;
       if (rhsVal === null) return `${lhs} IS NOT NULL`;
       return `${lhs} <> ${nextParam(state, rhsVal)}`;
-    case Operator.lessThan:
-      if (rhsCol) return `${lhs} < ${rhsCol}`;
-      return `${lhs} < ${nextParam(state, rhsVal)}`;
-    case Operator.lessThanEquals:
-      if (rhsCol) return `${lhs} <= ${rhsCol}`;
-      return `${lhs} <= ${nextParam(state, rhsVal)}`;
-    case Operator.greaterThan:
-      if (rhsCol) return `${lhs} > ${rhsCol}`;
-      return `${lhs} > ${nextParam(state, rhsVal)}`;
-    case Operator.greaterThanEquals:
-      if (rhsCol) return `${lhs} >= ${rhsCol}`;
-      return `${lhs} >= ${nextParam(state, rhsVal)}`;
     case Operator.between: {
       const v = rhsVal as unknown[];
       if (!Array.isArray(v) || v.length !== 2) throw new Error('between requires two values');
-      const [min, max] = (v[0] as number) <= (v[1] as number) ? v : [v[1], v[0]];
+      const [min, max] = orderPair(v);
       return `${lhs} BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
     }
     case Operator.notBetween: {
       const v = rhsVal as unknown[];
       if (!Array.isArray(v) || v.length !== 2) throw new Error('notBetween requires two values');
-      const [min, max] = (v[0] as number) <= (v[1] as number) ? v : [v[1], v[0]];
+      const [min, max] = orderPair(v);
       return `${lhs} NOT BETWEEN ${nextParam(state, min)} AND ${nextParam(state, max)}`;
     }
     default:

@@ -1,5 +1,5 @@
 import { isPlainObject } from 'lodash-es';
-import { readPath, type Scopes } from './scope';
+import { parseScopeRef, readPath, type ScopeRef, type Scopes } from './scope';
 import type { RuleValue, ValueSourceFields, ValueSourceOf } from './types';
 
 // A value source is `{ value } | { path } | { bind }`. One dispatch reads it; each rail supplies
@@ -8,7 +8,18 @@ import type { RuleValue, ValueSourceFields, ValueSourceOf } from './types';
 
 type Source = ValueSourceFields<unknown>;
 
-export type SourceReaders<R> = {
+/** The three forms, in the order a source is read. */
+export const SOURCE_FORMS = ['value', 'bind', 'path'] as const;
+
+/** A non-empty `path` — the one test for "reads a path". */
+export const hasPath = (source: Source): source is Source & { path: string } =>
+  typeof source.path === 'string' && source.path !== '';
+
+/** The scope a source's path reads when it reads the row (`$.`, `$$.`, …), else null. */
+export const rowRef = (source: Source): ScopeRef | null =>
+  hasPath(source) ? parseScopeRef(source.path) : null;
+
+type SourceReaders<R> = {
   value: (value: unknown) => R;
   path: (ref: string) => R;
   bind: (name: string, optional: boolean | undefined) => R;
@@ -18,14 +29,14 @@ export type SourceReaders<R> = {
 export const matchSource = <R>(source: Source, read: SourceReaders<R>): R => {
   if (source.value !== undefined) return read.value(source.value);
   if (source.bind !== undefined) return read.bind(source.bind, source.bindOptional);
-  if (source.path) return read.path(source.path);
+  if (hasPath(source)) return read.path(source.path);
   throw new Error('No value, path or bind specified');
 };
 
 export const isValueSource = (v: unknown): v is ValueSourceOf<unknown> =>
   isPlainObject(v) &&
   ((v as Source).value !== undefined ||
-    typeof (v as Source).path === 'string' ||
+    hasPath(v as Source) ||
     typeof (v as Source).bind === 'string');
 
 /**
@@ -68,7 +79,7 @@ export const readValueSource = (
   matchSource<unknown>(source, {
     value: (value) => value,
     bind: (name, optional) => readBinding(name, optional, bindings),
-    path: (ref) => readPath(ref, scopes, context),
+    path: (ref) => readPath(ref, scopes, context) ?? null,
   });
 
 /** How a rail reads a source whose value it needs now (an amount, a zone). */

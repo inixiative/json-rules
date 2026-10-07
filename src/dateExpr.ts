@@ -4,6 +4,7 @@ import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { isPlainObject } from 'lodash-es';
+import { type INTERVAL_FIELDS, RELATIVE_UNITS, type RelativeUnit } from './operatorCatalog';
 import type {
   DateConfig,
   DateExpr,
@@ -52,23 +53,18 @@ export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
 // quarters, months), then the day part (weeks, days), then time — so a shift lands on the same
 // instant in check() and in toSql, at a month end (2024-02-29 + 1 year 1 month is 2025-03-29)
 // and across a DST change in the evaluation's zone (a day is 23 hours on the spring-forward day).
-const MONTHS: Partial<Record<keyof RelativeUnits, number>> = { years: 12, quarters: 3, months: 1 };
-const DAYS: Partial<Record<keyof RelativeUnits, number>> = { weeks: 7, days: 1 };
-const SECONDS: Partial<Record<keyof RelativeUnits, number>> = {
-  hours: 3600,
-  minutes: 60,
-  seconds: 1,
-};
-
-const sumUnits = (
+/** The units' total in one Postgres interval field (months, days or secs). */
+export const intervalTotal = (
   units: RelativeUnits<number>,
-  scale: Partial<Record<keyof RelativeUnits, number>>,
-) => {
-  let total = 0;
-  for (const [key, factor] of Object.entries(scale) as [keyof RelativeUnits, number][])
-    total += (units[key] ?? 0) * factor;
-  return total;
-};
+  field: (typeof INTERVAL_FIELDS)[number],
+): number =>
+  (Object.entries(units) as [RelativeUnit, number][]).reduce(
+    (total, [unit, amount]) =>
+      RELATIVE_UNITS[unit].interval === field
+        ? total + amount * RELATIVE_UNITS[unit].factor
+        : total,
+    0,
+  );
 
 const WALL = 'YYYY-MM-DDTHH:mm:ss.SSS';
 
@@ -79,9 +75,9 @@ export const shiftByUnits = (
   direction: 1 | -1,
   zone: string,
 ): dayjs.Dayjs => {
-  const months = sumUnits(units, MONTHS);
-  const days = sumUnits(units, DAYS);
-  const seconds = sumUnits(units, SECONDS);
+  const months = intervalTotal(units, 'months');
+  const days = intervalTotal(units, 'days');
+  const seconds = intervalTotal(units, 'secs');
   let wall = dayjs.utc(base.tz(zone).format(WALL));
   if (months) wall = wall.add(direction * months, 'month');
   if (days) wall = wall.add(direction * days, 'day');

@@ -1,20 +1,10 @@
 import { rollingShift } from './dateExpr';
 import { readNumber } from './number';
+import { isCalendarUnit } from './operatorCatalog';
 import type { DateExpr, Magnitude, RelativeUnits } from './types';
-import type { ReadSource } from './valueSource';
+import { hasPath, type ReadSource } from './valueSource';
 
 // A unit amount in a date expression: a literal number or a value source that reads one.
-
-// Calendar units shift by whole steps; time units by any amount. Every unit is non-negative —
-// direction lives in `ago` / `ahead`.
-const CALENDAR_UNITS: ReadonlySet<string> = new Set([
-  'years',
-  'quarters',
-  'months',
-  'weeks',
-  'days',
-]);
-export const isCalendarUnit = (unit: string): boolean => CALENDAR_UNITS.has(unit);
 
 const fitsUnit = (amount: number, unit: string): boolean =>
   amount >= 0 && (!isCalendarUnit(unit) || Number.isInteger(amount));
@@ -35,7 +25,7 @@ export const resolveMagnitude = (
       ? magnitude
       : readNumber(read(magnitude), magnitude.path ? `'${magnitude.path}' (${unit})` : unit);
   if (amount === null || fitsUnit(amount, unit)) return amount;
-  if (typeof magnitude !== 'number' && magnitude.path !== undefined) return null;
+  if (typeof magnitude !== 'number' && hasPath(magnitude)) return null;
   throw new Error(
     `${unit} must be a non-negative${isCalendarUnit(unit) ? ' whole' : ''} number (got ${amount})`,
   );

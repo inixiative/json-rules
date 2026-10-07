@@ -1,4 +1,4 @@
-import type { FieldKind } from '../operatorCatalog.ts';
+import { COERCIBLE_KINDS, type FieldKind } from '../operatorCatalog.ts';
 import { own } from '../own';
 import { resolveScopeRef } from '../scope';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
@@ -6,17 +6,6 @@ import type { Condition } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 import { resolveRelationTarget } from './walk.ts';
-
-// Kinds check() knows how to coerce — see coerceScalar in src/field.ts.
-const COERCIBLE_KINDS = new Set([
-  'Int',
-  'BigInt',
-  'Float',
-  'Decimal',
-  'DateTime',
-  'Boolean',
-  'String',
-]);
 
 type Scope = { mapName: string; modelName: string };
 type ResolvedField = { entry: FieldMapEntry; mapName: string };
@@ -105,7 +94,11 @@ const stampCondition = (condition: Condition, lens: Lens, scopes: readonly Scope
   if ('operator' in condition) {
     if (condition.coerceType) return condition;
     const resolved = resolveField(lens, scopes, condition.field);
-    if (!resolved || resolved.entry.kind !== 'scalar' || !COERCIBLE_KINDS.has(resolved.entry.type))
+    if (
+      !resolved ||
+      resolved.entry.kind !== 'scalar' ||
+      !COERCIBLE_KINDS.includes(resolved.entry.type as FieldKind)
+    )
       return condition;
     return { ...condition, coerceType: resolved.entry.type as FieldKind };
   }

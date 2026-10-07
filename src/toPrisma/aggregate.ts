@@ -1,3 +1,4 @@
+import { orderPair } from '../number';
 import { Operator } from '../operator';
 import type { AggregateRule, Condition } from '../types';
 import { hasWindow } from '../window';
@@ -12,6 +13,7 @@ import type {
   StepRef,
 } from './types';
 import { buildNestedFilter } from './utils';
+import { readSource } from './valueSource';
 
 // Forward declaration - provided by condition.ts to avoid circular import
 type BuildConditionFn = (
@@ -46,10 +48,6 @@ export const buildAggregateRule = (
     throw new Error(
       `Prisma aggregate rules require aggregate.field to specify the numeric field on the related model.`,
     );
-  }
-
-  if (rule.path) {
-    throw new Error(`path is not supported for Prisma aggregate rules; use value instead.`);
   }
 
   return buildAggregateStep(
@@ -188,7 +186,7 @@ const buildAggregateStep = (
 
   // Prisma 6.x having format: field first, then aggregate operator nested inside.
   const aggKey = rule.aggregate.mode === 'sum' ? '_sum' : '_avg';
-  const having = { [itemField]: { [aggKey]: buildPrismaFilter(rule) } };
+  const having = { [itemField]: { [aggKey]: buildPrismaFilter(rule, options) } };
 
   const step: GroupByStep = {
     operation: 'groupBy',
@@ -214,8 +212,10 @@ const buildAggregateStep = (
   return { [pkOnTerminal]: { in: stepRef } };
 };
 
-const buildPrismaFilter = (rule: AggregateRule): Record<string, unknown> => {
-  const value = rule.value;
+const buildPrismaFilter = (rule: AggregateRule, options: BuildOptions): Record<string, unknown> => {
+  const value = readSource(rule, options);
+  if (value === null || value === undefined)
+    throw new Error('A Prisma aggregate compares against a number; its value source read nothing');
   switch (rule.operator) {
     case Operator.equals:
       return { equals: value };
@@ -232,8 +232,7 @@ const buildPrismaFilter = (rule: AggregateRule): Record<string, unknown> => {
     case Operator.between: {
       if (!Array.isArray(value) || value.length !== 2)
         throw new Error('between requires two values');
-      const [a, b] = value as number[];
-      const [min, max] = a <= b ? [a, b] : [b, a];
+      const [min, max] = orderPair(value as number[]);
       return { gte: min, lte: max };
     }
     case Operator.notBetween:

@@ -10,11 +10,10 @@ import type { Condition, RuleValue, ValueSourceOf } from './types';
 export { readBinding } from './valueSource';
 
 // Every `{ bind }` on a leaf: its comparison value, its offset, its unit amounts.
-const bindTokens = (node: ConditionNode): { bind: string; bindOptional?: boolean }[] =>
+type BindSource = Extract<ValueSourceOf<unknown>, { bind: string }>;
+const bindTokens = (node: ConditionNode): BindSource[] =>
   leafSources(node).flatMap(({ source }) =>
-    typeof source.bind === 'string'
-      ? [{ bind: source.bind, bindOptional: source.bindOptional }]
-      : [],
+    typeof source.bind === 'string' ? [source as BindSource] : [],
   );
 
 /** Names of every `{ bind }` token in the tree, optional or not — what a lens declares. */
@@ -59,5 +58,9 @@ export const resolveBindings = (
     const bound = bindings[bind];
     return { ...rest, value: bound === undefined ? null : bound } as ValueSourceOf<unknown>;
   };
-  return mapCondition(condition, { rewrite: (node) => mapLeafSources(node, resolve) });
+  // A second pass resolves binds a substituted value brought with it (a bound `{ ago }` whose
+  // amount is itself a `{ bind }`).
+  return mapCondition(condition, {
+    rewrite: (node) => mapLeafSources(mapLeafSources(node, resolve), resolve),
+  });
 };

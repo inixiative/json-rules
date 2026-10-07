@@ -1,6 +1,7 @@
 import { get, isObject, some } from 'lodash-es';
 import { checkDate } from './date';
 import { checkField } from './field';
+import { orderPair } from './number';
 import { ArrayOperator, Operator } from './operator';
 import { readField, type Scopes } from './scope';
 import type { AggregateRule, ArrayRule, Condition, DateConfig, RuleValue } from './types';
@@ -188,15 +189,13 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
     case Operator.between: {
       if (!Array.isArray(rhs) || rhs.length !== 2)
         throw new Error('between requires a two-element array');
-      const [a, b] = rhs as number[];
-      const [min, max] = a <= b ? [a, b] : [b, a];
+      const [min, max] = orderPair(rhs as number[]);
       return (result >= min && result <= max) || getError('must be between');
     }
     case Operator.notBetween: {
       if (!Array.isArray(rhs) || rhs.length !== 2)
         throw new Error('notBetween requires a two-element array');
-      const [a, b] = rhs as number[];
-      const [min, max] = a <= b ? [a, b] : [b, a];
+      const [min, max] = orderPair(rhs as number[]);
       return result < min || result > max || getError('must not be between');
     }
     default:

@@ -1,8 +1,8 @@
 import { isPlainObject } from 'lodash-es';
-import { isCalendarUnit } from './amount';
 import { isDateExpr, isRollingExpr } from './dateExpr';
+import { isCalendarUnit } from './operatorCatalog';
 import type { Condition, ValueSourceOf } from './types';
-import { isValueSource } from './valueSource';
+import { hasPath, isValueSource } from './valueSource';
 
 export type ConditionNode = Record<string, unknown>;
 
@@ -133,7 +133,7 @@ export type ValueRef = { ref: string; role: SourceRole };
 /** Every path a leaf reads on its value side, with how it is read. */
 export const valueRefRoles = (node: Record<string, unknown>): ValueRef[] =>
   leafSources(node).flatMap(({ source, role }) =>
-    typeof source.path === 'string' && source.path !== '' ? [{ ref: source.path, role }] : [],
+    hasPath(source) ? [{ ref: source.path, role }] : [],
   );
 
 /** Every path a leaf reads on its value side. */

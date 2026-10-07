@@ -108,6 +108,16 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
     pattern: /\.split\('\.'\)[\s\S]{0,400}\b(modelOf|fieldOf)\(/,
     owners: ['src/fieldMap/walk.ts'],
   },
+  {
+    verb: 'read the operator catalog tables',
+    pattern: /\b(FIELD|DATE|ARRAY)_OPERATOR_CATALOG\b/,
+    owners: ['src/operatorCatalog.ts'],
+  },
+  {
+    verb: 're-export a module wholesale',
+    pattern: /^export \* from/m,
+    owners: [],
+  },
 ];
 
 describe('one implementation per verb', () => {

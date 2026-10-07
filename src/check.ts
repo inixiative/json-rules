@@ -29,15 +29,13 @@ type EvalOptions = CheckOptions & { context: CheckData; scopes: Scopes };
 
 const validateRootArrayShape = (rule: Condition): void => {
   if (typeof rule === 'boolean') return;
-  if ('all' in rule) {
-    for (const c of rule.all) validateRootArrayShape(c);
+  const shape = conditionShape(rule as Record<string, unknown>);
+  if (shape === 'all' || shape === 'any') {
+    for (const child of shape === 'all' ? (rule as All).all : (rule as Any).any)
+      validateRootArrayShape(child);
     return;
   }
-  if ('any' in rule) {
-    for (const c of rule.any) validateRootArrayShape(c);
-    return;
-  }
-  if ('arrayOperator' in rule && !('field' in rule)) return;
+  if (shape === 'array' && !('field' in rule)) return;
   throw new Error(
     'check: when data is an array, every leaf must be a fieldless arrayOperator (composable with all/any)',
   );

@@ -41,19 +41,22 @@ express a rule.
 | `isOperatorSupportedForTarget`, `isAggregateSingleOperator`, `isAggregateRangeOperator` | `getOperatorsForKind(kind, target)`, `getAggregateOperators()`, `validateRule(rule, { target })` |
 | `isCalendarUnit`, `isRelativeUnit`, `RelativeUnit` | `validateRule` reports an unknown or fractional unit |
 | `FIELD_OPERATOR_CATALOG`, `DATE_OPERATOR_CATALOG`, `ARRAY_OPERATOR_CATALOG`, `CatalogEntry`, `ArrayCatalogEntry` | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape` |
-| `BuildOptions` | `PrismaBuildOptions` (beside `SqlBuildOptions`); `context` is a `Row` on every engine |
+| `BuildOptions`, `SqlResult` | `ToPrismaOptions`, `ToSqlResult` — beside `ToSqlOptions`, all named for their verb; both options extend `CompileOptions`, whose `context` is a `Row` |
+| `ProjectOptions` | `ProjectLensOptions` |
+| `SourceValue` (a `sources` entry), `RuleSourceValues` | `SourceEntry`, `RuleSourceDescription` — `SourceValues` (materialized options) keeps its name |
 | `FieldMap`, `FieldMapEntry`, `SourceOption` from the `toPrisma` / `toSql` entry points | one export each from the package root, with `ModelEntry` |
 | `readBinding`, `validateBindNames`, `resolveCaseInsensitive`, `resolveFuzzy`, `supportsQueryMode`, `fuzzyContains`, `maxFuzzyDistance`, the catalog's internal operator / kind / unit sets | no longer exported |
 
 Every validator returns `{ ok, errors: { path, message, code }[] }` and has an `assert*`
-form that throws. Lens violations carry codes (`not_in_lens`, `operator_kind_mismatch`,
+form that throws. Lens issues carry codes (`not_in_lens`, `operator_kind_mismatch`,
 `invalid_value`, `value_not_allowed`, …).
 
 `validateNarrowing` reports a code per problem (`not_in_lens`, `not_visible`,
 `conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`, `invalid_binding`, and
 the lens gate's own codes for a `where`). `toSql` takes a FieldMapSet with `mapName`, as `toPrisma`
-does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `SqlBuildOptions`, `ModelEntry`,
-`SourceSelect`, `ValidateRuleOptions`.
+does. Newly exported types: `Row`, `CheckData`, `OperatorFamily`, `ToSqlOptions`, `CompileOptions`,
+`ModelEntry`, `SourceSelect`, `ValidateRuleOptions`. `assertValidRule` labels its error
+`validateRule:` like the other asserts.
 
 `getAggregateOperators()` takes no target: every target compiles every aggregate comparison
 (`toPrisma` gained `notBetween`), and the `unsupported_prisma_aggregate_operator` code is gone.

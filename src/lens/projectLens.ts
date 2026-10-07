@@ -1,5 +1,5 @@
 import { projectModels } from './projectModels.ts';
-import { type PathProjection, type ProjectOptions, projectPaths } from './projectPaths.ts';
+import { type PathProjection, type ProjectLensOptions, projectPaths } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
@@ -10,15 +10,15 @@ import type { Lens, LensNarrowing } from './types.ts';
  */
 export function projectLens(
   lensOrNarrowing: Lens | LensNarrowing,
-  options?: ProjectOptions & { by?: 'path' },
+  options?: ProjectLensOptions & { by?: 'path' },
 ): PathProjection;
 export function projectLens(
   lensOrNarrowing: Lens | LensNarrowing,
-  options: ProjectOptions & { by: 'model' },
+  options: ProjectLensOptions & { by: 'model' },
 ): Lens;
 export function projectLens(
   lensOrNarrowing: Lens | LensNarrowing,
-  { by = 'path', ...options }: ProjectOptions & { by?: 'path' | 'model' } = {},
+  { by = 'path', ...options }: ProjectLensOptions & { by?: 'path' | 'model' } = {},
 ): PathProjection | Lens {
   return by === 'model'
     ? projectModels(lensOrNarrowing, options)

@@ -17,13 +17,13 @@ import type { DateRule } from '../types';
 import { absentArms, buildMapAwareFilter } from './field';
 import { notLeaf, orWhere } from './logical';
 import { offsetDate } from './offset';
-import type { PrismaBuildOptions, PrismaWhere } from './types';
+import type { PrismaWhere, ToPrismaOptions } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
 
 // Negated date operators keep NULL rows, as the scalar negations in ./field.ts do. A range
 // complement is a WHERE-level NOT: a field-level `not` over `{ gte, lte }` distributes over both
 // keys and matches nothing.
-export const buildDateRule = (rule: DateRule, options?: PrismaBuildOptions): PrismaWhere => {
+export const buildDateRule = (rule: DateRule, options?: ToPrismaOptions): PrismaWhere => {
   // Prisma filters a date only on a DateTime column: Json and String compare text, a number a
   // number.
   const map = options?.map as FieldMap | undefined;
@@ -47,7 +47,7 @@ export const buildDateRule = (rule: DateRule, options?: PrismaBuildOptions): Pri
   return orWhere([nested, ...arms]);
 };
 
-const buildDateLeafFilter = (rule: DateRule, options?: PrismaBuildOptions): unknown => {
+const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown => {
   const config = dateConfigOf(options);
   const read = prismaRead(options);
   const shift = (instant: Date | null): Date | null =>

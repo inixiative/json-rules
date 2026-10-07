@@ -19,7 +19,7 @@ import type { Lens, LensNarrowing } from './types.ts';
  * wherever its model appears, so `path` may name a relation chain the narrowing never
  * spelled under `root.relations`; the dotted format is the same.
  */
-export type RuleSourceValues = {
+export type RuleSourceDescription = {
   path: string;
   mapName: string;
   model: string;
@@ -91,10 +91,10 @@ const dedupeKey = (value: RuleValue): string => {
 export const describeRuleSources = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
-): RuleSourceValues[] => {
+): RuleSourceDescription[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   const root = policy.lens.model;
-  const out = new Map<string, RuleSourceValues>();
+  const out = new Map<string, RuleSourceDescription>();
   // Each entry's literal keys, so a large `in` list dedupes in linear time.
   const seenKeys = new Map<string, Set<string>>();
 

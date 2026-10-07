@@ -8,7 +8,7 @@ import type {
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
-  SourceValue,
+  SourceEntry,
 } from './types.ts';
 
 const PARENT_PREFIX = 'parent:';
@@ -27,7 +27,7 @@ const mapNodeConditions = <T extends ModelDefaultNarrowing | ModelNarrowing>(
   const out = { ...node } as ModelNarrowing;
   if (node.where !== undefined) out.where = fn(node.where);
   if (node.sources) {
-    const sources: Record<string, SourceValue> = {};
+    const sources: Record<string, SourceEntry> = {};
     for (const [field, entry] of Object.entries(node.sources))
       sources[field] = isSourceSpec(entry)
         ? entry.where !== undefined

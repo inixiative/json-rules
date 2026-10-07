@@ -432,11 +432,11 @@ type ModelDefaultNarrowing = {
   enumPicks?: Record<string, readonly string[]>;          // schema: per-field enum allow-list
   enumOmits?: Record<string, readonly string[]>;          // schema: per-field enum deny-list
   where?: Condition;                                      // data: row-level filter (filter-first)
-  sources?: Record<string, SourceValue>;                  // per-field option sources (see README)
+  sources?: Record<string, SourceEntry>;                  // per-field option sources (see README)
 };
 
 /** A `sources` entry: a bare eligibility Condition, or a spec with a label and/or groupBy. */
-type SourceValue =
+type SourceEntry =
   | Condition
   | { where?: Condition; label?: string; groupBy?: string | string[] }; // at least one key
 

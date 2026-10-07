@@ -1,6 +1,5 @@
 import type { PrismaProvider } from '../engineGlobals';
-import type { FieldMap, FieldMapSet } from '../fieldMap/types';
-import type { DateConfig, Row } from '../types';
+import type { CompileOptions } from '../types';
 
 export type PrismaWhere = Record<string, unknown>;
 
@@ -30,13 +29,9 @@ export type ToPrismaResult = {
   steps: PrismaStep[];
 };
 
-export type PrismaBuildOptions = {
-  map?: FieldMap | FieldMapSet;
-  mapName?: string;
-  model?: string;
-  context?: Row;
+export type ToPrismaOptions = CompileOptions & {
   datasource?: { provider?: PrismaProvider };
-} & DateConfig;
+};
 
 // Mutable state threaded through build calls to accumulate intermediate groupBy steps
 export type PrismaBuildState = {

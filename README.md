@@ -782,19 +782,19 @@ Rules:
 - `validateRule`, `assertValidRule`, `bindRule`, `listBindings`
 - `Operator`, `ArrayOperator`, `DateOperator`
 - `Condition`, `StrictCondition`, `Rule`, `AggregateRule`, `AggregateMode`, `ArrayRule`, `DateRule`, `Row`, `CheckData`
-- `CheckOptions`, `PrismaBuildOptions`, `SqlBuildOptions`, `SqlResult`, `ToPrismaResult`, `ValidationIssue`, `ValidationResult`
+- `CheckOptions`, `ToPrismaOptions`, `ToSqlOptions`, `ToSqlResult`, `ToPrismaResult`, `ValidationIssue`, `ValidationResult`
 - `engineGlobals`, `EngineGlobalsState`, `PrismaProvider`, `FuzzyConfig`
 
 Lens & bridges:
 
-- `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`, `SourceSpec`, `SourceValue`
+- `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`, `SourceSpec`, `SourceEntry`
 - `FieldMap`, `FieldMapEntry`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
 - `createLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`
 - `projectLens`, `walkLensPath`, `describeRule`, `describeRuleSources`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
-- `PathProjection`, `ProjectedVisit`, `ProjectOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceValues`, `SourceQuery`, `SourceValues`
+- `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourceValues`
 
 Two shapes come out of a lens, and they are different things:
 

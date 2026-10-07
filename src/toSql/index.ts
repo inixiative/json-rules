@@ -1,23 +1,18 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { FieldMap, FieldMapSet } from '../fieldMap/types';
-import type { Condition, DateConfig, Row } from '../types';
+import type { CompileOptions, Condition } from '../types';
 import { buildCondition } from './condition';
-import type { BuilderState, SqlResult } from './types';
+import type { BuilderState, ToSqlResult } from './types';
 
-export type { SqlResult } from './types';
+export type { ToSqlResult } from './types';
 
-export type SqlBuildOptions = {
-  /** A FieldMap, or a FieldMapSet with `mapName`. */
-  map?: FieldMap | FieldMapSet;
-  mapName?: string;
-  model?: string;
-  alias?: string; // root table alias, defaults to 't0' when map is provided
-  context?: Row;
-} & DateConfig;
+export type ToSqlOptions = CompileOptions & {
+  /** The root table alias; `t0` when a map is given. */
+  alias?: string;
+};
 
 /** A fresh compile: the root alias (`t0` with a map), parameters, and the join registry every
  *  field resolved against it shares. */
-export const builderState = (options?: SqlBuildOptions): BuilderState => {
+export const builderState = (options?: ToSqlOptions): BuilderState => {
   const map = resolveFieldMap(options?.map, options?.mapName, 'toSql');
   const hasMap = !!(map && options?.model);
   const rootAlias = options?.alias ?? (hasMap ? 't0' : undefined);
@@ -35,7 +30,7 @@ export const builderState = (options?: SqlBuildOptions): BuilderState => {
   };
 };
 
-export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResult => {
+export const toSql = (condition: Condition, options?: ToSqlOptions): ToSqlResult => {
   const state = builderState(options);
   const sql = buildCondition(condition, state);
   return { sql, params: state.params, joins: state.joins ?? [] };

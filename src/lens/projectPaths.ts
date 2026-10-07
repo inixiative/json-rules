@@ -42,7 +42,7 @@ export type SourceValues = {
   options: readonly SourceOption[];
 };
 
-export type ProjectOptions = { sourceValues?: readonly SourceValues[] };
+export type ProjectLensOptions = { sourceValues?: readonly SourceValues[] };
 
 /**
  * One visit's fields as the lens exposes them: the visible fields, a value-gated field carrying
@@ -75,7 +75,7 @@ export const projectFields = (
 
 export const projectPaths = (
   lensOrNarrowing: Lens | LensNarrowing,
-  opts: ProjectOptions = {},
+  opts: ProjectLensOptions = {},
 ): PathProjection => {
   const policy = resolvePolicy(lensOrNarrowing);
   const out: PathProjection = {};

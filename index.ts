@@ -30,8 +30,8 @@ export type {
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
+  SourceEntry,
   SourceSpec,
-  SourceValue,
 } from './src/lens';
 export {
   assertValidNarrowing,
@@ -49,10 +49,10 @@ export {
   narrowRule,
   type PathProjection,
   type ProjectedVisit,
-  type ProjectOptions,
+  type ProjectLensOptions,
   projectLens,
   type RuleDescription,
-  type RuleSourceValues,
+  type RuleSourceDescription,
   type SourcePrismaQuery,
   type SourceQuery,
   type SourceRowShape,
@@ -86,15 +86,15 @@ export {
 } from './src/scope';
 export type {
   GroupByStep,
-  PrismaBuildOptions,
   PrismaStep,
   PrismaWhere,
   StepRef,
+  ToPrismaOptions,
   ToPrismaResult,
   WhereStep,
 } from './src/toPrisma';
 export { executePrismaPlan, toPrisma } from './src/toPrisma';
-export { type SqlBuildOptions, type SqlResult, toSql } from './src/toSql';
+export { type ToSqlOptions, type ToSqlResult, toSql } from './src/toSql';
 export type * from './src/types';
 export {
   assertValidRule,

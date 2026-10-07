@@ -1,7 +1,7 @@
 import type { FieldMap } from '../fieldMap/types';
 import type { DateConfig, Row } from '../types';
 
-export type SqlResult = {
+export type ToSqlResult = {
   sql: string;
   params: unknown[];
   joins: string[];

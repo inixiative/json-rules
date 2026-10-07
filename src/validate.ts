@@ -90,9 +90,9 @@ export const validateRule = (
 
 export const assertValidRule = (
   condition: unknown,
-  options: { target?: RuleTarget } = {},
+  options: ValidateRuleOptions = {},
 ): asserts condition is Condition => {
-  throwIfInvalid(validateRule(condition, options), 'Invalid rule');
+  throwIfInvalid(validateRule(condition, options), 'validateRule');
 };
 
 const validateCondition = (

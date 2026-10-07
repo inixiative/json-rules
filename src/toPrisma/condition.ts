@@ -10,11 +10,11 @@ import { buildDateRule } from './date';
 import { buildFieldRule } from './field';
 import { buildAll, buildAny, buildIfThenElse, matchNothing } from './logical';
 import { setConditionBuilder } from './recurse';
-import type { PrismaBuildOptions, PrismaBuildState, PrismaWhere } from './types';
+import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
 
 export const buildCondition = (
   condition: Condition,
-  options?: PrismaBuildOptions,
+  options?: ToPrismaOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
   // Prisma's empty OR matches nothing — `false` compiles, same as toSql's FALSE. `{}` is

@@ -38,7 +38,7 @@ export type ModelDefaultNarrowing = {
    * model that path resolves to. The `where` composes AND-only across layers (general
    * via `mapDefaults`, path-specific via `root`/`relations`); a later layer's `label` wins.
    */
-  sources?: Record<string, SourceValue>; // fieldName → eligibility where | SourceSpec
+  sources?: Record<string, SourceEntry>; // fieldName → eligibility where | SourceSpec
 };
 
 /**
@@ -55,7 +55,7 @@ export type SourceSpec =
   | { where?: Condition; label?: string; groupBy: string | string[] };
 
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
-export type SourceValue = Condition | SourceSpec;
+export type SourceEntry = Condition | SourceSpec;
 
 /** Narrowing for a model at a specific traversal path. Adds relations to the default shape. */
 export type ModelNarrowing = ModelDefaultNarrowing & {

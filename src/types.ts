@@ -1,3 +1,4 @@
+import type { FieldMap, FieldMapSet } from './fieldMap/types.ts';
 import type { FuzzyConfig } from './fuzzy.ts';
 import type { ArrayOperator, DateOperator, Operator } from './operator.ts';
 import type { FieldKind } from './operatorCatalog.ts';
@@ -353,6 +354,15 @@ export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
 
 /** A row as a rule reads it: a record of fields. */
 export type Row = Record<string, unknown>;
+
+/** What both compilers take: the schema (a FieldMap, or a FieldMapSet with `mapName`), the
+ *  model the rule reads, the context `$` refs read, and the clock. */
+export type CompileOptions = {
+  map?: FieldMap | FieldMapSet;
+  mapName?: string;
+  model?: string;
+  context?: Row;
+} & DateConfig;
 
 /** What check() evaluates: one row, or a root array of them. */
 export type CheckData = Row | unknown[];

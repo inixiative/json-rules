@@ -5,7 +5,7 @@ import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
-import { type ProjectOptions, projectFields } from './projectPaths.ts';
+import { type ProjectLensOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -41,7 +41,7 @@ const unionFieldInto = (
 // Leak-safe total exposed surface of a narrowed lens, as a Lens. See docs/LENS.md.
 export const projectModels = (
   lensOrNarrowing: Lens | LensNarrowing,
-  opts: ProjectOptions = {},
+  opts: ProjectLensOptions = {},
 ): Lens => {
   const policy: Policy = resolvePolicy(lensOrNarrowing);
   const { lens } = policy;

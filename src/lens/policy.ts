@@ -12,8 +12,8 @@ import type {
   LensNarrowing,
   ModelDefaultNarrowing,
   ModelNarrowing,
+  SourceEntry,
   SourceSpec,
-  SourceValue,
 } from './types.ts';
 
 export type VisitEffect = {
@@ -38,14 +38,14 @@ export const normalizeGroupBy = (g: string | string[] | undefined): string[] | u
   g === undefined ? undefined : Array.isArray(g) ? g : [g];
 
 /** A `sources` entry is a `SourceSpec` when it carries `where`/`label`/`groupBy`; else it's a bare `Condition`. */
-export const isSourceSpec = (v: SourceValue): v is SourceSpec =>
+export const isSourceSpec = (v: SourceEntry): v is SourceSpec =>
   typeof v === 'object' &&
   v !== null &&
   !Array.isArray(v) &&
   ('where' in v || 'label' in v || 'groupBy' in v);
 
 /** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
-export const normalizeSource = (v: SourceValue): SourceSpec => {
+export const normalizeSource = (v: SourceEntry): SourceSpec => {
   if (isSourceSpec(v)) return v;
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
     throw new Error('sources: {} is not a Condition — use `true` for an unconstrained source');

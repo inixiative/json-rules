@@ -4,7 +4,7 @@ export type { CreateLensInput } from './createLens';
 export { createLens } from './createLens';
 export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
-export type { RuleSourceValues } from './describeRuleSources';
+export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
 export type { SourceRowShape } from './materializeSourceQuery';
 export { materializeSourceQuery } from './materializeSourceQuery';
@@ -12,7 +12,12 @@ export { materializeSources } from './materializeSources';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';
 export { narrowRule } from './narrowRule';
 export { projectLens } from './projectLens';
-export type { PathProjection, ProjectedVisit, ProjectOptions, SourceValues } from './projectPaths';
+export type {
+  PathProjection,
+  ProjectedVisit,
+  ProjectLensOptions,
+  SourceValues,
+} from './projectPaths';
 export type {
   SourcePrismaQuery,
   SourceQuery,
@@ -27,8 +32,8 @@ export type {
   ModelDefaultNarrowing,
   ModelNarrowing,
   NarrowingDefaults,
+  SourceEntry,
   SourceSpec,
-  SourceValue,
 } from './types';
 export { validateRuleInLens } from './validateRuleInLens';
 export type { LensPathHop, LensPathResolution } from './walkLensPath';

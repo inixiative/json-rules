@@ -134,7 +134,7 @@ describe('validateRule', () => {
         dateOperator: DateOperator.dayIn,
         value: 'monday',
       }),
-    ).toThrow('Invalid rule');
+    ).toThrow('validateRule');
   });
 });
 

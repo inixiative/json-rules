@@ -7,11 +7,11 @@ import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
-import type { PrismaBuildOptions } from './types';
+import type { ToPrismaOptions } from './types';
 
 /** A path on the Prisma rail: a context read. Prisma WHERE has no column-to-column comparison
  *  or arithmetic, so a row (`$.`) ref has no form here. */
-const readPathValue = (ref: string, options?: PrismaBuildOptions): unknown => {
+const readPathValue = (ref: string, options?: ToPrismaOptions): unknown => {
   const scoped = parseScopeRef(ref);
   if (scoped) {
     if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toPrisma'));
@@ -26,7 +26,7 @@ const readPathValue = (ref: string, options?: PrismaBuildOptions): unknown => {
 /** A value source on the Prisma rail: its value, a context read, or an unresolved bind. */
 export const readSource = (
   source: ValueSourceFields<unknown>,
-  options?: PrismaBuildOptions,
+  options?: ToPrismaOptions,
 ): unknown =>
   matchSource<unknown>(source, {
     value: (value) => value,
@@ -35,11 +35,11 @@ export const readSource = (
   });
 
 export const prismaRead =
-  (options?: PrismaBuildOptions): ReadSource =>
+  (options?: ToPrismaOptions): ReadSource =>
   (source) =>
     readSource(source, options);
 
-export const dateConfigOf = (options?: PrismaBuildOptions): ResolvedDateConfig =>
+export const dateConfigOf = (options?: ToPrismaOptions): ResolvedDateConfig =>
   resolveDateConfig(
     { now: options?.now, timeZone: options?.timeZone, weekStart: options?.weekStart },
     prismaRead(options),
@@ -48,7 +48,7 @@ export const dateConfigOf = (options?: PrismaBuildOptions): ResolvedDateConfig =
 /** A leaf with its value source and offset read as the Prisma rail reads them, for negation;
  *  null when one reads nothing (the leaf is then false). */
 export const settleLeaf =
-  (options?: PrismaBuildOptions): Settle =>
+  (options?: ToPrismaOptions): Settle =>
   (leaf) => {
     const comparison = typeof leaf.operator === 'string' || typeof leaf.dateOperator === 'string';
     const sourced =

@@ -148,6 +148,8 @@ describe('a pattern matches on Postgres what it matches on RE2', () => {
         '[[:alpha:]-z]',
         '[%-[:digit:]]',
         '^a{01}b$',
+        '[a-c-e]',
+        '^[^a-z-0]+$',
       ])('a - beside a class, a zero-led count: %s', (pattern) => both(field, pattern));
     });
 
@@ -155,6 +157,7 @@ describe('a pattern matches on Postgres what it matches on RE2', () => {
     ['a Unicode class', '\\pL'],
     ['a flag group', '(?i)foo'],
     ['a repeat past 255', 'a{300}'],
+    ['a quantified anchor', '^*B'],
   ])('%s is refused on SQL, matched by check()', async (_, value) => {
     const result = await rails.run({ field: 'name', operator: 'matches', value } as Condition);
     expect(result.check).not.toEqual(expect.stringContaining('throws'));

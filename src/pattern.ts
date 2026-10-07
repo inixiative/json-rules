@@ -67,6 +67,10 @@ export const postgresSource = (source: string): string => {
   };
   let out = '';
   let i = 0;
+  // RE2 takes a quantifier on an anchor (a no-op); Postgres rejects it.
+  const refuseQuantifiedAnchor = (): void => {
+    if (/^([*+?]|\{\d)/.test(source.slice(i))) refuse('a quantified anchor');
+  };
   // One escape at `i` (the backslash), inside a class or not; returns the translation.
   const translateEscape = (inClass: boolean): string => {
     const c = source[i + 1];
@@ -98,8 +102,10 @@ export const postgresSource = (source: string): string => {
         ? `(?:(?<=${w})(?!${w})|(?<!${w})(?=${w}))`
         : `(?:(?<=${w})(?=${w})|(?<!${w})(?!${w}))`;
     }
-    if (!inClass && c === 'z') return '\\Z';
-    if (!inClass && c === 'A') return '\\A';
+    if (!inClass && (c === 'z' || c === 'A')) {
+      refuseQuantifiedAnchor();
+      return c === 'z' ? '\\Z' : '\\A';
+    }
     if (c === 'Q') {
       const end = source.indexOf('\\E', i);
       const quoted = source.slice(i, end === -1 ? undefined : end);
@@ -150,9 +156,9 @@ export const postgresSource = (source: string): string => {
         out += '\\]';
         i++;
       }
-      // A class expands to ranges, so a - after one is a literal, as RE2 reads it; after a
-      // range's -, the next character ends the range, even a [.
-      let afterClass = false;
+      // A - after a class or a finished range is a literal, as RE2 reads it; after a range's -,
+      // the next character ends the range, even a [.
+      let literalDash = false;
       let rangeEnd = false;
       let members = 0;
       while (i < source.length && source[i] !== ']') {
@@ -169,15 +175,16 @@ export const postgresSource = (source: string): string => {
           i += posix[0].length;
         } else if (source[i] === '\\') {
           out += translateEscape(true);
-        } else if (dash && afterClass) {
+        } else if (dash && literalDash) {
           out += '\\-';
           i++;
         } else {
           out += source[i] === '[' ? '\\[' : source[i];
           i++;
         }
-        rangeEnd = dash && !afterClass;
-        afterClass = expands;
+        const closedRange: boolean = rangeEnd;
+        rangeEnd = dash && !literalDash;
+        literalDash = expands || closedRange;
         members++;
       }
       out += ']';
@@ -185,6 +192,7 @@ export const postgresSource = (source: string): string => {
     } else {
       out += c;
       i++;
+      if (c === '^' || c === '$') refuseQuantifiedAnchor();
     }
   }
   return out;

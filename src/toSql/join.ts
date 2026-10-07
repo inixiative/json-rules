@@ -1,3 +1,4 @@
+import { own } from '../own';
 import type { FieldMapEntry } from '../toPrisma/types';
 import { escapeIdentifier } from './escape';
 import { quoteField, quoteQualifiedField } from './quoting';
@@ -25,7 +26,7 @@ export const resolveFieldSql = (field: string, state: BuilderState): string => {
     const modelEntry = state.map.models[currentModel];
     if (!modelEntry) return quoteField(field); // fallback
 
-    const fieldEntry = modelEntry.fields[parts[i]];
+    const fieldEntry = own(modelEntry.fields, parts[i]);
     if (!fieldEntry) return quoteField(field); // fallback
 
     if (fieldEntry.kind === 'object') {

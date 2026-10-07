@@ -1,9 +1,19 @@
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
+import { bigIntToNumber, orderPair } from './number';
+import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
-import type { FieldKind } from './operatorCatalog';
-import { readField, readPath, type Scopes } from './scope';
+import {
+  type FieldKind,
+  NEGATED_COMPARISON_OPERATORS,
+  NO_VALUE_OPERATORS,
+  NUMERIC_KINDS,
+  ORDERED_OPERATORS,
+  RANGE_OPERATORS,
+} from './operatorCatalog';
+import { readField, type Scopes } from './scope';
 import type { Rule, RuleValue } from './types';
+import { readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
 // SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
@@ -16,23 +26,24 @@ const isEmptyValue = (value: unknown): boolean =>
 // (the is-null sentinel is valid on every field), arrays coerce element-wise, unknown
 // kinds pass through, and an uncoercible value returns unchanged so the comparison
 // fails with the rule's normal error instead of throwing on one dirty row.
-const NUMERIC_COERCE_KINDS: readonly FieldKind[] = ['Int', 'BigInt', 'Float', 'Decimal'];
+/**
+ * Nothing to compare against — no row matches on any rail, as SQL's NULL comparison and
+ * arithmetic never do: an ordered comparison or a range that reads nothing (or a range missing
+ * an end), or an offset that moved nothing. `equals` / `notEquals` against a plain null stay the
+ * is-null sentinel.
+ */
+export const hasNoOperand = (rule: Pick<Rule, 'operator' | 'offset'>, value: unknown): boolean => {
+  const missing = value === null || value === undefined;
+  if (missing && (rule.offset !== undefined || ORDERED_OPERATORS.includes(rule.operator)))
+    return true;
+  if (!RANGE_OPERATORS.includes(rule.operator)) return false;
+  return (
+    missing || (Array.isArray(value) && value.some((end) => end === null || end === undefined))
+  );
+};
 
 // A datetime string with a time part but no explicit zone (no trailing Z / ±HH:MM).
 const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
-
-// BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
-// number on every side of a comparison, so 5n matches 5. Past ±2^53 a number cannot hold it
-// exactly and every comparison would be silently wrong, so that throws instead.
-const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
-
-export const bigIntToNumber = (value: bigint): number => {
-  if (value > MAX_SAFE || value < -MAX_SAFE)
-    throw new RangeError(
-      `BigInt ${value} is outside the safe integer range (±2^53); json-rules compares BigInt as Int.`,
-    );
-  return Number(value);
-};
 
 const fromBigInt = (value: unknown): unknown => {
   if (typeof value === 'bigint') return bigIntToNumber(value);
@@ -44,7 +55,7 @@ const fromBigInt = (value: unknown): unknown => {
 const coerceScalar = (value: unknown, kind: FieldKind): unknown => {
   if (value === null || value === undefined) return value;
 
-  if (NUMERIC_COERCE_KINDS.includes(kind)) {
+  if (NUMERIC_KINDS.includes(kind)) {
     if (typeof value !== 'string' || value.trim() === '') return value;
     // A BigInt digit string past the safe range would round: refuse it, as for a bigint.
     if (kind === 'BigInt' && /^-?\d+$/.test(value.trim()))
@@ -99,19 +110,25 @@ export const checkField = (
   );
 
   // Operators that don't need a value
-  const noValueOps: Operator[] = [
-    Operator.isEmpty,
-    Operator.notEmpty,
-    Operator.exists,
-    Operator.notExists,
-  ];
-  const needsValue = !noValueOps.includes(condition.operator);
+  const needsValue = !NO_VALUE_OPERATORS.includes(condition.operator);
   const value = needsValue
-    ? applyCoercion(
-        fromBigInt(getValue(condition, scopes, context, bindings)),
-        condition.coerceType,
+    ? shift(
+        applyCoercion(
+          fromBigInt(readValueSource(condition, scopes, context, bindings)),
+          condition.coerceType,
+        ),
+        condition,
+        scopes,
+        context,
+        bindings,
       )
     : undefined;
+
+  if (needsValue && hasNoOperand(condition, value)) {
+    if (NEGATED_COMPARISON_OPERATORS.includes(condition.operator) && fieldValue == null)
+      return true;
+    return condition.error || `${condition.field} has no comparison value`;
+  }
 
   const getError = (op: string) =>
     condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
@@ -211,26 +228,16 @@ export const checkField = (
   }
 };
 
-const getValue = (
+const shift = (
+  value: unknown,
   condition: Rule,
   scopes: Scopes,
   context: unknown,
   bindings?: Record<string, RuleValue>,
 ): unknown => {
-  if (condition.value !== undefined) return condition.value;
-  if (condition.bind !== undefined) {
-    // Key presence is the contract: an unsupplied binding is a caller bug (a
-    // forgotten scope must never silently run). A supplied-but-nullish binding is
-    // a value — normalize undefined → null (a legit fail-closed filter).
-    if (!bindings || !Object.hasOwn(bindings, condition.bind)) {
-      if (condition.bindOptional === true) return null;
-      throw new Error(`Missing binding for "${condition.bind}"`);
-    }
-    const bound = bindings[condition.bind];
-    return bound === undefined ? null : bound;
-  }
-  if (condition.path) return readPath(condition.path, scopes, context);
-  throw new Error('No value or path specified');
+  if (condition.offset === undefined) return value;
+  const amount = offsetAmount(readValueSource(condition.offset, scopes, context, bindings));
+  return amount === null ? null : addOffset(value, amount);
 };
 
 type OrderedValue = string | number | Date;
@@ -271,9 +278,7 @@ const normalizeRange = (value: unknown): [string | number, string | number] | nu
   const [rawMin, rawMax] = value;
   if (!isOrderedValue(rawMin) || !isOrderedValue(rawMax)) return null;
 
-  const min = toOrderedPrimitive(rawMin);
-  const max = toOrderedPrimitive(rawMax);
-  return min <= max ? [min, max] : [max, min];
+  return orderPair([toOrderedPrimitive(rawMin), toOrderedPrimitive(rawMax)]);
 };
 
 const containsValue = (container: unknown, search: unknown): boolean => {

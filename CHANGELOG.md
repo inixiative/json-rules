@@ -1,5 +1,90 @@
 # Changelog
 
+## Unreleased — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
+
+**First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident
+lifecycle is a `@inixiative/transitions` map, and its auto-resolve guard reads its window off
+the incident's own rule — self-contained, no caller-supplied bind:
+
+```ts
+{ field: 'lastBreachedAt', dateOperator: 'before',
+  value: { ago: { seconds: { path: '$.platformAlertRule.autoResolveAfterSeconds' } } } }
+```
+
+Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
+
+- **One type, one reader.** `ValueSourceOf<T>` — `{ value } | { path } | { bind }` (with
+  `bindOptional`) — is the shape of every slot that reads a value: a rule's comparison value,
+  an `offset`, each unit amount, the evaluation's `timeZone`. The loose rule types share
+  `ValueSourceFields<T>`; `PathRef` and the bind-only `TimeZoneConfig` are gone. Each rail reads
+  it in one place (`check()`: `readValueSource`; the compilers' bind is a compile error unless
+  optional), and a leaf's value-source slots are listed once, so `resolveBindings`,
+  `bindingNames` and `requiredBindings` reach every one. Date and aggregate rules
+  with a `bind` threw on `check()` while they compiled after `resolveBindings`; they now
+  resolve with the field rule's key-presence contract (`Missing binding for "<name>"` unless
+  `bindOptional`; a supplied `undefined` is `null`). A bound date value can be a date, a date
+  expression (resolved against `now`) or a `[from, to]` pair.
+- **`offset`** moves the comparison value, and is a value source of its own with the
+  comparison value's contract: `{ value }`, `{ path }` or `{ bind }` (with `bindOptional`). A
+  field rule's offset reads a number (a golf handicap: `grossScore <= $.par + $.handicap`); a
+  date rule's reads `{ ago }` / `{ ahead }`, anchored on the comparison value. It shifts the
+  comparison operators and both ends of `between` / `notBetween`, on any comparison value — a
+  literal plus an offset names what the grammar can't alone (`start of this month + 4 days`).
+  `resolveBindings`, `bindingNames` and `requiredBindings` cover offset binds.
+- **Unit amounts are value sources.** Every `RelativeUnits` amount (in a `value` expression or a
+  date offset) is a number or a value source — `{ path }` (`$.` from the row, bare from
+  context), `{ bind }` or `{ value }`.
+- **`timeZone` is a value source.** `string | { value } | { path } | { bind }`: read from context
+  or bindings, once per evaluation (a `$.` path throws), on every rail. The compilers used to
+  ignore a `{ bind }` zone and compile in UTC.
+- **Rails.** `toSql` compiles a `$.` amount to `col ± make_interval(…)` / `col + n` and
+  resolves a context amount; `toPrisma` resolves a context amount and throws on a `$.` one.
+  Both compilers now refuse an unresolved required date bind, as they already did for fields.
+- **Validation and lens.** `validateRule` accepts `bind` as a value source (it rejected every
+  bind-only rule with `missing_value_source`), and gates offsets (`unsupported_offset_operator`,
+  `invalid_offset`) and amount refs per target like `path`; a date offset read per row is
+  check-only.
+  `checkRuleAgainstLens` gates offset and magnitude refs through the lens, requires them to
+  read a number, and requires an offset to fit the field's kind; `describeRule` and
+  `applyLens` treat them as `path` refs.
+
+**Behavior changes.**
+
+- A date `path` that reads null (or nothing) fails closed. It used to compare against the
+  current time (`parseDateValue(undefined)` is `dayjs()`), so `check()` matched rows SQL
+  rejected. A null bind, offset or magnitude fails closed too; a negation keeps null fields.
+- Relative units apply in Postgres interval order — months (years, quarters, months), then days
+  (weeks, days), then time — instead of key order, so `check()` and `toSql` agree at month ends.
+- A date `path` that reads a date expression now evaluates it instead of ignoring it.
+- Relative shifts (`{ ago }` / `{ ahead }`, offsets) move on the wall clock of the evaluation's
+  `timeZone` — UTC when none is set, never the host's zone — as Postgres moves a timestamp by an
+  interval `AT TIME ZONE`: a day is 23 hours on a spring-forward day.
+- Calendar units (years, quarters, months, weeks, days) are whole numbers: a fractional literal
+  is an `invalid_relative_magnitude` and throws at evaluation (dayjs rounded it before).
+- A `timeZone: { bind }` with no binding throws `Missing binding`, as every bind does; it fell
+  back to UTC before. Mark it `bindOptional` for the UTC fallback. The compilers throw on an
+  unresolved zone bind instead of silently using UTC.
+- `validateRule` validates every value source alike: `ambiguous_value_source`,
+  `missing_value_source`, and `invalid_value_source` (a non-string `path`/`bind`, or
+  `bindOptional` without `bind`) — for an offset too, which reported `invalid_offset` for these.
+- The missing-source error reads `No value, path or bind specified`.
+- A `$.` value path (comparison value, offset or amount) reads the row the way a `field` does on
+  `toSql`: relation hops join and a Json tail is a JSON path. It compiled to one quoted column
+  (`"t0"."rule.windowSeconds"`) before.
+- Nothing to compare against matches nothing on every rail, and a negation keeps null fields: an
+  ordered comparison or a range that reads nothing, or a range missing an end. `check()` threw on
+  a field range with a null end; `toPrisma` emitted `{ lt: undefined }` (every row) or
+  `{ lt: null }` (rejected).
+- A context path that reads nothing reads `null`, the is-null sentinel for `equals` /
+  `notEquals`, as a supplied-but-undefined binding already did.
+- Aggregate rules read `bind` on both compilers; `toPrisma` also reads a context `path`.
+- `toSql` lowercases only string comparisons under `caseInsensitive` (`LOWER(int)` failed).
+- Operator, kind and relative-unit sets are defined once in `operatorCatalog.ts`.
+- The SQL rail treats a DateTime column as `timestamptz`. A plain `timestamp` column (Prisma's
+  default) is read as UTC through the session zone, as Prisma writes it. `dayIn` / `dayNotIn`
+  assumed `timestamp` and were off on `timestamptz`; a shift read per row assumed `timestamptz`
+  and was off across DST on `timestamp`.
+
 ## 2.26.0 — `checkRuleAgainstLens` gates operator, value and array-operator fit
 
 **Stricter validation.** A rule that passed the lens gate before can fail it now: one that

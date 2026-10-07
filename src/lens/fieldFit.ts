@@ -4,6 +4,8 @@ import {
   DATE_OPERATOR_CATALOG,
   FIELD_OPERATOR_CATALOG,
   FieldKind,
+  NUMERIC_KINDS,
+  SINGLE_VALUE_SHAPES,
 } from '../operatorCatalog';
 import { own } from '../own';
 import { entryKind, instantMs } from '../toPrisma/mapWalk';
@@ -61,7 +63,6 @@ const show = (v: unknown): string =>
       : String(v);
 
 // Operators that compare one value: a list literal is a value no rail can compare.
-const SINGLE_VALUE_SHAPES: ReadonlySet<string> = new Set(['scalar', 'ordered', 'string']);
 
 /**
  * Operator ⇄ kind, then literal ⇄ kind, for a field or date leaf. The kind is the rule's
@@ -96,12 +97,20 @@ export const leafFitViolations = (
     ];
   }
 
+  // An offset is arithmetic on the field's kind: a number on a numeric field, a rolling shift
+  // on a DateTime.
+  if (cond.offset !== undefined) {
+    const shiftable =
+      'dateOperator' in cond ? kind === FieldKind.DateTime : NUMERIC_KINDS.includes(kind);
+    if (!shiftable) return [{ path: cond.field, reason: `an offset does not apply to ${label}` }];
+  }
+
   // Date-rule values are validateRule's (grammar-level, kind-independent); a regex pattern is
   // not a column value.
   if ('dateOperator' in cond || entry.valueShape === 'none' || entry.valueShape === 'pattern')
     return [];
 
-  if (SINGLE_VALUE_SHAPES.has(entry.valueShape) && Array.isArray(cond.value)) {
+  if (SINGLE_VALUE_SHAPES.includes(entry.valueShape) && Array.isArray(cond.value)) {
     return [
       {
         path: cond.field,

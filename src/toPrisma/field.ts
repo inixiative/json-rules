@@ -1,16 +1,25 @@
-import { get } from 'lodash-es';
 import {
   engineGlobals,
   type PrismaProvider,
   resolveCaseInsensitive,
   supportsQueryMode,
 } from '../engineGlobals';
+import { hasNoOperand } from '../field';
+import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
+import {
+  NEGATED_COMPARISON_OPERATORS,
+  NEGATED_RANGE_OPERATORS,
+  NEGATED_SINGLE_VALUE_OPERATORS,
+  NO_VALUE_OPERATORS,
+} from '../operatorCatalog';
 import type { Rule } from '../types';
+import { matchNothing } from './logical';
 import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
+import { offsetNumber } from './offset';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
+import { readSource } from './valueSource';
 
 /**
  * Whether the emptiness operators may compare this column against `''`. Only a
@@ -72,8 +81,6 @@ export const absentArms = (rule: Pick<Rule, 'field'>, options?: BuildOptions): P
 const orWith = (head: PrismaWhere, arms: PrismaWhere[]): PrismaWhere =>
   arms.length ? { OR: [head, ...arms] } : head;
 
-const NEGATED: readonly Operator[] = [Operator.notEquals, Operator.notContains];
-
 /**
  * The complement of a BOUNDED range, which Prisma can only express at the WHERE level.
  *
@@ -85,15 +92,8 @@ const NEGATED: readonly Operator[] = [Operator.notEquals, Operator.notContains];
  * (`NOT BETWEEN`). Same WHERE-level hoist the emptiness operators need above, for the same class
  * of reason.
  *
- * These carry their own `equals: null` arm below, so they are deliberately not in `NEGATED`.
+ * These carry their own `equals: null` arm below, so they are deliberately not in NEGATED_SINGLE_VALUE_OPERATORS.
  */
-const RANGE_COMPLEMENT: readonly Operator[] = [Operator.notBetween];
-
-const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
-  if (!Array.isArray(list)) return { values: [], hasNull: false };
-  const values = list.filter((v) => v !== null);
-  return { values, hasNull: values.length !== list.length };
-};
 
 export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
@@ -134,53 +134,41 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return orWith(notInList, arms);
   }
 
-  if (RANGE_COMPLEMENT.includes(rule.operator)) {
+  // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the
+  // absent rows only.
+  if (
+    !NO_VALUE_OPERATORS.includes(rule.operator) &&
+    hasNoOperand(rule, resolveRuleValue(rule, options))
+  ) {
+    if (!NEGATED_COMPARISON_OPERATORS.includes(rule.operator) || !arms.length)
+      return matchNothing();
+    return arms.length === 1 ? arms[0] : { OR: arms };
+  }
+
+  if (NEGATED_RANGE_OPERATORS.includes(rule.operator)) {
     // The leaf builder returns the POSITIVE range for these — the negation is this wrapper.
     return orWith({ NOT: at(buildLeafFilter(rule, options)) }, arms);
   }
 
   const filter = at(buildLeafFilter(rule, options));
-  if (NEGATED.includes(rule.operator) && resolveRuleValue(rule, options) !== null) {
+  if (
+    NEGATED_SINGLE_VALUE_OPERATORS.includes(rule.operator) &&
+    resolveRuleValue(rule, options) !== null
+  ) {
     return orWith(filter, arms);
   }
   return filter;
 };
 
-/**
- * Resolve the comparison value for a rule.
- * - rule.value → use literal value
- * - rule.path starting with '$.' → throw: Prisma WHERE has no column-to-column comparison
- * - rule.path (context ref) → look up from options.context via lodash get
- */
-const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown =>
-  compileFieldLiteral(rule, resolveRawValue(rule, options), fieldWalk(rule, options), 'toPrisma');
-
-const resolveRawValue = (rule: Rule, options?: BuildOptions): unknown => {
-  if (rule.value !== undefined) return rule.value;
-  if (rule.bind !== undefined) {
-    if (rule.bindOptional === true) return null;
-    throw new Error(
-      `Unresolved binding '${rule.bind}' for field '${rule.field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
-    );
-  }
-  if (rule.path) {
-    const scoped = parseScopeRef(rule.path);
-    if (scoped) {
-      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toPrisma'));
-      throw new Error(
-        `Prisma WHERE has no column-to-column comparison for path '${rule.path}'. ` +
-          `Use prisma.$queryRaw for field-to-field filtering.`,
-      );
-    }
-    if (!options?.context) {
-      throw new Error(
-        `options.context is required to resolve path '${rule.path}'. ` +
-          `Pass context when calling toPrisma().`,
-      );
-    }
-    return get(options.context, rule.path);
-  }
-  throw new Error(`Rule for field '${rule.field}' has neither value nor path set`);
+/** The comparison value: the rule's value source, coerced to the field, moved by its offset. */
+const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
+  const value = compileFieldLiteral(
+    rule,
+    readSource(rule, options),
+    fieldWalk(rule, options),
+    'toPrisma',
+  );
+  return rule.offset === undefined ? value : offsetNumber(value, rule.offset, options);
 };
 
 const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
@@ -245,23 +233,15 @@ const buildLeafFilter = (rule: Rule, options?: BuildOptions): unknown => {
         `Operator 'notMatches' has no Prisma equivalent. Use prisma.$queryRaw for regex filtering.`,
       );
 
-    case Operator.between: {
-      const v = val();
-      if (!Array.isArray(v) || v.length !== 2) {
-        throw new Error('between operator requires an array of two values');
-      }
-      const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
-      return { gte: min, lte: max };
-    }
-
-    // The POSITIVE range: `buildFieldRule` negates the whole clause (see RANGE_COMPLEMENT),
-    // because a field filter cannot carry the negation of a two-sided range.
+    // The POSITIVE range for both: `buildFieldRule` negates the whole clause for notBetween
+    // (see NEGATED_RANGE_OPERATORS), because a field filter cannot carry a two-sided negation.
+    case Operator.between:
     case Operator.notBetween: {
       const v = val();
       if (!Array.isArray(v) || v.length !== 2) {
-        throw new Error('notBetween operator requires an array of two values');
+        throw new Error(`${rule.operator} operator requires an array of two values`);
       }
-      const [min, max] = v[0] <= v[1] ? v : [v[1], v[0]];
+      const [min, max] = orderPair(v);
       return { gte: min, lte: max };
     }
 

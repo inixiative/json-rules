@@ -3,37 +3,28 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
+import { resolveExpr, resolveUnits } from './amount';
 import {
   isDateExpr,
+  type ResolvedDateConfig,
   resolveDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
+  shiftByUnits,
+  zoneOf,
 } from './dateExpr';
+import { orderPair } from './number';
+import { offsetShift } from './offset';
 import { DateOperator } from './operator';
-import { readField, readPath, type Scopes } from './scope';
-import type { DateConfig, DateInputValue, DateRule, RuleValue } from './types';
+import { NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
+import { parseScopeRef, readField, type Scopes } from './scope';
+import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
+import { type ReadSource, readValueSource, rowRef } from './valueSource';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
-
-const NEGATED_DATE_OPERATORS: readonly DateOperator[] = [
-  DateOperator.notBefore,
-  DateOperator.notAfter,
-  DateOperator.notWithin,
-  DateOperator.notBetween,
-  DateOperator.dayNotIn,
-];
-
-// `within` and its complement take a RANGE expression (period or rolling window), never a
-// point or a literal pair — the one date shape the compilers resolve to two bounds.
-export const RANGE_DATE_OPERATORS: readonly DateOperator[] = [
-  DateOperator.within,
-  DateOperator.notWithin,
-];
-export const isRangeOperator = (operator: string): boolean =>
-  (RANGE_DATE_OPERATORS as readonly string[]).includes(operator);
 
 export const checkDate = (
   condition: DateRule,
@@ -44,22 +35,22 @@ export const checkDate = (
 ): boolean | string => {
   const fieldValue = readField(condition.field, scopes);
 
+  // Read the zone ONCE. Left unset when the caller set none, so expression `now` keeps its
+  // prior behavior; anchoring and shifts default to UTC.
+  const exprConfig = resolveDateConfig(config, (source) =>
+    readValueSource(source, scopes, context, bindings),
+  );
+  const tz = zoneOf(exprConfig);
+
   // Null: non-match for positive operators, match for negated ones (2.19.0 negation
   // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
   // real instant and compares; '' falls to the validity error below.
   if (fieldValue == null) {
-    if (NEGATED_DATE_OPERATORS.includes(condition.dateOperator)) return true;
+    if (NEGATED_OPERATORS.includes(condition.dateOperator)) return true;
     return condition.error || `${condition.field} has no value`;
   }
   if (!isDateInputValue(fieldValue))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
-
-  // Resolve the anchoring zone ONCE (bind → literal → UTC) and normalize the config the
-  // date-expression layer sees: honor a resolved zone when the caller set one, but leave
-  // it unset otherwise so expression `now` resolution keeps its prior behavior.
-  const tz = resolveTimeZone(config, bindings);
-  const exprConfig: DateConfig =
-    config.timeZone !== undefined ? { ...config, timeZone: tz } : config;
 
   // A naive field string is anchored in the resolved zone (default UTC); an absolute
   // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
@@ -71,7 +62,10 @@ export const checkDate = (
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
-  const dates = parseCompareDates(condition, scopes, context, exprConfig, tz);
+  const dates = parseCompareDates(condition, scopes, context, exprConfig, tz, bindings);
+  // Nothing to compare against — a null path, bind or magnitude: no operator matches, as SQL's
+  // comparison with NULL never does. A null field was already decided above.
+  if (dates === null) return condition.error || `${condition.field} has no comparison value`;
   const compareDate = dates[0];
   const endDate = dates[1];
 
@@ -165,94 +159,83 @@ const parseCompareDates = (
   condition: DateRule,
   scopes: Scopes,
   context: unknown,
-  config: DateConfig,
+  config: ResolvedDateConfig,
   tz: string,
-): [dayjs.Dayjs, dayjs.Dayjs | undefined] => {
-  if (isRangeOperator(condition.dateOperator)) {
-    if (!isDateExpr(condition.value))
-      throw new Error(`${condition.dateOperator} operator requires a range date expression`);
-    return resolveDateExprRange(condition.value, config);
+  bindings?: Record<string, RuleValue>,
+): [dayjs.Dayjs, dayjs.Dayjs | undefined] | null => {
+  const operator = condition.dateOperator;
+  if (operator === DateOperator.dayIn || operator === DateOperator.dayNotIn)
+    return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+
+  const read: ReadSource = (source) => readValueSource(source, scopes, context, bindings);
+  const raw = readValueSource(condition, scopes, context, bindings);
+  if (raw === null || raw === undefined) return null;
+  const move = condition.offset === undefined ? undefined : offsetShift(read(condition.offset));
+  if (move === null) return null;
+  const shift = (point: dayjs.Dayjs): dayjs.Dayjs | null => {
+    if (move === undefined) return point;
+    const units = resolveUnits(move[0], read);
+    return units && shiftByUnits(point, units, move[1], tz);
+  };
+
+  if (WINDOW_OPERATORS.includes(operator)) {
+    if (!isDateExpr(raw)) throw new Error(`${operator} operator requires a range date expression`);
+    const expr = resolveExpr(raw, read);
+    return expr && resolveDateExprRange(expr, config);
   }
 
-  const requiresTwoDates: DateOperator[] = [DateOperator.between, DateOperator.notBetween];
-
-  if (requiresTwoDates.includes(condition.dateOperator)) {
-    // `path` resolves here exactly as the one-date branch resolves it below — a rule
-    // validateRule accepts and toSql executes must not throw on the per-row rail.
-    let raw: unknown = condition.value;
-    if (raw === undefined && condition.path) raw = readPath(condition.path, scopes, context);
-    if (!Array.isArray(raw) || raw.length !== 2)
-      throw new Error(`${condition.dateOperator} operator requires an array of two dates`);
-    const [rawDate1, rawDate2] = raw as [unknown, unknown];
-    const date1 = isDateExpr(rawDate1)
-      ? resolveDateExpr(rawDate1, config)
-      : parseDateValue(rawDate1 as DateInputValue, tz);
-    const date2 = isDateExpr(rawDate2)
-      ? resolveDateExpr(rawDate2, config)
-      : parseDateValue(rawDate2 as DateInputValue, tz);
-    if (!date1.isValid()) throw new Error(`Invalid start date: ${String(rawDate1)}`);
-    if (!date2.isValid()) throw new Error(`Invalid end date: ${String(rawDate2)}`);
-    // Auto-sort: ensure startDate <= endDate
-    const [startDate, endDate] =
-      date1.isBefore(date2) || date1.isSame(date2) ? [date1, date2] : [date2, date1];
-    return [startDate, endDate];
-  }
-
-  const requiresOneDate: DateOperator[] = [
-    DateOperator.before,
-    DateOperator.after,
-    DateOperator.onOrBefore,
-    DateOperator.onOrAfter,
-    DateOperator.notBefore,
-    DateOperator.notAfter,
-  ];
-
-  if (requiresOneDate.includes(condition.dateOperator)) {
-    let value: DateInputValue | undefined;
-    if (condition.value !== undefined) {
-      if (isDateExpr(condition.value)) {
-        // Bare period + before/after ⇒ implied edge (before→start, after→end); the one
-        // anchoring rule all three rails share.
-        return [
-          resolvePointForOperator(condition.value, condition.dateOperator, config),
-          undefined,
-        ];
-      }
-      if (Array.isArray(condition.value)) {
-        throw new Error(`${condition.dateOperator} operator requires a single date value`);
-      }
-      value = condition.value as DateInputValue;
-    } else if (condition.path) {
-      const pathValue = readPath(condition.path, scopes, context);
-      value = isDateInputValue(pathValue) ? pathValue : undefined;
-    } else {
-      throw new Error('No value or path specified for date comparison');
+  const toPoint = (value: unknown, label: string): dayjs.Dayjs | null => {
+    if (value === null || value === undefined) return null;
+    if (isDateExpr(value)) {
+      const expr = resolveExpr(value, read);
+      return expr && resolveDateExpr(expr, config);
     }
-    const date = parseDateValue(value, tz);
-    if (!date.isValid()) throw new Error(`Invalid comparison date: ${value}`);
-    return [date, undefined];
+    const date = parseDateValue(value as DateInputValue, tz);
+    if (!date.isValid()) throw new Error(`Invalid ${label}: ${String(value)}`);
+    return date;
+  };
+
+  if (operator === DateOperator.between || operator === DateOperator.notBetween) {
+    if (!Array.isArray(raw) || raw.length !== 2)
+      throw new Error(`${operator} operator requires an array of two dates`);
+    const date1 = toPoint(raw[0], 'start date');
+    const date2 = toPoint(raw[1], 'end date');
+    if (!date1 || !date2) return null;
+    const [start, end] = orderPair([date1, date2]);
+    const shiftedStart = shift(start);
+    const shiftedEnd = shift(end);
+    return shiftedStart && shiftedEnd ? [shiftedStart, shiftedEnd] : null;
   }
 
-  return [dayjs(), undefined]; // Won't be used for dayIn/dayNotIn
+  if (Array.isArray(raw)) throw new Error(`${operator} operator requires a single date value`);
+  // Bare period + before/after ⇒ implied edge (before→start, after→end); the one anchoring
+  // rule all three rails share.
+  const pointOf = (expr: DateExpr): dayjs.Dayjs | null => {
+    const resolved = resolveExpr(expr, read);
+    return resolved && resolvePointForOperator(resolved, operator, config);
+  };
+  const point = isDateExpr(raw) ? pointOf(raw) : toPoint(raw, 'comparison date');
+  if (!point) return null;
+  const shifted = shift(point);
+  return shifted && [shifted, undefined];
 };
 
 /**
- * The single seam that decides which timezone anchors a NAIVE (zoneless) value and frames
- * the dayIn/dayNotIn weekday, for ONE evaluation. Precedence: a zone bound from the
- * evaluation's `bindings` → a literal `config.timeZone` → 'UTC'. A future extension can
- * source a per-record zone here (see docs/TIMEZONE.md) without touching call sites.
- * Absolute instants never reach this seam — they bypass anchoring entirely.
+ * The evaluation's date config with its zone read — the single seam that decides which zone
+ * anchors a NAIVE (zoneless) value, frames dayIn/dayNotIn and runs shifts, for ONE evaluation.
+ * A zone is a string or a value source read from context or bindings; one that reads nothing
+ * is UTC. It is one zone per evaluation, so a row (`$.`) path has no meaning here. Absolute
+ * instants never consult it.
  */
-export const resolveTimeZone = (
-  config: DateConfig,
-  bindings?: Record<string, RuleValue>,
-): string => {
+export const resolveDateConfig = (config: DateConfig, read: ReadSource): ResolvedDateConfig => {
   const zone = config.timeZone;
-  if (zone && typeof zone === 'object' && 'bind' in zone) {
-    const bound = bindings?.[zone.bind];
-    return typeof bound === 'string' ? bound : 'UTC';
-  }
-  return zone ?? 'UTC';
+  if (zone === undefined || typeof zone === 'string') return { ...config, timeZone: zone };
+  if (rowRef(zone))
+    throw new Error(`timeZone is one per evaluation; read it from context, not '${zone.path}'`);
+  const read_ = read(zone);
+  if (read_ !== null && read_ !== undefined && typeof read_ !== 'string')
+    throw new Error(`timeZone reads a zone name (got ${String(read_)})`);
+  return { ...config, timeZone: read_ ?? 'UTC' };
 };
 
 // Detects an explicit zone on a date STRING only (never String(Date), whose render is
@@ -281,3 +264,12 @@ export const parseDateValue = (value: DateInputValue | undefined, tz: string): d
 
 export const isDateInputValue = (value: unknown): value is DateInputValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;
+
+// Literal and context date values compile to concrete Dates through the same parse-and-anchor
+// seam check() uses (naive strings → midnight in the zone; instants as-is): a raw 'YYYY-MM-DD'
+// is rejected by Prisma and would carry different zone semantics than check().
+export const coerceDateLiteral = (value: unknown, zone: string): Date => {
+  const parsed = isDateInputValue(value) ? parseDateValue(value, zone) : dayjs(Number.NaN);
+  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
+  return parsed.toDate();
+};

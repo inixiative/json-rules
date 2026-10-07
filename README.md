@@ -279,7 +279,7 @@ toSql(rule, { now });
 | Option | Default | Governs |
 | --- | --- | --- |
 | `now` | — (required when a relative/period expression is present) | the anchor instant |
-| `timeZone` | `'UTC'` | how `now` and period boundaries localize |
+| `timeZone` | `'UTC'` | how `now` and period boundaries localize — a zone name, or a value source read from context or bindings |
 | `weekStart` | `'monday'` (ISO / isoWeek) | start of `week` for `this`/`last`/`next` |
 
 Compilers resolve expressions to concrete `Date` bounds at compile time, so
@@ -368,6 +368,67 @@ like any absent field.
 
 `toSql()` keeps `path: '$.x'` as a same-row column comparison. Every other scope ref — a
 `$$.` path or any prefixed `field` — is check-only; both compilers throw.
+
+### Offsets and Unit Amounts
+
+An `offset` moves the comparison value. It is a value source of its own, with the comparison
+value's contract: `{ value }`, `{ path }` (`$.` from the row, bare from context) or `{ bind }`
+(with `bindOptional`). A field rule's offset reads a number, added to the comparison value; a
+date rule's reads a rolling shift (`{ ago }` / `{ ahead }`) anchored on the comparison value
+instead of `now`:
+
+```ts
+// net score at or under par: gross <= par + handicap
+{ field: 'grossScore', operator: Operator.lessThanEquals, path: '$.par',
+  offset: { path: '$.handicap' } }
+
+// within budget plus a tolerance supplied at evaluation
+{ field: 'spend', operator: Operator.lessThanEquals, path: '$.budget',
+  offset: { bind: 'tolerance' } }
+
+// completed within 30 days before the created date
+{ field: 'completedAt', dateOperator: DateOperator.onOrAfter, path: '$.createdDate',
+  offset: { value: { ago: { days: 30 } } } }
+
+// on or after the fifth of this month — an edge the expression grammar can't name alone
+{ field: 'paidAt', dateOperator: DateOperator.onOrAfter, value: { start: { this: 'month' } },
+  offset: { value: { ahead: { days: 4 } } } }
+```
+
+`resolveBindings` resolves an offset's bind as it does the comparison value's, and
+`bindingNames` / `requiredBindings` list it. A date offset read per row (a column holding
+`{ ago: … }`) is check-only; to size a shift from the row, read the amount instead.
+
+Any relative-date unit — in a `value` expression or an offset's rolling shift — is a number or a
+value source: `{ path }` from the row (`$.`) or context, `{ bind }`, or `{ value }`. A relative
+window can take its size from the row it judges:
+
+```ts
+// quiet for longer than this incident's rule allows
+{ field: 'lastBreachedAt', dateOperator: DateOperator.before,
+  value: { ago: { seconds: { path: '$.platformAlertRule.autoResolveAfterSeconds' } } } }
+```
+
+Offsets apply to the comparison operators (`equals` … `greaterThanEquals`, `before` …
+`notAfter`) and to both ends of `between` / `notBetween`. Units apply as Postgres applies an
+interval to a wall-clock time in the evaluation's `timeZone` (UTC by default): months (years,
+quarters, months), then days (weeks, days), then time — so every rail lands on the same instant
+at a month end and across a DST change. Calendar units (years … days) are whole numbers and every
+unit is non-negative: a literal that isn't fails validation, and a value read from data that
+isn't reads as null. A null comparison value, offset or magnitude, or a range missing an end,
+matches nothing (SQL's NULL arithmetic); a negation keeps null fields only. Numeric offsets add
+in double precision on every rail.
+
+| | `check()` | `toSql()` | `toPrisma()` |
+| --- | --- | --- | --- |
+| literal, bound or context offset / amount | yes | resolved to a parameter | resolved to a value |
+| `$.` numeric offset or unit amount | yes | `col + n` / `col ± make_interval(…)` | throws |
+| `$.` date offset (a stored `{ ago }`) | yes | throws | throws |
+| `$$.` anything | yes | throws | throws |
+
+`checkRuleAgainstLens` gates offset and magnitude refs like `path` (they must resolve through
+the lens and read a number), and an offset must fit the field's kind: a number on a numeric
+field, a rolling shift on a DateTime.
 
 ## Rule Introspection
 
@@ -546,6 +607,8 @@ Not every backend supports every rule shape.
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
 | Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
+| `offset` and unit amounts — value, bind or context | Yes | Yes | Yes |
+| `offset` and unit amounts — `$.` row refs | Yes | No | Yes (not a date offset's) |
 | `$$.` scope refs and `$`-prefixed `field` | Yes | No | No |
 
 ### NULL Semantics

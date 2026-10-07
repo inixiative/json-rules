@@ -1,4 +1,8 @@
-import type { Condition } from './types';
+import { isPlainObject } from 'lodash-es';
+import { isDateExpr, isRollingExpr } from './dateExpr';
+import { isCalendarUnit } from './operatorCatalog';
+import type { Condition, ValueSourceOf } from './types';
+import { hasPath, isValueSource } from './valueSource';
 
 export type ConditionNode = Record<string, unknown>;
 
@@ -63,3 +67,75 @@ export const mapCondition = (
   }
   return node as Condition;
 };
+
+/** How a slot's value is used: the comparison value, a number, a whole number, a date shift. */
+export type SourceRole = 'value' | 'number' | 'whole' | 'shift';
+
+type MapSource = (source: ValueSourceOf<unknown>, role: SourceRole) => ValueSourceOf<unknown>;
+
+const mapUnits = (units: unknown, fn: MapSource): unknown =>
+  isPlainObject(units)
+    ? Object.fromEntries(
+        Object.entries(units as Record<string, unknown>).map(([unit, amount]) => [
+          unit,
+          isValueSource(amount) ? fn(amount, isCalendarUnit(unit) ? 'whole' : 'number') : amount,
+        ]),
+      )
+    : units;
+
+const mapExpr = (expr: unknown, fn: MapSource): unknown => {
+  if (!isDateExpr(expr) || !isRollingExpr(expr)) return expr;
+  return 'ago' in expr ? { ago: mapUnits(expr.ago, fn) } : { ahead: mapUnits(expr.ahead, fn) };
+};
+
+/**
+ * A leaf's value-source slots, listed once: the leaf itself, its offset, and — on a date rule —
+ * each unit amount in its value and its offset's value. `fn` rewrites each slot (identity to
+ * list them). Non-mutating; a node with no slots comes back as is.
+ */
+export const mapLeafSources = <T extends Record<string, unknown>>(node: T, fn: MapSource): T => {
+  const isDate = 'dateOperator' in node;
+  if (!isDate && !('operator' in node)) return node;
+  let out: Record<string, unknown> = node;
+  if (isDate && node.value !== undefined) {
+    const value = Array.isArray(node.value)
+      ? node.value.map((v) => mapExpr(v, fn))
+      : mapExpr(node.value, fn);
+    out = { ...out, value };
+  }
+  if (isValueSource(node.offset)) {
+    const offset = isDate
+      ? {
+          ...node.offset,
+          ...(node.offset.value !== undefined && { value: mapExpr(node.offset.value, fn) }),
+        }
+      : node.offset;
+    out = { ...out, offset: fn(offset as ValueSourceOf<unknown>, isDate ? 'shift' : 'number') };
+  }
+  if (isValueSource(out)) out = fn(out, 'value');
+  return out as T;
+};
+
+export type LeafSource = { source: ValueSourceOf<unknown>; role: SourceRole };
+
+/** Every value source on a leaf, with how its value is used. */
+export const leafSources = (node: Record<string, unknown>): LeafSource[] => {
+  const found: LeafSource[] = [];
+  mapLeafSources(node, (source, role) => {
+    found.push({ source, role });
+    return source;
+  });
+  return found;
+};
+
+export type ValueRef = { ref: string; role: SourceRole };
+
+/** Every path a leaf reads on its value side, with how it is read. */
+export const valueRefRoles = (node: Record<string, unknown>): ValueRef[] =>
+  leafSources(node).flatMap(({ source, role }) =>
+    hasPath(source) ? [{ ref: source.path, role }] : [],
+  );
+
+/** Every path a leaf reads on its value side. */
+export const valueRefs = (node: Record<string, unknown>): string[] =>
+  valueRefRoles(node).map((r) => r.ref);

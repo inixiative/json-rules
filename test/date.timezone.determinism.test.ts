@@ -135,11 +135,26 @@ describe('checkDate — bindable anchoring zone', () => {
     expect(bound).toEqual(check(rule, data, { timeZone: 'Asia/Kolkata' }));
   });
 
-  test('absent binding falls back to UTC', () => {
-    // No binding supplied → UTC: '2024-06-15' → 2024-06-15T00:00Z, after 19:00Z(14th) → true.
-    expect(check(rule, data, { timeZone: { bind: 'tz' }, bindings: {} })).toBe(true);
-    // Same as the default (no timeZone) UTC anchoring.
-    expect(check(rule, data, { timeZone: { bind: 'tz' }, bindings: {} })).toBe(check(rule, data));
+  test('an absent binding is a caller bug, as for any bind', () => {
+    expect(() => check(rule, data, { timeZone: { bind: 'tz' }, bindings: {} })).toThrow(
+      'Missing binding for "tz"',
+    );
+  });
+
+  test('an absent optional binding falls back to UTC', () => {
+    const optional = { timeZone: { bind: 'tz', bindOptional: true }, bindings: {} };
+    expect(check(rule, data, optional)).toBe(true);
+    expect(check(rule, data, optional)).toBe(check(rule, data));
+  });
+
+  test('a zone read from context', () => {
+    expect(
+      check(rule, data, {
+        timeZone: { path: 'user.tz' },
+        context: { user: { tz: 'Asia/Kolkata' } },
+      }),
+    ).toEqual(check(rule, data, { timeZone: 'Asia/Kolkata' }));
+    expect(() => check(rule, data, { timeZone: { path: '$.tz' } })).toThrow('one per evaluation');
   });
 
   test('a Date-object value is still absolute under a bound zone', () => {

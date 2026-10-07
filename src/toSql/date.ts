@@ -1,104 +1,68 @@
-import { get } from 'lodash-es';
-import { isDateInputValue, isRangeOperator, parseDateValue, resolveTimeZone } from '../date';
+import { resolveExpr } from '../amount';
+import { coerceDateLiteral } from '../date';
 import {
   isDateExpr,
-  resolveDateExpr,
+  requireNow,
   resolveDateExprRange,
   resolvePointForOperator,
+  rollingShift,
+  zoneOf,
 } from '../dateExpr';
+import { orderPair } from '../number';
 import { DateOperator } from '../operator';
-import { checkOnlyScopeRef, parseScopeRef } from '../scope';
-import type { DateRule } from '../types';
+import type { DateExpr, DateRule } from '../types';
+import { compareSql, ORDERED_SQL, orNull, rangeSql } from './compare';
 import { mapDayNames } from './dayNames';
-import { escapeIdentifier } from './escape';
 import { resolveFieldSql } from './join';
+import { offsetDate } from './offset';
 import { nextParam } from './params';
-import { quoteField } from './quoting';
+import { asInstant, readsRow, shiftDate } from './shift';
 import type { BuilderState } from './types';
+import {
+  compileTimeRead,
+  dateConfigOf,
+  isMissing,
+  NO_VALUE,
+  type ResolvedRhs,
+  resolveSource,
+} from './valueSource';
 
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
-  const rhs = resolveDateRhs(rule, state);
-
-  const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
-  const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
+  const ordered = ORDERED_SQL[rule.dateOperator];
+  if (ordered)
+    return compareSql(field, ordered.symbol, resolvePoint(rule, state), !!ordered.negated, state);
 
   switch (rule.dateOperator) {
-    case DateOperator.before:
-      if (rhsCol !== undefined) return `${field} < ${rhsCol}`;
-      return `${field} < ${nextParam(state, rhsVal)}`;
+    case DateOperator.within:
+    case DateOperator.notWithin:
+      return rangeSql(
+        field,
+        resolveWindow(rule, state),
+        rule.dateOperator === DateOperator.notWithin,
+        state,
+      );
 
-    case DateOperator.after:
-      if (rhsCol !== undefined) return `${field} > ${rhsCol}`;
-      return `${field} > ${nextParam(state, rhsVal)}`;
+    case DateOperator.between:
+    case DateOperator.notBetween:
+      return rangeSql(
+        field,
+        resolveRange(rule, state),
+        rule.dateOperator === DateOperator.notBetween,
+        state,
+      );
 
-    case DateOperator.onOrBefore:
-      if (rhsCol !== undefined) return `${field} <= ${rhsCol}`;
-      return `${field} <= ${nextParam(state, rhsVal)}`;
-
-    case DateOperator.onOrAfter:
-      if (rhsCol !== undefined) return `${field} >= ${rhsCol}`;
-      return `${field} >= ${nextParam(state, rhsVal)}`;
-
-    case DateOperator.notBefore: {
-      const rhs = rhsCol !== undefined ? rhsCol : nextParam(state, rhsVal);
-      return `(${field} >= ${rhs} OR ${field} IS NULL)`;
-    }
-
-    case DateOperator.notAfter: {
-      const rhs = rhsCol !== undefined ? rhsCol : nextParam(state, rhsVal);
-      return `(${field} <= ${rhs} OR ${field} IS NULL)`;
-    }
-
-    case DateOperator.within: {
-      if (!isDateExpr(rule.value))
-        throw new Error('within date operator requires a range date expression');
-      const [start, end] = resolveDateExprRange(rule.value, state.dateConfig ?? {});
-      return `${field} BETWEEN ${nextParam(state, start.toDate())} AND ${nextParam(state, end.toDate())}`;
-    }
-
-    case DateOperator.notWithin: {
-      if (!isDateExpr(rule.value))
-        throw new Error('notWithin date operator requires a range date expression');
-      const [start, end] = resolveDateExprRange(rule.value, state.dateConfig ?? {});
-      return `(${field} NOT BETWEEN ${nextParam(state, start.toDate())} AND ${nextParam(state, end.toDate())} OR ${field} IS NULL)`;
-    }
-
-    case DateOperator.between: {
-      const raw = rhsVal;
-      if (!Array.isArray(raw) || raw.length !== 2) {
-        throw new Error('between date operator requires an array of two values');
-      }
-      const [start, end] = normalizeDateRange(raw.map(resolveDateElem(state)));
-      return `${field} BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)}`;
-    }
-
-    case DateOperator.notBetween: {
-      const raw = rhsVal;
-      if (!Array.isArray(raw) || raw.length !== 2) {
-        throw new Error('notBetween date operator requires an array of two values');
-      }
-      const [start, end] = normalizeDateRange(raw.map(resolveDateElem(state)));
-      return `(${field} NOT BETWEEN ${nextParam(state, start)} AND ${nextParam(state, end)} OR ${field} IS NULL)`;
-    }
-
-    // The weekday is computed in the RESOLVED zone, never the DB session's: the column
-    // is anchored as a UTC instant (Prisma convention — DateTime stores UTC wall time)
-    // and converted to the zone, ending NAIVE so EXTRACT can't consult the session GUC.
-    case DateOperator.dayIn: {
-      if (!Array.isArray(rule.value)) {
-        throw new Error('dayIn operator requires an array of day names');
-      }
-      const days = mapDayNames(rule.value.map((day) => String(day)));
-      return `EXTRACT(DOW FROM ${zonedDay(field, state)}) = ANY(${nextParam(state, days)})`;
-    }
-
+    case DateOperator.dayIn:
     case DateOperator.dayNotIn: {
       if (!Array.isArray(rule.value)) {
-        throw new Error('dayNotIn operator requires an array of day names');
+        throw new Error(`${rule.dateOperator} operator requires an array of day names`);
       }
-      const days = mapDayNames(rule.value.map((day) => String(day)));
-      return `(EXTRACT(DOW FROM ${zonedDay(field, state)}) <> ALL(${nextParam(state, days)}) OR ${field} IS NULL)`;
+      const zone = nextParam(state, zoneOf(dateConfigOf(state)));
+      const days = nextParam(state, mapDayNames(rule.value.map((day) => String(day))));
+      const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
+      return rule.dateOperator === DateOperator.dayIn
+        ? `${dow} = ANY(${days})`
+        : orNull(field, `${dow} <> ALL(${days})`);
     }
 
     default:
@@ -106,92 +70,73 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   }
 };
 
-const zonedDay = (field: string, state: BuilderState): string =>
-  `(${field} AT TIME ZONE 'UTC' AT TIME ZONE ${nextParam(state, resolveTimeZone(state.dateConfig ?? {}))})`;
+const nowOperand = (state: BuilderState): ResolvedRhs => ({
+  type: 'value',
+  value: requireNow(dateConfigOf(state)).toDate(),
+});
 
-const normalizeDateRange = (value: unknown[]): [unknown, unknown] => {
-  const [first, second] = value;
-  return compareDateValues(first, second) <= 0 ? [first, second] : [second, first];
+const expressionPoint = (expr: DateExpr, operator: string, state: BuilderState): ResolvedRhs => {
+  const rolling = rollingShift(expr);
+  if (rolling && readsRow(rolling[0])) return shiftDate(nowOperand(state), ...rolling, state);
+  const resolved = resolveExpr(expr, compileTimeRead(state));
+  if (resolved === null) return NO_VALUE;
+  return {
+    type: 'value',
+    value: resolvePointForOperator(resolved, operator, dateConfigOf(state)).toDate(),
+  };
 };
 
-const compareDateValues = (left: unknown, right: unknown): number => {
-  const lhs = normalizeComparableDateValue(left);
-  const rhs = normalizeComparableDateValue(right);
-  return lhs < rhs ? -1 : lhs > rhs ? 1 : 0;
+const toPoint = (value: unknown, operator: string, state: BuilderState): ResolvedRhs => {
+  if (value === null || value === undefined) return NO_VALUE;
+  if (isDateExpr(value)) return expressionPoint(value, operator, state);
+  return { type: 'value', value: coerceDateLiteral(value, zoneOf(dateConfigOf(state))) };
 };
 
-const normalizeComparableDateValue = (value: unknown): string | number => {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'number' || typeof value === 'string') return value;
-  return String(value);
+const withOffset = (rhs: ResolvedRhs, rule: DateRule, state: BuilderState): ResolvedRhs =>
+  rule.offset === undefined ? rhs : offsetDate(rhs, rule.offset, state);
+
+const resolvePoint = (rule: DateRule, state: BuilderState): ResolvedRhs => {
+  const source = resolveSource(rule, state);
+  const point = source.type === 'column' ? source : toPoint(source.value, rule.dateOperator, state);
+  return withOffset(point, rule, state);
 };
 
-// Same parse-and-anchor seam check() uses (naive strings → midnight in the resolved
-// zone; instants as-is), emitted as concrete Dates so the SQL param carries the same
-// instant a re-run check() would compare against.
-const coerceDateLiteral = (value: unknown, state: BuilderState): unknown => {
-  if (value === undefined || !isDateInputValue(value)) return value;
-  const parsed = parseDateValue(value, resolveTimeZone(state.dateConfig ?? {}));
-  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
-  return parsed.toDate();
-};
-
-const resolveDateElem =
-  (state: BuilderState) =>
-  (el: unknown): unknown =>
-    isDateExpr(el)
-      ? resolveDateExpr(el, state.dateConfig ?? {}).toDate()
-      : coerceDateLiteral(el, state);
-
-type ResolvedRhs = { type: 'value'; value: unknown } | { type: 'column'; sql: string };
-
-const resolveDateRhs = (rule: DateRule, state: BuilderState): ResolvedRhs => {
-  if (rule.value !== undefined) {
-    // Point expressions resolve to a concrete Date at compile time (operator-aware
-    // implied edges). The range operators are handled separately in the switch.
-    if (isDateExpr(rule.value) && !isRangeOperator(rule.dateOperator)) {
-      return {
-        type: 'value',
-        value: resolvePointForOperator(
-          rule.value,
-          rule.dateOperator,
-          state.dateConfig ?? {},
-        ).toDate(),
-      };
-    }
-    // Arrays (between pairs, dayIn day names) are handled per-operator in the switch.
-    return {
-      type: 'value',
-      value: Array.isArray(rule.value) ? rule.value : coerceDateLiteral(rule.value, state),
-    };
+const resolveWindow = (rule: DateRule, state: BuilderState): [ResolvedRhs, ResolvedRhs] | null => {
+  const source = resolveSource(rule, state);
+  if (isMissing(source)) return null;
+  if (source.type === 'column' || !isDateExpr(source.value))
+    throw new Error(`${rule.dateOperator} date operator requires a range date expression`);
+  const rolling = rollingShift(source.value);
+  if (rolling && readsRow(rolling[0])) {
+    const now = nowOperand(state);
+    const moved = shiftDate(now, ...rolling, state);
+    return rolling[1] === -1 ? [moved, now] : [now, moved];
   }
+  const resolved = resolveExpr(source.value, compileTimeRead(state));
+  if (resolved === null) return null;
+  const ends = resolveDateExprRange(resolved, dateConfigOf(state));
+  return [
+    { type: 'value', value: ends[0].toDate() },
+    { type: 'value', value: ends[1].toDate() },
+  ];
+};
 
-  if (rule.path) {
-    const scoped = parseScopeRef(rule.path);
-    if (scoped) {
-      if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(rule.path, 'toSql'));
-      const refField = scoped.path;
-      const sql = state.currentAlias
-        ? `${escapeIdentifier(state.currentAlias)}.${escapeIdentifier(refField)}`
-        : quoteField(refField);
-      return { type: 'column', sql };
-    }
-
-    if (!state.context) {
-      throw new Error(
-        `BuilderState.context is required to resolve date path '${rule.path}'. ` +
-          `Pass context in options when calling toSql().`,
-      );
-    }
-    // Same parse-and-anchor seam as the literal branch — a naive string from context
-    // must not reach the DB unanchored. Arrays pass through; the per-operator cases
-    // anchor their elements.
-    const resolved = get(state.context, rule.path);
-    return {
-      type: 'value',
-      value: Array.isArray(resolved) ? resolved : coerceDateLiteral(resolved, state),
-    };
+const resolveRange = (rule: DateRule, state: BuilderState): [ResolvedRhs, ResolvedRhs] | null => {
+  const source = resolveSource(rule, state);
+  if (isMissing(source)) return null;
+  const raw = source.type === 'value' ? source.value : undefined;
+  if (!Array.isArray(raw) || raw.length !== 2) {
+    throw new Error(`${rule.dateOperator} date operator requires an array of two values`);
   }
-
-  return { type: 'value', value: undefined };
+  const points = raw.map((el) => toPoint(el, rule.dateOperator, state));
+  if (points.some(isMissing)) return null;
+  const [first, second] = points;
+  const ends: ResolvedRhs[] =
+    first.type === 'value' && second.type === 'value'
+      ? orderPair([first.value as Date, second.value as Date]).map((value) => ({
+          type: 'value' as const,
+          value,
+        }))
+      : points;
+  return ends.map((end) => withOffset(end, rule, state)) as [ResolvedRhs, ResolvedRhs];
 };

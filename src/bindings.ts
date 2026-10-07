@@ -1,15 +1,27 @@
-import { type ConditionNode, mapCondition, visitCondition } from './traverse';
-import type { Condition, RuleValue } from './types';
+import {
+  type ConditionNode,
+  leafSources,
+  mapCondition,
+  mapLeafSources,
+  visitCondition,
+} from './traverse';
+import type { Condition, RuleValue, ValueSourceOf } from './types';
 
-const isBindLeaf = (node: ConditionNode): node is ConditionNode & { bind: string } =>
-  typeof node.bind === 'string';
+export { readBinding } from './valueSource';
+
+// Every `{ bind }` on a leaf: its comparison value, its offset, its unit amounts.
+type BindSource = Extract<ValueSourceOf<unknown>, { bind: string }>;
+const bindTokens = (node: ConditionNode): BindSource[] =>
+  leafSources(node).flatMap(({ source }) =>
+    typeof source.bind === 'string' ? [source as BindSource] : [],
+  );
 
 /** Names of every `{ bind }` token in the tree, optional or not — what a lens declares. */
 export const bindingNames = (condition: Condition): Set<string> => {
   const names = new Set<string>();
   visitCondition(condition, {
     enter: (node) => {
-      if (isBindLeaf(node)) names.add(node.bind);
+      for (const token of bindTokens(node)) names.add(token.bind);
     },
   });
   return names;
@@ -24,7 +36,7 @@ export const requiredBindings = (condition: Condition): Set<string> => {
   const names = new Set<string>();
   visitCondition(condition, {
     enter: (node) => {
-      if (isBindLeaf(node) && node.bindOptional !== true) names.add(node.bind);
+      for (const token of bindTokens(node)) if (token.bindOptional !== true) names.add(token.bind);
     },
   });
   return names;
@@ -38,12 +50,17 @@ export const requiredBindings = (condition: Condition): Set<string> => {
 export const resolveBindings = (
   condition: Condition,
   bindings: Record<string, RuleValue>,
-): Condition =>
-  mapCondition(condition, {
-    rewrite: (node) => {
-      if (typeof node.bind !== 'string' || !Object.hasOwn(bindings, node.bind)) return node;
-      const { bind, bindOptional: _optional, ...rest } = node;
-      const bound = bindings[bind as string];
-      return { ...rest, value: bound === undefined ? null : bound };
-    },
+): Condition => {
+  // A covered `{ bind, bindOptional }` source becomes `{ value }`; an uncovered one stays.
+  const resolve = (source: ValueSourceOf<unknown>): ValueSourceOf<unknown> => {
+    if (typeof source.bind !== 'string' || !Object.hasOwn(bindings, source.bind)) return source;
+    const { bind, bindOptional: _optional, ...rest } = source;
+    const bound = bindings[bind];
+    return { ...rest, value: bound === undefined ? null : bound } as ValueSourceOf<unknown>;
+  };
+  // A second pass resolves binds a substituted value brought with it (a bound `{ ago }` whose
+  // amount is itself a `{ bind }`).
+  return mapCondition(condition, {
+    rewrite: (node) => mapLeafSources(mapLeafSources(node, resolve), resolve),
   });
+};

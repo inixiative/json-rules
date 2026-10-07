@@ -63,12 +63,12 @@ describe('toSql path ref: $.field', () => {
     expect(params).toEqual([]);
   });
 
-  it('$.field with alias uses alias-qualified ref column', () => {
+  it('$.field reads the row the way the field does', () => {
     const { sql, params } = toSql(
       { field: 'endDate', operator: Operator.greaterThan, path: '$.startDate' },
       { alias: 't0' },
     );
-    expect(sql).toBe('"endDate" > "t0"."startDate"');
+    expect(sql).toBe('"endDate" > "startDate"');
     expect(params).toEqual([]);
   });
 });

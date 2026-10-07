@@ -1,4 +1,5 @@
-import { isDateInputValue, isRangeOperator, parseDateValue } from './date';
+import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
+import { isDateInputValue, parseDateValue } from './date';
 import { isDateExpr, isEdgeExpr, isPeriodExpr, isRollingExpr } from './dateExpr';
 import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
@@ -10,35 +11,20 @@ import {
   getValueShape,
   isAggregateRangeOperator,
   isAggregateSingleOperator,
+  isCalendarUnit,
   isOperatorSupportedForTarget,
+  isRelativeUnit,
+  OFFSET_OPERATORS,
+  PERIOD_UNITS,
+  RANGE_OPERATORS,
   type RuleTarget,
   type ValueShape,
+  WINDOW_OPERATORS,
 } from './operatorCatalog';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue } from './types';
+import { rowRef, SOURCE_FORMS } from './valueSource';
 import { extremalRewrite } from './window';
-
-const PERIOD_UNITS = new Set([
-  'year',
-  'quarter',
-  'month',
-  'week',
-  'isoWeek',
-  'day',
-  'hour',
-  'minute',
-  'second',
-]);
-const RELATIVE_UNIT_KEYS = new Set([
-  'years',
-  'quarters',
-  'months',
-  'weeks',
-  'days',
-  'hours',
-  'minutes',
-  'seconds',
-]);
 
 export type ValidationIssue = {
   path: string;
@@ -185,22 +171,30 @@ const validateLogicalArray = (
   });
 };
 
-const validateScopeRef = (
+const validateField = (
   rule: Record<string, unknown>,
-  key: 'field' | 'path',
   path: string,
   context: ValidationContext,
   depth: number,
 ): void => {
-  const ref = rule[key];
-  if (typeof ref !== 'string') return;
+  if (typeof rule.field === 'string')
+    validateRef(rule.field, 'field', `${path}.field`, context, depth);
+};
+
+const validateRef = (
+  ref: string,
+  key: 'field' | 'path',
+  issuePath: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
   const parsed = parseScopeRef(ref);
   if (!parsed) return;
   const label = key === 'field' ? 'Field' : 'Path';
   if (parsed.depth > depth) {
     pushIssue(
       context,
-      `${path}.${key}`,
+      issuePath,
       'scope_out_of_bounds',
       scopeOutOfBounds(ref, parsed.depth, depth),
     );
@@ -208,18 +202,138 @@ const validateScopeRef = (
   if (context.target === 'toPrisma') {
     pushIssue(
       context,
-      `${path}.${key}`,
+      issuePath,
       `unsupported_prisma_${key}`,
       `${label} '${ref}' is not supported by toPrisma()`,
     );
   } else if (context.target === 'toSql' && (key === 'field' || parsed.depth > 1)) {
     pushIssue(
       context,
-      `${path}.${key}`,
+      issuePath,
       `unsupported_sql_${key}`,
       `${label} '${ref}' is not supported by toSql()`,
     );
   }
+};
+
+type SourceForm = (typeof SOURCE_FORMS)[number];
+
+// One value source — `{ value } | { path } | { bind }` — wherever it appears: a rule's comparison
+// value, an offset, a unit amount. Exactly one form; `bindOptional` only beside `bind`; a path is
+// gated like any ref. Returns the form, or null when it is malformed.
+const validateSource = (
+  source: Record<string, unknown>,
+  at: string,
+  context: ValidationContext,
+  depth: number,
+): SourceForm | null => {
+  const forms = SOURCE_FORMS.filter((form) => source[form] !== undefined);
+  if (forms.length > 1) {
+    pushIssue(context, at, 'ambiguous_value_source', 'Takes one of value, path or bind');
+    return null;
+  }
+  if (forms.length === 0) {
+    pushIssue(context, at, 'missing_value_source', 'Requires value, path or bind');
+    return null;
+  }
+  const [form] = forms;
+  if (form !== 'value' && (typeof source[form] !== 'string' || source[form] === '')) {
+    pushIssue(context, `${at}.${form}`, 'invalid_value_source', `${form} is a non-empty string`);
+    return null;
+  }
+  if (
+    source.bindOptional !== undefined &&
+    (form !== 'bind' || typeof source.bindOptional !== 'boolean')
+  )
+    pushIssue(
+      context,
+      `${at}.bindOptional`,
+      'invalid_value_source',
+      'bindOptional is a boolean beside bind',
+    );
+  if (form === 'path') validateRef(source.path as string, 'path', `${at}.path`, context, depth);
+  return form;
+};
+
+// An offset moves the comparison value by what its own value source reads: a number on a field
+// rule, a rolling `{ ago }` / `{ ahead }` on a date rule. A date offset read per row is check-only.
+const validateOffset = (
+  rule: Record<string, unknown>,
+  kind: 'field' | 'date',
+  operator: string,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  const { offset } = rule;
+  if (offset === undefined) return;
+  const at = `${path}.offset`;
+  if (!OFFSET_OPERATORS.includes(operator)) {
+    pushIssue(
+      context,
+      at,
+      'unsupported_offset_operator',
+      `Operator '${operator}' has no comparison point to offset`,
+    );
+    return;
+  }
+  if (!isPlainObject(offset)) {
+    pushIssue(context, at, 'invalid_offset', 'An offset is one of { value }, { path } or { bind }');
+    return;
+  }
+  const form = validateSource(offset, at, context, depth);
+  if (form === 'path') {
+    const ref = offset.path as string;
+    const scoped = rowRef(offset);
+    if (kind === 'date' && scoped && scoped.depth <= 1 && context.target === 'toSql')
+      pushIssue(
+        context,
+        `${at}.path`,
+        'unsupported_sql_path',
+        `A row path on a date offset ('${ref}') is not supported by toSql()`,
+      );
+    return;
+  }
+  if (form !== 'value') return;
+  const value = offset.value;
+  if (kind === 'field') {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+      pushIssue(context, `${at}.value`, 'invalid_offset', 'A field offset value is a number');
+    return;
+  }
+  const units = isPlainObject(value) ? Object.keys(value) : [];
+  if (units.length !== 1 || (units[0] !== 'ago' && units[0] !== 'ahead')) {
+    pushIssue(
+      context,
+      `${at}.value`,
+      'invalid_offset',
+      'A date offset value is { ago } or { ahead }',
+    );
+    return;
+  }
+  validateRelativeUnits(
+    (value as Record<string, unknown>)[units[0]],
+    `${at}.value.${units[0]}`,
+    context,
+    depth,
+  );
+};
+
+// A range read from a row column is a scalar, not a pair: toSql has no form for it.
+const rejectSqlRowRange = (
+  rule: Record<string, unknown>,
+  operator: string,
+  path: string,
+  context: ValidationContext,
+): void => {
+  if (context.target !== 'toSql' || !RANGE_OPERATORS.includes(operator)) return;
+  if (!rowRef(rule)) return;
+  pushIssue(
+    context,
+    `${path}.path`,
+    'unsupported_sql_path',
+    `A range read from the row ('${rule.path}') is not supported by toSql()`,
+  );
 };
 
 const validateFieldRule = (
@@ -231,8 +345,10 @@ const validateFieldRule = (
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Field rule requires a string field');
   }
-  validateScopeRef(rule, 'field', path, context, depth);
-  validateScopeRef(rule, 'path', path, context, depth);
+  validateField(rule, path, context, depth);
+  if (rule.offset !== undefined && 'aggregate' in rule) {
+    pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
+  }
 
   if (typeof rule.operator !== 'string' || !FIELD_OPERATORS.has(rule.operator)) {
     pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
@@ -240,6 +356,7 @@ const validateFieldRule = (
   }
 
   const operator = rule.operator as Operator;
+  validateOffset(rule, 'field', operator, path, context, depth);
 
   if (!isOperatorSupportedForTarget(operator, context.target)) {
     pushIssue(
@@ -269,8 +386,9 @@ const validateFieldRule = (
     return;
   }
 
-  if (!requireValueOrPath(rule, path, context)) return;
-  if ('path' in rule && typeof rule.path === 'string') return;
+  if (validateSource(rule, path, context, depth) === null) return;
+  rejectSqlRowRange(rule, operator, path, context);
+  if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   validateValueShape(shape, rule.value, operator, `${path}.value`, context);
 };
@@ -348,8 +466,7 @@ const validateAggregateRule = (
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Aggregate rule requires a string field');
   }
-  validateScopeRef(rule, 'field', path, context, depth);
-  validateScopeRef(rule, 'path', path, context, depth);
+  validateField(rule, path, context, depth);
 
   if (!isPlainObject(rule.aggregate)) {
     pushIssue(context, `${path}.aggregate`, 'invalid_aggregate', 'aggregate must be an object');
@@ -420,8 +537,8 @@ const validateAggregateRule = (
     validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
   }
 
-  if (!requireValueOrPath(rule, path, context)) return;
-  if ('path' in rule && typeof rule.path === 'string') return;
+  if (validateSource(rule, path, context, depth) === null) return;
+  if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   const value = rule.value;
   if (isRange) {
@@ -461,7 +578,7 @@ const validateArrayRule = (
       );
     }
   }
-  validateScopeRef(rule, 'field', path, context, depth);
+  validateField(rule, path, context, depth);
 
   validateWindow(rule, path, context, depth);
 
@@ -559,8 +676,7 @@ const validateDateRule = (
   if (typeof rule.field !== 'string') {
     pushIssue(context, `${path}.field`, 'field_required', 'Date rule requires a string field');
   }
-  validateScopeRef(rule, 'field', path, context, depth);
-  validateScopeRef(rule, 'path', path, context, depth);
+  validateField(rule, path, context, depth);
 
   if (typeof rule.dateOperator !== 'string' || !DATE_OPERATORS.has(rule.dateOperator)) {
     pushIssue(context, `${path}.dateOperator`, 'invalid_date_operator', 'Unknown date operator');
@@ -568,6 +684,7 @@ const validateDateRule = (
   }
 
   const operator = rule.dateOperator as DateOperator;
+  validateOffset(rule, 'date', operator, path, context, depth);
 
   if (!isOperatorSupportedForTarget(operator, context.target)) {
     pushIssue(
@@ -600,16 +717,17 @@ const validateDateRule = (
     return;
   }
 
-  if (!requireValueOrPath(rule, path, context)) return;
-  if ('path' in rule && typeof rule.path === 'string') return;
+  if (validateSource(rule, path, context, depth) === null) return;
+  rejectSqlRowRange(rule, operator, path, context);
+  if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   // Structured date expressions (v2.6): ago/ahead, this/last/next, start/end.
   if (isDateExpr(rule.value)) {
-    validateDateExpr(rule.value, operator, `${path}.value`, context);
+    validateDateExpr(rule.value, operator, `${path}.value`, context, depth);
     return;
   }
 
-  if (isRangeOperator(operator)) {
+  if (WINDOW_OPERATORS.includes(operator)) {
     // The range operators only accept an expression range (period or rolling), not a literal pair.
     pushIssue(
       context,
@@ -632,7 +750,7 @@ const validateDateRule = (
     }
     (rule.value as unknown[]).forEach((item, i) => {
       if (isDateExpr(item)) {
-        validateDateExpr(item, operator, `${path}.value[${i}]`, context);
+        validateDateExpr(item, operator, `${path}.value[${i}]`, context, depth);
       } else if (isDateInputValue(item) && !parseDateValue(item, 'UTC').isValid()) {
         pushIssue(
           context,
@@ -668,7 +786,12 @@ const validateDateRule = (
 };
 
 // --- v2.6 date-expression validation ---
-const validateRelativeUnits = (units: unknown, path: string, context: ValidationContext): void => {
+const validateRelativeUnits = (
+  units: unknown,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
   if (!isPlainObject(units) || Object.keys(units).length === 0) {
     pushIssue(
       context,
@@ -679,7 +802,7 @@ const validateRelativeUnits = (units: unknown, path: string, context: Validation
     return;
   }
   for (const [key, magnitude] of Object.entries(units)) {
-    if (!RELATIVE_UNIT_KEYS.has(key)) {
+    if (!isRelativeUnit(key)) {
       pushIssue(
         context,
         `${path}.${key}`,
@@ -688,19 +811,30 @@ const validateRelativeUnits = (units: unknown, path: string, context: Validation
       );
       continue;
     }
-    if (typeof magnitude !== 'number' || !Number.isFinite(magnitude) || magnitude < 0) {
+    // An amount is a literal number or a value source; a `{ value }` is checked like a literal.
+    const form = isPlainObject(magnitude)
+      ? validateSource(magnitude, `${path}.${key}`, context, depth)
+      : 'literal';
+    if (form === null || form === 'path' || form === 'bind') continue;
+    const amount = form === 'value' ? (magnitude as Record<string, unknown>).value : magnitude;
+    if (
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      amount < 0 ||
+      (isCalendarUnit(key) && !Number.isInteger(amount))
+    ) {
       pushIssue(
         context,
         `${path}.${key}`,
         'invalid_relative_magnitude',
-        `Relative magnitudes must be positive numbers (got ${String(magnitude)})`,
+        `Relative magnitudes must be positive numbers (got ${String(amount)})`,
       );
     }
   }
 };
 
 const validatePeriodUnit = (unit: unknown, path: string, context: ValidationContext): void => {
-  if (typeof unit !== 'string' || !PERIOD_UNITS.has(unit)) {
+  if (typeof unit !== 'string' || !PERIOD_UNITS.includes(unit)) {
     pushIssue(context, path, 'invalid_period_unit', `Unknown period unit '${String(unit)}'`);
   }
 };
@@ -710,11 +844,12 @@ const validateDateExpr = (
   operator: DateOperator,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
-  const isRange = isRangeOperator(operator);
+  const isRange = WINDOW_OPERATORS.includes(operator);
 
   if (isRollingExpr(expr)) {
-    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context);
+    validateRelativeUnits('ago' in expr ? expr.ago : expr.ahead, path, context, depth);
     return;
   }
 
@@ -747,27 +882,6 @@ const validateDateExpr = (
   pushIssue(context, path, 'invalid_date_expression', 'Unrecognized date expression');
 };
 
-const requireValueOrPath = (
-  rule: Record<string, unknown>,
-  path: string,
-  context: ValidationContext,
-): boolean => {
-  const hasValue = 'value' in rule && rule.value !== undefined;
-  const hasPath = typeof rule.path === 'string';
-
-  if (hasValue && hasPath) {
-    pushIssue(context, path, 'ambiguous_value_source', 'Rule cannot define both value and path');
-    return false;
-  }
-
-  if (!hasValue && !hasPath) {
-    pushIssue(context, path, 'missing_value_source', 'Rule requires either value or path');
-    return false;
-  }
-
-  return true;
-};
-
 const forbidValueAndPath = (
   rule: Record<string, unknown>,
   path: string,
@@ -779,13 +893,16 @@ const forbidValueAndPath = (
   if ('path' in rule && rule.path !== undefined) {
     pushIssue(context, `${path}.path`, 'unexpected_path', 'Rule does not accept path');
   }
+  if ('bind' in rule && rule.bind !== undefined) {
+    pushIssue(context, `${path}.bind`, 'unexpected_bind', 'Rule does not accept bind');
+  }
 };
 
 const targetSlug = (target: RuleTarget): string =>
   target === 'toPrisma' ? 'prisma' : target === 'toSql' ? 'sql' : 'check';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+  isPlainObjectLodash(value);
 
 const isOrderedRuleValue = (value: unknown): value is OrderedRuleValue =>
   typeof value === 'string' || typeof value === 'number' || value instanceof Date;

@@ -3,6 +3,8 @@ import isoWeek from 'dayjs/plugin/isoWeek.js';
 import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
+import { isPlainObject } from 'lodash-es';
+import { type INTERVAL_FIELDS, RELATIVE_UNITS, type RelativeUnit } from './operatorCatalog';
 import type {
   DateConfig,
   DateExpr,
@@ -18,66 +20,85 @@ dayjs.extend(timezone);
 dayjs.extend(quarterOfYear);
 dayjs.extend(isoWeek);
 
-type ManipulateUnit = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second';
-
-const UNIT_FOR: Record<keyof RelativeUnits, ManipulateUnit> = {
-  years: 'year',
-  quarters: 'quarter',
-  months: 'month',
-  weeks: 'week',
-  days: 'day',
-  hours: 'hour',
-  minutes: 'minute',
-  seconds: 'second',
-};
-
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
-
 /** True when a DateRule `value` is a structured date expression rather than an absolute date. */
 export const isDateExpr = (value: unknown): value is DateExpr => {
   if (!isPlainObject(value)) return false;
+  const v = value as Record<string, unknown>;
   return (
-    'ago' in value ||
-    'ahead' in value ||
-    'this' in value ||
-    'last' in value ||
-    'next' in value ||
-    'start' in value ||
-    'end' in value
+    'ago' in v ||
+    'ahead' in v ||
+    'this' in v ||
+    'last' in v ||
+    'next' in v ||
+    'start' in v ||
+    'end' in v
   );
 };
 
-const requireNow = (config: DateConfig): dayjs.Dayjs => {
+/** A date config with its zone read: the expression layer never sees a value source. */
+export type ResolvedDateConfig = Omit<DateConfig, 'timeZone'> & { timeZone?: string };
+
+export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
     throw new Error('date expressions require `now` to be supplied to the evaluator');
   // Only a literal zone string anchors `now` here; the bind form is resolved upstream (in
   // checkDate, which normalizes config.timeZone to a concrete string) — there are no
   // bindings at this layer (compilers), so a non-string zone means "no static anchor".
-  const zone = typeof config.timeZone === 'string' ? config.timeZone : undefined;
-  const base = zone ? dayjs(config.now).tz(zone) : dayjs(config.now);
+  const base = config.timeZone ? dayjs(config.now).tz(config.timeZone) : dayjs(config.now);
   if (!base.isValid()) throw new Error(`invalid \`now\`: ${String(config.now)}`);
   return base;
 };
 
-const applyUnits = (base: dayjs.Dayjs, units: RelativeUnits, direction: 1 | -1): dayjs.Dayjs => {
-  let result = base;
-  for (const key of Object.keys(units) as (keyof RelativeUnits)[]) {
-    const magnitude = units[key];
-    if (magnitude === undefined) continue;
-    if (magnitude < 0) throw new Error(`relative magnitudes must be positive: ${key}=${magnitude}`);
-    result = result.add(direction * magnitude, UNIT_FOR[key] as dayjs.QUnitType);
-  }
-  return result;
+// Units apply as Postgres applies an interval to a wall-clock time: the month part (years,
+// quarters, months), then the day part (weeks, days), then time — so a shift lands on the same
+// instant in check() and in toSql, at a month end (2024-02-29 + 1 year 1 month is 2025-03-29)
+// and across a DST change in the evaluation's zone (a day is 23 hours on the spring-forward day).
+/** The units' total in one Postgres interval field (months, days or secs). */
+export const intervalTotal = (
+  units: RelativeUnits<number>,
+  field: (typeof INTERVAL_FIELDS)[number],
+): number =>
+  (Object.entries(units) as [RelativeUnit, number][]).reduce(
+    (total, [unit, amount]) =>
+      RELATIVE_UNITS[unit].interval === field
+        ? total + amount * RELATIVE_UNITS[unit].factor
+        : total,
+    0,
+  );
+
+const WALL = 'YYYY-MM-DDTHH:mm:ss.SSS';
+
+/** Move `base` by `units` on the wall clock of `zone` — forward for `ahead` (1), back for `ago` (-1). */
+export const shiftByUnits = (
+  base: dayjs.Dayjs,
+  units: RelativeUnits<number>,
+  direction: 1 | -1,
+  zone: string,
+): dayjs.Dayjs => {
+  const months = intervalTotal(units, 'months');
+  const days = intervalTotal(units, 'days');
+  const seconds = intervalTotal(units, 'secs');
+  let wall = dayjs.utc(base.tz(zone).format(WALL));
+  if (months) wall = wall.add(direction * months, 'month');
+  if (days) wall = wall.add(direction * days, 'day');
+  if (seconds) wall = wall.add(direction * seconds * 1000, 'millisecond');
+  return dayjs.tz(wall.format(WALL), zone);
 };
 
-export const isRollingExpr = (e: DateExpr): e is RollingExpr => 'ago' in e || 'ahead' in e;
-export const isPeriodExpr = (e: DateExpr): e is PeriodExpr =>
+/** The zone a shift's wall clock reads in: the evaluation's zone, else UTC. */
+export const zoneOf = (config: ResolvedDateConfig): string => config.timeZone ?? 'UTC';
+
+export const isRollingExpr = <A>(e: DateExpr<A>): e is RollingExpr<A> => 'ago' in e || 'ahead' in e;
+/** A rolling expression's units and direction: `ago` moves back (-1), `ahead` forward (1). */
+export const rollingShift = <A>(expr: DateExpr<A>): [RelativeUnits<A>, 1 | -1] | null =>
+  isRollingExpr(expr) ? ('ago' in expr ? [expr.ago, -1] : [expr.ahead, 1]) : null;
+
+export const isPeriodExpr = <A>(e: DateExpr<A>): e is PeriodExpr =>
   'this' in e || 'last' in e || 'next' in e;
-export const isEdgeExpr = (e: DateExpr): e is EdgeExpr => 'start' in e || 'end' in e;
+export const isEdgeExpr = <A>(e: DateExpr<A>): e is EdgeExpr => 'start' in e || 'end' in e;
 
 // `week` is governed by weekStart (default monday → isoWeek). `isoWeek` is always Monday.
-const effectivePeriodUnit = (unit: PeriodUnit, config: DateConfig): dayjs.OpUnitType => {
+const effectivePeriodUnit = (unit: PeriodUnit, config: ResolvedDateConfig): dayjs.OpUnitType => {
   if (unit === 'week')
     return (config.weekStart === 'sunday' ? 'week' : 'isoWeek') as dayjs.OpUnitType;
   return unit as dayjs.OpUnitType;
@@ -86,7 +107,7 @@ const effectivePeriodUnit = (unit: PeriodUnit, config: DateConfig): dayjs.OpUnit
 /** Resolve a calendar period (this/last/next) to its [start, end] boundaries. */
 export const resolvePeriodRange = (
   expr: PeriodExpr,
-  config: DateConfig,
+  config: ResolvedDateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs] => {
   const now = requireNow(config);
   const unit = 'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
@@ -103,11 +124,12 @@ export const resolvePeriodRange = (
  * Resolve a point expression (for before/after/onOrBefore/onOrAfter).
  * Rolling → the offset instant; edge → the named boundary of a period.
  */
-export const resolveDateExpr = (expr: DateExpr, config: DateConfig): dayjs.Dayjs => {
-  if (isRollingExpr(expr)) {
-    const base = requireNow(config);
-    return 'ago' in expr ? applyUnits(base, expr.ago, -1) : applyUnits(base, expr.ahead, 1);
-  }
+export const resolveDateExpr = (
+  expr: DateExpr<number>,
+  config: ResolvedDateConfig,
+): dayjs.Dayjs => {
+  const rolling = rollingShift(expr);
+  if (rolling) return shiftByUnits(requireNow(config), ...rolling, zoneOf(config));
   if (isEdgeExpr(expr)) {
     const period = 'start' in expr ? expr.start : expr.end;
     const [start, end] = resolvePeriodRange(period, config);
@@ -124,9 +146,9 @@ export const resolveDateExpr = (expr: DateExpr, config: DateConfig): dayjs.Dayjs
  * Rolling/edge → their point. Shared by check, toPrisma, and toSql.
  */
 export const resolvePointForOperator = (
-  expr: DateExpr,
+  expr: DateExpr<number>,
   operator: string,
-  config: DateConfig,
+  config: ResolvedDateConfig,
 ): dayjs.Dayjs => {
   if (isPeriodExpr(expr)) {
     const [start, end] = resolvePeriodRange(expr, config);
@@ -143,15 +165,15 @@ export const resolvePointForOperator = (
  * Period → its [start, end]; rolling → [now-Δ, now] / [now, now+Δ].
  */
 export const resolveDateExprRange = (
-  expr: DateExpr,
-  config: DateConfig,
+  expr: DateExpr<number>,
+  config: ResolvedDateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs] => {
   if (isPeriodExpr(expr)) return resolvePeriodRange(expr, config);
-  if (isRollingExpr(expr)) {
+  const rolling = rollingShift(expr);
+  if (rolling) {
     const now = requireNow(config);
-    return 'ago' in expr
-      ? [applyUnits(now, expr.ago, -1), now]
-      : [now, applyUnits(now, expr.ahead, 1)];
+    const moved = shiftByUnits(now, ...rolling, zoneOf(config));
+    return rolling[1] === -1 ? [moved, now] : [now, moved];
   }
   throw new Error('`within` requires a range expression (period or rolling), not an edge point');
 };

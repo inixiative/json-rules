@@ -1,5 +1,6 @@
 import { isOperatorSupportedForTarget, type RuleTarget } from '../operatorCatalog';
 import { parseScopeRef, resolveScopeRef } from '../scope';
+import { valueRefRoles, valueRefs } from '../traverse';
 import type { ArrayRule, Condition, WindowFields } from '../types';
 import { extremalRewrite, hasWindow } from '../window';
 import type { Policy } from './policy.ts';
@@ -39,16 +40,19 @@ const restrictByWindow = (acc: Acc, cond: Record<string, unknown>): void => {
   }
 };
 
-// Scope refs compile nowhere but `path: '$.x'` on toSql (a same-row column comparison).
+// Scope refs compile nowhere but `$.x` value refs on toSql (same-row column arithmetic) — and
+// not a date offset's.
 const restrictByScopeRefs = (acc: Acc, cond: Record<string, unknown>): void => {
   if (typeof cond.field === 'string' && parseScopeRef(cond.field)) {
     acc.targets.delete('toSql');
     acc.targets.delete('toPrisma');
   }
-  const pathRef = typeof cond.path === 'string' ? parseScopeRef(cond.path) : null;
-  if (pathRef) {
+  for (const { ref, role } of valueRefRoles(cond)) {
+    const pathRef = parseScopeRef(ref);
+    if (!pathRef) continue;
     acc.targets.delete('toPrisma');
-    if (pathRef.depth > 1) acc.targets.delete('toSql');
+    // A date offset read per row is a stored `{ ago }` Postgres can't apply.
+    if (pathRef.depth > 1 || role === 'shift') acc.targets.delete('toSql');
   }
 };
 
@@ -86,9 +90,10 @@ const visit = (cond: Condition, acc: Acc, scopes: readonly VisitScope[]): void =
   restrictByWindow(acc, record);
   restrictByScopeRefs(acc, record);
 
-  if (typeof record.path === 'string' && parseScopeRef(record.path)) {
-    const ref = resolveScopeRef(record.path, scopes);
-    if ('outOfBounds' in ref) acc.violations.push(record.path);
+  for (const ref of valueRefs(record)) {
+    if (!parseScopeRef(ref)) continue;
+    const target = resolveScopeRef(ref, scopes);
+    if ('outOfBounds' in target) acc.violations.push(ref);
   }
 
   let next: VisitScope = here;

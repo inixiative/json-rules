@@ -32,7 +32,7 @@ export const readScopeRef = <S>(
 // Segments of a path: dotted names, bracket indices and quoted keys (`ids[1]`, `meta["a.b"]`).
 const SEGMENT = /\[(\d+)\]|\[(["'])(.*?)\2\]|([^.[\]]+)/g;
 const segments = (path: string): string[] =>
-  [...path.matchAll(SEGMENT)].map((m) => m[1] ?? m[3] ?? m[4]);
+  path === '' ? [''] : [...path.matchAll(SEGMENT)].map((m) => m[1] ?? m[3] ?? m[4]);
 
 // One step of a path read: an own property, or an inherited one (a class getter, a string's
 // `length`) unless Object.prototype names it — `constructor`, `toString`, `__proto__` never

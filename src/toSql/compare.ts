@@ -1,4 +1,4 @@
-import { DateOperator, Operator } from '../operator';
+import { type Comparator, comparatorOf, NEGATED_OPERATORS } from '../operatorCatalog';
 import { nextParam } from './params';
 import type { BuilderState } from './types';
 import { isMissing, type ResolvedRhs } from './valueSource';
@@ -8,17 +8,25 @@ import { isMissing, type ResolvedRhs } from './valueSource';
 // it NULL — never true — for a NULL field, so every negation carries the NULL rows explicitly.
 // An operand that reads nothing matches no row, and a negation keeps the NULL fields only.
 
-export const ORDERED_SQL: Partial<Record<string, { symbol: string; negated?: true }>> = {
-  [Operator.lessThan]: { symbol: '<' },
-  [Operator.lessThanEquals]: { symbol: '<=' },
-  [Operator.greaterThan]: { symbol: '>' },
-  [Operator.greaterThanEquals]: { symbol: '>=' },
-  [DateOperator.before]: { symbol: '<' },
-  [DateOperator.after]: { symbol: '>' },
-  [DateOperator.onOrBefore]: { symbol: '<=' },
-  [DateOperator.onOrAfter]: { symbol: '>=' },
-  [DateOperator.notBefore]: { symbol: '>=', negated: true },
-  [DateOperator.notAfter]: { symbol: '<=', negated: true },
+/** A comparator as SQL. */
+export const SQL_COMPARATOR: Record<Comparator, string> = {
+  lt: '<',
+  lte: '<=',
+  gt: '>',
+  gte: '>=',
+  equals: '=',
+};
+
+/** An ordered comparison's SQL symbol and whether it negates (keeps NULL); undefined for any
+ *  other operator. */
+export const orderedSql = (
+  operator: string,
+  family: 'field' | 'date',
+): { symbol: string; negated: boolean } | undefined => {
+  const comparator = comparatorOf(operator, family);
+  return comparator
+    ? { symbol: SQL_COMPARATOR[comparator], negated: NEGATED_OPERATORS.includes(operator) }
+    : undefined;
 };
 
 export const operandSql = (rhs: ResolvedRhs, state: BuilderState): string =>

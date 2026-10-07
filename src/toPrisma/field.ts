@@ -9,7 +9,13 @@ import { enumMatches } from '../enumMatch';
 import { hasNoOperand, isExistenceTest, relationNotValue } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
-import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS, SET_OPERATORS } from '../operatorCatalog';
+import {
+  comparatorOf,
+  NEGATED_OPERATORS,
+  NEGATED_RANGE_OPERATORS,
+  ORDERED_OPERATORS,
+  SET_OPERATORS,
+} from '../operatorCatalog';
 import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
 import { andWhere, notLeaf, orWhere, overFetch } from './logical';
@@ -268,6 +274,9 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
     return { [key]: literal, ...ci(value) };
   };
 
+  const comparator = comparatorOf(rule.operator, 'field');
+  if (comparator && ORDERED_OPERATORS.includes(rule.operator)) return { [comparator]: val() };
+
   switch (rule.operator) {
     case Operator.equals: {
       const value = val() ?? nullOf(shape);
@@ -277,14 +286,6 @@ export const comparisonFilter = (rule: Rule, options?: BuildOptions): unknown =>
       const value = val() ?? nullOf(shape);
       return { not: value, ...ci(value) };
     }
-    case Operator.lessThan:
-      return { lt: val() };
-    case Operator.lessThanEquals:
-      return { lte: val() };
-    case Operator.greaterThan:
-      return { gt: val() };
-    case Operator.greaterThanEquals:
-      return { gte: val() };
     // A field's set membership is built by buildFieldRule; an aggregate's `having` takes it here.
     case Operator.in:
     case Operator.notIn:

@@ -64,27 +64,43 @@ export const ValueShape = {
 
 export type ValueShape = (typeof ValueShape)[keyof typeof ValueShape];
 
+/** How an ordered operator compares its field with its one operand (a count, its matches). */
+export type Comparator = 'lt' | 'lte' | 'gt' | 'gte' | 'equals';
+
 export type CatalogEntry = {
   kinds: readonly FieldKind[];
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
   acceptsExpr?: boolean;
+  comparator?: Comparator;
 };
 
 export const FIELD_OPERATOR_CATALOG: Record<Operator, CatalogEntry> = {
   [Operator.equals]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'scalar' },
   [Operator.notEquals]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'scalar' },
-  [Operator.lessThan]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'ordered' },
+  [Operator.lessThan]: {
+    kinds: ORDERABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'ordered',
+    comparator: 'lt',
+  },
   [Operator.lessThanEquals]: {
     kinds: ORDERABLE_KINDS,
     targets: ALL_TARGETS,
     valueShape: 'ordered',
+    comparator: 'lte',
   },
-  [Operator.greaterThan]: { kinds: ORDERABLE_KINDS, targets: ALL_TARGETS, valueShape: 'ordered' },
+  [Operator.greaterThan]: {
+    kinds: ORDERABLE_KINDS,
+    targets: ALL_TARGETS,
+    valueShape: 'ordered',
+    comparator: 'gt',
+  },
   [Operator.greaterThanEquals]: {
     kinds: ORDERABLE_KINDS,
     targets: ALL_TARGETS,
     valueShape: 'ordered',
+    comparator: 'gte',
   },
   [Operator.in]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'array' },
   [Operator.notIn]: { kinds: EQUATABLE_KINDS, targets: ALL_TARGETS, valueShape: 'array' },
@@ -112,36 +128,42 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'lt',
   },
   [DateOperator.after]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'gt',
   },
   [DateOperator.onOrBefore]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'lte',
   },
   [DateOperator.onOrAfter]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'gte',
   },
   [DateOperator.notBefore]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'gte',
   },
   [DateOperator.notAfter]: {
     kinds: ['DateTime'],
     targets: ALL_TARGETS,
     valueShape: 'dateValue',
     acceptsExpr: true,
+    comparator: 'lte',
   },
   [DateOperator.within]: {
     kinds: ['DateTime'],
@@ -184,15 +206,16 @@ export const DATE_OPERATOR_CATALOG: Record<DateOperator, CatalogEntry> = {
 export type ArrayCatalogEntry = {
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
+  comparator?: Comparator;
 };
 
 export const ARRAY_OPERATOR_CATALOG: Record<ArrayOperator, ArrayCatalogEntry> = {
   [ArrayOperator.all]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
   [ArrayOperator.any]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
   [ArrayOperator.none]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
-  [ArrayOperator.atLeast]: { targets: NON_SQL_TARGETS, valueShape: 'count' },
-  [ArrayOperator.atMost]: { targets: NON_SQL_TARGETS, valueShape: 'count' },
-  [ArrayOperator.exactly]: { targets: NON_SQL_TARGETS, valueShape: 'count' },
+  [ArrayOperator.atLeast]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'gte' },
+  [ArrayOperator.atMost]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'lte' },
+  [ArrayOperator.exactly]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'equals' },
   [ArrayOperator.empty]: { targets: ALL_TARGETS, valueShape: 'none' },
   [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none' },
 };
@@ -241,6 +264,10 @@ export const catalogEntry = (
   family: OperatorFamily,
 ): CatalogEntry | ArrayCatalogEntry | undefined =>
   Object.hasOwn(CATALOGS[family], operator) ? CATALOGS[family][operator] : undefined;
+
+/** How an operator compares its field with one operand; undefined when it doesn't. */
+export const comparatorOf = (operator: string, family: OperatorFamily): Comparator | undefined =>
+  catalogEntry(operator, family)?.comparator;
 
 export const getValueShape = (operator: string, family: OperatorFamily): ValueShape => {
   const entry = catalogEntry(operator, family);
@@ -351,18 +378,16 @@ export const NEGATED_RANGE_OPERATORS = NEGATED_OPERATORS.filter((op) =>
 );
 
 /** Comparisons that bound a field from above / below — what a window's extremal rewrite reads. */
-export const UPPER_BOUND_OPERATORS: readonly string[] = [
-  DateOperator.before,
-  DateOperator.onOrBefore,
-  Operator.lessThan,
-  Operator.lessThanEquals,
-];
-export const LOWER_BOUND_OPERATORS: readonly string[] = [
-  DateOperator.after,
-  DateOperator.onOrAfter,
-  Operator.greaterThan,
-  Operator.greaterThanEquals,
-];
+const bounding = (...comparators: Comparator[]): readonly string[] =>
+  OPERATOR_ENTRIES.flatMap(([operator, entry]) =>
+    entry.comparator &&
+    comparators.includes(entry.comparator) &&
+    !NEGATED_OPERATORS.includes(operator)
+      ? [operator]
+      : [],
+  );
+export const UPPER_BOUND_OPERATORS = bounding('lt', 'lte');
+export const LOWER_BOUND_OPERATORS = bounding('gt', 'gte');
 
 // --- Kind sets -------------------------------------------------------------------------------
 

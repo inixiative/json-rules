@@ -1,5 +1,6 @@
 import { ArrayOperator } from '../operator';
-import type { ArrayRule, Condition } from '../types';
+import { comparatorOf } from '../operatorCatalog';
+import type { ArrayRule } from '../types';
 import { holdsForEmpty } from './array';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll } from './logical';
@@ -48,11 +49,7 @@ export const buildCountStep = (
 // Prisma 6.x having format: field first, then _count nested inside.
 // e.g. { fanUserUuid: { _count: { gte: 3 } } } — NOT { _count: { _all: { gte: 3 } } }
 const countHaving = (op: ArrayOperator, count: number, field: string): Record<string, unknown> => {
-  const bound = {
-    [ArrayOperator.atLeast]: 'gte',
-    [ArrayOperator.atMost]: 'lte',
-    [ArrayOperator.exactly]: 'equals',
-  }[op as 'atLeast' | 'atMost' | 'exactly'];
-  if (!bound) throw new Error('unreachable');
+  const bound = comparatorOf(op, 'array');
+  if (!bound) throw new Error(`'${op}' does not count`);
   return { [field]: { _count: { [bound]: count } } };
 };

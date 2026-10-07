@@ -10,7 +10,7 @@ import {
 import { orderPair } from '../number';
 import { DateOperator } from '../operator';
 import type { DateExpr, DateRule } from '../types';
-import { compareSql, noOperandSql, ORDERED_SQL, orNull, rangeSql } from './compare';
+import { compareSql, noOperandSql, orderedSql, orNull, rangeSql } from './compare';
 import { type FieldSql, resolveField } from './join';
 import { offsetDate } from './offset';
 import { nextParam } from './params';
@@ -43,10 +43,10 @@ const sides = (field: FieldSql, ends: ResolvedRhs[]): { lhs: string; ends: Resol
 
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveField(rule.field, state);
-  const ordered = ORDERED_SQL[rule.dateOperator];
+  const ordered = orderedSql(rule.dateOperator, 'date');
   if (ordered) {
     const { lhs, ends } = sides(field, [resolvePoint(rule, state)]);
-    return compareSql(lhs, ordered.symbol, ends[0], !!ordered.negated, state);
+    return compareSql(lhs, ordered.symbol, ends[0], ordered.negated, state);
   }
 
   const range = (pair: [ResolvedRhs, ResolvedRhs] | null, negated: boolean): string => {

@@ -3,7 +3,7 @@ import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
 import { orderPair } from '../number';
 import { DateOperator } from '../operator';
-import { NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
+import { comparatorOf, NEGATED_OPERATORS, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import type { DateRule } from '../types';
 import { absentArms, buildMapAwareFilter } from './field';
 import { notLeaf, orWhere } from './logical';
@@ -69,25 +69,10 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
   };
   const two = (ends: [Date, Date] | null) => (ends ? { gte: ends[0], lte: ends[1] } : null);
 
+  const comparator = comparatorOf(rule.dateOperator, 'date');
+  if (comparator) return one(comparator as 'lt' | 'gt' | 'lte' | 'gte');
+
   switch (rule.dateOperator) {
-    case DateOperator.before:
-      return one('lt');
-
-    case DateOperator.after:
-      return one('gt');
-
-    case DateOperator.onOrBefore:
-      return one('lte');
-
-    case DateOperator.onOrAfter:
-      return one('gte');
-
-    case DateOperator.notBefore:
-      return one('gte');
-
-    case DateOperator.notAfter:
-      return one('lte');
-
     case DateOperator.within:
     case DateOperator.notWithin:
       return two(window());

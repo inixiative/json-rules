@@ -13,7 +13,7 @@ import {
   walkWith,
 } from '../toPrisma/mapWalk';
 import type { Rule } from '../types';
-import { compareSql, noOperandSql, ORDERED_SQL, orNull as orNullSql, rangeSql } from './compare';
+import { compareSql, noOperandSql, orderedSql, orNull as orNullSql, rangeSql } from './compare';
 import { type FieldSql, resolveField, resolveFieldSql } from './join';
 import { buildJsonComparison } from './json';
 import { offsetNumber } from './offset';
@@ -68,7 +68,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   }
   const rhs = resolveComparison(rule, state);
   const field = compared.sql;
-  const ordered = ORDERED_SQL[rule.operator];
+  const ordered = orderedSql(rule.operator, 'field');
   if (ordered) return compareSql(field, ordered.symbol, rhs, false, state);
   // Nothing to compare against (see hasNoOperand): no row, or the NULL fields for a negation.
   if (rhs.type === 'value' && hasNoOperand(rule, rhs.value))

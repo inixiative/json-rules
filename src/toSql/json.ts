@@ -5,7 +5,7 @@ import { Operator } from '../operator';
 import { NEGATED_OPERATORS } from '../operatorCatalog';
 import { readPattern } from '../pattern';
 import type { Rule } from '../types';
-import { noOperandSql, orNull } from './compare';
+import { noOperandSql, orderedSql, orNull } from './compare';
 import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
@@ -13,13 +13,6 @@ import type { BuilderState } from './types';
 // A Json value compared as JSON, as check() compares it: by value — a list or an object deeply —
 // and never across types; JSON null is null; string operators read strings, and `contains` is
 // also exact membership in an array.
-
-const SYMBOLS: Partial<Record<string, string>> = {
-  [Operator.lessThan]: '<',
-  [Operator.lessThanEquals]: '<=',
-  [Operator.greaterThan]: '>',
-  [Operator.greaterThanEquals]: '>=',
-};
 
 /**
  * `rule` against the Json value `jsonb` (a column, or a path read with `->`), its operand known
@@ -86,7 +79,7 @@ export const buildJsonComparison = (
       return rule.operator === Operator.matches ? match : not(match);
     }
   }
-  const symbol = SYMBOLS[rule.operator];
+  const symbol = orderedSql(rule.operator, 'field')?.symbol;
   if (symbol) return `(${type} = jsonb_typeof(${json(value)}) AND ${j} ${symbol} ${json(value)})`;
   throw new Error(`Operator '${rule.operator}' is not supported on a Json value in SQL`);
 };

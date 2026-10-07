@@ -3,11 +3,12 @@ import { get } from 'lodash-es';
 import { resolveTimeZone } from '../date';
 import { shiftByUnits } from '../dateExpr';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
-import type { Magnitude, NumberOffset, RelativeUnits } from '../types';
+import type { Magnitude, RelativeUnits, ValueSourceOf } from '../types';
 import {
   addOffset,
   isCalendarUnit,
   isPathRef,
+  offsetAmount,
   resolveMagnitude,
   resolveUnits,
 } from '../valueSource';
@@ -41,11 +42,8 @@ export const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
 const isRowRef = (magnitude: unknown): boolean =>
   isPathRef(magnitude) && parseScopeRef(magnitude.path) !== null;
 
-/** True when a magnitude, or any unit of a set, is read per row — so it must compile to SQL. */
-export const readsRow = (magnitudes: NumberOffset | RelativeUnits): boolean =>
-  isPathRef(magnitudes) || typeof magnitudes === 'number'
-    ? isRowRef(magnitudes)
-    : Object.values(magnitudes).some(isRowRef);
+/** True when any unit is read per row — so the shift must compile to SQL. */
+export const readsRow = (units: RelativeUnits): boolean => Object.values(units).some(isRowRef);
 
 /** Reads a bare ref from context; a row ref here is a caller bug (check readsRow first). */
 export const readContext =
@@ -62,9 +60,9 @@ export const readContext =
 const magnitudeSql = (
   magnitude: Magnitude,
   state: BuilderState,
-  unit?: keyof RelativeUnits,
+  unit: keyof RelativeUnits,
 ): string => {
-  const whole = unit !== undefined && isCalendarUnit(unit);
+  const whole = isCalendarUnit(unit);
   const cast = whole ? 'int' : 'double precision';
   if (!isRowRef(magnitude)) {
     const amount = resolveMagnitude(magnitude, readContext(state), unit);
@@ -72,7 +70,6 @@ const magnitudeSql = (
   }
   const column = resolveRef((magnitude as { path: string }).path, state) as { sql: string };
   const c = column.sql;
-  if (unit === undefined) return `(${c})::${cast}`;
   const usable = whole ? `${c} >= 0 AND ${c} = trunc(${c})` : `${c} >= 0`;
   return `(CASE WHEN ${usable} THEN ${c} END)::${cast}`;
 };
@@ -129,18 +126,40 @@ export const shiftDate = (
   };
 };
 
-/** A numeric operand moved by `offset`, in double precision as check() adds; SQL when either
+/** An offset's source on the SQL rail: its value, a context or row (`$.`) read, or an unresolved
+ *  bind — null when optional, an error otherwise. */
+export const resolveOffset = (
+  offset: ValueSourceOf<unknown>,
+  field: string,
+  state: BuilderState,
+): ResolvedRhs => {
+  if (offset.value !== undefined) return { type: 'value', value: offset.value };
+  if (offset.bind !== undefined) {
+    if (offset.bindOptional === true) return { type: 'value', value: null };
+    throw new Error(
+      `Unresolved binding '${offset.bind}' for the offset on '${field}' — resolve bindings (resolveLensBindings) before compiling to SQL.`,
+    );
+  }
+  return resolveRef(offset.path as string, state);
+};
+
+/** A numeric operand moved by an offset, in double precision as check() adds; SQL when either
  *  side is read per row. */
 export const shiftNumber = (
   rhs: ResolvedRhs,
-  offset: NumberOffset,
+  offset: ResolvedRhs,
   state: BuilderState,
 ): ResolvedRhs => {
-  if (rhs.type === 'value' && !readsRow(offset)) {
-    const amount = resolveMagnitude(offset, readContext(state));
+  if (rhs.type === 'value' && offset.type === 'value') {
+    const amount = offsetAmount(offset.value);
     return { type: 'value', value: amount === null ? null : addOffset(rhs.value, amount) };
   }
-  const base =
-    rhs.type === 'column' ? rhs.sql : `${nextParam(state, rhs.value ?? null)}::double precision`;
-  return { type: 'column', sql: `(${base} + ${magnitudeSql(offset, state)})` };
+  const operand = (side: ResolvedRhs, read: (value: unknown) => unknown) =>
+    side.type === 'column'
+      ? `(${side.sql})::double precision`
+      : `${nextParam(state, read(side.value) ?? null)}::double precision`;
+  return {
+    type: 'column',
+    sql: `(${operand(rhs, (v) => v)} + ${operand(offset, offsetAmount)})`,
+  };
 };

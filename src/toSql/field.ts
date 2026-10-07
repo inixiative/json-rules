@@ -7,7 +7,7 @@ import { resolveFieldSql } from './join';
 import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
 import type { BuilderState } from './types';
-import { type ResolvedRhs, resolveRef, shiftNumber } from './valueSource';
+import { type ResolvedRhs, resolveOffset, resolveRef, shiftNumber } from './valueSource';
 
 // The ''-branch of isEmpty/notEmpty belongs to String (and Json) columns only —
 // Postgres rejects '' on a timestamp/integer at parse time (toPrisma's 2.18.3 fix,
@@ -200,7 +200,7 @@ const COMPARATORS: Partial<Record<Operator, string>> = {
 // An offset compares against arithmetic, so NULL is never the is-null sentinel here: a null
 // base or offset makes the comparison NULL — no match — and a negation keeps NULL fields only.
 const buildOffsetComparison = (rule: Rule, field: string, state: BuilderState): string => {
-  const offset = rule.offset as NumberOffset;
+  const offset = resolveOffset(rule.offset as NumberOffset, rule.field, state);
   const raw = resolveRawComparison(rule, state);
   const base: ResolvedRhs =
     raw.type === 'column'

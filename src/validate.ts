@@ -240,33 +240,29 @@ const validateAmountRefs = (
   context: ValidationContext,
   depth: number,
 ): void => {
-  for (const ref of magnitudeRefs({ offset: rule.offset }))
-    validateRef(ref, 'path', `${path}.offset`, context, depth);
+  const offset = isPlainObject(rule.offset) ? rule.offset.value : undefined;
+  for (const ref of magnitudeRefs({ value: offset }))
+    validateRef(ref, 'path', `${path}.offset.value`, context, depth);
   for (const ref of magnitudeRefs({ value: rule.value }))
     validateRef(ref, 'path', `${path}.value`, context, depth);
 };
 
-// An offset shifts a path or bound point: a field rule's is a number or `{ path }`, a date
-// rule's is `{ ago }` / `{ ahead }`. A literal value is written already shifted.
+const OFFSET_SOURCES = ['value', 'path', 'bind'];
+
+// An offset is a value source of its own — `{ value }`, `{ path }` or `{ bind }` (with
+// `bindOptional`) — that moves the comparison value: a number for a field rule, a rolling
+// `{ ago }` / `{ ahead }` for a date rule. A date offset read per row is check-only.
 const validateOffset = (
   rule: Record<string, unknown>,
   kind: 'field' | 'date',
   operator: string,
   path: string,
   context: ValidationContext,
+  depth: number,
 ): void => {
   const { offset } = rule;
   if (offset === undefined) return;
   const at = `${path}.offset`;
-  if ('value' in rule && rule.value !== undefined) {
-    pushIssue(
-      context,
-      at,
-      'unexpected_offset',
-      'An offset shifts a path or bind, not a literal value',
-    );
-    return;
-  }
   if (!OFFSET_OPERATORS.includes(operator)) {
     pushIssue(
       context,
@@ -276,17 +272,55 @@ const validateOffset = (
     );
     return;
   }
-  if (kind === 'field') {
-    if (!isPathRef(offset) && !(typeof offset === 'number' && Number.isFinite(offset)))
-      pushIssue(context, at, 'invalid_offset', 'A field offset is a number or { path }');
-    return;
-  }
   const keys = isPlainObject(offset) ? Object.keys(offset) : [];
-  if (keys.length !== 1 || (keys[0] !== 'ago' && keys[0] !== 'ahead')) {
-    pushIssue(context, at, 'invalid_offset', 'A date offset is { ago: units } or { ahead: units }');
+  const sources = keys.filter((key) => OFFSET_SOURCES.includes(key));
+  const source = sources[0];
+  const wellFormed =
+    isPlainObject(offset) &&
+    sources.length === 1 &&
+    keys.every(
+      (key) => OFFSET_SOURCES.includes(key) || (key === 'bindOptional' && source === 'bind'),
+    ) &&
+    (source === 'value' || typeof offset[source] === 'string');
+  if (!wellFormed) {
+    pushIssue(context, at, 'invalid_offset', 'An offset is one of { value }, { path } or { bind }');
     return;
   }
-  validateRelativeUnits((offset as Record<string, unknown>)[keys[0]], `${at}.${keys[0]}`, context);
+  if (source === 'path') {
+    const ref = offset.path as string;
+    validateRef(ref, 'path', `${at}.path`, context, depth);
+    const scoped = parseScopeRef(ref);
+    if (kind === 'date' && scoped && scoped.depth <= 1 && context.target === 'toSql')
+      pushIssue(
+        context,
+        `${at}.path`,
+        'unsupported_sql_path',
+        `A row path on a date offset ('${ref}') is not supported by toSql()`,
+      );
+    return;
+  }
+  if (source !== 'value') return;
+  const value = offset.value;
+  if (kind === 'field') {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+      pushIssue(context, `${at}.value`, 'invalid_offset', 'A field offset value is a number');
+    return;
+  }
+  const units = isPlainObject(value) ? Object.keys(value) : [];
+  if (units.length !== 1 || (units[0] !== 'ago' && units[0] !== 'ahead')) {
+    pushIssue(
+      context,
+      `${at}.value`,
+      'invalid_offset',
+      'A date offset value is { ago } or { ahead }',
+    );
+    return;
+  }
+  validateRelativeUnits(
+    (value as Record<string, unknown>)[units[0]],
+    `${at}.value.${units[0]}`,
+    context,
+  );
 };
 
 const validateFieldRule = (
@@ -311,7 +345,7 @@ const validateFieldRule = (
   }
 
   const operator = rule.operator as Operator;
-  validateOffset(rule, 'field', operator, path, context);
+  validateOffset(rule, 'field', operator, path, context, depth);
 
   if (!isOperatorSupportedForTarget(operator, context.target)) {
     pushIssue(
@@ -641,7 +675,7 @@ const validateDateRule = (
   }
 
   const operator = rule.dateOperator as DateOperator;
-  validateOffset(rule, 'date', operator, path, context);
+  validateOffset(rule, 'date', operator, path, context, depth);
 
   if (!isOperatorSupportedForTarget(operator, context.target)) {
     pushIssue(

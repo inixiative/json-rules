@@ -4,17 +4,16 @@ import {
   isDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
-  rollingShift,
   shiftByUnits,
 } from '../dateExpr';
 import { DateOperator } from '../operator';
 import type { DateConfig, DateRule } from '../types';
-import { resolveExpr, resolveUnits } from '../valueSource';
+import { offsetShift, resolveExpr, resolveUnits } from '../valueSource';
 import { absentArms } from './field';
 import { matchNothing } from './logical';
 import type { BuildOptions, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
-import { amountReader, readPathValue } from './valueSource';
+import { amountReader, readOffset, readPathValue } from './valueSource';
 
 // The negated date operators carry the `equals: null` arm (2.19.0 negation ruling) — the
 // column-nullability licensing is the same as the scalar negations in ./field.ts.
@@ -90,9 +89,9 @@ const buildDateLeafFilter = (rule: DateRule, options?: BuildOptions): unknown =>
 
   const shift = (instant: Date | null): Date | null => {
     if (instant === null || rule.offset === undefined) return instant;
-    const shift = rollingShift(rule.offset);
-    if (!shift) throw new Error('a date offset is { ago } or { ahead }');
-    const [raw, direction] = shift;
+    const move = offsetShift(readOffset(rule.offset, rule.field, options));
+    if (move === null) return null;
+    const [raw, direction] = move;
     const units = resolveUnits(raw, read);
     return (
       units && shiftByUnits(dayjs(instant), units, direction, resolveTimeZone(config)).toDate()

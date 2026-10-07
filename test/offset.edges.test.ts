@@ -76,7 +76,7 @@ describe('magnitudes read from data: calendar units are whole, every unit non-ne
         field: 'ts',
         dateOperator: 'before',
         path: '$.anchor',
-        offset: { ago: { days: { path: '$.n' } } },
+        offset: { value: { ago: { days: { path: '$.n' } } } },
       }),
       [1],
     );
@@ -88,7 +88,7 @@ describe('magnitudes read from data: calendar units are whole, every unit non-ne
         field: 'ts',
         dateOperator: 'notBefore',
         path: '$.anchor',
-        offset: { ago: { weeks: { path: '$.n' } } },
+        offset: { value: { ago: { weeks: { path: '$.n' } } } },
       }),
       [1],
     );
@@ -100,7 +100,7 @@ describe('magnitudes read from data: calendar units are whole, every unit non-ne
         field: 'ts',
         dateOperator: 'before',
         path: '$.anchor',
-        offset: { ago: { hours: { path: '$.n' } } },
+        offset: { value: { ago: { hours: { path: '$.n' } } } },
       }),
       [1, 2],
     );
@@ -111,7 +111,7 @@ describe('magnitudes read from data: calendar units are whole, every unit non-ne
       field: 'ts',
       dateOperator: 'before',
       path: '$.anchor',
-      offset: { ago: { days: { path: 'k' } } },
+      offset: { value: { ago: { days: { path: 'k' } } } },
     });
     await both(r, [], { context: { k: 1.5 } });
     await both(r, [], { context: { k: -1 } });
@@ -154,7 +154,12 @@ describe('a range with one missing end matches nothing, and negation keeps null 
   });
 
   test('a numeric notBetween over a context pair with a null end', async () => {
-    const numbers = rule({ field: 'n', operator: 'notBetween', path: 'range', offset: 1 });
+    const numbers = rule({
+      field: 'n',
+      operator: 'notBetween',
+      path: 'range',
+      offset: { value: 1 },
+    });
     expect(check(numbers, { id: 1, n: 50 }, { context: { range: [10, null] } })).not.toBe(true);
     expect(check(numbers, { id: 1, n: null }, { context: { range: [10, null] } })).toBe(true);
   });
@@ -192,7 +197,7 @@ describe('between with row-computed ends sorts them like check()', () => {
 
 describe('numeric bases the compilers must take as check() does', () => {
   test('a bigint context base', () => {
-    const r = rule({ field: 'n', operator: 'greaterThan', path: 'base', offset: 5 });
+    const r = rule({ field: 'n', operator: 'greaterThan', path: 'base', offset: { value: 5 } });
     expect(check(r, { n: 20 }, { context: { base: 10n } })).toBe(true);
     expect(toSql(r, { context: { base: 10n } }).params).toEqual([15]);
     expect(getWhere(toPrisma(r, { context: { base: 10n } }))).toEqual({ n: { gt: 15 } });
@@ -203,7 +208,7 @@ describe('numeric bases the compilers must take as check() does', () => {
       field: 'n',
       operator: 'greaterThan',
       path: 'base',
-      offset: 1,
+      offset: { value: 1 },
       coerceType: 'Decimal',
     });
     expect(check(r, { n: '7' }, { context: { base: '5.5' } })).toBe(true);
@@ -221,7 +226,7 @@ describe('float offsets add as JS doubles on every rail', () => {
   ]);
 
   test('a row base plus a float offset', async () => {
-    await both(rule({ field: 'x', operator: 'equals', path: '$.a', offset: 0.2 }), [1]);
+    await both(rule({ field: 'x', operator: 'equals', path: '$.a', offset: { value: 0.2 } }), [1]);
   });
 });
 
@@ -254,7 +259,7 @@ describe('shifts run in the configured zone, across DST, on every rail', () => {
         field: 'ts',
         dateOperator: 'onOrAfter',
         path: '$.anchor',
-        offset: { ahead: { days: 1 } },
+        offset: { value: { ahead: { days: 1 } } },
       }),
       [1, 2],
       opts,
@@ -264,7 +269,7 @@ describe('shifts run in the configured zone, across DST, on every rail', () => {
         field: 'ts',
         dateOperator: 'before',
         path: '$.anchor',
-        offset: { ahead: { days: 1 } },
+        offset: { value: { ahead: { days: 1 } } },
       }),
       [],
       opts,
@@ -277,7 +282,7 @@ describe('shifts run in the configured zone, across DST, on every rail', () => {
         field: 'ts',
         dateOperator: 'onOrAfter',
         path: '$.anchor',
-        offset: { ahead: { days: { path: '$.n' } } },
+        offset: { value: { ahead: { days: { path: '$.n' } } } },
       }),
       [1, 2],
       opts,
@@ -290,7 +295,7 @@ describe('shifts run in the configured zone, across DST, on every rail', () => {
         field: 'ts',
         dateOperator: 'onOrAfter',
         path: 'anchor',
-        offset: { ahead: { days: 1 } },
+        offset: { value: { ahead: { days: 1 } } },
       }),
       [1, 2],
       { ...opts, context: { anchor: '2026-03-07T17:00:00Z' } },
@@ -320,7 +325,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
         field: 'ts',
         dateOperator: 'before',
         path: '$.at',
-        offset: { ago: { days: { path: '$.n' } } },
+        offset: { value: { ago: { days: { path: '$.n' } } } },
       }).ok,
     ).toBe(true);
   });
@@ -330,7 +335,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
       field: 'ts',
       dateOperator: 'before',
       path: '$.at',
-      offset: { ago: { days: { path: '$.ratio' } } },
+      offset: { value: { ago: { days: { path: '$.ratio' } } } },
     });
     expect(result.ok).toBe(false);
     expect(result.violations[0]?.path).toBe('$.ratio');
@@ -342,7 +347,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
         field: 'ts',
         dateOperator: 'before',
         path: '$.at',
-        offset: { ago: { hours: { path: '$.ratio' } } },
+        offset: { value: { ago: { hours: { path: '$.ratio' } } } },
       }).ok,
     ).toBe(true);
   });
@@ -353,7 +358,7 @@ describe('lens: a magnitude ref is judged by its role, not its string', () => {
         field: 'ts',
         dateOperator: 'before',
         path: '$.at',
-        offset: { ago: { days: { path: '$.at' } } },
+        offset: { value: { ago: { days: { path: '$.at' } } } },
       }).violations.map((v) => v.path),
     ).toEqual(['$.at']);
   });

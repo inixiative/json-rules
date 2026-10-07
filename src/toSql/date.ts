@@ -8,12 +8,19 @@ import {
 } from '../dateExpr';
 import { DateOperator } from '../operator';
 import type { DateExpr, DateRule } from '../types';
-import { resolveExpr } from '../valueSource';
+import { offsetShift, resolveExpr } from '../valueSource';
 import { mapDayNames } from './dayNames';
 import { resolveFieldSql } from './join';
 import { nextParam } from './params';
 import type { BuilderState } from './types';
-import { type ResolvedRhs, readContext, readsRow, resolveRef, shiftDate } from './valueSource';
+import {
+  type ResolvedRhs,
+  readContext,
+  readsRow,
+  resolveOffset,
+  resolveRef,
+  shiftDate,
+} from './valueSource';
 
 export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const field = resolveFieldSql(rule.field, state);
@@ -158,11 +165,19 @@ const toPoint = (value: unknown, operator: string, state: BuilderState): Resolve
   return { type: 'value', value: coerceDateLiteral(value, state) };
 };
 
+// A date offset reads a rolling shift. One read per row would be a JSON column holding
+// `{ ago: … }` — Postgres can't apply that, so it's check-only; a row-read amount belongs in the
+// shift's units (`{ ago: { days: { path: '$.n' } } }`).
 const applyOffset = (rhs: ResolvedRhs, rule: DateRule, state: BuilderState): ResolvedRhs => {
   if (rule.offset === undefined) return rhs;
-  const rolling = rollingShift(rule.offset);
-  if (!rolling) throw new Error('a date offset is { ago } or { ahead }');
-  return shiftDate(rhs, ...rolling, state);
+  const offset = resolveOffset(rule.offset, rule.field, state);
+  if (offset.type === 'column')
+    throw new Error(
+      `A row path on a date offset ('${rule.offset.path}') is check-only; evaluate with check()`,
+    );
+  const move = offsetShift(offset.value);
+  if (move === null) return { type: 'value', value: null };
+  return shiftDate(rhs, ...move, state);
 };
 
 const resolvePoint = (rule: DateRule, state: BuilderState): ResolvedRhs => {

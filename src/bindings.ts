@@ -1,15 +1,22 @@
 import { type ConditionNode, mapCondition, visitCondition } from './traverse';
 import type { Condition, RuleValue } from './types';
 
-const isBindLeaf = (node: ConditionNode): node is ConditionNode & { bind: string } =>
-  typeof node.bind === 'string';
+// A leaf's bind tokens: its comparison value's, and its offset's — each `{ bind, bindOptional }`.
+const bindTokens = (node: ConditionNode): { bind: string; bindOptional?: unknown }[] => {
+  const tokens: { bind: string; bindOptional?: unknown }[] = [];
+  if (typeof node.bind === 'string') tokens.push(node as { bind: string; bindOptional?: unknown });
+  const offset = node.offset as { bind?: unknown; bindOptional?: unknown } | undefined;
+  if (offset && typeof offset.bind === 'string')
+    tokens.push(offset as { bind: string; bindOptional?: unknown });
+  return tokens;
+};
 
 /** Names of every `{ bind }` token in the tree, optional or not — what a lens declares. */
 export const bindingNames = (condition: Condition): Set<string> => {
   const names = new Set<string>();
   visitCondition(condition, {
     enter: (node) => {
-      if (isBindLeaf(node)) names.add(node.bind);
+      for (const token of bindTokens(node)) names.add(token.bind);
     },
   });
   return names;
@@ -24,7 +31,7 @@ export const requiredBindings = (condition: Condition): Set<string> => {
   const names = new Set<string>();
   visitCondition(condition, {
     enter: (node) => {
-      if (isBindLeaf(node) && node.bindOptional !== true) names.add(node.bind);
+      for (const token of bindTokens(node)) if (token.bindOptional !== true) names.add(token.bind);
     },
   });
   return names;
@@ -56,12 +63,21 @@ export const readBinding = (
 export const resolveBindings = (
   condition: Condition,
   bindings: Record<string, RuleValue>,
-): Condition =>
-  mapCondition(condition, {
+): Condition => {
+  // A covered `{ bind, bindOptional }` source becomes `{ value }`; an uncovered one stays.
+  const resolve = <T extends Record<string, unknown>>(source: T): T => {
+    if (typeof source.bind !== 'string' || !Object.hasOwn(bindings, source.bind)) return source;
+    const { bind, bindOptional: _optional, ...rest } = source;
+    const bound = bindings[bind as string];
+    return { ...rest, value: bound === undefined ? null : bound } as unknown as T;
+  };
+  return mapCondition(condition, {
     rewrite: (node) => {
-      if (typeof node.bind !== 'string' || !Object.hasOwn(bindings, node.bind)) return node;
-      const { bind, bindOptional: _optional, ...rest } = node;
-      const bound = bindings[bind as string];
-      return { ...rest, value: bound === undefined ? null : bound };
+      const resolved = resolve(node);
+      const offset = resolved.offset as Record<string, unknown> | undefined;
+      return offset && typeof offset === 'object'
+        ? { ...resolved, offset: resolve(offset) }
+        : resolved;
     },
   });
+};

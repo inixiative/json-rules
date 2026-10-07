@@ -1,5 +1,6 @@
 import { get } from 'lodash-es';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
+import type { ValueSourceOf } from '../types';
 import type { ReadRef } from '../valueSource';
 import type { BuildOptions } from './types';
 
@@ -32,3 +33,20 @@ export const amountReader =
       );
     return readPathValue(ref, options);
   };
+
+/** An offset's source: its value, a context read, or an unresolved bind — null when optional,
+ *  an error otherwise. A row (`$.`) read has no Prisma form. */
+export const readOffset = (
+  offset: ValueSourceOf<unknown>,
+  field: string,
+  options?: BuildOptions,
+): unknown => {
+  if (offset.value !== undefined) return offset.value;
+  if (offset.bind !== undefined) {
+    if (offset.bindOptional === true) return null;
+    throw new Error(
+      `Unresolved binding '${offset.bind}' for the offset on '${field}' — resolve bindings (resolveLensBindings) before compiling to Prisma.`,
+    );
+  }
+  return amountReader(options)(offset.path as string);
+};

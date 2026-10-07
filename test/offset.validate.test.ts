@@ -17,71 +17,128 @@ const codes = (r: object, target?: 'check' | 'toSql' | 'toPrisma') =>
 describe('validateRule — offset', () => {
   test('accepts an offset on path and bind', () => {
     for (const r of [
-      { field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: 5 },
-      { field: 'score', operator: 'greaterThanEquals', path: 'avg', offset: -5 },
+      { field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: { value: 5 } },
+      { field: 'score', operator: 'greaterThanEquals', path: 'avg', offset: { value: -5 } },
       { field: 'score', operator: 'between', bind: 'range', offset: { path: '$.delta' } },
-      { field: 'ts', dateOperator: 'before', path: '$.anchor', offset: { ago: { days: 7 } } },
+      {
+        field: 'ts',
+        dateOperator: 'before',
+        path: '$.anchor',
+        offset: { value: { ago: { days: 7 } } },
+      },
       {
         field: 'ts',
         dateOperator: 'between',
         bind: 'window',
-        offset: { ahead: { days: { path: '$.grace' } } },
+        offset: { value: { ahead: { days: { path: '$.grace' } } } },
       },
     ]) {
       expect(codes(r)).toEqual([]);
     }
   });
 
-  test('an offset on a literal value is rejected', () => {
-    expect(codes({ field: 'score', operator: 'equals', value: 1, offset: 2 })).toEqual([
-      'unexpected_offset',
-    ]);
+  test('an offset on a literal value is accepted', () => {
+    expect(codes({ field: 'score', operator: 'equals', value: 1, offset: { value: 2 } })).toEqual(
+      [],
+    );
     expect(
       codes({
         field: 'ts',
         dateOperator: 'before',
-        value: '2026-01-01',
-        offset: { ago: { days: 1 } },
+        value: { start: { this: 'month' } },
+        offset: { value: { ahead: { days: 4 } } },
       }),
-    ).toEqual(['unexpected_offset']);
+    ).toEqual([]);
+  });
+
+  test('an offset is one value source', () => {
+    for (const offset of [5, { value: 1, path: 'x' }, { bind: 'b', value: 1 }, {}, { days: 1 }]) {
+      expect(codes({ field: 'score', operator: 'equals', path: 'a', offset })).toEqual([
+        'invalid_offset',
+      ]);
+    }
+    expect(codes({ field: 'score', operator: 'equals', path: 'a', offset: { bind: 'b' } })).toEqual(
+      [],
+    );
+    expect(
+      codes({
+        field: 'score',
+        operator: 'equals',
+        path: 'a',
+        offset: { bind: 'b', bindOptional: true },
+      }),
+    ).toEqual([]);
+    expect(
+      codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { bind: 'g' } }),
+    ).toEqual([]);
+    expect(
+      codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { path: 'g' } }),
+    ).toEqual([]);
+  });
+
+  test('a row path on a date offset is check-only', () => {
+    const r = { field: 'ts', dateOperator: 'before', path: 'a', offset: { path: '$.g' } };
+    expect(codes(r, 'check')).toEqual([]);
+    expect(codes(r, 'toSql')).toEqual(['unsupported_sql_path']);
+    expect(codes(r, 'toPrisma')).toEqual(['unsupported_prisma_path']);
   });
 
   test('an offset on an operator that has no point to shift is rejected', () => {
-    expect(codes({ field: 'tag', operator: 'in', path: 'tags', offset: 1 })).toEqual([
+    expect(codes({ field: 'tag', operator: 'in', path: 'tags', offset: { value: 1 } })).toEqual([
       'unsupported_offset_operator',
     ]);
-    expect(codes({ field: 'name', operator: 'contains', path: 'q', offset: 1 })).toEqual([
-      'unsupported_offset_operator',
-    ]);
+    expect(codes({ field: 'name', operator: 'contains', path: 'q', offset: { value: 1 } })).toEqual(
+      ['unsupported_offset_operator'],
+    );
   });
 
-  test('a field offset is a number or a path', () => {
-    expect(codes({ field: 'score', operator: 'equals', path: 'a', offset: '5' })).toEqual([
-      'invalid_offset',
-    ]);
+  test('a field offset value is a number', () => {
     expect(
-      codes({ field: 'score', operator: 'equals', path: 'a', offset: { ago: { days: 1 } } }),
+      codes({ field: 'score', operator: 'equals', path: 'a', offset: { value: '5' } }),
+    ).toEqual(['invalid_offset']);
+    expect(
+      codes({
+        field: 'score',
+        operator: 'equals',
+        path: 'a',
+        offset: { value: { ago: { days: 1 } } },
+      }),
     ).toEqual(['invalid_offset']);
   });
 
-  test('a date offset is ago or ahead', () => {
-    expect(codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { days: 7 } })).toEqual([
-      'invalid_offset',
-    ]);
-    expect(codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: 7 })).toEqual([
-      'invalid_offset',
-    ]);
+  test('a date offset value is ago or ahead', () => {
     expect(
-      codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { this: 'month' } }),
+      codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { value: { days: 7 } } }),
+    ).toEqual(['invalid_offset']);
+    expect(codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { value: 7 } })).toEqual(
+      ['invalid_offset'],
+    );
+    expect(
+      codes({
+        field: 'ts',
+        dateOperator: 'before',
+        path: 'a',
+        offset: { value: { this: 'month' } },
+      }),
     ).toEqual(['invalid_offset']);
   });
 
   test('a date offset carries valid units', () => {
     expect(
-      codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { ago: { fortnights: 1 } } }),
+      codes({
+        field: 'ts',
+        dateOperator: 'before',
+        path: 'a',
+        offset: { value: { ago: { fortnights: 1 } } },
+      }),
     ).toEqual(['invalid_relative_unit']);
     expect(
-      codes({ field: 'ts', dateOperator: 'before', path: 'a', offset: { ago: { days: -1 } } }),
+      codes({
+        field: 'ts',
+        dateOperator: 'before',
+        path: 'a',
+        offset: { value: { ago: { days: -1 } } },
+      }),
     ).toEqual(['invalid_relative_magnitude']);
   });
 });
@@ -187,13 +244,20 @@ describe('lens gate — offset and magnitude refs', () => {
   });
 
   test('a numeric offset needs a numeric field', () => {
-    const result = gate({ field: 'note', operator: 'equals', path: '$.note', offset: 1 });
+    const result = gate({
+      field: 'note',
+      operator: 'equals',
+      path: '$.note',
+      offset: { value: 1 },
+    });
     expect(result.ok).toBe(false);
     expect(result.violations[0]?.path).toBe('note');
   });
 
   test('a numeric offset on a numeric field passes', () => {
-    expect(gate({ field: 'score', operator: 'equals', path: '$.score', offset: 1 }).ok).toBe(true);
+    expect(
+      gate({ field: 'score', operator: 'equals', path: '$.score', offset: { value: 1 } }).ok,
+    ).toBe(true);
   });
 });
 
@@ -238,9 +302,11 @@ describe('applyLens refuses to re-root a grant with an offset or magnitude ref',
   test('a literal offset on a bind re-roots', () => {
     expect(
       prefixConditionFields(
-        rule({ field: 'score', operator: 'equals', bind: 'b', offset: 1 }),
+        rule({ field: 'score', operator: 'equals', bind: 'b', offset: { value: 1 } }),
         'incidents',
       ),
-    ).toEqual(rule({ field: 'incidents.score', operator: 'equals', bind: 'b', offset: 1 }));
+    ).toEqual(
+      rule({ field: 'incidents.score', operator: 'equals', bind: 'b', offset: { value: 1 } }),
+    );
   });
 });

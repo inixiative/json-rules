@@ -42,11 +42,13 @@ window off a related row:
 - **One reader.** `check()` resolves `value` / `bind` / `path` in one place for field, date and
   aggregate rules, with the bind key-presence contract (`Missing binding`, `bindOptional`,
   `undefined` → `null`).
-- **`offset` on `path` and `bind` only.** On a literal `value` it is a validation error: write
-  the shifted literal.
-  - Field rules: a signed number, or `{ path }`.
-  - Date rules: the rolling shape, anchored on the resolved value instead of `now`:
-    `offset: { ago: { days: 30 } }` / `{ ahead: … }`.
+- **`offset` is a value source** (revised 2026-10-06): `{ value }`, `{ path }` or `{ bind }`
+  (with `bindOptional`), read with the comparison value's contract, on any comparison value —
+  `value` + `offset` is valid (and is what `resolveBindings` produces).
+  - Field rules: it reads a number — a golf handicap (`grossScore <= $.par + $.handicap`), a
+    baseline margin, a tolerance bound at evaluation.
+  - Date rules: it reads a rolling shift, `{ ago }` / `{ ahead }`, anchored on the comparison
+    value; `start of this month + 4 days` needs it. A date offset read per row is check-only.
   - Applies to the comparison operators (`equals` … `greaterThanEquals`, date
     `before` … `notAfter`) and to each endpoint of `between` / `notBetween`.
 - **Magnitudes take `{ path }`.** Any `RelativeUnits` amount (in a `value` expression or an

@@ -371,25 +371,37 @@ like any absent field.
 
 ### Offsets and Path Magnitudes
 
-A `path` or `bind` comparison value can be shifted by an `offset` — a literal is written
-already shifted, so `value` + `offset` is a validation error. A field rule's offset is a signed
-number; a date rule's is the rolling shape, anchored on the comparison value instead of `now`:
+An `offset` moves the comparison value. It is a value source of its own, with the comparison
+value's contract: `{ value }`, `{ path }` (`$.` from the row, bare from context) or `{ bind }`
+(with `bindOptional`). A field rule's offset reads a number, added to the comparison value; a
+date rule's reads a rolling shift (`{ ago }` / `{ ahead }`) anchored on the comparison value
+instead of `now`:
 
 ```ts
-// score at least 10 above the account average
-{ field: 'score', operator: Operator.greaterThanEquals, path: '$.accountAverage', offset: 10 }
+// net score at or under par: gross <= par + handicap
+{ field: 'grossScore', operator: Operator.lessThanEquals, path: '$.par',
+  offset: { path: '$.handicap' } }
+
+// within budget plus a tolerance supplied at evaluation
+{ field: 'spend', operator: Operator.lessThanEquals, path: '$.budget',
+  offset: { bind: 'tolerance' } }
 
 // completed within 30 days before the created date
 { field: 'completedAt', dateOperator: DateOperator.onOrAfter, path: '$.createdDate',
-  offset: { ago: { days: 30 } } }
+  offset: { value: { ago: { days: 30 } } } }
 
-// a bound anchor, shifted
-{ field: 'ts', dateOperator: DateOperator.before, bind: 'anchor', offset: { ago: { days: 7 } } }
+// on or after the fifth of this month — an edge the expression grammar can't name alone
+{ field: 'paidAt', dateOperator: DateOperator.onOrAfter, value: { start: { this: 'month' } },
+  offset: { value: { ahead: { days: 4 } } } }
 ```
 
-Any amount — a numeric offset, or a relative-date unit in an `offset` or a `value` expression —
-can itself be a `{ path }`, read from the row (`$.`) or from context. A relative window can take
-its size from the row it judges:
+`resolveBindings` resolves an offset's bind as it does the comparison value's, and
+`bindingNames` / `requiredBindings` list it. A date offset read per row (a column holding
+`{ ago: … }`) is check-only; to size a shift from the row, read the amount instead.
+
+Any relative-date unit — in a `value` expression or an offset's rolling shift — can itself be a
+`{ path }`, read from the row (`$.`) or from context. A relative window can take its size from
+the row it judges:
 
 ```ts
 // quiet for longer than this incident's rule allows
@@ -409,9 +421,10 @@ in double precision on every rail.
 
 | | `check()` | `toSql()` | `toPrisma()` |
 | --- | --- | --- | --- |
-| literal or context amount | yes | resolved to a parameter | resolved to a value |
-| `$.` amount | yes | `col ± make_interval(…)` / `col + n` | throws |
-| `$$.` amount | yes | throws | throws |
+| literal, bound or context offset / amount | yes | resolved to a parameter | resolved to a value |
+| `$.` numeric offset or unit amount | yes | `col + n` / `col ± make_interval(…)` | throws |
+| `$.` date offset (a stored `{ ago }`) | yes | throws | throws |
+| `$$.` anything | yes | throws | throws |
 
 `checkRuleAgainstLens` gates offset and magnitude refs like `path` (they must resolve through
 the lens and read a number), and an offset must fit the field's kind: a number on a numeric
@@ -594,8 +607,8 @@ Not every backend supports every rule shape.
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
 | Windowing (`orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned) | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
-| `offset` and `{ path }` amounts — literal or context | Yes | Yes | Yes |
-| `offset` and `{ path }` amounts — `$.` row refs | Yes | No | Yes |
+| `offset` and `{ path }` amounts — value, bind or context | Yes | Yes | Yes |
+| `offset` and `{ path }` amounts — `$.` row refs | Yes | No | Yes (not a date offset's) |
 | `$$.` scope refs and `$`-prefixed `field` | Yes | No | No |
 
 ### NULL Semantics

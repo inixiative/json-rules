@@ -6,12 +6,12 @@ import {
 } from '../engineGlobals';
 import { Operator } from '../operator';
 import type { Rule } from '../types';
-import { addOffset, resolveMagnitude } from '../valueSource';
+import { addOffset, offsetAmount } from '../valueSource';
 import { matchNothing } from './logical';
 import { compileFieldLiteral, optionalToOneHops, walkFieldPath } from './mapWalk';
 import type { BuildOptions, FieldMap, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
-import { amountReader, readPathValue } from './valueSource';
+import { readOffset, readPathValue } from './valueSource';
 
 /**
  * Whether the emptiness operators may compare this column against `''`. Only a
@@ -169,7 +169,7 @@ const resolveRuleValue = (rule: Rule, options?: BuildOptions): unknown => {
     'toPrisma',
   );
   if (rule.offset === undefined) return value;
-  const amount = resolveMagnitude(rule.offset, amountReader(options));
+  const amount = offsetAmount(readOffset(rule.offset, rule.field, options));
   return amount === null ? null : addOffset(value, amount);
 };
 

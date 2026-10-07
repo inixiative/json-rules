@@ -2,9 +2,9 @@ import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
 import { Operator } from './operator';
 import type { FieldKind } from './operatorCatalog';
-import { readField, readPath, type Scopes } from './scope';
+import { readField, type Scopes } from './scope';
 import type { Rule, RuleValue } from './types';
-import { addOffset, bigIntToNumber, readValueSource, resolveMagnitude } from './valueSource';
+import { addOffset, bigIntToNumber, offsetAmount, readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, or the empty string — matching the
 // SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
@@ -103,6 +103,7 @@ export const checkField = (
         condition,
         scopes,
         context,
+        bindings,
       )
     : undefined;
 
@@ -213,10 +214,16 @@ export const checkField = (
   }
 };
 
-const shift = (value: unknown, condition: Rule, scopes: Scopes, context: unknown): unknown => {
+const shift = (
+  value: unknown,
+  condition: Rule,
+  scopes: Scopes,
+  context: unknown,
+  bindings?: Record<string, RuleValue>,
+): unknown => {
   if (condition.offset === undefined) return value;
-  const offset = resolveMagnitude(condition.offset, (ref) => readPath(ref, scopes, context));
-  return offset === null ? null : addOffset(value, offset);
+  const amount = offsetAmount(readValueSource(condition.offset, scopes, context, bindings));
+  return amount === null ? null : addOffset(value, amount);
 };
 
 type OrderedValue = string | number | Date;

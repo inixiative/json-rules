@@ -19,17 +19,22 @@ Design: `tickets/FEAT-006-value-sources-offset.md` (ZLT-5217).
   resolve with the field rule's key-presence contract (`Missing binding for "<name>"` unless
   `bindOptional`; a supplied `undefined` is `null`). A bound date value can be a date, a date
   expression (resolved against `now`) or a `[from, to]` pair.
-- **`offset`** on a `path` or `bind` comparison value. A field rule's is a signed number or
-  `{ path }`; a date rule's is `{ ago }` / `{ ahead }`, anchored on the comparison value. It
-  shifts the comparison operators and both ends of `between` / `notBetween`.
-- **`{ path }` magnitudes.** Every `RelativeUnits` amount (in a `value` expression or an
-  `offset`) and a numeric offset take `{ path }` — `$.` from the row, bare from context.
+- **`offset`** moves the comparison value, and is a value source of its own with the
+  comparison value's contract: `{ value }`, `{ path }` or `{ bind }` (with `bindOptional`). A
+  field rule's offset reads a number (a golf handicap: `grossScore <= $.par + $.handicap`); a
+  date rule's reads `{ ago }` / `{ ahead }`, anchored on the comparison value. It shifts the
+  comparison operators and both ends of `between` / `notBetween`, on any comparison value — a
+  literal plus an offset names what the grammar can't alone (`start of this month + 4 days`).
+  `resolveBindings`, `bindingNames` and `requiredBindings` cover offset binds.
+- **`{ path }` magnitudes.** Every `RelativeUnits` amount (in a `value` expression or a date
+  offset) takes `{ path }` — `$.` from the row, bare from context.
 - **Rails.** `toSql` compiles a `$.` amount to `col ± make_interval(…)` / `col + n` and
   resolves a context amount; `toPrisma` resolves a context amount and throws on a `$.` one.
   Both compilers now refuse an unresolved required date bind, as they already did for fields.
 - **Validation and lens.** `validateRule` accepts `bind` as a value source (it rejected every
-  bind-only rule with `missing_value_source`), and gates offsets (`unexpected_offset`,
-  `unsupported_offset_operator`, `invalid_offset`) and amount refs per target like `path`.
+  bind-only rule with `missing_value_source`), and gates offsets (`unsupported_offset_operator`,
+  `invalid_offset`) and amount refs per target like `path`; a date offset read per row is
+  check-only.
   `checkRuleAgainstLens` gates offset and magnitude refs through the lens, requires them to
   read a number, and requires an offset to fit the field's kind; `describeRule` and
   `applyLens` treat them as `path` refs.

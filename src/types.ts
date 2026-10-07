@@ -72,16 +72,19 @@ export type DateConfig = {
   weekStart?: WeekStart;
 };
 
-// `offset` shifts a path or bound comparison value; a literal is written already shifted.
-type ValueSource<TValue, TOffset = never> =
-  | { value: TValue; path?: never; bind?: never; bindOptional?: never; offset?: never }
-  | { path: string; value?: never; bind?: never; bindOptional?: never; offset?: TOffset }
-  | { bind: string; bindOptional?: boolean; value?: never; path?: never; offset?: TOffset };
+// Where a comparison value comes from: a literal, a path read, or a bound value. An `offset`
+// is a value source of its own that moves the comparison value.
+export type ValueSourceOf<TValue> =
+  | { value: TValue; path?: never; bind?: never; bindOptional?: never }
+  | { path: string; value?: never; bind?: never; bindOptional?: never }
+  | { bind: string; bindOptional?: boolean; value?: never; path?: never };
 
-// A field rule's offset is added to the comparison value; a date rule's is the rolling shape
-// anchored on the comparison value instead of now.
-export type NumberOffset = Magnitude;
-export type DateOffset = RollingExpr;
+type ValueSource<TValue, TOffset = never> = ValueSourceOf<TValue> & { offset?: TOffset };
+
+// A field rule's offset is added to the comparison value; a date rule's is a rolling shift
+// (`{ ago }` / `{ ahead }`) anchored on the comparison value instead of now.
+export type NumberOffset = ValueSourceOf<number>;
+export type DateOffset = ValueSourceOf<RollingExpr>;
 type NoValueSource = { value?: never; path?: never };
 type RuleBase<TOperator extends Operator> = {
   field: string;

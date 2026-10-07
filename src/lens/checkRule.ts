@@ -147,7 +147,7 @@ const visit = (
       continue;
     }
     const kind = entryKind(walked.entry);
-    if (role === 'value' || kind === undefined) continue;
+    if (role === 'value' || role === 'shift' || kind === undefined) continue;
     const fits =
       role === 'whole' ? WHOLE_KINDS.includes(kind) : NUMERIC_COERCE_KINDS.includes(kind);
     if (!fits)

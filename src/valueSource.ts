@@ -1,5 +1,5 @@
 import { readBinding } from './bindings';
-import { isDateExpr, isRollingExpr } from './dateExpr';
+import { isDateExpr, isRollingExpr, rollingShift } from './dateExpr';
 import { DateOperator, Operator } from './operator';
 import { readPath, type Scopes } from './scope';
 import type { DateExpr, Magnitude, PathRef, RelativeUnits, RuleValue } from './types';
@@ -57,8 +57,9 @@ const CALENDAR_UNITS: ReadonlySet<string> = new Set([
 ]);
 export const isCalendarUnit = (unit: string): boolean => CALENDAR_UNITS.has(unit);
 
-/** How a value-side ref is read: the comparison value itself, a number, or a whole number. */
-export type ValueRef = { ref: string; role: 'value' | 'number' | 'whole' };
+/** How a value-side ref is read: the comparison value itself, a number, a whole number, or a
+ *  date offset's rolling shift. */
+export type ValueRef = { ref: string; role: 'value' | 'number' | 'whole' | 'shift' };
 
 const unitRefs = (units: unknown): ValueRef[] =>
   isPlainObject(units)
@@ -72,19 +73,27 @@ const unitRefs = (units: unknown): ValueRef[] =>
 const exprRefs = (expr: unknown): ValueRef[] =>
   isDateExpr(expr) && isRollingExpr(expr) ? unitRefs('ago' in expr ? expr.ago : expr.ahead) : [];
 
-/** Every ref on a leaf's value side, with how it is read: its `path`, a `{ path }` offset, and
+const offsetRefs = (cond: Record<string, unknown>): ValueRef[] => {
+  const { offset } = cond;
+  if (!isPlainObject(offset)) return [];
+  if (typeof offset.path === 'string')
+    return [{ ref: offset.path, role: 'dateOperator' in cond ? 'shift' : 'number' }];
+  return exprRefs(offset.value);
+};
+
+/** Every ref on a leaf's value side, with how it is read: its `path`, its offset's `path`, and
  *  each `{ path }` magnitude. */
 export const valueRefRoles = (cond: Record<string, unknown>): ValueRef[] => {
-  const { path, offset, value } = cond;
+  const { path, value } = cond;
   const values = Array.isArray(value) ? value : [value];
   return [
     ...(typeof path === 'string' && path !== '' ? [{ ref: path, role: 'value' } as ValueRef] : []),
-    ...(isPathRef(offset) ? [{ ref: offset.path, role: 'number' } as ValueRef] : exprRefs(offset)),
+    ...offsetRefs(cond),
     ...values.flatMap(exprRefs),
   ];
 };
 
-/** The refs a leaf reads as amounts: a `{ path }` offset and every `{ path }` magnitude. */
+/** The refs a leaf reads beyond its comparison value: its offset's and its magnitudes'. */
 export const magnitudeRefs = (cond: Record<string, unknown>): string[] =>
   valueRefRoles(cond)
     .filter((r) => r.role !== 'value')
@@ -184,4 +193,22 @@ export const addOffset = (value: unknown, offset: number): unknown => {
   if (typeof number !== 'number' || !Number.isFinite(number))
     throw new Error(`offset needs a numeric comparison value (got ${String(value)})`);
   return number + offset;
+};
+
+/** A numeric offset's amount, read from its source; null when it reads nothing. */
+export const offsetAmount = (raw: unknown): number | null => {
+  if (raw === null || raw === undefined) return null;
+  const amount = toNumber(raw);
+  if (typeof amount !== 'number' || !Number.isFinite(amount))
+    throw new Error(`an offset reads a number (got ${String(raw)})`);
+  return amount;
+};
+
+/** A date offset's rolling shift, read from its source; null when it reads nothing. */
+export const offsetShift = (raw: unknown): [RelativeUnits, 1 | -1] | null => {
+  if (raw === null || raw === undefined) return null;
+  const rolling = isDateExpr(raw) ? rollingShift(raw) : null;
+  if (!rolling)
+    throw new Error(`a date offset reads { ago } or { ahead } (got ${JSON.stringify(raw)})`);
+  return rolling;
 };

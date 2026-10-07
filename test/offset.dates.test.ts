@@ -5,7 +5,7 @@ import { check, resolveBindings, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // A date `offset` is the rolling shape anchored on the resolved value instead of now:
-// `ts before anchor − 7 days` is `{ path: '$.anchor', offset: { ago: { days: 7 } } }`.
+// `ts before anchor − 7 days` is `{ path: '$.anchor', offset: { value: { ago: { days: 7 } } } }`.
 
 const NOW = new Date('2026-10-06T00:00:00Z');
 
@@ -64,7 +64,12 @@ describe('offset on a row path', () => {
   test('ago', async () => {
     // before anchor − 7 days (09-24): row 1; a null anchor or ts never matches.
     await bothRails(
-      rule({ field: 'ts', dateOperator: 'before', path: '$.anchor', offset: { ago: { days: 7 } } }),
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        path: '$.anchor',
+        offset: { value: { ago: { days: 7 } } },
+      }),
       [1],
     );
   });
@@ -75,7 +80,7 @@ describe('offset on a row path', () => {
         field: 'ts',
         dateOperator: 'onOrAfter',
         path: '$.anchor',
-        offset: { ahead: { years: 1, months: 1 } },
+        offset: { value: { ahead: { years: 1, months: 1 } } },
       }),
       [6],
     );
@@ -88,7 +93,7 @@ describe('offset on a row path', () => {
         field: 'ts',
         dateOperator: 'before',
         path: '$.anchor',
-        offset: { ago: { days: { path: '$.days' } } },
+        offset: { value: { ago: { days: { path: '$.days' } } } },
       }),
       [1],
     );
@@ -100,7 +105,7 @@ describe('offset on a row path', () => {
         field: 'ts',
         dateOperator: 'notBefore',
         path: '$.anchor',
-        offset: { ago: { days: { path: '$.days' } } },
+        offset: { value: { ago: { days: { path: '$.days' } } } },
       }),
       [2, 4, 6],
     );
@@ -110,7 +115,12 @@ describe('offset on a row path', () => {
 describe('offset on a context path', () => {
   test('a literal offset', async () => {
     await bothRails(
-      rule({ field: 'ts', dateOperator: 'before', path: 'anchor', offset: { ago: { days: 7 } } }),
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        path: 'anchor',
+        offset: { value: { ago: { days: 7 } } },
+      }),
       [1, 3, 6],
       { context: { anchor: '2026-10-01T00:00:00Z' } },
     );
@@ -123,7 +133,7 @@ describe('offset on a context path', () => {
         field: 'ts',
         dateOperator: 'between',
         path: 'window',
-        offset: { ahead: { days: 15 } },
+        offset: { value: { ahead: { days: 15 } } },
       }),
       [1, 3],
       { context: { window: ['2026-09-01T00:00:00Z', '2026-09-10T00:00:00Z'] } },
@@ -132,7 +142,12 @@ describe('offset on a context path', () => {
 
   test('a null context value fails closed', async () => {
     await bothRails(
-      rule({ field: 'ts', dateOperator: 'before', path: 'anchor', offset: { ago: { days: 7 } } }),
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        path: 'anchor',
+        offset: { value: { ago: { days: 7 } } },
+      }),
       [],
       { context: { anchor: null } },
     );
@@ -142,7 +157,12 @@ describe('offset on a context path', () => {
 describe('offset on a bind', () => {
   test('a bound date', async () => {
     await bothRails(
-      rule({ field: 'ts', dateOperator: 'before', bind: 'anchor', offset: { ago: { days: 7 } } }),
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        bind: 'anchor',
+        offset: { value: { ago: { days: 7 } } },
+      }),
       [1, 3, 6],
       { bindings: { anchor: '2026-10-01T00:00:00Z' } },
     );
@@ -151,7 +171,12 @@ describe('offset on a bind', () => {
   test('a bound date expression, shifted', async () => {
     // now − 5 days = 10-01, − 7 days = 09-24.
     await bothRails(
-      rule({ field: 'ts', dateOperator: 'before', bind: 'anchor', offset: { ago: { days: 7 } } }),
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        bind: 'anchor',
+        offset: { value: { ago: { days: 7 } } },
+      }),
       [1, 3, 6],
       { bindings: { anchor: { ago: { days: 5 } } } },
     );
@@ -163,7 +188,7 @@ describe('offset on a bind', () => {
         field: 'ts',
         dateOperator: 'before',
         bind: 'anchor',
-        offset: { ago: { days: { path: 'grace' } } },
+        offset: { value: { ago: { days: { path: 'grace' } } } },
       }),
       [1, 3, 6],
       { bindings: { anchor: '2026-10-01T00:00:00Z' }, context: { grace: 7 } },
@@ -175,7 +200,12 @@ describe('toPrisma and date offsets', () => {
   test('a context path plus a literal offset compiles to the shifted instant', () => {
     const where = getWhere(
       toPrisma(
-        rule({ field: 'ts', dateOperator: 'before', path: 'anchor', offset: { ago: { days: 7 } } }),
+        rule({
+          field: 'ts',
+          dateOperator: 'before',
+          path: 'anchor',
+          offset: { value: { ago: { days: 7 } } },
+        }),
         { context: { anchor: '2026-10-01T00:00:00Z' } },
       ),
     );
@@ -187,7 +217,7 @@ describe('toPrisma and date offsets', () => {
       field: 'ts',
       dateOperator: 'before',
       bind: 'anchor',
-      offset: { ago: { days: 7 } },
+      offset: { value: { ago: { days: 7 } } },
     });
     expect(
       getWhere(toPrisma(resolveBindings(r, { anchor: '2026-10-01T00:00:00Z' }), { now: NOW })),
@@ -201,7 +231,7 @@ describe('toPrisma and date offsets', () => {
           field: 'ts',
           dateOperator: 'before',
           path: 'anchor',
-          offset: { ago: { days: { path: '$.days' } } },
+          offset: { value: { ago: { days: { path: '$.days' } } } },
         }),
         { context: { anchor: '2026-10-01T00:00:00Z' } },
       ),

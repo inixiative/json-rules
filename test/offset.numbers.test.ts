@@ -50,14 +50,14 @@ describe('offset on a row path', () => {
   test('a positive literal', async () => {
     // score >= avg + 5: row 1 (15 >= 15); row 2 (12 < 15); null avg or score never matches.
     await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: 5 }),
+      rule({ field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: { value: 5 } }),
       [1],
     );
   });
 
   test('a negative literal', async () => {
     await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: -3 }),
+      rule({ field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: { value: -3 } }),
       [1, 2, 5],
     );
   });
@@ -76,12 +76,15 @@ describe('offset on a row path', () => {
   });
 
   test('equals', async () => {
-    await bothRails(rule({ field: 'score', operator: 'equals', path: '$.avg', offset: 2 }), [2, 5]);
+    await bothRails(
+      rule({ field: 'score', operator: 'equals', path: '$.avg', offset: { value: 2 } }),
+      [2, 5],
+    );
   });
 
   test('lessThan', async () => {
     await bothRails(
-      rule({ field: 'score', operator: 'lessThan', path: '$.avg', offset: 3 }),
+      rule({ field: 'score', operator: 'lessThan', path: '$.avg', offset: { value: 3 } }),
       [2, 5],
     );
   });
@@ -90,7 +93,7 @@ describe('offset on a row path', () => {
 describe('offset on a context path', () => {
   test('a literal offset', async () => {
     await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: 3 }),
+      rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: { value: 3 } }),
       [1, 3],
       { context: { target: 10 } },
     );
@@ -112,7 +115,7 @@ describe('offset on a context path', () => {
 
   test('between shifts both endpoints', async () => {
     await bothRails(
-      rule({ field: 'score', operator: 'between', path: 'range', offset: 2 }),
+      rule({ field: 'score', operator: 'between', path: 'range', offset: { value: 2 } }),
       [1, 2, 3, 5],
       { context: { range: [10, 13] } },
     );
@@ -120,7 +123,7 @@ describe('offset on a context path', () => {
 
   test('a null context value fails closed', async () => {
     await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: 3 }),
+      rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: { value: 3 } }),
       [],
       { context: { target: null } },
     );
@@ -130,7 +133,7 @@ describe('offset on a context path', () => {
 describe('offset on a bind', () => {
   test('a literal offset', async () => {
     await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', bind: 'target', offset: 3 }),
+      rule({ field: 'score', operator: 'greaterThanEquals', bind: 'target', offset: { value: 3 } }),
       [1, 3],
       { bindings: { target: 10 } },
     );
@@ -154,7 +157,12 @@ describe('check() rejects an offset it cannot apply', () => {
   test('a non-numeric comparison value', () => {
     expect(() =>
       check(
-        rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: 3 }),
+        rule({
+          field: 'score',
+          operator: 'greaterThanEquals',
+          path: 'target',
+          offset: { value: 3 },
+        }),
         rows[0],
         { context: { target: 'ten' } },
       ),
@@ -173,16 +181,24 @@ describe('check() rejects an offset it cannot apply', () => {
         rows[0],
         { context: { target: 10, margin: 'three' } },
       ),
-    ).toThrow('margin');
+    ).toThrow('an offset reads a number');
   });
 });
 
 describe('toPrisma and numeric offsets', () => {
   test('a context path plus a literal offset compiles to the shifted value', () => {
     const where = getWhere(
-      toPrisma(rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: 3 }), {
-        context: { target: 10 },
-      }),
+      toPrisma(
+        rule({
+          field: 'score',
+          operator: 'greaterThanEquals',
+          path: 'target',
+          offset: { value: 3 },
+        }),
+        {
+          context: { target: 10 },
+        },
+      ),
     );
     expect(where).toEqual({ score: { gte: 13 } });
   });

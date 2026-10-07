@@ -8,13 +8,18 @@ import {
   resolveDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
-  rollingShift,
   shiftByUnits,
 } from './dateExpr';
 import { DateOperator } from './operator';
 import { readField, readPath, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
-import { type ReadRef, readValueSource, resolveExpr, resolveUnits } from './valueSource';
+import {
+  offsetShift,
+  type ReadRef,
+  readValueSource,
+  resolveExpr,
+  resolveUnits,
+} from './valueSource';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -182,6 +187,16 @@ const parseCompareDates = (
   const read: ReadRef = (ref) => readPath(ref, scopes, context);
   const raw = readValueSource(condition, scopes, context, bindings);
   if (raw === null || raw === undefined) return null;
+  const move =
+    condition.offset === undefined
+      ? undefined
+      : offsetShift(readValueSource(condition.offset, scopes, context, bindings));
+  if (move === null) return null;
+  const shift = (point: dayjs.Dayjs): dayjs.Dayjs | null => {
+    if (move === undefined) return point;
+    const units = resolveUnits(move[0], read);
+    return units && shiftByUnits(point, units, move[1], tz);
+  };
 
   if (isRangeOperator(operator)) {
     if (!isDateExpr(raw)) throw new Error(`${operator} operator requires a range date expression`);
@@ -208,8 +223,8 @@ const parseCompareDates = (
     if (!date1 || !date2) return null;
     // Auto-sort: ensure startDate <= endDate
     const [start, end] = date1.isAfter(date2) ? [date2, date1] : [date1, date2];
-    const shiftedStart = shift(start, condition, read, tz);
-    const shiftedEnd = shift(end, condition, read, tz);
+    const shiftedStart = shift(start);
+    const shiftedEnd = shift(end);
     return shiftedStart && shiftedEnd ? [shiftedStart, shiftedEnd] : null;
   }
 
@@ -222,23 +237,8 @@ const parseCompareDates = (
   };
   const point = isDateExpr(raw) ? pointOf(raw) : toPoint(raw, 'comparison date');
   if (!point) return null;
-  const shifted = shift(point, condition, read, tz);
+  const shifted = shift(point);
   return shifted && [shifted, undefined];
-};
-
-/** A comparison point moved by the rule's offset; null when an offset magnitude reads nothing. */
-const shift = (
-  point: dayjs.Dayjs,
-  condition: DateRule,
-  read: ReadRef,
-  zone: string,
-): dayjs.Dayjs | null => {
-  const { offset } = condition;
-  if (offset === undefined) return point;
-  const rolling = rollingShift(offset);
-  if (!rolling) throw new Error('a date offset is { ago } or { ahead }');
-  const units = resolveUnits(rolling[0], read);
-  return units && shiftByUnits(point, units, rolling[1], zone);
 };
 
 /**

@@ -448,3 +448,18 @@ export const PERIOD_UNITS: readonly string[] = [
   'minute',
   'second',
 ];
+
+// --- Weekdays -------------------------------------------------------------------------------
+
+/** Weekday names in Postgres `EXTRACT(DOW)` order: sunday is 0. */
+export const DAY_NAMES = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+export const isDayName = (name: string): boolean =>
+  (DAY_NAMES as readonly string[]).includes(name.toLowerCase());

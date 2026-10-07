@@ -16,7 +16,7 @@ import {
 import { orderPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
-import { NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
+import { DAY_NAMES, NEGATED_OPERATORS, WINDOW_OPERATORS } from './operatorCatalog';
 import { parseScopeRef, readField, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
 import { type ReadSource, readValueSource, rowRef } from './valueSource';
@@ -134,20 +134,15 @@ export const checkDate = (
       );
     }
 
-    case DateOperator.dayIn: {
-      if (!Array.isArray(condition.value))
-        throw new Error('dayIn operator requires an array of day names');
-      const dayName = fieldDate.tz(tz).format('dddd').toLowerCase();
-      const allowedDays = condition.value.map((day) => String(day).toLowerCase());
-      return allowedDays.includes(dayName) || getError(`must be on ${allowedDays.join(' or ')}`);
-    }
-
+    case DateOperator.dayIn:
     case DateOperator.dayNotIn: {
-      if (!Array.isArray(condition.value))
-        throw new Error('dayNotIn operator requires an array of day names');
-      const day = fieldDate.tz(tz).format('dddd').toLowerCase();
-      const excludedDays = condition.value.map((excludedDay) => String(excludedDay).toLowerCase());
-      return !excludedDays.includes(day) || getError(`must not be on ${excludedDays.join(' or ')}`);
+      const days = dayNumbers(readValueSource(condition, scopes, context, bindings));
+      if (days === null) return condition.error || `${condition.field} has no comparison value`;
+      const listed = days.includes(fieldDate.tz(tz).day());
+      const names = days.map((day) => DAY_NAMES[day]).join(' or ');
+      return condition.dateOperator === DateOperator.dayIn
+        ? listed || getError(`must be on ${names}`)
+        : !listed || getError(`must not be on ${names}`);
     }
 
     default:
@@ -273,4 +268,15 @@ export const coerceDateLiteral = (value: unknown, zone: string): Date => {
   const parsed = isDateInputValue(value) ? parseDateValue(value, zone) : dayjs(Number.NaN);
   if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
   return parsed.toDate();
+};
+
+/** A weekday list as `EXTRACT(DOW)` numbers (sunday 0); null when it reads nothing. */
+export const dayNumbers = (days: unknown): number[] | null => {
+  if (days === null || days === undefined) return null;
+  if (!Array.isArray(days)) throw new Error('a weekday operator requires an array of day names');
+  return days.map((day) => {
+    const index = (DAY_NAMES as readonly string[]).indexOf(String(day).toLowerCase());
+    if (index === -1) throw new Error(`Unknown day name: ${String(day)}`);
+    return index;
+  });
 };

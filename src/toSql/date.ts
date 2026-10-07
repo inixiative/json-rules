@@ -1,5 +1,5 @@
 import { resolveExpr } from '../amount';
-import { coerceDateLiteral } from '../date';
+import { coerceDateLiteral, dayNumbers } from '../date';
 import {
   isDateExpr,
   requireNow,
@@ -10,8 +10,7 @@ import {
 import { orderPair } from '../number';
 import { DateOperator } from '../operator';
 import type { DateExpr, DateRule } from '../types';
-import { compareSql, ORDERED_SQL, orNull, rangeSql } from './compare';
-import { mapDayNames } from './dayNames';
+import { compareSql, noOperandSql, ORDERED_SQL, orNull, rangeSql } from './compare';
 import { resolveFieldSql } from './join';
 import { offsetDate } from './offset';
 import { nextParam } from './params';
@@ -53,11 +52,16 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
 
     case DateOperator.dayIn:
     case DateOperator.dayNotIn: {
-      if (!Array.isArray(rule.value)) {
-        throw new Error(`${rule.dateOperator} operator requires an array of day names`);
-      }
+      const negated = rule.dateOperator === DateOperator.dayNotIn;
+      const source = resolveSource(rule, state);
+      if (source.type === 'column')
+        throw new Error(
+          `A weekday list read from the row ('${rule.path}') is not supported by toSql()`,
+        );
+      const numbers = dayNumbers(source.value);
+      if (numbers === null) return noOperandSql(field, negated);
       const zone = nextParam(state, dateConfigOf(state).timeZone);
-      const days = nextParam(state, mapDayNames(rule.value.map((day) => String(day))));
+      const days = nextParam(state, numbers);
       const dow = `EXTRACT(DOW FROM (${asInstant(field)} AT TIME ZONE ${zone}))`;
       return rule.dateOperator === DateOperator.dayIn
         ? `${dow} = ANY(${days})`

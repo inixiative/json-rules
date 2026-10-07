@@ -5,6 +5,7 @@ import { ArrayOperator, type DateOperator, type Operator } from './operator';
 import {
   ARRAY_OPERATOR_CATALOG,
   DATE_OPERATOR_CATALOG,
+  DAY_NAMES,
   FIELD_OPERATOR_CATALOG,
   FieldKind,
   getAggregateOperators,
@@ -12,6 +13,7 @@ import {
   isAggregateRangeOperator,
   isAggregateSingleOperator,
   isCalendarUnit,
+  isDayName,
   isOperatorSupportedForTarget,
   isRelativeUnit,
   OFFSET_OPERATORS,
@@ -698,22 +700,15 @@ const validateDateRule = (
   const shape = getValueShape(operator);
 
   if (shape === 'dayList') {
-    if (!Array.isArray(rule.value) || !rule.value.every((item) => typeof item === 'string')) {
+    if (validateSource(rule, path, context, depth) !== 'value') return;
+    const days = rule.value;
+    if (!Array.isArray(days) || !days.every((day) => typeof day === 'string' && isDayName(day)))
       pushIssue(
         context,
         `${path}.value`,
         'invalid_day_list',
-        `Date operator '${operator}' requires an array of day names`,
+        `Date operator '${operator}' requires an array of day names (${DAY_NAMES.join(', ')})`,
       );
-    }
-    if ('path' in rule && rule.path !== undefined) {
-      pushIssue(
-        context,
-        `${path}.path`,
-        'unexpected_path',
-        `Date operator '${operator}' does not accept path`,
-      );
-    }
     return;
   }
 

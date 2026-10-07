@@ -1,6 +1,7 @@
 import { resolveExpr } from '../amount';
 import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
+import { rangeExprRequired, unknownOperator } from '../errors';
 import { isRelationEntry } from '../fieldMap/entry';
 import { entryKind, ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
@@ -71,8 +72,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
   const window = (): [Date, Date] | null => {
     const v = source();
     if (v === null || v === undefined) return null;
-    if (!isDateExpr(v))
-      throw new Error(`${rule.dateOperator} date operator requires a range date expression`);
+    if (!isDateExpr(v)) throw rangeExprRequired(rule.dateOperator);
     const expr = resolveExpr(v, read);
     if (!expr) return null;
     const [start, end] = resolveDateExprRange(expr, config);
@@ -97,16 +97,12 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
       return two(range());
 
     case DateOperator.dayIn:
-      throw new Error(
-        `DateOperator 'dayIn' has no Prisma equivalent. Use prisma.$queryRaw with EXTRACT(DOW FROM ...) for day-of-week filtering.`,
-      );
-
     case DateOperator.dayNotIn:
       throw new Error(
-        `DateOperator 'dayNotIn' has no Prisma equivalent. Use prisma.$queryRaw with EXTRACT(DOW FROM ...) for day-of-week filtering.`,
+        `DateOperator '${rule.dateOperator}' has no Prisma equivalent; use toSql() or check().`,
       );
 
     default:
-      throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
+      throw unknownOperator((rule as DateRule).dateOperator, 'date');
   }
 };

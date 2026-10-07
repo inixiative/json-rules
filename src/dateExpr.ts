@@ -4,6 +4,7 @@ import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { isPlainObject } from 'lodash-es';
+import { rangeExprRequired } from './errors';
 import {
   type INTERVAL_FIELDS,
   leafCatalogEntry,
@@ -194,5 +195,5 @@ export const resolveDateExprRange = (
     const moved = shiftByUnits(now, ...rolling, config.timeZone);
     return rolling[1] === -1 ? [moved, now] : [now, moved];
   }
-  throw new Error('`within` requires a range expression (period or rolling), not an edge point');
+  throw rangeExprRequired('within');
 };

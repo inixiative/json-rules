@@ -13,6 +13,7 @@ import {
   resolvePointForOperator,
   shiftByUnits,
 } from './dateExpr';
+import { rangeExprRequired, unknownOperator } from './errors';
 import { isOrderedValue, orderPair, readPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
@@ -55,16 +56,12 @@ export const checkDate = (
     if (NEGATED_OPERATORS.includes(condition.dateOperator)) return true;
     return condition.error || `${condition.field} has no value`;
   }
-  if (!isOrderedValue(fieldValue))
-    throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
-
   // A naive field string is anchored in the resolved zone (default UTC); an absolute
   // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
   // engine's config.timeZone policy used by dateExpr and both compilers.
-  const fieldDate = parseDateValue(fieldValue, tz);
-
-  if (!fieldDate.isValid())
-    throw new Error(`${condition.field} is not a valid date: ${fieldValue}`);
+  const fieldDate = isOrderedValue(fieldValue) ? parseDateValue(fieldValue, tz) : null;
+  if (!fieldDate?.isValid())
+    throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
 
@@ -152,7 +149,7 @@ export const checkDate = (
     }
 
     default:
-      throw new Error('Unknown date operator');
+      throw unknownOperator((condition as { dateOperator?: unknown }).dateOperator, 'date');
   }
 };
 
@@ -179,7 +176,7 @@ const parseCompareDates = (
   };
 
   if (WINDOW_OPERATORS.includes(operator)) {
-    if (!isDateExpr(raw)) throw new Error(`${operator} operator requires a range date expression`);
+    if (!isDateExpr(raw)) throw rangeExprRequired(operator);
     const expr = resolveExpr(raw, read);
     return expr && resolveDateExprRange(expr, config);
   }

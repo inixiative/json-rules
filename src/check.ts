@@ -1,6 +1,12 @@
 import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
-import { ambiguousCondition, conditionRequired, unknownAggregateMode } from './errors';
+import {
+  ambiguousCondition,
+  conditionRequired,
+  countRequired,
+  unknownAggregateMode,
+  unknownOperator,
+} from './errors';
 import { checkField } from './field';
 import { ArrayOperator } from './operator';
 import {
@@ -214,7 +220,7 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
 
   const count = condition.count ?? 0;
   if (ARRAY_COUNT_OPERATORS.includes(condition.arrayOperator) && condition.count === undefined)
-    throw new Error(`${condition.arrayOperator} requires a count`);
+    throw countRequired(condition.arrayOperator);
 
   let matches = 0;
   let failures = 0;
@@ -266,6 +272,6 @@ const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string =
       );
 
     default:
-      throw new Error(`Unknown array operator: ${(condition as ArrayRule).arrayOperator}`);
+      throw unknownOperator((condition as ArrayRule).arrayOperator, 'array');
   }
 };

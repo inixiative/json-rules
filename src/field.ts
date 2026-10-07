@@ -2,8 +2,9 @@ import { isEqual } from 'lodash-es';
 import { parseDateValue, resolveDateConfig } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
+import { unorderedOperand } from './errors';
 import { fuzzyContains } from './fuzzy';
-import { bigIntToNumber, isOrderedValue, orderPair, readSet } from './number';
+import { bigIntToNumber, isOrderedValue, orderPair, readPair, readSet } from './number';
 import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
@@ -230,8 +231,7 @@ export const checkField = (
         getError(`must not match pattern`)
       );
     case Operator.between: {
-      const range = normalizeRange(value);
-      if (!range) throw new Error('between operator requires an array of two values');
+      const range = orderedRange(value, condition.operator);
       if (!inRangeOrder(fieldValue, range)) return getError(`must be between`);
       const comparableFieldValue = toOrderedPrimitive(fieldValue);
       const [min, max] = range;
@@ -240,8 +240,7 @@ export const checkField = (
       );
     }
     case Operator.notBetween: {
-      const range = normalizeRange(value);
-      if (!range) throw new Error('notBetween operator requires an array of two values');
+      const range = orderedRange(value, condition.operator);
       if (!inRangeOrder(fieldValue, range)) return true;
       const comparableFieldValue = toOrderedPrimitive(fieldValue);
       const [min, max] = range;
@@ -324,13 +323,17 @@ const hasMatch = (value: unknown): value is string => typeof value === 'string';
 const isPattern = (value: unknown): value is string | RegExp =>
   typeof value === 'string' || value instanceof RegExp;
 
-const normalizeRange = (value: unknown): [string | number, string | number] | null => {
-  if (!Array.isArray(value) || value.length !== 2) return null;
-
-  const [rawMin, rawMax] = value;
-  if (!isOrderedValue(rawMin) || !isOrderedValue(rawMax)) return null;
-
-  return orderPair([toOrderedPrimitive(rawMin), toOrderedPrimitive(rawMax)]);
+/** A range operand's two ends, ordered; refused when one doesn't order. */
+const orderedRange = (value: unknown, operator: string): [string | number, string | number] => {
+  const [low, high] = readPair(value, operator);
+  if (!isOrderedValue(low) || !isOrderedValue(high))
+    throw (
+      unorderedOperand(operator, value) ??
+      new Error(
+        `${operator} orders numbers, strings and dates; it can't compare ${JSON.stringify(value)}`,
+      )
+    );
+  return orderPair([toOrderedPrimitive(low), toOrderedPrimitive(high)]);
 };
 
 const containsValue = (container: unknown, search: unknown): boolean =>

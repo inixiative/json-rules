@@ -9,7 +9,15 @@ import {
   namedPeriod,
   rollingShift,
 } from './dateExpr';
-import { ambiguousCondition, unknownAggregateMode, windowUnsupported } from './errors';
+import {
+  ambiguousCondition,
+  conditionRequired,
+  countRequired,
+  rangeExprRequired,
+  unknownAggregateMode,
+  unknownOperator,
+  windowUnsupported,
+} from './errors';
 import { isOrderedValue } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
@@ -344,7 +352,12 @@ const validateFieldRule = (
   validateField(rule, path, context, depth);
 
   if (typeof rule.operator !== 'string' || !catalogEntry(rule.operator, 'field')) {
-    pushIssue(context, `${path}.operator`, 'invalid_operator', 'Unknown field operator');
+    pushIssue(
+      context,
+      `${path}.operator`,
+      'invalid_operator',
+      unknownOperator(rule.operator, 'field').message,
+    );
     return;
   }
 
@@ -564,7 +577,12 @@ const validateArrayRule = (
   validateWindow(rule, path, context, depth);
 
   if (typeof rule.arrayOperator !== 'string' || !catalogEntry(rule.arrayOperator, 'array')) {
-    pushIssue(context, `${path}.arrayOperator`, 'invalid_array_operator', 'Unknown array operator');
+    pushIssue(
+      context,
+      `${path}.arrayOperator`,
+      'invalid_array_operator',
+      unknownOperator(rule.arrayOperator, 'array').message,
+    );
     return;
   }
 
@@ -608,17 +626,12 @@ const validateArrayRule = (
         context,
         `${path}.condition`,
         'missing_condition',
-        `Array operator '${operator}' requires condition`,
+        conditionRequired(operator).message,
       );
     refuseCount();
   } else if (shape === 'count') {
     if (context.target !== 'toPrisma' && typeof rule.count !== 'number')
-      pushIssue(
-        context,
-        `${path}.count`,
-        'missing_count',
-        `Array operator '${operator}' requires count`,
-      );
+      pushIssue(context, `${path}.count`, 'missing_count', countRequired(operator).message);
     else if (
       rule.count !== undefined &&
       !(typeof rule.count === 'number' && Number.isInteger(rule.count) && rule.count >= 0)
@@ -652,7 +665,12 @@ const validateDateRule = (
   validateField(rule, path, context, depth);
 
   if (typeof rule.dateOperator !== 'string' || !catalogEntry(rule.dateOperator, 'date')) {
-    pushIssue(context, `${path}.dateOperator`, 'invalid_date_operator', 'Unknown date operator');
+    pushIssue(
+      context,
+      `${path}.dateOperator`,
+      'invalid_date_operator',
+      unknownOperator(rule.dateOperator, 'date').message,
+    );
     return;
   }
 
@@ -695,12 +713,7 @@ const validateDateRule = (
 
   if (WINDOW_OPERATORS.includes(operator)) {
     // The range operators only accept an expression range (period or rolling), not a literal pair.
-    pushIssue(
-      context,
-      `${path}.value`,
-      'invalid_date_range',
-      `Date operator '${operator}' requires a range date expression (a period or rolling window)`,
-    );
+    pushIssue(context, `${path}.value`, 'invalid_date_range', rangeExprRequired(operator).message);
     return;
   }
 
@@ -816,12 +829,7 @@ const validateDateExpr = (
 
   if (isEdgeExpr(expr)) {
     if (isRange) {
-      pushIssue(
-        context,
-        path,
-        'invalid_date_range',
-        `'${operator}' requires a range (period or rolling); a start/end edge is a single point`,
-      );
+      pushIssue(context, path, 'invalid_date_range', rangeExprRequired(operator).message);
       return;
     }
     const period = 'start' in expr ? expr.start : expr.end;

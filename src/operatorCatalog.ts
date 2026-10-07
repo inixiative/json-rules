@@ -1,3 +1,4 @@
+import { unknownOperator } from './errors';
 import { ArrayOperator, DateOperator, Operator } from './operator';
 import type { AggregateMode } from './types';
 
@@ -298,7 +299,7 @@ export const comparatorOf = (operator: string, family: OperatorFamily): Comparat
 
 export const getValueShape = (operator: string, family: OperatorFamily): ValueShape => {
   const entry = catalogEntry(operator, family);
-  if (!entry) throw new Error(`Unknown ${family} operator: ${operator}`);
+  if (!entry) throw unknownOperator(operator, family);
   return entry.valueShape;
 };
 

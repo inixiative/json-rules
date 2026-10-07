@@ -7,6 +7,7 @@ import {
   resolvePointForOperator,
   rollingShift,
 } from '../dateExpr';
+import { rangeExprRequired, unknownOperator } from '../errors';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
 import { NEGATED_OPERATORS } from '../operatorCatalog';
@@ -97,7 +98,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
     }
 
     default:
-      throw new Error(`Unknown date operator: ${(rule as DateRule).dateOperator}`);
+      throw unknownOperator((rule as DateRule).dateOperator, 'date');
   }
 };
 
@@ -136,7 +137,7 @@ const resolveWindow = (rule: DateRule, state: BuilderState): [ResolvedRhs, Resol
   const source = resolveSource(rule, state);
   if (isMissing(source)) return null;
   if (source.type === 'column' || !isDateExpr(source.value))
-    throw new Error(`${rule.dateOperator} date operator requires a range date expression`);
+    throw rangeExprRequired(rule.dateOperator);
   const rolling = rollingShift(source.value);
   if (rolling && readsRow(rolling[0])) {
     const now = nowOperand(state);

@@ -13,6 +13,19 @@ import {
 export const fieldlessArrayError = (target: 'toSql' | 'toPrisma'): Error =>
   new Error(`${target}: ArrayRule.field is required (fieldless arrayOps are check-only)`);
 
+/** An operator the catalog doesn't list in its family. */
+export const unknownOperator = (operator: unknown, family: string): Error =>
+  new Error(`Unknown ${family} operator: ${String(operator)}`);
+
+/** A counting array operator with no count. */
+export const countRequired = (operator: string): Error => new Error(`${operator} requires a count`);
+
+/** A window date operator against a single point instead of a range expression. */
+export const rangeExprRequired = (operator: string): Error =>
+  new Error(
+    `${operator} requires a range date expression (a period or rolling window), not a single point`,
+  );
+
 /** A counting or element-wise array operator with no condition. */
 export const conditionRequired = (operator: string): Error =>
   new Error(`${operator} requires a condition to check against array elements`);

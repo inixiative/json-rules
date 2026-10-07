@@ -1,4 +1,4 @@
-import { conditionRequired } from '../errors';
+import { conditionRequired, countRequired } from '../errors';
 import type { FieldMap } from '../fieldMap/types';
 import { ArrayOperator } from '../operator';
 import { comparatorOf } from '../operatorCatalog';
@@ -29,7 +29,7 @@ export const buildCountStep = (
   // Same contract as check(): a count operator without a condition or count is an
   // authoring error, not a default.
   if (rule.condition === undefined) throw conditionRequired(rule.arrayOperator);
-  if (rule.count === undefined) throw new Error(`${rule.arrayOperator} requires a count`);
+  if (rule.count === undefined) throw countRequired(rule.arrayOperator);
   const count = rule.count;
   if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return matchAll();
 

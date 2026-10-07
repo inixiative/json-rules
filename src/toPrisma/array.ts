@@ -1,5 +1,10 @@
 import { check } from '../check';
-import { fieldlessArrayError, windowUnsupported } from '../errors';
+import {
+  conditionRequired,
+  fieldlessArrayError,
+  unknownOperator,
+  windowUnsupported,
+} from '../errors';
 import { type FieldShape, ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge, relationTarget } from '../fieldMap/walk';
@@ -138,17 +143,17 @@ const buildArrayLeafFilter = (
     // Prisma's `every` passes a child whose condition is NULL (a NULL field), which check()
     // fails: no child in the exact complement instead.
     case ArrayOperator.all:
-      if (!rule.condition) throw new Error(`ArrayOperator 'all' requires a condition`);
+      if (!rule.condition) throw conditionRequired(rule.arrayOperator);
       return {
         none: buildCondition(negate(rule.condition, settleLeaf(childOptions)), childOptions, state),
       };
 
     case ArrayOperator.any:
-      if (!rule.condition) throw new Error(`ArrayOperator 'any' requires a condition`);
+      if (!rule.condition) throw conditionRequired(rule.arrayOperator);
       return { some: buildCondition(rule.condition, childOptions, state) };
 
     case ArrayOperator.none:
-      if (!rule.condition) throw new Error(`ArrayOperator 'none' requires a condition`);
+      if (!rule.condition) throw conditionRequired(rule.arrayOperator);
       return { none: buildCondition(rule.condition, childOptions, state) };
 
     case ArrayOperator.empty:
@@ -158,6 +163,6 @@ const buildArrayLeafFilter = (
       return { some: {} };
 
     default:
-      throw new Error(`Unknown array operator: ${(rule as ArrayRule).arrayOperator}`);
+      throw unknownOperator((rule as ArrayRule).arrayOperator, 'array');
   }
 };

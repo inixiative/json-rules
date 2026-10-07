@@ -1,4 +1,4 @@
-import { fieldlessArrayError, windowUnsupported } from '../errors';
+import { fieldlessArrayError, unknownOperator, windowUnsupported } from '../errors';
 import { ruleShape } from '../fieldMap/shape';
 import { fieldEntry } from '../fieldMap/walk';
 import { ArrayOperator } from '../operator';
@@ -49,6 +49,6 @@ export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => 
       );
 
     default:
-      throw new Error(`Unknown array operator: ${(rule as ArrayRule).arrayOperator}`);
+      throw unknownOperator((rule as ArrayRule).arrayOperator, 'array');
   }
 };

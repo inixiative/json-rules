@@ -1,3 +1,4 @@
+import { showValue } from './showValue';
 import type { OrderedRuleValue } from './types';
 
 // BigInt compares as Int: a bigint (what Prisma returns for a BigInt column) becomes a JS
@@ -33,9 +34,16 @@ export const readNumber = (raw: unknown, what: string): number | null => {
 export const orderPair = <T>([a, b]: readonly [T, T] | T[]): [T, T] =>
   (b as never) < (a as never) ? [b, a] : [a, b];
 
-/** A list's non-null members, and whether it held a null. */
-export const splitNull = (list: unknown): { values: unknown[]; hasNull: boolean } => {
-  if (!Array.isArray(list)) return { values: [], hasNull: false };
+/** A set operand: a list, or an error — a scalar is not a set. */
+export const readSet = (value: unknown): unknown[] => {
+  if (!Array.isArray(value))
+    throw new Error(`in / notIn requires a list (got ${showValue(value)})`);
+  return value;
+};
+
+/** A set operand's non-null members, and whether it names null. */
+export const splitNull = (operand: unknown): { values: unknown[]; hasNull: boolean } => {
+  const list = readSet(operand);
   const values = list.filter((v) => v !== null);
   return { values, hasNull: values.length !== list.length };
 };

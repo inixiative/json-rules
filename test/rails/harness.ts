@@ -26,7 +26,7 @@ INSERT INTO orgs (id, name, plan, seats, "foundedAt", settings, "parentId") VALU
   (12, NULL, 'free', 0, '2026-10-05', '{"tier":null,"nums":[]}', 11);
 INSERT INTO users (id, name, age, score, "createdAt", meta, tags, "orgId") VALUES
   (1, 'Ann', 30, 1.5, '2026-10-05 10:00', '{"a":{"b":"x"},"n":3,"list":[1,2,3]}', '{a,b}', 10),
-  (2, 'bob', NULL, NULL, NULL, NULL, NULL, 11),
+  (2, 'bob', NULL, NULL, NULL, NULL, '{}', 11),
   (3, NULL, 5, 2, '2026-10-04 23:30', '{"a":null,"n":null,"list":[]}', '{}', 12),
   (4, 'Dee', 40, 0, '2025-01-01', '{"a":{"b":"X"}}', '{c}', NULL),
   (5, 'nullable', 7, NULL, NULL, 'null', '{}', NULL);
@@ -35,6 +35,9 @@ INSERT INTO posts (id, "authorId", views, title) VALUES
   (101, 1, 5, NULL),
   (102, 3, NULL, 'Hi'),
   (103, 1, NULL, 'later');
+UPDATE users SET role = 'admin' WHERE id = 1;
+UPDATE users SET role = 'Guest' WHERE id = 3;
+UPDATE users SET role = 'member' WHERE id = 4;
 `;
 
 /** Each rail's matching user ids, or the message it threw. */
@@ -50,12 +53,13 @@ const attempt = async (run: () => Promise<number[]> | number[]): Promise<RailRes
   }
 };
 
-export const openRails = async () => {
+/** `seed` adds rows after the base fixture's. */
+export const openRails = async (seed = '') => {
   // What a consumer configures once, beside its client.
   engineGlobals.set('prismaOptions.anyNull', Prisma.AnyNull);
   const db = new PGlite();
   await db.exec(readFileSync(join(GENERATED, 'schema.sql'), 'utf8'));
-  await db.exec(SEED);
+  await db.exec(SEED + seed);
   const dir = mkdtempSync(join(tmpdir(), 'json-rules-rails-'));
   const server = new PGLiteSocketServer({ db, path: join(dir, '.s.PGSQL.5432') });
   await server.start();

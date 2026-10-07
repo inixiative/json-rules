@@ -119,7 +119,7 @@ describe('columns the map does not type are left alone', () => {
       coerceType: 'DateTime',
     };
     expect(prismaWhere(rule)).toEqual({ meta: { path: ['signup'], equals: '2024-01-01' } });
-    expect(sqlParams(rule)).toEqual(['2024-01-01']);
+    expect(sqlParams(rule)).toEqual(['"2024-01-01"']);
   });
 
   test('stamped scalar lists keep their literals', () => {

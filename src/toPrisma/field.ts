@@ -4,6 +4,7 @@ import {
   resolveCaseInsensitive,
   supportsQueryMode,
 } from '../engineGlobals';
+import { enumMatches } from '../enumMatch';
 import { hasNoOperand } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
@@ -139,8 +140,9 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   if (shape === 'relation') return buildRelationRule(rule, options);
 
   switch (rule.operator) {
+    // A list filter has no `not`: its complements negate `equals` at the WHERE level.
     case Operator.exists:
-      return at({ not: nullOf(shape) });
+      return shape === 'list' ? notLeaf(at({ equals: null })) : at({ not: nullOf(shape) });
     case Operator.notExists: {
       const absent = arms();
       return absent.length ? orWhere(absent) : at({ equals: nullOf(shape) });
@@ -166,6 +168,19 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
   if (hasNoOperand(rule, value))
     return orWhere(NEGATED_OPERATORS.includes(rule.operator) ? arms() : []);
 
+  // An enum compares against its declared values (see enumMatches).
+  const enumEntry =
+    shape === 'enum'
+      ? fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)
+      : undefined;
+  const matched = enumEntry
+    ? enumMatches(rule, value, enumEntry, options?.map as FieldMap | undefined)
+    : null;
+  if (matched) {
+    const listed = at({ in: matched.values });
+    return matched.matchesNull ? orWhere([listed, ...arms()]) : listed;
+  }
+
   // Prisma's `not` / `notIn` compile to SQL `<>` / `NOT IN`, which drop NULL rows under
   // three-valued logic; a negation is the complement of its positive form in check(), so it
   // carries the absent arms.
@@ -182,20 +197,43 @@ export const buildFieldRule = (rule: Rule, options?: BuildOptions): PrismaWhere 
     return hasNull ? { AND: [listed, at({ not: nullOf(shape) })] } : orWhere([listed, ...arms()]);
   }
 
+  // A Json value contains a string's substring, or a member of an array.
+  const contains = (): PrismaWhere =>
+    isJson(shape)
+      ? orWhere([
+          at(comparisonFilter({ ...rule, operator: Operator.contains }, options)),
+          at({ array_contains: [value] }),
+        ])
+      : at(comparisonFilter({ ...rule, operator: Operator.contains }, options));
+  if (rule.operator === Operator.contains) return contains();
+
+  // Prisma's Json filters can't test a value's type — a range or a containment test is NULL for
+  // the other types — so a complement, which keeps those values, has no form.
+  if (
+    isJson(shape) &&
+    (NEGATED_RANGE_OPERATORS.includes(rule.operator) || rule.operator === Operator.notContains)
+  )
+    throw new Error(
+      `'${rule.operator}' on the Json value '${rule.field}' has no Prisma form (it keeps values of other types); use toSql() or check().`,
+    );
+
   // A negation no field filter can carry — a two-sided range, or containment on a Json value or
   // a list — negates its positive form at the WHERE level.
-  if (NEGATED_RANGE_OPERATORS.includes(rule.operator) || rule.operator === Operator.notContains) {
-    const positive = rule.operator === Operator.notContains ? Operator.contains : rule.operator;
+  if (rule.operator === Operator.notContains) return orWhere([notLeaf(contains()), ...arms()]);
+  if (NEGATED_RANGE_OPERATORS.includes(rule.operator))
     return orWhere([
-      notLeaf(at(comparisonFilter({ ...rule, operator: positive }, options))),
+      notLeaf(at(comparisonFilter({ ...rule, operator: Operator.between }, options))),
       ...arms(),
     ]);
-  }
 
   const filter = at(comparisonFilter(rule, options));
   // `equals null` is the is-null sentinel: a path through an absent relation is null too.
   if (rule.operator === Operator.equals && value === null)
     return orWhere([filter, ...hopArms(rule.field, options)]);
+  if (rule.operator === Operator.notEquals && shape === 'list')
+    return value === null
+      ? notLeaf(at({ equals: null }))
+      : orWhere([notLeaf(at({ equals: value })), ...arms()]);
   return rule.operator === Operator.notEquals && value !== null
     ? orWhere([filter, ...arms()])
     : filter;

@@ -1,8 +1,9 @@
+import { isEqual } from 'lodash-es';
 import { parseDateValue, resolveDateConfig } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import { resolveCaseInsensitive, resolveFuzzy } from './engineGlobals';
 import { fuzzyContains } from './fuzzy';
-import { bigIntToNumber, isOrderedValue, orderPair } from './number';
+import { bigIntToNumber, isOrderedValue, orderPair, readSet } from './number';
 import { addOffset, offsetAmount } from './offset';
 import { Operator } from './operator';
 import {
@@ -155,18 +156,22 @@ export const checkField = (
   const rhs = Array.isArray(value) ? value.map(lower) : lower(value);
 
   // Fuzzy applies to containment search: typo-tolerant token match over strings, else the
-  // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive.
+  // exact containment check. fuzzyContains lowercases internally, so it's case-insensitive. A
+  // list contains a member exactly: case-insensitivity matches text, not membership.
   const fuzzy = resolveFuzzy(condition.fuzzy);
   const containsMatch = (): boolean =>
     fuzzy && typeof fieldValue === 'string' && typeof value === 'string'
       ? fuzzyContains(fieldValue, value, fuzzy)
-      : containsValue(lhs, rhs);
+      : Array.isArray(fieldValue)
+        ? fieldValue.some((item) => isEqual(item, value))
+        : containsValue(lhs, rhs);
 
   switch (condition.operator) {
+    // Values compare as JSON does: by value (a list or an object deeply), never across types.
     case Operator.equals:
-      return lhs === rhs || getError(`must equal`);
+      return isEqual(lhs, rhs) || getError(`must equal`);
     case Operator.notEquals:
-      return lhs !== rhs || getError(`must not equal`);
+      return !isEqual(lhs, rhs) || getError(`must not equal`);
     case Operator.lessThan:
       return compareOrderedValues(fieldValue, value, 'lt') || getError(`must be less than`);
     case Operator.lessThanEquals:
@@ -181,9 +186,9 @@ export const checkField = (
         getError(`must be greater than or equal to`)
       );
     case Operator.in:
-      return (Array.isArray(rhs) && rhs.includes(lhs)) || getError(`must be one of`);
+      return readSet(rhs).some((item) => isEqual(item, lhs)) || getError(`must be one of`);
     case Operator.notIn:
-      return !Array.isArray(rhs) || !rhs.includes(lhs) || getError(`must not be one of`);
+      return !readSet(rhs).some((item) => isEqual(item, lhs)) || getError(`must not be one of`);
     case Operator.contains:
       return containsMatch() || getError(`must contain`);
     case Operator.notContains:
@@ -203,7 +208,7 @@ export const checkField = (
     case Operator.between: {
       const range = normalizeRange(value);
       if (!range) throw new Error('between operator requires an array of two values');
-      if (!isOrderedValue(fieldValue)) return getError(`must be between`);
+      if (!inRangeOrder(fieldValue, range)) return getError(`must be between`);
       const comparableFieldValue = toOrderedPrimitive(fieldValue);
       const [min, max] = range;
       return (
@@ -213,7 +218,7 @@ export const checkField = (
     case Operator.notBetween: {
       const range = normalizeRange(value);
       if (!range) throw new Error('notBetween operator requires an array of two values');
-      if (!isOrderedValue(fieldValue)) return true;
+      if (!inRangeOrder(fieldValue, range)) return true;
       const comparableFieldValue = toOrderedPrimitive(fieldValue);
       const [min, max] = range;
       return (
@@ -263,7 +268,7 @@ const compareOrderedValues = (
   right: unknown,
   operator: 'lt' | 'lte' | 'gt' | 'gte',
 ): boolean => {
-  if (!isOrderedValue(left) || !isOrderedValue(right)) return false;
+  if (!sameOrder(left, right) || !isOrderedValue(right)) return false;
 
   const lhs = toOrderedPrimitive(left);
   const rhs = toOrderedPrimitive(right);
@@ -294,14 +299,19 @@ const normalizeRange = (value: unknown): [string | number, string | number] | nu
   return orderPair([toOrderedPrimitive(rawMin), toOrderedPrimitive(rawMax)]);
 };
 
-const containsValue = (container: unknown, search: unknown): boolean => {
-  if (typeof container === 'string') {
-    return typeof search === 'string' && container.includes(search);
-  }
+const containsValue = (container: unknown, search: unknown): boolean =>
+  typeof container === 'string' && typeof search === 'string' && container.includes(search);
 
-  if (Array.isArray(container)) {
-    return container.includes(search);
-  }
+/** Two values that order against each other: both numbers, both strings, or both dates. */
+const sameOrder = (a: unknown, b: unknown): a is OrderedRuleValue =>
+  isOrderedValue(a) && isOrderedValue(b) && orderKind(a) === orderKind(b);
 
-  return false;
-};
+const orderKind = (value: OrderedRuleValue | number | string): string =>
+  value instanceof Date ? 'date' : typeof value;
+
+/** A field that orders against a range's ends (already reduced to primitives). */
+const inRangeOrder = (
+  value: unknown,
+  range: [string | number, string | number],
+): value is OrderedRuleValue =>
+  isOrderedValue(value) && typeof toOrderedPrimitive(value) === typeof range[0];

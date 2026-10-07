@@ -104,6 +104,27 @@ reads off the generated client.
 - **Empty is `null`, `''`, or `[]`** on every rail: a list or a Json array with no elements is
   empty, as `isEmpty` / `notEmpty` and the array operators read it.
 - **`caseInsensitive` applies to `in` / `notIn`** on every rail (all three ignored it).
+- **Values compare as JSON does**: by value (a list or an object deeply — `check()` compared them
+  by reference) and never across types. `"3"` never equals `3`, and an ordered comparison or a
+  range only holds between two numbers, two strings or two dates (`check()` coerced `"3" > 1`).
+  `toSql` compares a Json value as `jsonb` against the operand's JSON (it compared `->>` text, so
+  `3` equalled `"3"` and `true` equalled `"true"`); string operators read strings only.
+- **`contains` on a list or a Json array is exact membership**; `caseInsensitive` applies to text,
+  not membership (`check()` lowered the needle but not the elements). On Prisma, `contains` on
+  Json is `string_contains` OR `array_contains`; `notContains` and `notBetween` on Json have no
+  Prisma form (its Json filters can't test a value's type) and throw.
+- **An enum compares against its declared values.** A database orders an enum by declaration
+  and has no string operators for it; a case-insensitive comparison, a string operator, a
+  pattern or an ordered comparison on an enum now compiles to the declared values `check()`
+  matches (`IN (…)`, plus the NULL arm for a negation). The map must list the values (prisma-map
+  does).
+- **A string literal on a number or Boolean column without `coerceType` is refused** by the
+  compilers (`toSql` cast it, `toPrisma` handed it to Prisma, `check()` compared it strictly);
+  stamp `coerceType` to compare it.
+- **`in` / `notIn` with a scalar, and an unknown period unit, throw on every rail** (they compiled
+  to an empty set and to a millisecond).
+- **A scalar list `exists` / `notEquals`** compile on Prisma (`{ not: null }` is not a list
+  filter).
 - **A window sorts NULLs last** in both directions: `orderBy views desc, take 1` is the largest
   value, as "latest" reads (a NULL sorted first). The extremal `all` rewrite on Prisma is exact
   under it: the array is empty, or some element has a value and none with one breaks the bound.

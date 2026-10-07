@@ -304,6 +304,8 @@ export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
 /** Operators a null operand leaves with nothing to compare against — unlike `equals` /
  *  `notEquals`, where null is the is-null sentinel. */
 export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'array');
+/** Exact equality and membership: what a column answers by value, case-sensitively. */
+export const EXACT_OPERATORS = withShape('scalar', 'array');
 /** Operators with a point to move: the comparisons and both ends of a pair. */
 export const OFFSET_OPERATORS = withShape('scalar', 'ordered', 'range', 'dateValue', 'dateRange');
 

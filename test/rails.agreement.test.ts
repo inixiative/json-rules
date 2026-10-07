@@ -3,7 +3,7 @@ import type { Condition } from '../index';
 import { agree, openRails, type Rails } from './rails/harness';
 
 // check(), toSql on Postgres and toPrisma on Prisma agree on every rule they all compile.
-// Fixture (test/rails/harness.ts): users 1–5; 2 has a DB-NULL meta and tags, 5 a JSON-null
+// Fixture (test/rails/harness.ts): users 1–5; 2 has a DB-NULL meta and no tags, 5 a JSON-null
 // meta; 4 and 5 have no org; 3's org has a NULL name.
 
 let rails: Awaited<ReturnType<typeof openRails>>;
@@ -72,13 +72,13 @@ describe('arrays', () => {
     expectRails({ field: 'meta.list', arrayOperator: 'empty' }, agree([2, 3, 4, 5])));
   test('notEmpty Json array', () =>
     expectRails({ field: 'meta.list', arrayOperator: 'notEmpty' }, agree([1])));
-  test('a NULL scalar list is empty', () =>
+  test('an empty scalar list is empty', () =>
     expectRails({ field: 'tags', arrayOperator: 'empty' }, agree([2, 3, 5])));
   test('notEmpty scalar list', () =>
     expectRails({ field: 'tags', arrayOperator: 'notEmpty' }, agree([1, 4])));
   test('a scalar list contains a member', () =>
     expectRails({ field: 'tags', operator: 'contains', value: 'a' }, agree([1])));
-  test('notContains keeps a NULL list', () =>
+  test('notContains keeps an empty list', () =>
     expectRails({ field: 'tags', operator: 'notContains', value: 'a' }, agree([2, 3, 4, 5])));
 });
 
@@ -254,6 +254,47 @@ const MATRIX: Record<string, Case> = {
   'a Json path notContains keeps absent paths': {
     rule: { field: 'meta.a.b', operator: 'notContains', value: 'x' },
     ids: [2, 3, 4, 5],
+    refuses: { prisma: 'has no Prisma form' },
+  },
+  'a list exists': { rule: { field: 'tags', operator: 'exists' }, ids: [1, 2, 3, 4, 5] },
+  'a list equals a list': {
+    rule: { field: 'tags', operator: 'equals', value: ['a', 'b'] },
+    ids: [1],
+  },
+  'a list notEquals keeps the others': {
+    rule: { field: 'tags', operator: 'notEquals', value: ['a', 'b'] },
+    ids: [2, 3, 4, 5],
+  },
+  'an enum equals, case-insensitive': {
+    rule: { field: 'role', operator: 'equals', value: 'ADMIN', caseInsensitive: true },
+    ids: [1],
+  },
+  'an enum contains': { rule: { field: 'role', operator: 'contains', value: 'm' }, ids: [1, 4] },
+  'an enum startsWith': { rule: { field: 'role', operator: 'startsWith', value: 'G' }, ids: [3] },
+  'an enum notContains keeps NULL': {
+    rule: { field: 'role', operator: 'notContains', value: 'm' },
+    ids: [2, 3, 5],
+  },
+  'an enum orders as text': {
+    rule: { field: 'role', operator: 'lessThan', value: 'b' },
+    ids: [1, 3],
+  },
+  'an enum in': {
+    rule: { field: 'role', operator: 'in', value: ['member', 'Guest'] },
+    ids: [3, 4],
+  },
+  'an enum notIn, case-insensitive': {
+    rule: { field: 'role', operator: 'notIn', value: ['MEMBER'], caseInsensitive: true },
+    ids: [1, 2, 3, 5],
+  },
+  'an enum matches, on every rail': {
+    rule: { field: 'role', operator: 'matches', value: '^m' },
+    ids: [4],
+  },
+  'a string literal on a number column is refused, not cast': {
+    rule: { field: 'age', operator: 'equals', value: '30' },
+    ids: [],
+    refuses: { sql: 'the literal is a string', prisma: 'the literal is a string' },
   },
   'a list isEmpty': { rule: { field: 'tags', operator: 'isEmpty' }, ids: [2, 3, 5] },
   'a list notEmpty': { rule: { field: 'tags', operator: 'notEmpty' }, ids: [1, 4] },

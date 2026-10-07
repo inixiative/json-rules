@@ -693,6 +693,7 @@ positive operator, ask for them:
 - aggregate rules on JSON/native stored arrays are not supported by Prisma — use `toSql()` or `check()` for those
 - element conditions (`all` / `any` / `none` / counts) over a scalar list or a Json array are not supported by Prisma; test a list's membership with `contains`
 - a field path through a to-many relation (`posts.title`) is an error on both compilers — compare its rows with an array rule on `posts`
+- Prisma loads a NULL scalar-list column as `[]`, so `check()` over Prisma-loaded rows reads it as an empty list while the compilers read NULL; a list Prisma writes is never NULL, so this only matters for rows written outside Prisma
 
 ### SQL Limitations
 

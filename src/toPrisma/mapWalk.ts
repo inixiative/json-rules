@@ -1,5 +1,5 @@
 import { applyCoercion } from '../field';
-import { COMPILE_COERCED_KINDS, FieldKind } from '../operatorCatalog';
+import { COMPILE_COERCED_KINDS, FieldKind, NUMERIC_KINDS } from '../operatorCatalog';
 import { modelOf, own } from '../own';
 import { someCondition } from '../traverse';
 import type { Condition, Rule } from '../types';
@@ -115,18 +115,28 @@ export const optionalToOneHops = (field: string, map: FieldMap, rootModel: strin
  * to-one relation, which exists or not), `scalar` (any other column), or `unknown` (no map, a
  * path the map doesn't declare, or a to-many relation).
  */
-export type FieldShape = 'text' | 'json' | 'json-path' | 'list' | 'relation' | 'scalar' | 'unknown';
+export type FieldShape =
+  | 'enum'
+  | 'text'
+  | 'json'
+  | 'json-path'
+  | 'list'
+  | 'relation'
+  | 'scalar'
+  | 'unknown';
 
 export const fieldShape = (walk: MapWalkResult | undefined): FieldShape => {
   if (walk?.kind === 'json-path') return 'json-path';
   if (walk?.kind !== 'direct') return 'unknown';
   if (walk.entry.kind === 'object') return walk.entry.isList ? 'unknown' : 'relation';
   if (walk.entry.isList) return 'list';
+  if (walk.entry.kind === 'enum') return 'enum';
   return kindShape(walk.entry.type);
 };
 
 const kindShape = (kind: string): FieldShape => {
   if (kind === FieldKind.Json) return 'json';
+  if (kind === FieldKind.Enum) return 'enum';
   return kind === FieldKind.String ? 'text' : 'scalar';
 };
 
@@ -209,6 +219,17 @@ export const compileFieldLiteral = (
     const instant = toInstant(rule.field, target, zone());
     return Array.isArray(value) ? value.map(instant) : instant(value);
   }
+  // Unstamped, check() compares the literal as written, so a string never equals a number or a
+  // boolean column; the compilers would cast it. Refuse it — stamp `coerceType` to compare it.
+  if (
+    rule.coerceType === undefined &&
+    declared !== undefined &&
+    (NUMERIC_KINDS.includes(declared) || declared === FieldKind.Boolean) &&
+    (Array.isArray(value) ? value : [value]).some((item) => typeof item === 'string')
+  )
+    throw new Error(
+      `'${rule.field}' is ${declared} but the literal is a string; pass a ${declared === FieldKind.Boolean ? 'boolean' : 'number'}, or stamp coerceType: '${declared}'.`,
+    );
   return rule.coerceType !== undefined && COMPILE_COERCED_KINDS.includes(rule.coerceType)
     ? applyCoercion(
         value,

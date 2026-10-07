@@ -13,11 +13,18 @@ model User {
   createdAt DateTime?
   meta      Json?
   tags      String[]
+  role      Role?
   orgId     Int?
   org       Org?      @relation(fields: [orgId], references: [id])
   posts     Post[]
   @@map("users")
 }
+enum Role {
+  admin
+  member
+  Guest
+}
+
 model Org {
   id        Int       @id
   name      String?

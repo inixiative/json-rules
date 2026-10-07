@@ -1,4 +1,5 @@
 import { resolveCaseInsensitive } from '../engineGlobals';
+import { enumMatches } from '../enumMatch';
 import { hasNoOperand } from '../field';
 import { orderPair, splitNull } from '../number';
 import { Operator } from '../operator';
@@ -8,11 +9,13 @@ import {
   acceptsEmptyString,
   compileFieldLiteral,
   type FieldShape,
+  fieldEntry,
   walkWith,
 } from '../toPrisma/mapWalk';
 import type { Rule } from '../types';
 import { compareSql, noOperandSql, ORDERED_SQL, orNull as orNullSql, rangeSql } from './compare';
 import { type FieldSql, resolveField, resolveFieldSql } from './join';
+import { buildJsonComparison } from './json';
 import { offsetNumber } from './offset';
 import { nextParam } from './params';
 import { escapeLikePattern } from './quoting';
@@ -25,12 +28,6 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     throw new Error('Fuzzy matching has no SQL equivalent — evaluate it in memory with check().');
   const resolved: FieldSql =
     lhs === undefined ? resolveField(rule.field, state) : { sql: lhs, shape: 'scalar' };
-  // A JSON value compared against a number compares as a number, as check() compares it; one
-  // that isn't a number reads NULL.
-  const fieldFor = (operand: unknown): string =>
-    resolved.shape === 'json-path' && isNumeric(operand)
-      ? `CASE WHEN jsonb_typeof(${resolveFieldSql(rule.field, state, { jsonb: true })}) = 'number' THEN (${resolved.sql})::numeric END`
-      : resolved.sql;
   // A to-one relation as a field exists or not: its key is not a value to compare.
   if (resolved.shape === 'relation' && !NO_VALUE_OPERATORS.includes(rule.operator)) {
     const rhs = resolveSource(rule, state);
@@ -41,18 +38,42 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   }
   // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
   const nullable = lhs === undefined;
+  // An enum compares against its declared values (see enumMatches).
+  if (resolved.shape === 'enum' && !NO_VALUE_OPERATORS.includes(rule.operator)) {
+    const operand = knownOperand(rule, state);
+    const entry = fieldEntry(rule.field, state.map, state.currentModel);
+    const matched =
+      operand !== NOT_KNOWN && entry && !hasNoOperand(rule, operand)
+        ? enumMatches(rule, operand, entry, state.map)
+        : null;
+    if (matched) {
+      const listed = `${resolved.sql}::text = ANY(${nextParam(state, matched.values)})`;
+      return matched.matchesNull ? orNullSql(resolved.sql, listed) : listed;
+    }
+  }
+  // An enum's exact comparisons read its value as text, which a string parameter matches.
+  const compared: FieldSql =
+    resolved.shape === 'enum' && !NO_VALUE_OPERATORS.includes(rule.operator)
+      ? { ...resolved, sql: `${resolved.sql}::text` }
+      : resolved;
+  // A Json value against an operand known now compares as JSON.
+  const isJson = resolved.shape === 'json' || resolved.shape === 'json-path';
+  if (isJson && !NO_VALUE_OPERATORS.includes(rule.operator)) {
+    const operand = knownOperand(rule, state);
+    if (operand !== NOT_KNOWN)
+      return buildJsonComparison(
+        rule,
+        resolveFieldSql(rule.field, state, { jsonb: true }),
+        operand,
+        state,
+      );
+  }
   if (RANGE_OPERATORS.includes(rule.operator)) {
     const ends = resolveRange(rule, state);
-    return rangeSql(
-      fieldFor(ends?.map((end) => (end.type === 'value' ? end.value : undefined))),
-      ends,
-      rule.operator === Operator.notBetween,
-      state,
-      nullable,
-    );
+    return rangeSql(compared.sql, ends, rule.operator === Operator.notBetween, state, nullable);
   }
   const rhs = resolveComparison(rule, state);
-  const field = fieldFor(rhs.type === 'value' ? rhs.value : undefined);
+  const field = compared.sql;
   const ordered = ORDERED_SQL[rule.operator];
   if (ordered) return compareSql(field, ordered.symbol, rhs, false, state);
   // Nothing to compare against (see hasNoOperand): no row, or the NULL fields for a negation.
@@ -60,7 +81,8 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
     return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator), nullable);
   const arithmetic = rhs.type === 'column' && rhs.computed === true;
   // Case-insensitive compares text, as check() lowercases only strings.
-  const text = (shape: FieldShape | undefined) => shape !== 'scalar' && shape !== 'list';
+  const text = (shape: FieldShape | undefined) =>
+    shape !== 'scalar' && shape !== 'list' && shape !== 'enum';
   const lower =
     resolveCaseInsensitive(rule.caseInsensitive) &&
     text(resolved.shape) &&
@@ -194,12 +216,6 @@ const resolveRange = (rule: Rule, state: BuilderState): [ResolvedRhs, ResolvedRh
   }) as [ResolvedRhs, ResolvedRhs];
 };
 
-const isNumeric = (operand: unknown): boolean =>
-  typeof operand === 'number' ||
-  (Array.isArray(operand) &&
-    operand.some((item) => typeof item === 'number') &&
-    operand.every((item) => typeof item === 'number' || item === null || item === undefined));
-
 const EMPTY_JSON = `'null'::jsonb, '""'::jsonb, '[]'::jsonb`;
 const EQUALITY: readonly string[] = [Operator.equals, Operator.notEquals];
 
@@ -213,4 +229,21 @@ const sqlPattern = (value: unknown): string => {
   if (typeof value !== 'string' && !(value instanceof RegExp))
     throw new Error('matches requires a string or RegExp pattern');
   return readPattern(value).source;
+};
+
+const NOT_KNOWN = Symbol('not known');
+
+/** A comparison's operand when it is known now — a value, or a range of two values — or
+ *  NOT_KNOWN when it is read per row (a column, an offset). */
+const knownOperand = (rule: Rule, state: BuilderState): unknown => {
+  if (rule.offset !== undefined) return NOT_KNOWN;
+  if (RANGE_OPERATORS.includes(rule.operator)) {
+    const ends = resolveRange(rule, state);
+    if (!ends) return null;
+    return ends.every((end) => end.type === 'value')
+      ? ends.map((end) => (end as { value: unknown }).value)
+      : NOT_KNOWN;
+  }
+  const rhs = resolveComparison(rule, state);
+  return rhs.type === 'value' ? rhs.value : NOT_KNOWN;
 };

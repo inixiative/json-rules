@@ -231,8 +231,8 @@ describe('toSql', () => {
         operator: Operator.equals,
         value: 'dark',
       });
-      expect(sql).toBe('"data"->>\'theme\' = $1');
-      expect(params).toEqual(['dark']);
+      expect(sql).toBe(`NULLIF("data"->'theme', 'null'::jsonb) = $1::jsonb`);
+      expect(params).toEqual(['"dark"']);
     });
 
     it('nested JSON path', () => {
@@ -241,8 +241,8 @@ describe('toSql', () => {
         operator: Operator.equals,
         value: 'compact',
       });
-      expect(sql).toBe("\"settings\"->'display'->>'mode' = $1");
-      expect(params).toEqual(['compact']);
+      expect(sql).toBe("NULLIF(\"settings\"->'display'->'mode', 'null'::jsonb) = $1::jsonb");
+      expect(params).toEqual(['"compact"']);
     });
   });
 

@@ -172,8 +172,8 @@ describe('toSql map-aware JSON path with alias', () => {
       { field: 'metadata.theme', operator: Operator.equals, value: 'dark' },
       { map: blogMap, model: 'User', alias: 't0' },
     );
-    expect(sql).toBe(`"t0"."metadata"->>'theme' = $1`);
-    expect(params).toEqual(['dark']);
+    expect(sql).toBe(`NULLIF("t0"."metadata"->'theme', 'null'::jsonb) = $1::jsonb`);
+    expect(params).toEqual(['"dark"']);
     expect(joins).toHaveLength(0);
   });
 
@@ -182,7 +182,7 @@ describe('toSql map-aware JSON path with alias', () => {
       { field: 'settings.display.mode', operator: Operator.equals, value: 'compact' },
       { map: blogMap, model: 'Post', alias: 't0' },
     );
-    expect(sql).toBe(`"t0"."settings"->'display'->>'mode' = $1`);
+    expect(sql).toBe(`NULLIF("t0"."settings"->'display'->'mode', 'null'::jsonb) = $1::jsonb`);
   });
 
   it('json field after relation → joined alias + JSON path', () => {
@@ -192,7 +192,7 @@ describe('toSql map-aware JSON path with alias', () => {
     );
     expect(joins).toHaveLength(1);
     expect(joins[0]).toBe('LEFT JOIN "User" AS "t1" ON "t1"."id" = "t0"."authorId"');
-    expect(sql).toBe(`"t1"."metadata"->>'theme' = $1`);
+    expect(sql).toBe(`NULLIF("t1"."metadata"->'theme', 'null'::jsonb) = $1::jsonb`);
   });
 });
 
@@ -252,7 +252,7 @@ describe('toSql composite FK JOINs', () => {
 describe('toSql without map falls back to existing behavior', () => {
   it('dot path treated as JSON path (original behavior)', () => {
     const { sql } = toSql({ field: 'data.theme', operator: Operator.equals, value: 'dark' });
-    expect(sql).toBe(`"data"->>'theme' = $1`);
+    expect(sql).toBe(`NULLIF("data"->'theme', 'null'::jsonb) = $1::jsonb`);
   });
 
   it('nested dot path treated as JSON path', () => {
@@ -261,6 +261,6 @@ describe('toSql without map falls back to existing behavior', () => {
       operator: Operator.equals,
       value: 'compact',
     });
-    expect(sql).toBe(`"settings"->'display'->>'mode' = $1`);
+    expect(sql).toBe(`NULLIF("settings"->'display'->'mode', 'null'::jsonb) = $1::jsonb`);
   });
 });

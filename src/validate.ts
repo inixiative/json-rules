@@ -5,7 +5,7 @@ import {
   isDateExpr,
   isEdgeExpr,
   isPeriodExpr,
-  periodUnit,
+  namedPeriod,
   rollingShift,
 } from './dateExpr';
 import { isOrderedValue } from './number';
@@ -861,8 +861,7 @@ const validateDateExpr = (
   }
 
   if (isPeriodExpr(expr)) {
-    const unit = periodUnit(expr);
-    validatePeriodUnit(unit, path, context);
+    validatePeriodUnit(namedPeriod(expr), path, context);
     return;
   }
 
@@ -881,8 +880,7 @@ const validateDateExpr = (
       pushIssue(context, path, 'invalid_period_unit', `start/end requires a this/last/next period`);
       return;
     }
-    const unit = periodUnit(period);
-    validatePeriodUnit(unit, path, context);
+    validatePeriodUnit(namedPeriod(period), path, context);
     return;
   }
 

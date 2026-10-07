@@ -4,7 +4,12 @@ import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { isPlainObject } from 'lodash-es';
-import { type INTERVAL_FIELDS, RELATIVE_UNITS, type RelativeUnit } from './operatorCatalog';
+import {
+  type INTERVAL_FIELDS,
+  PERIOD_UNITS,
+  RELATIVE_UNITS,
+  type RelativeUnit,
+} from './operatorCatalog';
 import type {
   DateConfig,
   DateExpr,
@@ -98,9 +103,17 @@ export const isPeriodExpr = <A>(e: DateExpr<A>): e is PeriodExpr =>
   'this' in e || 'last' in e || 'next' in e;
 export const isEdgeExpr = <A>(e: DateExpr<A>): e is EdgeExpr => 'start' in e || 'end' in e;
 
-/** A period expression's unit, whichever of this / last / next names it. */
-export const periodUnit = (expr: PeriodExpr): PeriodUnit =>
+/** What a period expression names, whichever of this / last / next it uses. */
+export const namedPeriod = (expr: PeriodExpr): unknown =>
   'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
+
+/** A period expression's unit; an unknown one throws (dayjs would read it as a millisecond). */
+export const periodUnit = (expr: PeriodExpr): PeriodUnit => {
+  const unit = namedPeriod(expr);
+  if (typeof unit !== 'string' || !PERIOD_UNITS.includes(unit))
+    throw new Error(`Unknown period unit '${String(unit)}'`);
+  return unit as PeriodUnit;
+};
 
 // `week` is governed by weekStart (default monday → isoWeek). `isoWeek` is always Monday.
 const effectivePeriodUnit = (unit: PeriodUnit, config: ResolvedDateConfig): dayjs.OpUnitType => {

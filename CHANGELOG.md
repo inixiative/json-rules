@@ -1,5 +1,70 @@
 # Changelog
 
+## 3.0.0 — one verb, one name, one implementation
+
+A consolidation release. Every operation has one public name and one implementation;
+`docs/VERBS.md` is the catalog and `test/verbs.test.ts` keeps it that way. `src/` is about
+400 lines smaller than 2.27.0 with more behavior covered.
+
+### Breaking: renamed and reshaped API
+
+| 2.x | 3.0 |
+| --- | --- |
+| `applyLens(rule, lens)` | `narrowRule(rule, lens)` |
+| `checkRuleAgainstLens(rule, lens)` → `{ ok, violations: { path, reason }[] }` | `validateRuleInLens(rule, lens)` → `{ ok, errors: { path, message, code }[] }` |
+| `stampCoercions(rule, lens)` | `coerceRule(rule, lens)` |
+| `resolveBindings(rule, bindings)` | `bindRule(rule, bindings)` |
+| `resolveLensBindings(lens, bindings)` | `bindLens(lens, bindings)` |
+| `bindingNames(rule)` → `Set` | `listBindings(rule)` → sorted `string[]` |
+| `requiredBindings(rule)` → `Set` | `listBindings(rule, { required: true })` → sorted `string[]` |
+| `lensRequiredBindings(lens)` → `Set` | `listLensBindings(lens)` → sorted `string[]` |
+| `projectByPath(lens, opts)` → `Map<path, ProjectedVisit>` | `projectLens(lens, opts)` → `Record<path, ProjectedVisit>` |
+| `exposedSurface(lens, opts)` | `projectLens(lens, { ...opts, by: 'model' })` |
+| `ruleSourceValues(lens, rule)` | `describeRuleSources(rule, lens)` |
+| `sourceQueries(lens)` | `toSourceQueries(lens)` |
+| `sourceValuesFromRows(lens, rows, opts)` | `materializeSources(lens, rows, opts)` |
+| `sourceValuesFromQueryRows(query, rows, opts)` | `materializeSourceQuery(query, rows, opts)` |
+| `executePrismaQueryPlan(plan, delegates)` | `executePrismaPlan(plan, delegates)` |
+| `resolveLensPath(...)` | `walkLensPath(...)` |
+| `resolveScopeRef(ref, scopes)` | `readScopeRef(ref, scopes)` |
+| `validateNarrowing(n)` — throws | `validateNarrowing(n)` → `{ ok, errors }`; `assertValidNarrowing(n)` throws |
+| `validateFieldMapSet(set)` — throws | `validateFieldMaps(set)` → `{ ok, errors }`; `assertValidFieldMaps(set)` throws |
+| `validateFieldMap(map, name)` | `assertValidFieldMaps({ maps: { [name]: map } })` |
+| `buildBridgeDictionary(bridges)` | `indexBridges(bridges)` |
+| `readBinding`, `validateBindNames`, `resolveCaseInsensitive`, `resolveFuzzy`, `supportsQueryMode`, `fuzzyContains`, `maxFuzzyDistance`, the catalog's internal operator / kind / unit sets | no longer exported |
+
+Every validator returns `{ ok, errors: { path, message, code }[] }` and has an `assert*`
+form that throws. Lens violations carry codes (`not_in_lens`, `operator_kind_mismatch`,
+`invalid_value`, `value_not_allowed`, …).
+
+### Fixed
+
+- **`narrowRule` (was `applyLens`) skipped grants on a relation node with no `condition`**
+  — emptiness, an aggregate, a filter-only node — and never rewrote its `filter`, so grants on
+  relations the filter reached were not injected. Grants now scope its rows through `filter`.
+- **`projectLens` (was `projectByPath`) projected a relation a child layer hid.**
+- **Own-property reads everywhere.** Field-map, narrowing and map-default lookups, and every
+  row / context / item / `orderBy` path read (lodash `get` is gone): a name on
+  `Object.prototype` reads as absent. `coerceType: 'toString'` fails validation.
+- **One map walk for every compiler leaf.** `toSql` array and aggregate rules join dotted
+  fields and qualify their columns like field rules; `toPrisma` date and array rules are
+  map-aware (Json sub-paths, bridges). A path past a non-Json column is an error on both
+  compilers; `toSql` read it as a JSON path and `toPrisma` dropped the tail.
+- **The bridge check in an implication sees `filter`.**
+- **One default zone, never the host's.** With no `timeZone`, periods and `now` read in UTC
+  (they read in the host zone). The test suite runs under `TZ=Pacific/Kiritimati`.
+- **A `coerceType: DateTime` field rule anchors a zoneless string in the evaluation zone**, as a
+  date rule does (it read UTC).
+- **Weekday lists** read any value source, and an unknown name throws on every rail
+  (`check()` failed to match).
+- **`describeRuleSources`** marks a leaf dynamic when an offset or a read amount moves its value.
+- `validateRule` treats an empty `orderBy` as no window, like the compilers.
+
+### Output changes
+
+- `toPrisma` leaves a single-arm OR unwrapped (`{ a: … }`, not `{ OR: [{ a: … }] }`).
+- A `toSql` array or aggregate column is alias-qualified when a map is given.
+
 ## 2.27.0 — one value-source type in every slot; `offset`; amounts and `timeZone` read any source
 
 **First consumer:** Zealot platform alerts (userevidence/Zealot-Monorepo#2656). The incident

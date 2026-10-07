@@ -4,7 +4,7 @@ import { hasNoOperand } from '../field';
 import { splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS } from '../operatorCatalog';
-import { readPattern } from '../pattern';
+import { postgresSource, readPattern } from '../pattern';
 import type { Rule } from '../types';
 import { noOperandSql, orderedSql, orNull } from './compare';
 import { nextParam } from './params';
@@ -96,7 +96,7 @@ export const buildJsonComparison = (
     case Operator.matches:
     case Operator.notMatches: {
       const { source, caseInsensitive } = readPattern(value as string | RegExp);
-      const match = `(${type} = 'string' AND ${text} ~${caseInsensitive ? '*' : ''} ${nextParam(state, source)})`;
+      const match = `(${type} = 'string' AND ${text} ~${caseInsensitive ? '*' : ''} ${nextParam(state, postgresSource(source))})`;
       return rule.operator === Operator.matches ? match : not(match);
     }
   }

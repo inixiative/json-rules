@@ -428,7 +428,7 @@ const validateValueShape = (
         );
         return;
       }
-      const problem = patternProblem(value);
+      const problem = patternProblem(value, context.target);
       if (problem) pushIssue(context, path, 'unsupported_pattern', problem);
       return;
     }

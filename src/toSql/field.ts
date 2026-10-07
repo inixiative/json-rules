@@ -15,7 +15,7 @@ import {
   NO_VALUE_OPERATORS,
   RANGE_OPERATORS,
 } from '../operatorCatalog';
-import { readPattern } from '../pattern';
+import { postgresSource, readPattern } from '../pattern';
 import type { Rule } from '../types';
 import { compareSql, noOperandSql, orderedSql, orNull as orNullSql, rangeSql } from './compare';
 import { type FieldSql, resolveField, resolveFieldSql } from './join';
@@ -239,7 +239,7 @@ const sqlMatch = (field: string, value: unknown, negated: boolean, state: Builde
   if (typeof value !== 'string' && !(value instanceof RegExp))
     throw new Error('matches requires a string or RegExp pattern');
   const { source, caseInsensitive } = readPattern(value);
-  return `${field} ${negated ? '!' : ''}~${caseInsensitive ? '*' : ''} ${nextParam(state, source)}`;
+  return `${field} ${negated ? '!' : ''}~${caseInsensitive ? '*' : ''} ${nextParam(state, postgresSource(source))}`;
 };
 
 const NOT_KNOWN = Symbol('not known');

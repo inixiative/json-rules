@@ -1,6 +1,7 @@
 import { check } from './check';
 import { resolveCaseInsensitive } from './engineGlobals';
 import { EXACT_OPERATORS } from './operatorCatalog';
+import { own } from './own';
 import type { FieldMap, FieldMapEntry } from './toPrisma/types';
 import type { Condition, Rule } from './types';
 
@@ -12,9 +13,7 @@ import type { Condition, Rule } from './types';
 export const enumValues = (
   entry: FieldMapEntry,
   map: FieldMap | undefined,
-): readonly string[] | undefined =>
-  entry.values ??
-  (map?.enums && Object.hasOwn(map.enums, entry.type) ? map.enums[entry.type] : undefined);
+): readonly string[] | undefined => entry.values ?? own(map?.enums, entry.type);
 
 /**
  * The declared values a comparison on an enum matches, and whether a NULL field matches it —

@@ -107,7 +107,7 @@ const validateSourceTargetVisibility = (
     // materializing those values — re-declaring it is inherited authority, not a
     // new reference past the ancestor's removals.
     const ancestorSpecs = [...ancestorChain, ...defaultsFor(mapName, modelName)]
-      .map((n) => n.sources?.[field])
+      .map((n) => own(n.sources, field))
       .filter((x): x is NonNullable<typeof x> => x !== undefined)
       .map(normalizeSource);
 
@@ -253,7 +253,7 @@ const validateModelNode = (
       errors.push(`${position}.${op}: field '${fieldName}' is not an enum field`);
       return;
     }
-    const registry = fieldEntry.values ?? enumRegistry?.[fieldEntry.type];
+    const registry = fieldEntry.values ?? own(enumRegistry, fieldEntry.type);
     for (const v of values) {
       if (registry && !registry.includes(v)) {
         errors.push(
@@ -306,7 +306,7 @@ const validateModelNode = (
       // silently re-partition an ancestor's option namespace — fail loud instead.
       const axesKey = JSON.stringify(axes);
       for (const anc of ancestorChain) {
-        const ancEntry = anc.sources?.[field];
+        const ancEntry = own(anc.sources, field);
         if (ancEntry === undefined) continue;
         const ancAxes = normalizeGroupBy(normalizeSource(ancEntry).groupBy);
         if (ancAxes !== undefined && JSON.stringify(ancAxes) !== axesKey) {
@@ -330,7 +330,7 @@ const validateDefaultsEnums = (
   errors: string[],
 ): void => {
   for (const [enumName, enumN] of Object.entries(defaultsEnums)) {
-    const registryVals = enumRegistry?.[enumName];
+    const registryVals = own(enumRegistry, enumName);
     if (!registryVals) {
       errors.push(`mapDefaults.${mapName}.enums.${enumName}: enum not in registry`);
       continue;
@@ -416,15 +416,15 @@ const validateEnumFieldAgainstChain = (
     const modelLayers = [...ancestorDefaultsForModel];
     if (sameLayerDefaultsForModel) modelLayers.push(sameLayerDefaultsForModel);
     for (const dflt of modelLayers) {
-      const p = dflt.enumPicks?.[fieldName];
-      const o = dflt.enumOmits?.[fieldName];
+      const p = own(dflt.enumPicks, fieldName);
+      const o = own(dflt.enumOmits, fieldName);
       if (p) addPicks(p);
       if (o) addOmits(o);
     }
 
     for (const anc of ancestorChainAtSamePosition) {
-      const p = anc.enumPicks?.[fieldName];
-      const o = anc.enumOmits?.[fieldName];
+      const p = own(anc.enumPicks, fieldName);
+      const o = own(anc.enumOmits, fieldName);
       if (p) addPicks(p);
       if (o) addOmits(o);
     }

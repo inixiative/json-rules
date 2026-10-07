@@ -42,7 +42,8 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
   },
   {
     verb: 'read a field-map record (own-property)',
-    pattern: /\.(models|fields|maps)\[[^\]]+\](?!\s*=[^=])/,
+    pattern:
+      /\.(models|fields|maps|sources|relations|enumPicks|enumOmits|mapDefaults|enums)\[[^\]]+\](?!\s*=[^=])|(?:sources|relations|enumPicks|enumOmits|mapDefaults|enums|Registry)\?\.\[/,
     owners: ['src/own.ts'],
   },
   {

@@ -1,3 +1,4 @@
+import { isRelationEntry } from '../fieldMap/entry.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry } from '../toPrisma/types.ts';
 import type { Condition } from '../types.ts';
@@ -153,8 +154,7 @@ const toOnePathError = (
   const seg = segments[hops.length];
   const entry = fieldOf(own(maps, at.map), at.model, seg);
   if (!entry) return `${kind} segment '${seg}' not on model '${at.model}'`;
-  if (entry.kind === 'object' || entry.kind === 'bridge')
-    return `${kind} relation '${seg}' has no resolvable target`;
+  if (isRelationEntry(entry)) return `${kind} relation '${seg}' has no resolvable target`;
   return hops.length === segments.length - 1 ? null : `${kind} segment '${seg}' is not a relation`;
 };
 

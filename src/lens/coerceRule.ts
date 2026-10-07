@@ -1,3 +1,4 @@
+import { isRelationEntry } from '../fieldMap/entry.ts';
 import { COERCIBLE_KINDS, type FieldKind } from '../operatorCatalog.ts';
 import { isRelationNode, mapCondition } from '../traverse';
 import type { Condition } from '../types.ts';
@@ -31,8 +32,8 @@ export const coerceRule = (
       below: (node, scopes) => {
         if (!isRelationNode(node)) return false;
         const at = step(node.field, scopes);
-        const kind = at && !('violation' in at) ? at.walked?.entry.kind : undefined;
-        return at && !('violation' in at) && (kind === 'object' || kind === 'bridge')
+        const entry = at && !('violation' in at) ? at.walked?.entry : undefined;
+        return at && !('violation' in at) && entry && isRelationEntry(entry)
           ? [...scopes, at.next]
           : false;
       },

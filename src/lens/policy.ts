@@ -1,3 +1,4 @@
+import { isJsonEntry } from '../fieldMap/entry.ts';
 import { fieldOf, modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { FieldMap } from '../toPrisma/types.ts';
@@ -11,7 +12,7 @@ import type {
   SourceSpec,
   SourceValue,
 } from './types.ts';
-import { collectChain, getRoot, isJsonEntry, resolveRelationTarget } from './walk.ts';
+import { collectChain, getRoot, resolveRelationTarget } from './walk.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;

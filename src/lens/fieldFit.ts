@@ -1,4 +1,5 @@
 import { applyCoercion } from '../field';
+import { isJsonEntry, isRelationEntry } from '../fieldMap/entry.ts';
 import {
   type CatalogEntry,
   DATE_OPERATOR_CATALOG,
@@ -12,7 +13,6 @@ import { entryKind, instantMs } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
 import type { DateRule, Rule } from '../types';
 import type { ValidationIssue } from '../validate';
-import { isJsonEntry } from './walk.ts';
 
 /** A leaf's literal operands — the elements for in/notIn/between. Null when the comparison
  *  value is read at evaluation (a `path` or `bind`), unknown at gate time. */
@@ -150,9 +150,8 @@ export const arrayFitViolation = (
   entry: FieldMapEntry,
 ): ValidationIssue | null => {
   if (entry.isList === true || isJsonEntry(entry)) return null;
-  const message =
-    entry.kind === 'object' || entry.kind === 'bridge'
-      ? `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a to-one relation — a single related record; address its fields directly (e.g. '${field}.<field>')`
-      : `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a single ${entryKind(entry) ?? entry.type} value`;
+  const message = isRelationEntry(entry)
+    ? `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a to-one relation — a single related record; address its fields directly (e.g. '${field}.<field>')`
+    : `arrayOperator '${arrayOperator}' needs a list, but '${field}' is a single ${entryKind(entry) ?? entry.type} value`;
   return { path: field, code: 'invalid_array_operator', message };
 };

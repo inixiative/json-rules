@@ -1,4 +1,5 @@
 import { checkField } from '../field';
+import { isJsonEntry } from '../fieldMap/entry';
 import { negate } from '../negate';
 import { Operator } from '../operator';
 import { fieldOf } from '../own';
@@ -56,7 +57,7 @@ const buildAggregateStep = (
   const item = fieldOf(options.map, path.target, itemField);
   if (!item)
     throw new Error(`aggregate.field '${itemField}' does not exist on model '${path.target}'.`);
-  if (item.kind !== 'scalar' || item.type === 'Json')
+  if (item.kind !== 'scalar' || isJsonEntry(item))
     throw new Error(
       `aggregate.field '${itemField}' on model '${path.target}' must be a numeric scalar, got ${item.kind === 'scalar' ? 'Json' : `'${item.kind}'`}.`,
     );

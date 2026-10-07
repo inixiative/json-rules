@@ -1,4 +1,5 @@
 import { applyCoercion } from '../field';
+import { isJsonEntry } from '../fieldMap/entry';
 import { COMPILE_COERCED_KINDS, FieldKind, NUMERIC_KINDS } from '../operatorCatalog';
 import { modelOf, own } from '../own';
 import { someCondition } from '../traverse';
@@ -49,7 +50,7 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
       continue;
     }
     if (last) return { kind: 'direct', hops, entry, model, column: parts[i] };
-    if (entry.kind === 'scalar' && entry.type === 'Json')
+    if (isJsonEntry(entry))
       return {
         kind: 'json-path',
         hops,

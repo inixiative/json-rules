@@ -21,14 +21,6 @@ export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
 export const getRoot = (x: Lens | LensNarrowing): Lens =>
   isLens(x) ? x : (collectChain(x)[0].parent as Lens);
 
-/**
- * A Json column. It declares no sub-fields, so a dotted sub-path into it is open-ended —
- * `check`/`toPrisma`/`toSql` resolve the remaining segments against the JSON value at
- * evaluation time. Lens path resolution stops at this boundary.
- */
-export const isJsonEntry = (entry: FieldMapEntry): boolean =>
-  entry.kind === 'scalar' && entry.type === 'Json';
-
 export const resolveRelationTarget = (
   entry: FieldMapEntry,
   currentMap: string,

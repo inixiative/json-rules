@@ -1,4 +1,5 @@
 import { endpointKey } from '../fieldMap/endpointKey.ts';
+import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { Bridge, FieldMapSet } from '../fieldMap/types.ts';
 import { fieldOf, modelOf, own } from '../own';
 import type { FieldMap, FieldMapEntry, SourceOption } from '../toPrisma/types.ts';
@@ -113,7 +114,7 @@ export const projectModels = (
         );
       unionFieldInto(acc.fields, fieldName, nextEntry);
 
-      if (entry.kind === 'object' || entry.kind === 'bridge') {
+      if (isRelationEntry(entry)) {
         const target = resolveRelationTarget(entry, mapName);
         if (!target) continue;
         if (declared && effect.relations.has(fieldName)) {

@@ -58,6 +58,12 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
     owners: ['src/operatorCatalog.ts'],
   },
   {
+    verb: 'classify a field-map entry (Json, relation)',
+    pattern:
+      /kind === 'object' \|\| [\w.]*kind === 'bridge'|kind === 'scalar' && [\w.]*type === 'Json'/,
+    owners: ['src/fieldMap/entry.ts'],
+  },
+  {
     verb: 'name a bridge endpoint (map:Model)',
     pattern: /\$\{[\w.]*fieldMap\}:\$\{|split\(':'\)/,
     owners: ['src/fieldMap/endpointKey.ts'],

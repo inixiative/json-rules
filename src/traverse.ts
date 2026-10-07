@@ -37,6 +37,23 @@ const childSlots = (node: ConditionNode): Slot[] => [
   ),
 ];
 
+/** The deepest a condition may nest: every rail recurses through it, so a deeper one (an
+ *  untrusted rule can be any depth) would overflow the stack mid-evaluation. */
+export const MAX_CONDITION_DEPTH = 256;
+
+/** Throws when a condition nests deeper than MAX_CONDITION_DEPTH. Iterative, so measuring it
+ *  can't overflow either. */
+export const assertConditionDepth = (condition: Condition): void => {
+  const stack: [Condition, number][] = [[condition, 1]];
+  while (stack.length) {
+    const [node, depth] = stack.pop() as [Condition, number];
+    if (!isObjCondition(node)) continue;
+    if (depth > MAX_CONDITION_DEPTH)
+      throw new Error(`A condition may nest at most ${MAX_CONDITION_DEPTH} levels deep`);
+    for (const { child } of childSlots(node as ConditionNode)) stack.push([child, depth + 1]);
+  }
+};
+
 export const isLogicalNode = (node: ConditionNode): boolean =>
   'all' in node || 'any' in node || 'if' in node;
 
@@ -194,3 +211,19 @@ export const valueRefRoles = (node: Record<string, unknown>): ValueRef[] =>
 /** Every path a leaf reads on its value side. */
 export const valueRefs = (node: Record<string, unknown>): string[] =>
   valueRefRoles(node).map((r) => r.ref);
+
+export type ConditionShape = 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
+
+/** What a condition node is — exactly one of the grammar's node kinds — or null when its keys
+ *  name more than one (a node every rail would read differently). */
+export const conditionShape = (node: Record<string, unknown>): ConditionShape | null => {
+  const shapes = new Set<ConditionShape>();
+  if ('all' in node) shapes.add('all');
+  if ('any' in node) shapes.add('any');
+  if ('if' in node || 'then' in node || 'else' in node) shapes.add('if');
+  if ('arrayOperator' in node) shapes.add('array');
+  if ('dateOperator' in node) shapes.add('date');
+  if ('aggregate' in node) shapes.add('aggregate');
+  else if ('operator' in node) shapes.add('field');
+  return shapes.size === 1 ? [...shapes][0] : null;
+};

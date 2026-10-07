@@ -1,4 +1,5 @@
 import { own } from '../own';
+import { assertConditionDepth } from '../traverse';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
 import type { BuildOptions, FieldMap, PrismaBuildState, ToPrismaResult } from './types';
@@ -71,6 +72,7 @@ export type {
  * ```
  */
 export const toPrisma = (condition: Condition, options?: BuildOptions): ToPrismaResult => {
+  assertConditionDepth(condition);
   const state: PrismaBuildState = { steps: [] };
   const where = buildCondition(condition, normalizeOptions(options), state);
   return {

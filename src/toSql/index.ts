@@ -1,3 +1,4 @@
+import { assertConditionDepth } from '../traverse';
 import type { Condition, DateConfig } from '../types';
 import { buildCondition } from './condition';
 import type { BuilderState, FieldMap, SqlResult } from './types';
@@ -12,6 +13,7 @@ type SqlBuildOptions = {
 } & DateConfig;
 
 export const toSql = (condition: Condition, options?: SqlBuildOptions): SqlResult => {
+  assertConditionDepth(condition);
   const hasMap = !!(options?.map && options?.model);
   const rootAlias = options?.alias ?? (hasMap ? 't0' : undefined);
 

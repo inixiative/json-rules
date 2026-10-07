@@ -1,6 +1,12 @@
 import { ArrayOperator } from '../operator.ts';
 import { parseScopeRef, readScopeRef } from '../scope';
-import { isLogicalNode, isRelationNode, mapCondition, valueRefs } from '../traverse';
+import {
+  assertConditionDepth,
+  isLogicalNode,
+  isRelationNode,
+  mapCondition,
+  valueRefs,
+} from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
@@ -194,6 +200,7 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
   );
 
 export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
+  assertConditionDepth(rule);
   const policy = resolvePolicy(lensOrNarrowing);
   const rootEffect = resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
 

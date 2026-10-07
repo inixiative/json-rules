@@ -69,6 +69,11 @@ on Json, and every negation on a Json path (which keeps absent paths).
   model's rows with only its own visit's `where`; the grants above it (the root `where`, a
   parent relation's) now carry down through the inverse relation, and a grant no inverse can
   carry offers nothing.
+- **A condition nests at most 256 levels deep** on every entry point (`check`, `toSql`,
+  `toPrisma`, `narrowRule`, `validateRuleInLens`; `validateRule` reports `condition_too_deep`): a
+  deeper one overflowed the stack mid-evaluation.
+- **The lens gate refuses a node of two kinds** (`operator` and `dateOperator`, `arrayOperator`
+  and `aggregate`, logical and leaf), as `validateRule` does — one shape detector serves both.
 - **`matches` refuses patterns that backtrack exponentially** (`(a+)+`, `(a|aa)*`) on every rail;
   `validateRule` reports `unsafe_pattern`.
 

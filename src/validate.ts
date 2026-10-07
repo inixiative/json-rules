@@ -32,6 +32,7 @@ import {
 } from './operatorCatalog';
 import { unsafePattern } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
+import { assertConditionDepth, conditionShape } from './traverse';
 import type { ArrayRule, Condition, DateExpr, OrderedRuleValue, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { extremalRewrite, hasWindow } from './window';
@@ -77,6 +78,12 @@ export const validateRule = (
     errors: [],
   };
 
+  try {
+    assertConditionDepth(condition as Condition);
+  } catch (error) {
+    pushIssue(context, '$', 'condition_too_deep', (error as Error).message);
+    return validationResult(context.errors);
+  }
   validateCondition(condition, '$', context, 1);
   return validationResult(context.errors);
 };
@@ -101,7 +108,7 @@ const validateCondition = (
     return;
   }
 
-  const shape = detectShape(condition);
+  const shape = conditionShape(condition);
   if (!shape) {
     pushIssue(
       context,
@@ -139,23 +146,6 @@ const validateCondition = (
       validateDateRule(condition, path, context, depth);
       break;
   }
-};
-
-const detectShape = (
-  condition: Record<string, unknown>,
-): 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date' | null => {
-  const shapes: string[] = [];
-  if ('all' in condition) shapes.push('all');
-  if ('any' in condition) shapes.push('any');
-  if ('if' in condition || 'then' in condition || 'else' in condition) shapes.push('if');
-  if ('arrayOperator' in condition) shapes.push('array');
-  if ('dateOperator' in condition) shapes.push('date');
-  if ('aggregate' in condition) shapes.push('aggregate');
-  else if ('operator' in condition) shapes.push('field');
-
-  const uniqueShapes = Array.from(new Set(shapes));
-  if (uniqueShapes.length !== 1) return null;
-  return uniqueShapes[0] as 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
 };
 
 const validateLogicalArray = (

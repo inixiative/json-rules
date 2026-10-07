@@ -3,7 +3,13 @@ import { INTEGER_KINDS, NO_VALUE_OPERATORS, NUMERIC_KINDS } from '../operatorCat
 import { parseScopeRef, readScopeRef } from '../scope';
 import { entryKind } from '../toPrisma/mapWalk';
 import type { FieldMapEntry } from '../toPrisma/types.ts';
-import { isLogicalNode, valueRefRoles, visitCondition } from '../traverse';
+import {
+  assertConditionDepth,
+  conditionShape,
+  isLogicalNode,
+  valueRefRoles,
+  visitCondition,
+} from '../traverse';
 import type { Condition } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
@@ -28,17 +34,18 @@ const visit = (
   visitCondition<readonly VisitScope[]>(
     rule,
     (node, scopes) => {
-      if (isLogicalNode(node)) {
-        // A node that is both logical and a leaf evaluates as one or the other depending on the
-        // rail; the gate refuses it rather than vouch for half of it.
-        if ('field' in node)
-          violations.push({
-            path: String(node.field),
-            code: 'ambiguous_condition',
-            message: 'a condition is either logical (all / any / if) or a leaf, not both',
-          });
-        return;
+      // A node of two kinds evaluates as one or the other depending on the rail; the gate
+      // refuses it rather than vouch for half of it.
+      if (conditionShape(node as Record<string, unknown>) === null) {
+        violations.push({
+          path: typeof node.field === 'string' ? node.field : '',
+          code: 'ambiguous_condition',
+          message:
+            'a condition is exactly one of: a field, date, array or aggregate rule, all, any, or if',
+        });
+        return false;
       }
+      if (isLogicalNode(node)) return;
       const cond = node as unknown as Exclude<Condition, boolean>;
 
       // A bare ref resolves at the current visit; `$`-prefixed refs count scopes up the stack.
@@ -256,6 +263,7 @@ export const validateRuleInLens = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,
 ): ValidationResult => {
+  assertConditionDepth(rule);
   const policy = resolvePolicy(lensOrNarrowing);
   return validationResult(
     checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),

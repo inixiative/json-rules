@@ -1016,7 +1016,7 @@ const narrowing: LensNarrowing = {
 };
 ```
 
-Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. Under the `all` array operator the grant goes into the rule's window `filter`, so out-of-scope rows are dropped before the user's "every row matches" check (and the rule runs on `check()` only). See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
+Composition across chained narrowings is pure intersection. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. Under the `all` array operator the grant goes into the rule's window `filter`, so out-of-scope rows are dropped before the user's "every row matches" check; `check()` and `toPrisma` run it. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
 
 ### Lens Utilities
 
@@ -1029,7 +1029,7 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 | `validateRuleInLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, errors: { path, message, code }[] }` like `validateRule` (codes such as `not_in_lens`, `operator_kind_mismatch`, `invalid_value`, `value_not_allowed`). The security gate. |
 | `describeRule(rule, lens)` | `{ sources, bridgesCrossed, supportedTargets, errors }`: the maps a rule reads, whether it crosses a bridge, which of `check` / `toPrisma` / `toSql` can run it, and the lens gate's `ValidationIssue`s. For routing and UX; `validateRuleInLens` stays the gate. |
 | `walkLensPath(lens, path)` | Resolves one dotted path through the lens hop by hop: `{ outcome: 'resolved', hops, terminal, jsonSubPath }`, or `hidden` / `missing` / `pastScalar` with the failing `index`. |
-| `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the grant goes into the rule's window `filter`, which only `check()` evaluates (the compilers throw on it). Other rules pass to `check` / `toPrisma` / `toSql`. |
+| `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the grant goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
 
 ```ts

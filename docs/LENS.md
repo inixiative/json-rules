@@ -207,9 +207,9 @@ A previous approach realized the grant as a per-row implication *inside the cond
 
 Injecting into the `filter` avoids both: there is no `negate`, so no operator needs an inverse (a
 `startsWith` grant just works), and the window can't reorder around the scope. The trade-off is
-that a narrowed `all` runs on `check()` only. Neither compiler expresses a window `filter`:
-`toPrisma` and `toSql` throw on it, and `describeRule` reports `supportedTargets: ['check']`.
-Evaluate it with `check()` over rows fetched under the lens.
+that the grant rides a window `filter`: `toPrisma` folds a filter-only window into the rule (see
+above), and `toSql`, which compiles no relation arrays, refuses it — `describeRule` reports
+`['check', 'toPrisma']`.
 
 The other array operators (`any`, `none`, `atLeast`, `atMost`, `exactly`) and `aggregate.condition`
 use plain AND injection — filter-first is already preserved by the operator's own meaning.

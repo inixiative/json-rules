@@ -98,7 +98,9 @@ describe('toLensSelect', () => {
       parent: base,
       root: { picks: [], relations: { org: { picks: ['name'], where: live } } },
     };
+    // The root shows no column, so it is fetched by its id (R7-4).
     expect(toLensSelect(lens).select).toEqual({
+      id: true,
       org: { select: { name: true, deletedAt: true } },
     });
   });
@@ -138,7 +140,7 @@ describe('toLensSelect', () => {
       parent: base,
       root: { picks: [], relations: { posts: { picks: [] } } },
     };
-    expect(toLensSelect(lens).select).toEqual({ posts: { select: { id: true } } });
+    expect(toLensSelect(lens).select).toEqual({ id: true, posts: { select: { id: true } } });
   });
 
   test('a relation grant that needs a counting step throws', () => {

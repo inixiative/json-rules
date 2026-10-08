@@ -73,6 +73,9 @@ export type Policy = {
   /** The model-default trees this call computes, shared by the policies it derives — never kept
    *  past the call, so a narrowing edited in place reads fresh next time. */
   trees?: Map<string, DefaultTree>;
+  /** The later grants this call has already checked at a visit, keyed by grant, visit and the
+   *  layers it reads through. */
+  vetted?: Set<string>;
   /** A layer whose own grants are dropped (a source pointer's), keeping the chain's indices — so
    *  later layers' grants still read through it. */
   skipGrantsOf?: LensNarrowing;
@@ -85,10 +88,38 @@ export type Policy = {
  * the model-intrinsic visit a model default's grant and source are checked at. */
 export const OFF_PATH: readonly string[] = ['__offpath__'];
 
+// Trees are kept on the first narrowing under a fingerprint of its model defaults (and, per tree,
+// of its spelled node's own turn-ons and omits): a narrowing edited in place grows fresh trees.
+const TREES = new WeakMap<
+  LensNarrowing,
+  { fingerprint: string; trees: Map<string, DefaultTree> }
+>();
+const treesFor = (origin: LensNarrowing | undefined): Map<string, DefaultTree> => {
+  if (!origin) return new Map();
+  const fingerprint = JSON.stringify(origin.mapDefaults ?? null);
+  const kept = TREES.get(origin);
+  if (kept?.fingerprint === fingerprint) return kept.trees;
+  const trees = new Map<string, DefaultTree>();
+  TREES.set(origin, { fingerprint, trees });
+  return trees;
+};
+
+// A stable id per object, for memo keys.
+const IDS = new WeakMap<object, number>();
+let nextId = 0;
+const idOf = (value: object): number => {
+  let id = IDS.get(value);
+  if (id === undefined) {
+    id = nextId++;
+    IDS.set(value, id);
+  }
+  return id;
+};
+
 export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => {
   const lens = getLensRoot(lensOrNarrowing);
   const chain = isLens(lensOrNarrowing) ? [] : collectChain(lensOrNarrowing);
-  return { lens, chain, origin: chain[0], trees: new Map() };
+  return { lens, chain, origin: chain[0], trees: treesFor(chain[0]), vetted: new Set() };
 };
 
 export const intersectStringSet = (
@@ -323,7 +354,12 @@ const defaultTree = (
   spelled: MapVisit,
   byNode: Map<string, DefaultTree>,
 ): DefaultTree => {
-  const key = JSON.stringify(spelled.relPath);
+  const node = follow(origin.root, spelled.relPath);
+  const key = JSON.stringify([
+    spelled.relPath,
+    Object.keys(node?.relations ?? {}),
+    node?.omits ?? [],
+  ]);
   const cached = byNode.get(key);
   if (cached) return cached;
   const tree: DefaultTree = new Map();
@@ -474,8 +510,20 @@ export const resolveVisit = (
         const escaping = escapingRef(condition);
         if (escaping !== null) throw escapingGrantRef(escaping);
         if (grantParent) {
+          const key =
+            typeof condition === 'object' && condition !== null
+              ? JSON.stringify([
+                  idOf(condition),
+                  grantParent.chain.map(idOf),
+                  mapName,
+                  modelName,
+                  relPath,
+                ])
+              : null;
+          if (key !== null && grantParent.vetted?.has(key)) return;
           const [issue] = laterGrantIssues(condition, grantParent, at);
           if (issue) throw unshownGrant(issue);
+          if (key !== null) grantParent.vetted?.add(key);
         }
       };
     vet = vetGrant(false);

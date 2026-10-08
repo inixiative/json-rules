@@ -31,6 +31,16 @@ const ops = [
   'lessThanEquals',
   'greaterThan',
   'greaterThanEquals',
+  'contains',
+  'notContains',
+  'startsWith',
+  'endsWith',
+  'notStartsWith',
+  'notEndsWith',
+  'in',
+  'notIn',
+  'matches',
+  'notMatches',
 ];
 const leaves: [string, string][] = [
   ['age', 'orgId'],

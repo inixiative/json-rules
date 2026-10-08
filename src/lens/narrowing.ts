@@ -11,7 +11,6 @@ import {
 } from '../validate';
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
-import { toLensSelect } from './lensRows.ts';
 import { prefixConditionFields } from './narrowRule.ts';
 import {
   allowedEnumValues,
@@ -36,7 +35,7 @@ import {
   sourceReadsVisible,
   undeclaredModelSource,
 } from './policy.ts';
-import { sourcePlans } from './sourceOptions.ts';
+import { readPaths } from './readPaths.ts';
 import type {
   EnumNarrowing,
   LensNarrowing,
@@ -551,11 +550,12 @@ const validateNode = (
     visits.isDefault
       ? parentPolicy
       : {
-          lens: parentPolicy.lens,
+          ...parentPolicy,
           chain: [
             ...parentPolicy.chain,
             { parent: current.parent, mapDefaults: current.mapDefaults },
           ],
+          unvetted: true,
         },
     visits.isDefault ? intrinsic : (visits.parent[0] ?? intrinsic),
     model.fields,
@@ -652,7 +652,7 @@ const validateNode = (
           target.mapName,
         ),
         composed: across(
-          visits.isDefault ? visits.composed.filter(shownComposed) : visits.composed,
+          visits.composed.filter(shownComposed),
           relField,
           target.modelName,
           target.mapName,
@@ -814,14 +814,25 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
       for (const where of effect.whereClauses) prefixConditionFields(where, hop.prefix);
     }
   });
-  // The fetch and the sources reach past the shown visits — they follow every grant's reads — so
-  // they run as they will: a grant they refuse is refused here.
-  for (const run of [() => toLensSelect(narrowing), () => sourcePlans(narrowing)])
-    try {
-      run();
-    } catch (error) {
-      if (error instanceof LensRefusal) refusals.push(error);
+  // Every visit a posture resolves is checked the way the posture checks it: the shown visits,
+  // and those the grants and sources at them read through, off the shown tree too (the fetch and
+  // the sources follow those reads). Found from the reads themselves — nothing is compiled, so no
+  // binding or clock is needed.
+  const composedPolicy: Policy = { ...parentPolicy, chain: [...parentPolicy.chain, narrowing] };
+  guarded(() => {
+    for (const { at, effect } of composedVisits()) {
+      guarded(() => resolveVisit(composedPolicy, at.mapName, at.modelName, at.relPath));
+      const reads = [
+        ...effect.whereClauses.flatMap(readPaths),
+        ...[...effect.sources.values()].flat().flatMap(readPaths),
+        ...effect.sourceLabels.values(),
+        ...[...effect.sourceGroupBys.values()].flat(),
+      ];
+      for (const read of reads)
+        for (const hop of relationHops(set.maps, at, read).hops)
+          guarded(() => resolveVisit(composedPolicy, hop.map, hop.model, hop.relPath));
     }
+  });
   for (const refusal of refusals)
     if (!errors.some((issue) => refusal.message.includes(issue.message)))
       errors.push({ path: '', code: refusal.code, message: refusal.message });

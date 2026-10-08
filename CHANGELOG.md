@@ -42,6 +42,12 @@ reads one exposure from `src/lens/policy.ts`.
   grant applies at, including those a layer-1 grant or source crosses off the shown tree. A grant
   narrowRule can't re-root under a to-one hop is refused by `validateNarrowing` and by
   `validateRuleInLens` (with narrowRule's message), as the compile would.
+  The visits a grant applies at off the shown tree are found from the reads of the grants and
+  sources at the shown visits — nothing is compiled, so an unbound lens validates as its bound
+  runtime runs. Every refusal narrowRule raises is a `LensRefusal`: the validators report it as an
+  issue and never throw on a well-formed lens or rule; the runtime postures throw it.
+- **The fetch's root.** A root that shows no column is selected by its `id`, hidden or not (a
+  viewer's projection drops it), since Prisma can't select nothing.
 - **`lensVisit(lens, relationPath)`** (new; first consumer: rules-builder 0.30): one visit as
   `projectLens` by path gives it, resolved on demand without enumerating; `null` when the path
   isn't shown. `projectLens` by path keeps a map's declared option labels and groups.
@@ -69,8 +75,9 @@ the compilers read it from `options.context` — a second caller-value channel b
   path at the root, `$.` in a relation filter), of exactly the same type, with `equals` /
   `notEquals` / `lessThan(Equals)` / `greaterThan(Equals)` and no offset — NULL rows as
   `IS [NOT] DISTINCT FROM`. Anything else throws, and `validateRule(rule, { target: 'toPrisma',
-  map, model })` / `describeRule` report it first. A substring operator against a column throws on
-  both compilers (it would be a LIKE pattern). A negated comparison (`if`, `all`) compiles to its
+  map, model })` / `describeRule` report it first. A substring, pattern or set operator against a
+  column throws on both compilers (save a list column's membership on SQL), and `validateRule` /
+  `describeRule` say so. A negated comparison (`if`, `all`) compiles to its
   complement with NULL arms. An enum column compares only with an enum column of its own type, by
   equality (natively on SQL); ordered and enum-to-text comparisons are refused, and a list column compares with no column. Inside a counting step (a count or relation aggregate condition) a
   column comparison has no Prisma form and throws.

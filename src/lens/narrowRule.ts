@@ -123,10 +123,11 @@ const hopGrants = (policy: Policy, hops: RelationHop[]): HopGrant[] =>
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
     if (effect.whereClauses.length === 0) return [];
     if (hop.isList) {
-      throw new Error(
+      throw new LensRefusal(
         `narrowRule: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
           `arrayOperator condition to anchor it (row-scoped). Traverse '${hop.prefix}' via an ` +
           `array operator (any/all/none/...) so the grant can be injected safely.`,
+        'unsupported_grant',
       );
     }
     return [
@@ -151,7 +152,8 @@ const hopsAt = (
   scopes: readonly Scope[],
 ): { hops: RelationHop[]; end: Visit | null } => {
   const target = readScopeRef(ref, scopes);
-  if ('outOfBounds' in target) throw new Error(`narrowRule: ${target.outOfBounds}`);
+  if ('outOfBounds' in target)
+    throw new LensRefusal(`narrowRule: ${target.outOfBounds}`, 'scope_out_of_bounds');
   if (!target.scope) return { hops: [], end: null };
   const prefix = ref.slice(0, ref.length - target.path.length);
   return relationHops(policy.lens.maps, target.scope, target.path, prefix === '$.' ? '' : prefix);

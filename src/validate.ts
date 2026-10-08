@@ -27,6 +27,7 @@ import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
   AGGREGATE_OPERATORS,
+  CONTAINS_OPERATORS,
   catalogEntry,
   DAY_NAMES,
   FieldKind,
@@ -455,6 +456,24 @@ const validateFieldRule = (
     );
     if (problem)
       pushIssue(context, `${path}.path`, 'unsupported_sql_path', `'${rule.path}': ${problem}`);
+  }
+  // A substring, pattern or set is bound when toSql compiles; against a column there is no SQL
+  // form — save a list holding a column's value (membership).
+  if (
+    context.target === 'toSql' &&
+    typeof rule.path === 'string' &&
+    ['array', 'pattern', 'string'].includes(shape)
+  ) {
+    const field = context.map
+      ? fieldEntry(rule.field as string, context.map, context.scopeModels[depth - 1])
+      : undefined;
+    if (!(field?.isList && CONTAINS_OPERATORS.includes(operator)))
+      pushIssue(
+        context,
+        `${path}.path`,
+        'unsupported_sql_path',
+        `'${operator}' against the column '${rule.path}' has no SQL form`,
+      );
   }
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 

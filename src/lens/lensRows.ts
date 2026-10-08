@@ -180,7 +180,17 @@ export const toLensSelect = (
   options: LensSelectOptions = {},
 ): { select: LensSelect } => {
   const policy = resolvePolicy(lensOrNarrowing);
-  return { select: selectAt(policy, rootVisit(policy), 'declared', {}, options) };
+  const select = selectAt(policy, rootVisit(policy), 'declared', {}, options);
+  // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
+  // (a viewer's projection drops it). A root model with no `id` stays as it is.
+  if (!Object.values(select).some((selected) => selected === true)) {
+    const id = own(
+      modelOf(own(policy.lens.maps, policy.lens.mapName), policy.lens.model)?.fields,
+      'id',
+    );
+    if (id && !isRelationEntry(id)) select.id = true;
+  }
+  return { select };
 };
 
 // A relation's value, each related row through `cut`: a list keeps the rows it returns, a single

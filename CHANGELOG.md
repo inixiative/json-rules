@@ -98,7 +98,10 @@ reads one exposure from `src/lens/policy.ts`.
   plain Error. `materializeSources` requires every key a read walks — through relations and list
   elements to the column — and each relation as one row or a list, as the map declares it. A
   grant a source's path can't carry down (no inverse declared) is a `LensRefusal`; a path across a
-  bridge is routed to caller rows.
+  bridge is routed to caller rows. A to-one row that is null while its key is set (a viewer's projection hid
+  it), or a relation missing or misshapen on a source's own path, is a `UsageError` too, as are a
+  row path given as the time zone, a lens passed with `map` / `mapName` / `model`, and a model
+  source handed to `materializeSources`.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
   can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has

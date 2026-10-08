@@ -7,7 +7,6 @@ import {
   LensRefusal,
   materializeSources,
   projectRows,
-  toLensSelect,
   toPrisma,
   toSourceQueries,
   toSql,

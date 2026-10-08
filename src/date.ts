@@ -221,7 +221,7 @@ export const resolveDateConfig = (config: DateConfig, read: ReadSource): Resolve
   if (zone === undefined || typeof zone === 'string')
     return { ...config, timeZone: knownZone(zone ?? DEFAULT_ZONE) };
   if (rowRef(zone))
-    throw new Error(
+    throw new UsageError(
       `timeZone is one per evaluation; give it as a string or a { bind }, not the row path '${zone.path}'`,
     );
   const read_ = read(zone);

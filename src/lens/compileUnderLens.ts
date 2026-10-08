@@ -49,7 +49,7 @@ export const compileUnderLens = <O extends CompileOptions>(
   if (options?.lens === undefined) return { condition, options };
   const { lens } = options;
   if (options.map !== undefined || options.mapName !== undefined || options.model !== undefined)
-    throw new Error(
+    throw new UsageError(
       `${rail}: pass \`lens\` or \`map\` / \`mapName\` / \`model\`, not both — the lens names its own`,
     );
   const gate = validateRuleInLens(condition, lens);

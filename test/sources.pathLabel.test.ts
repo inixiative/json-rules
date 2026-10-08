@@ -361,14 +361,15 @@ describe('materializeSourceQuery — dotted label materialization', () => {
 });
 
 describe('materializeSources — dotted label from an already-fetched collection', () => {
-  test('labels come off the nested rows, first non-null wins', () => {
+  test('labels come off the nested rows, the least label wins', () => {
     const rows = [
       {
         id: 'u1',
         enrichments: [
           { mapId: 'm1', map: { definition: { label: 'Business Unit' } } },
           { mapId: 'm1', map: { definition: { label: 'Ignored Duplicate' } } },
-          { mapId: 'm2', map: null },
+          // A label hop with no row (a null to-one with its key set reads as a viewer's cut).
+          { mapId: 'm2', map: { definition: null } },
         ],
       },
     ];

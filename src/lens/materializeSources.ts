@@ -4,7 +4,7 @@ import type { SourceOption } from '../fieldMap/types';
 import { type MapVisit, walkMaps } from '../fieldMap/walk';
 import { readOwnPath } from '../scope';
 import { allOf } from '../traverse';
-import type { Condition, Row } from '../types';
+import type { Row } from '../types';
 import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { SourceValues } from './projectPaths.ts';
 import { readPaths } from './readPaths.ts';
@@ -48,6 +48,16 @@ const requireReads = (
         if (!Object.hasOwn(holder, field))
           throw usage(path, `lacks '${walked}', which a read needs`);
         const value = (holder as Row)[field];
+        // A to-one row is null with its key set only where a viewer's projection hid it.
+        if (
+          next &&
+          (value === null || value === undefined) &&
+          entry.fromFields?.some((key) => {
+            const fk = (holder as Row)[key];
+            return fk !== null && fk !== undefined;
+          })
+        )
+          throw usage(path, `'${walked}' is null while its key is set — a projection hid the row`);
         if (!next || value === null || value === undefined) continue;
         if (Array.isArray(value) !== (entry.isList === true))
           throw usage(
@@ -95,7 +105,10 @@ const rowsAtPath = (
   let current = admitted(0, rows);
   for (const [level, segment] of relPath.entries()) {
     const next: Row[] = [];
+    const at = [policy.lens.model, ...relPath.slice(0, level)].join('.');
     for (const row of current) {
+      // The path's own relation is a read too: present, and one row or a list as declared.
+      requireReads(policy, levels[level], row, at, [segment]);
       const value = readOwnPath(row, segment);
       if (Array.isArray(value)) next.push(...(value as Row[]));
       else if (value != null) next.push(value as Row);
@@ -133,7 +146,7 @@ export const materializeSources = (
     ({ path, visit, field, from, label, groupBy, rowWhere, bridged }) => {
       // A model source offers rows the fetched collection needn't hold (a tag nobody has yet).
       if (from && bridged === undefined)
-        throw new Error(
+        throw new UsageError(
           `materializeSources: '${path}.${field}' offers its model's own source, which a fetched collection can't hold — query it with toSourceQueries and materializeSourceQuery.`,
         );
       const reads = [

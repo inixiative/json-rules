@@ -14,6 +14,7 @@ import {
   toLensSelect,
   toSourceQueries,
   validateNarrowing,
+  validateRule,
 } from '../index';
 import { map, openRails } from './rails/harness';
 
@@ -307,5 +308,34 @@ describe('the README source-query snippet runs as written', () => {
     const [query] = toSourceQueries(lens);
     const { options } = await runSnippet(rails.prisma, query, lens, load);
     expect(options.map((o) => o.value)).toEqual(truth);
+  });
+});
+
+describe('a count operator needs a condition and a count on every target', () => {
+  const noCondition = rule({ field: 'posts', arrayOperator: 'atLeast', count: 2 });
+  const noCount = rule({
+    field: 'posts',
+    arrayOperator: 'atLeast',
+    condition: { field: 'views', operator: 'greaterThan', value: 0 },
+  });
+
+  test.each(['check', 'toPrisma', 'toSql'] as const)('validateRule for %s refuses', (target) => {
+    const options = { target, map, model: 'User' };
+    expect(validateRule(noCondition, options).errors.map((e) => e.code)).toContain(
+      'missing_condition',
+    );
+    expect(validateRule(noCount, options).errors.map((e) => e.code)).toContain('missing_count');
+  });
+
+  test.each([
+    ['no condition', noCondition],
+    ['no count', noCount],
+  ])('a source with %s: validateNarrowing and toSourceQueries agree', (_, where) => {
+    const lens: LensNarrowing = {
+      parent: users,
+      root: { relations: { posts: {} }, sources: { name: where } },
+    };
+    expect(validateNarrowing(lens).ok).toBe(false);
+    expect(() => toSourceQueries(lens)).toThrow();
   });
 });

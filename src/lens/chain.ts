@@ -15,6 +15,6 @@ export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
   return list;
 };
 
-/** The lens a narrowing chain is rooted at. */
-export const getRoot = (x: Lens | LensNarrowing): Lens =>
+/** The base lens a narrowing chain is rooted at; a lens is its own. Throws on a cyclic chain. */
+export const getLensRoot = (x: Lens | LensNarrowing): Lens =>
   isLens(x) ? x : (collectChain(x)[0].parent as Lens);

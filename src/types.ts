@@ -1,5 +1,6 @@
 import type { FieldMap, FieldMapSet } from './fieldMap/types.ts';
 import type { FuzzyConfig } from './fuzzy.ts';
+import type { Lens, LensNarrowing } from './lens/types.ts';
 import type { ArrayOperator, DateOperator, Operator } from './operator.ts';
 import type { FieldKind } from './operatorCatalog.ts';
 
@@ -356,11 +357,14 @@ export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
 export type Row = Record<string, unknown>;
 
 /** What both compilers take: the schema (a FieldMap, or a FieldMapSet with `mapName`), the
- *  model the rule reads, the context `$` refs read, and the clock. */
+ *  model the rule reads, the context bare `path` refs read, and the clock. `lens` compiles the
+ *  rule under a lens instead — narrowed (`narrowRule`), against the base lens's maps, map and
+ *  model — and can't be passed with `map` / `mapName` / `model`. */
 export type CompileOptions = {
   map?: FieldMap | FieldMapSet;
   mapName?: string;
   model?: string;
+  lens?: Lens | LensNarrowing;
   context?: Row;
 } & DateConfig;
 

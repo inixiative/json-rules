@@ -95,15 +95,7 @@ export const listLensBindings = (lensOrNarrowing: Lens | LensNarrowing): string[
   return [...names].sort();
 };
 
-/**
- * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
- * `where`/`sources`, returning a structurally-new lens with concrete conditions.
- * Partial — uncovered tokens stay, so stages bind progressively. Once resolved,
- * `narrowRule` / `toPrisma` / `toSql` / `toSourceQueries` / `projectPaths` consume the
- * lens unchanged: a bind needs nothing new downstream. `parent:name` draws the same
- * value as the ancestor's `name`. Does not mutate the input.
- */
-export const bindLens = (
+const bindChain = (
   lensOrNarrowing: Lens | LensNarrowing,
   bindings: Record<string, RuleValue>,
 ): Lens | LensNarrowing => {
@@ -112,9 +104,21 @@ export const bindLens = (
   for (const [k, v] of Object.entries(bindings)) effective[`${PARENT_PREFIX}${k}`] = v;
   return {
     ...mapLayerConditions(lensOrNarrowing, (condition) => bindRule(condition, effective)),
-    parent: bindLens(lensOrNarrowing.parent, bindings),
+    parent: bindChain(lensOrNarrowing.parent, bindings),
   };
 };
+
+/**
+ * Preprocess a lens: resolve every `{ bind }` token the map covers in the chain's
+ * `where`/`sources`, returning a structurally-new lens of the same form with concrete
+ * conditions. Partial — uncovered tokens stay, so stages bind progressively. Once resolved, `narrowRule` / `toPrisma` / `toSql` / `toSourceQueries` / `projectLens` consume the
+ * lens unchanged. `parent:name` draws the same value as the ancestor's `name`. Does not mutate
+ * the input.
+ */
+export const bindLens = <T extends Lens | LensNarrowing>(
+  lensOrNarrowing: T,
+  bindings: Record<string, RuleValue>,
+): T => bindChain(lensOrNarrowing, bindings) as T; // a lens comes back as itself, a narrowing as one
 
 /**
  * Bind names are unique across a composed chain: a layer may not re-declare a name

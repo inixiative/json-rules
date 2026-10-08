@@ -41,6 +41,7 @@ export {
   createLens,
   describeRule,
   describeRuleSources,
+  getLensRoot,
   type LensPathHop,
   type LensPathResolution,
   listLensBindings,

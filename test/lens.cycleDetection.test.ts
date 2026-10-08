@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
-import { getRoot } from '../src/lens/chain';
+import { getLensRoot } from '../src/lens/chain';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectPaths } from '../src/lens/projectPaths';
@@ -21,11 +21,11 @@ const map: FieldMap = {
 const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'FanUser' };
 
 describe('narrowing parent-chain cycle detection', () => {
-  test('getRoot throws on cyclic chain', () => {
+  test('getLensRoot throws on cyclic chain', () => {
     const a = { parent: lens } as LensNarrowing;
     const b = { parent: a } as LensNarrowing;
     a.parent = b;
-    expect(() => getRoot(b)).toThrow(/cycle detected/);
+    expect(() => getLensRoot(b)).toThrow(/cycle detected/);
   });
 
   test('projectPaths throws on cyclic chain', () => {

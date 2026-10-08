@@ -1,5 +1,5 @@
 import { own } from '../own';
-import { collectChain, getRoot, isLens } from './chain.ts';
+import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { assertValidNarrowing } from './narrowing.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -65,7 +65,7 @@ export const storeLens = (lens: Lens | LensNarrowing, ids: readonly string[]): S
       `storeLens: the lens has ${chain.length + 1} layers, base included, but ${ids.length} ids`,
     );
   return [
-    { ...getRoot(lens), id: ids[0], parents: [] },
+    { ...getLensRoot(lens), id: ids[0], parents: [] },
     ...chain.map(({ parent: _parent, ...part }, depth) => ({
       ...part,
       id: ids[depth + 1],

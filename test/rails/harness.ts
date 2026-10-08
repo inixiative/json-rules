@@ -5,8 +5,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { buildPrismaMapV7 } from '@inixiative/prisma-map';
 import { PrismaPg } from '@prisma/adapter-pg';
-import type { Condition, FieldMap } from '../../index';
-import { check, executePrismaPlan, toPrisma, toSql } from '../../index';
+import type { Condition, FieldMap, Lens, LensNarrowing } from '../../index';
+import { check, executePrismaPlan, narrowRule, toPrisma, toSql } from '../../index';
 import { PrismaClient } from './generated/client';
 
 // The three rails on one database: check() over the rows Prisma loads, toSql executed by
@@ -43,7 +43,13 @@ UPDATE users SET role = 'member' WHERE id = 4;
 /** Each rail's matching user ids, or the message it threw. */
 export type RailResult = number[] | `throws: ${string}`;
 export type Rails = { check: RailResult; sql: RailResult; prisma: RailResult };
-export type RailOptions = { context?: Record<string, unknown>; timeZone?: string; now?: Date };
+/** `lens`: compile with `{ lens }` on the compiled rails, and check `narrowRule(rule, lens)`. */
+export type RailOptions = {
+  context?: Record<string, unknown>;
+  timeZone?: string;
+  now?: Date;
+  lens?: Lens | LensNarrowing;
+};
 
 const attempt = async (run: () => Promise<number[]> | number[]): Promise<RailResult> => {
   try {
@@ -80,18 +86,20 @@ export const openRails = async (seed = '') => {
   const table = map.models.User?.dbName ?? 'User';
 
   const run = async (rule: Condition, options: RailOptions = {}): Promise<Rails> => {
-    const opts = { now: NOW, ...options };
+    const { lens, ...opts } = { now: NOW, ...options };
+    const schema = lens ? { lens } : { map, model: 'User' };
+    const checked = lens ? narrowRule(rule, lens) : rule;
     return {
       check: await attempt(() =>
-        rows.filter((row) => check(rule, row, opts as never) === true).map((row) => row.id),
+        rows.filter((row) => check(checked, row, opts as never) === true).map((row) => row.id),
       ),
       sql: await attempt(async () => {
-        const { sql, params, joins } = toSql(rule, { ...opts, map, model: 'User' } as never);
+        const { sql, params, joins } = toSql(rule, { ...opts, ...schema } as never);
         const query = `SELECT DISTINCT t0.id FROM "${table}" t0 ${joins.join(' ')} WHERE ${sql} ORDER BY t0.id`;
         return (await db.query<{ id: number }>(query, params)).rows.map((row) => row.id);
       }),
       prisma: await attempt(async () => {
-        const plan = toPrisma(rule, { ...opts, map, model: 'User' } as never);
+        const plan = toPrisma(rule, { ...opts, ...schema } as never);
         const where = await executePrismaPlan(plan, prisma as never);
         const found = await prisma.user.findMany({
           where: where as never,
@@ -110,7 +118,7 @@ export const openRails = async (seed = '') => {
     rmSync(dir, { recursive: true, force: true });
   };
 
-  return { run, close, rows };
+  return { run, close, rows, prisma };
 };
 
 /** All three rails returning `ids`. */

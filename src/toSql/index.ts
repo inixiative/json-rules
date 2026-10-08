@@ -1,4 +1,5 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
+import { compileUnderLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
 import type { BuilderState, ToSqlOptions, ToSqlResult } from './types';
@@ -25,7 +26,10 @@ export const builderState = (options?: ToSqlOptions): BuilderState => {
   };
 };
 
-export const toSql = (condition: Condition, options?: ToSqlOptions): ToSqlResult => {
+/** Compile a condition to a SQL WHERE. With `lens`, the rule compiles narrowed by it, against its
+ *  base lens. */
+export const toSql = (rule: Condition, compileOptions?: ToSqlOptions): ToSqlResult => {
+  const { condition, options } = compileUnderLens(rule, compileOptions, 'toSql');
   const state = builderState(options);
   const sql = buildCondition(condition, state);
   return { sql, params: state.params, joins: state.joins ?? [] };

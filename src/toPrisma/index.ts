@@ -1,4 +1,5 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
+import { compileUnderLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
 import type { PrismaBuildState, ToPrismaOptions, ToPrismaResult } from './types';
@@ -21,7 +22,8 @@ export type {
 
 /**
  * Compile a condition to a Prisma query plan: `steps`, any groupBy steps (counts and relation
- * aggregates, which need `{ map, model }`) and then the final `where`. Run a plan with
+ * aggregates, which need `{ map, model }` or `{ lens }`) and then the final `where`. With `lens`,
+ * the rule compiles narrowed by it, against its base lens. Run a plan with
  * `executePrismaPlan(plan, client)` to resolve step refs; a single-step plan's `where` is its
  * last step's.
  *
@@ -33,9 +35,12 @@ export type {
  * const plan = toPrisma({ field: 'posts', arrayOperator: 'atLeast', count: 3, condition }, { map, model: 'User' });
  * const where = await executePrismaPlan(plan, prisma);
  * await prisma.user.findMany({ where });
+ *
+ * toPrisma(rule, { lens: narrowing, now }); // toPrisma(narrowRule(rule, narrowing), { map: base, mapName, model, now })
  * ```
  */
-export const toPrisma = (condition: Condition, options?: ToPrismaOptions): ToPrismaResult => {
+export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToPrismaResult => {
+  const { condition, options } = compileUnderLens(rule, compileOptions, 'toPrisma');
   const state: PrismaBuildState = { steps: [] };
   const where = buildCondition(condition, normalizeOptions(options), state);
   return {

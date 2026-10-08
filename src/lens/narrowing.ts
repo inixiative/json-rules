@@ -10,7 +10,7 @@ import {
   validationResult,
 } from '../validate';
 import { validateBindNames } from './bindings.ts';
-import { collectChain, getRoot } from './chain.ts';
+import { collectChain, getLensRoot } from './chain.ts';
 import {
   allowedEnumValues,
   augmentPicksWithRelations,
@@ -538,7 +538,7 @@ const validatePathNarrowing = (
 
 export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult => {
   const errors: ValidationIssue[] = [];
-  const set = getRoot(narrowing);
+  const set = getLensRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
   const parentPolicy = resolvePolicy(narrowing.parent);
   const parentVisits = projectPaths(narrowing.parent);

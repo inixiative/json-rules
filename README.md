@@ -582,6 +582,17 @@ await prisma.user.findMany({ where }); // users whose orders sum to more than 10
 A user with no orders sums to 0, as in `check()`: a comparison that holds at 0 selects the
 parents outside the groups where it fails, so childless parents stay in.
 
+### Compiling under a lens
+
+Pass `lens` instead of `map` / `mapName` / `model` and the rule compiles narrowed by the lens,
+against its base lens. `toSql` takes it the same way. Passing both throws.
+
+```ts
+const plan = toPrisma(rule, { lens: narrowing, now });
+// = toPrisma(narrowRule(rule, narrowing), { map: base, mapName: base.mapName, model: base.model, now })
+const where = await executePrismaPlan(plan, prisma);
+```
+
 ### Json null checks
 
 A Json column holds a DB NULL or a JSON `null`, and a path inside it can be absent — `check()`
@@ -793,8 +804,9 @@ Lens & bridges:
 - `FieldMap`, `FieldMapEntry`, `ModelEntry`, `SourceOption`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
 - `createLens`, `storeLens`, `composeLens`, `StoredLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
-- `bindLens`, `listLensBindings`
+- `bindLens`, `listLensBindings`, `getLensRoot`
 - `projectLens`, `walkLensPath`, `describeRule`, `describeRuleSources`
+- `toLensSelect`, `projectRows`, `LensSelect`, `LensRelationSelect`, `LensSelectOptions`, `ProjectRowsOptions`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
 - `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`
 
@@ -1043,6 +1055,7 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 | `describeRuleSources(rule, lens)` | The values a rule names at each source the lens declares, keyed like `projectLens` (`path` + `field`, with the source's `mapName` / `model`). Resolved through the lens like `walkLensPath`, so `mapDefaults` sources answer wherever their model appears. `dynamic: true` when the set can't be enumerated: a `path` / `bind` leaf, an offset or a read amount that moves the value, a substring / pattern / range / window operator, or an operator the catalog doesn't know — callers fail closed on it. The reverse question for a reference registry ("which rows does this rule name") — join `model` + `values`. |
 | `validateRuleInLens(rule, lens)` | Validates a user rule's field paths and enum values against the narrowed lens, path-aware. Returns `{ ok, errors: { path, message, code }[] }` like `validateRule` (codes such as `not_in_lens`, `operator_kind_mismatch`, `invalid_value`, `value_not_allowed`). The security gate. |
 | `describeRule(rule, lens)` | `{ sources, bridgesCrossed, supportedTargets, errors }`: the maps a rule reads, whether it crosses a bridge, which of `check` / `toPrisma` / `toSql` can run it (by the rule's shape, as `validateRule` reads it — a compiler may still refuse a field's kind, such as a date rule on a String column on Prisma), and the lens gate's `ValidationIssue`s. For routing and UX; `validateRuleInLens` stays the gate. |
+| `getLensRoot(lensOrNarrowing)` | The base lens a narrowing chain is rooted at; a lens is its own. Throws on a cyclic chain. |
 | `walkLensPath(lens, path)` | Resolves one dotted path through the lens hop by hop: `{ outcome: 'resolved', hops, terminal, jsonSubPath }`, or `hidden` / `missing` / `pastScalar` with the failing `index`. |
 | `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the grant goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
@@ -1075,7 +1088,7 @@ const bound = bindLens(narrowing, { tenantId: 't-42' });
 | Function | Purpose |
 | --- | --- |
 | `listLensBindings(lensOrNarrowing)` | The bind names the whole narrowing chain requires, sorted. `bindOptional` tokens are left out, and a `parent:name` reference counts as `name`. |
-| `bindLens(lensOrNarrowing, bindings)` | Returns a new narrowing chain with every covered token replaced by its value; uncovered tokens stay, so binding can happen in stages. `parent:name` draws the value of `name`. A bare lens comes back unchanged. The input is not mutated. |
+| `bindLens(lensOrNarrowing, bindings)` | Returns a new narrowing chain with every covered token replaced by its value; uncovered tokens stay, so binding can happen in stages. `parent:name` draws the value of `name`. A bare lens comes back unchanged. The result has the input's type (`bindLens<T extends Lens \| LensNarrowing>(…): T`). The input is not mutated. |
 
 A layer may not re-declare a bind name an ancestor declares; it reads the inherited one as
 `parent:name`. `validateNarrowing` reports a collision or a dangling `parent:` reference as
@@ -1173,6 +1186,23 @@ scopes it through `mapDefaults` (the model's own grant or source), not a root `w
 model source compiles against the far map alone, with that map's own tenancy, where a path source
 offers nothing. `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
 rows; query it with `toSourceQueries` and `materializeSourceQuery`.
+
+### Fetching Under a Lens
+
+`toLensSelect` and `projectRows` fetch the rows a lens shows and cut them to it.
+
+```ts
+import { executePrismaPlan, projectRows, toLensSelect, toPrisma } from '@inixiative/json-rules';
+
+const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
+const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now }) });
+const shown = projectRows(narrowing, rows, { keepGrantColumns: true, now });
+```
+
+| Function | Purpose |
+| --- | --- |
+| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each projected path's visible columns, the relations its declared paths open (a visible relation off them brings its visible columns only), and every column a `where` on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so related rows come pre-narrowed. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its grant hides. A relation that shows no column is fetched whole (Prisma can't select nothing). Bridges are skipped. A relation grant that needs a counting step throws. `options` is the clock and context for compiling the grants. The root's own grants are the query's `where`: `toPrisma(rule, { lens })`. |
+| `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns and relations are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepGrantColumns: true` keeps the columns those `where`s read, even hidden ones, so `check(narrowRule(rule, lens), row)` can re-test the grants later. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
 
 ### Evaluating Across Bridges
 

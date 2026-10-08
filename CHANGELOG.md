@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.2.0 — compile and fetch under a lens
+
+Additive. Each function replaces code template wrote around the lens.
+
+- **`getLensRoot(lensOrNarrowing): Lens`**: the base lens of a narrowing chain (a lens is its own),
+  throwing on a cyclic chain. It is the internal `getRoot`, now public. Replaces template's
+  `rootLens` and its repeated `'parent' in lens ? rootLens(lens) : lens`.
+- **`toPrisma` / `toSql` take `{ lens }`**: the rule compiles narrowed by the lens (`narrowRule`),
+  against the base lens's maps, `mapName` and `model`. Passing `lens` with `map` / `mapName` /
+  `model` throws. Replaces the `toPrisma(narrowRule(rule, lens), { map: root, mapName, model })`
+  call sites in template (`compileSegmentWhere`, `resolveUsers`, `validateRuleForLens`).
+- **`bindLens` keeps its input's type**: `bindLens<T extends Lens | LensNarrowing>(lens: T, …): T`,
+  so template's `bindLens(…) as LensNarrowing` casts go.
+- **`toLensSelect(lensOrNarrowing, options?)`**: Prisma `findMany` select args for the rows a lens
+  shows. It selects each projected path's visible columns, the relations its declared paths open
+  (a visible relation off them brings its visible columns), and every column a `where` on the way
+  reads. A to-many relation carries its visit's grants, compiled, as its `where`, so related rows
+  come pre-narrowed. A to-one relation can't take a `where` in Prisma; `projectRows` drops the
+  rows its grant hides. A relation grant that needs a counting step throws. `options` carries the
+  clock (and context) for the grants' compile. Replaces template's `includeFromLens`.
+- **`projectRows(lensOrNarrowing, rows, { keepGrantColumns?, ...checkOptions })`**: rows cut to
+  what a lens shows, recursively. Hidden columns and relations are removed, and every row a
+  visit's `where` hides is gone: a root or list row is dropped, a to-one row is null.
+  `keepGrantColumns` keeps the exact columns those `where`s read, so a later
+  `check(narrowRule(rule, lens), row)` can re-test the grants. Replaces template's `prune`;
+  with `toLensSelect` and `toPrisma(true, { lens })`, `fetchLens` becomes three calls.
+
 ## 3.1.1 — a pointer never widens what a parent layer gave
 
 - **Security:** a child layer could turn a parent's path source into `from: 'mapDefaults'` and drop

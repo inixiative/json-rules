@@ -8,7 +8,7 @@ import { toSql } from '../src/toSql';
 // ''-branch belongs to String (and Json) columns only. Postgres rejects '' on a
 // timestamp or integer at parse time, so the two-branch shape on a typed non-String
 // column is guaranteed-unrunnable SQL — including the documented `deletedAt isEmpty`
-// soft-delete lens grant.
+// soft-delete lens clamp.
 const map: FieldMap = {
   models: {
     Enrichment: {

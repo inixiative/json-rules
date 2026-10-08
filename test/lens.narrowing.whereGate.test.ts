@@ -4,7 +4,7 @@ import { assertValidNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 
-// Every `where` a layer declares is a grant its author gets to filter rows by. `root.where`
+// Every `where` a layer declares is a clamp its author gets to filter rows by. `root.where`
 // has always been validated against the PARENT surface (a child may not filter on a column an
 // ancestor hid — that is a value oracle over hidden data). The other where positions —
 // `root.relations[..].where`, `mapDefaults[..].models[..].where`, and `sources` wheres — went
@@ -83,7 +83,7 @@ describe('validateNarrowing — every where position is gated against the parent
   });
 
   test('a bare comparison ref reads the root row: only root.where may hold one', () => {
-    // A grant at a relation visit or a model default stands on another row: a bare `path` there
+    // A clamp at a relation visit or a model default stands on another row: a bare `path` there
     // would read the root's, so it is refused — use a literal, a bind, or a `$` scope ref.
     const modelDefault = withParent(lens, {
       mapDefaults: {
@@ -97,14 +97,14 @@ describe('validateNarrowing — every where position is gated against the parent
     expect(() => assertValidNarrowing(modelDefault)).toThrow(
       /Order\.where: a bare path \('email'\) reads the root row/,
     );
-    const relationGrant = withParent(lens, {
+    const relationClamp = withParent(lens, {
       root: {
         relations: {
           orders: { where: { field: 'id', operator: Operator.equals, path: 'secretMargin' } },
         },
       },
     });
-    expect(() => assertValidNarrowing(relationGrant)).toThrow(/a bind, or a `\$` scope ref/);
+    expect(() => assertValidNarrowing(relationClamp)).toThrow(/a bind, or a `\$` scope ref/);
 
     // root.where stands on the root row: its bare ref is gated at the anchor surface.
     const platform = withParent(lens, { root: { omits: ['internalScore'] } });
@@ -128,7 +128,7 @@ describe('validateNarrowing — every where position is gated against the parent
   });
 
   test('mapDefaults.models[M].where on a field the ancestor mapDefaults hid → error', () => {
-    // The platform shows orders, so a later grant on Order applies — at the orders visit.
+    // The platform shows orders, so a later clamp on Order applies — at the orders visit.
     const platform = withParent(lens, {
       root: { relations: { orders: {} } },
       mapDefaults: { prisma: { models: { Order: { omits: ['secretMargin'] } } } },
@@ -160,7 +160,7 @@ describe('validateNarrowing — every where position is gated against the parent
   });
 
   test('a sources where on a field the ancestor hid → error', () => {
-    // The platform shows orders, so a later grant on Order applies — at the orders visit.
+    // The platform shows orders, so a later clamp on Order applies — at the orders visit.
     const platform = withParent(lens, {
       root: { relations: { orders: {} } },
       mapDefaults: { prisma: { models: { Order: { omits: ['secretMargin'] } } } },

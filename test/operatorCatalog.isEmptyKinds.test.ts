@@ -4,7 +4,7 @@ import { Operator } from '../src/operator';
 import { FieldKind, getOperatorsForKind } from '../src/operatorCatalog';
 
 // FIX 1B: isEmpty/notEmpty must be valid on any nullable field kind, not just String.
-// The canonical soft-delete grant `deletedAt isEmpty` is authored on a DateTime column,
+// The canonical soft-delete clamp `deletedAt isEmpty` is authored on a DateTime column,
 // and the SQL/Prisma compilers already emit `IS NULL OR = ''` for any nullable column.
 describe('isEmpty/notEmpty operator catalog kinds', () => {
   test('DateTime field admits isEmpty/notEmpty', () => {

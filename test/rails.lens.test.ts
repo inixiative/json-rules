@@ -45,7 +45,7 @@ describe('toPrisma / toSql with { lens }', () => {
     expect(await rails.run(rule, { lens })).toEqual(agree([1]));
   });
 
-  test("a to-one hop's grant keeps the rows where the hop is missing for a negation", async () => {
+  test("a to-one hop's clamp keeps the rows where the hop is missing for a negation", async () => {
     const rule: Condition = { field: 'org.name', operator: 'notEquals', value: 'x' };
     expect(await rails.run(rule, { lens })).toEqual(agree([1, 4, 5]));
   });
@@ -128,7 +128,7 @@ describe('toPrisma / toSql with { lens }', () => {
   });
 });
 
-describe("toLensSelect: a to-many relation's grants as its where agree with check()", () => {
+describe("toLensSelect: a to-many relation's clamps as its where agree with check()", () => {
   const lens: LensNarrowing = {
     parent: base,
     root: {
@@ -156,17 +156,17 @@ describe("toLensSelect: a to-many relation's grants as its where agree with chec
 
   test('the selected rows, projected, are the full rows projected', async () => {
     const fetched = await fetchUnderLens();
-    // Pre-narrowed: user 1 keeps only the post whose views pass the grant.
+    // Pre-narrowed: user 1 keeps only the post whose views pass the clamp.
     expect((fetched[0].posts as { id: number }[]).map((p) => p.id)).toEqual([100]);
-    const options = { keepGrantColumns: true };
+    const options = { keepClampColumns: true };
     expect(projectRows(lens, fetched, options)).toEqual(
       projectRows(lens, rails.rows as unknown as Record<string, unknown>[], options),
     );
   });
 
-  test('projected rows re-test the grants: a narrowed check reads the kept columns', async () => {
+  test('projected rows re-test the clamps: a narrowed check reads the kept columns', async () => {
     const fetched = await fetchUnderLens();
-    const rows = projectRows(lens, fetched, { keepGrantColumns: true });
+    const rows = projectRows(lens, fetched, { keepClampColumns: true });
     const rule: Condition = {
       field: 'posts',
       arrayOperator: 'any',
@@ -183,12 +183,12 @@ describe("toLensSelect: a to-many relation's grants as its where agree with chec
     ],
     ['notExists on a hidden to-one', { field: 'org', operator: 'notExists' }],
   ])('%s: the re-check fails the hidden row, as the database does', async (_, rule) => {
-    const rows = projectRows(lens, await fetchUnderLens(), { keepGrantColumns: true });
+    const rows = projectRows(lens, await fetchUnderLens(), { keepClampColumns: true });
     const ids = rows.filter((row) => check(narrowRule(rule, lens), row) === true).map((r) => r.id);
     expect(ids).toEqual((await rails.run(rule, { lens })).prisma as number[]);
   });
 
-  test('without keepGrantColumns a hidden to-one row is null', async () => {
+  test('without keepClampColumns a hidden to-one row is null', async () => {
     const [, second] = projectRows(lens, await fetchUnderLens());
     expect(second.org).toBeNull();
   });
@@ -202,7 +202,7 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
       select: toLensSelect(lens).select as never,
       orderBy: { id: 'asc' },
     })) as Record<string, unknown>[];
-    return projectRows(lens, rows, { keepGrantColumns: true });
+    return projectRows(lens, rows, { keepClampColumns: true });
   };
   const recheck = async (lens: LensNarrowing, rule: Condition) =>
     (await fetchUnder(lens))
@@ -211,7 +211,7 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
   const database = async (lens: LensNarrowing, rule: Condition) =>
     (await rails.run(rule, { lens })).prisma as unknown[];
 
-  test("a to-one grant reading a narrowed list reads it whole: org 10's hidden user hides it", async () => {
+  test("a to-one clamp reading a narrowed list reads it whole: org 10's hidden user hides it", async () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -235,12 +235,12 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     expect(shown.find((row) => row.id === 1)?.org).toBeNull();
     expect(await fetchUnder(lens)).toEqual(
       projectRows(lens, rails.rows as unknown as Record<string, unknown>[], {
-        keepGrantColumns: true,
+        keepClampColumns: true,
       }),
     );
   });
 
-  test('a root grant reading a narrowed list keeps the row the database keeps', async () => {
+  test('a root clamp reading a narrowed list keeps the row the database keeps', async () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -353,7 +353,7 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     ['notEquals', { field: 'org.name', operator: 'notEquals', value: 'x' }],
     ['exists', { field: 'org', operator: 'exists' }],
     ['notExists', { field: 'org', operator: 'notExists' }],
-  ])('a grant reading a relation that is off (%s) re-checks as the database does', async (_, rule) => {
+  ])('a clamp reading a relation that is off (%s) re-checks as the database does', async (_, rule) => {
     const lens: LensNarrowing = {
       parent: base,
       root: { picks: ['id'], relations: { org: { picks: ['id', 'name'] } } },

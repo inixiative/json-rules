@@ -50,11 +50,11 @@ recursion — their descent IS their semantics — and are guarded by differenti
 - **Layers only get darker.** A lens is a stack of filters: each layer can only narrow what the
   layer above exposes, never widen it. Composable, monotonic, stacking is the point of the lens.
 - **Each delegate works on its parent's projection**, never the full schema: a layer may only
-  mention (pick, omit, turn on, grant on) what its parent exposes. The base lens is the menu.
+  mention (pick, omit, turn on, clamp on) what its parent exposes. The base lens is the menu.
 - **Postures share one stack.** Reason (the gate: `validateRuleInLens`, `{ lens }` compiles),
   fetch (`toPrisma(true, { lens })` + `toLensSelect` + `projectRows`), read (`readLensValue`), and
   checking what someone can do or see all pass through every layer. Postures can differ in what
-  they let through: grants reason over columns a viewer never gets back.
+  they let through: clamps reason over columns a viewer never gets back.
 - **Relations are fields, off by default, turned on through the relation object** — along the
   path (`root.relations.org`) or always-on at the model default (`mapDefaults…models.Org.relations`),
   never through `picks`. Adding a hop's narrowing never hides another relation; hiding is `omits`.

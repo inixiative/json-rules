@@ -32,7 +32,7 @@ export const prismaRefusal = (
       problem = issue ? issue.message : null;
       read.set(key, problem);
     }
-    if (problem !== null) return new LensRefusal(`${on}: ${problem}`, 'unsupported_grant');
+    if (problem !== null) return new LensRefusal(`${on}: ${problem}`, 'unsupported_clamp');
   }
   if (counting) return null;
   let counted = false;
@@ -44,7 +44,7 @@ export const prismaRefusal = (
   return counted
     ? new LensRefusal(
         `${on} needs a counting step (executePrismaPlan), which a relation's where in a select can't run`,
-        'unsupported_grant',
+        'unsupported_clamp',
       )
     : null;
 };
@@ -57,6 +57,6 @@ export const compileOrRefuse = <T>(on: string, compile: () => T): T => {
     return compile();
   } catch (error) {
     if (error instanceof LensRefusal || error instanceof UsageError) throw error;
-    throw new LensRefusal(`${on}: ${(error as Error).message}`, 'unsupported_grant');
+    throw new LensRefusal(`${on}: ${(error as Error).message}`, 'unsupported_clamp');
   }
 };

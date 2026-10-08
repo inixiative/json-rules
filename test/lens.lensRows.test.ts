@@ -79,7 +79,7 @@ describe('toLensSelect', () => {
     expect(toLensSelect(lens).select).toEqual({ id: true, name: true, email: true, status: true });
   });
 
-  test("a to-many relation carries its visit's grants as its where; its grant columns are selected", () => {
+  test("a to-many relation carries its visit's clamps as its where; its clamp columns are selected", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -93,7 +93,7 @@ describe('toLensSelect', () => {
     });
   });
 
-  test("a to-one relation's grant can't ride the select: its columns come, it carries no where", () => {
+  test("a to-one relation's clamp can't ride the select: its columns come, it carries no where", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: { picks: [], relations: { org: { picks: ['name'], where: live } } },
@@ -105,7 +105,7 @@ describe('toLensSelect', () => {
     });
   });
 
-  test('a grant reaching through a hidden relation selects just the columns it reads', () => {
+  test('a clamp reaching through a hidden relation selects just the columns it reads', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -127,7 +127,7 @@ describe('toLensSelect', () => {
     });
   });
 
-  test('the root grant columns are selected; the root where is the query where', () => {
+  test('the root clamp columns are selected; the root where is the query where', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: { picks: ['id'], where: { field: 'org.plan', operator: 'equals', value: 'pro' } },
@@ -143,7 +143,7 @@ describe('toLensSelect', () => {
     expect(toLensSelect(lens).select).toEqual({ id: true, posts: { select: { id: true } } });
   });
 
-  test('a relation grant that needs a counting step throws', () => {
+  test('a relation clamp that needs a counting step throws', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -159,7 +159,7 @@ describe('toLensSelect', () => {
     expect(() => toLensSelect(lens)).toThrow(/counting step/);
   });
 
-  test('the clock is an input: a relative date grant compiles with `now`', () => {
+  test('the clock is an input: a relative date clamp compiles with `now`', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -192,7 +192,7 @@ describe('projectRows', () => {
     ]);
   });
 
-  test("keepGrantColumns keeps the columns a visit's where reads, hidden or not", () => {
+  test("keepClampColumns keeps the columns a visit's where reads, hidden or not", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -211,13 +211,13 @@ describe('projectRows', () => {
       name: 'x',
       org: { id: 'o1', name: 'Acme', deletedAt: null },
     };
-    expect(projectRows(lens, [row], { keepGrantColumns: true })).toEqual([
+    expect(projectRows(lens, [row], { keepClampColumns: true })).toEqual([
       { id: 'u1', status: 'on', org: { id: 'o1', deletedAt: null } },
     ]);
     expect(projectRows(lens, [row])).toEqual([{ id: 'u1', org: { id: 'o1' } }]);
   });
 
-  test("keeps a grant's dotted read exactly, under a relation it hides", () => {
+  test("keeps a clamp's dotted read exactly, under a relation it hides", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -227,12 +227,12 @@ describe('projectRows', () => {
       },
     };
     const row = { id: 'u1', org: { id: 'o1', name: 'Acme', plan: 'pro' } };
-    expect(projectRows(lens, [row], { keepGrantColumns: true })).toEqual([
+    expect(projectRows(lens, [row], { keepClampColumns: true })).toEqual([
       { id: 'u1', org: { id: 'o1', plan: 'pro' } },
     ]);
   });
 
-  test("drops the related rows a visit's where hides: a list element goes, a to-one keeps only its grant columns", () => {
+  test("drops the related rows a visit's where hides: a list element goes, a to-one keeps only its clamp columns", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -259,12 +259,12 @@ describe('projectRows', () => {
         { deletedAt: '2026-01-01', tag: { id: 'gone', name: 'vip', ownerModel: 'platform' } },
       ],
     };
-    expect(projectRows(lens, [row], { keepGrantColumns: true })).toEqual([
+    expect(projectRows(lens, [row], { keepClampColumns: true })).toEqual([
       {
         id: 'u1',
         posts: [
           { deletedAt: null, tag: { id: 'mine', name: 'vip', ownerModel: 'platform' } },
-          { deletedAt: null, tag: { ownerModel: 'Organization' } }, // hidden: its grant column, for the re-check
+          { deletedAt: null, tag: { ownerModel: 'Organization' } }, // hidden: its clamp column, for the re-check
         ],
       },
     ]);
@@ -284,7 +284,7 @@ describe('projectRows', () => {
   });
 
   test('stacked layers: a projection, a model default scope and a target each decide', () => {
-    // The projection layer scopes Tag by a column it hides (a grant reads what a viewer can't); a
+    // The projection layer scopes Tag by a column it hides (a clamp reads what a viewer can't); a
     // later layer may scope only by what its parent shows.
     const projection: LensNarrowing = {
       parent: base,

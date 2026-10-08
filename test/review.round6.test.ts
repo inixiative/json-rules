@@ -34,11 +34,11 @@ const runtimeRefuses = (lens: LensNarrowing, rules: Condition[] = [], rows: obje
     () => toLensSelect(lens),
     () => toSourceQueries(lens),
     () => projectRows(lens, rows as never),
-    // The gate reports a grant it refuses on the rule's visits; narrowRule runs on what it admits.
+    // The gate reports a clamp it refuses on the rule's visits; narrowRule runs on what it admits.
     ...rules.map((r) => () => {
       const gate = validateRuleInLens(r, lens);
       const refusal = gate.errors.find((e) =>
-        /later layer's grant|climbs out of the grant|reads the root row|cannot re-root/.test(
+        /later layer's clamp|climbs out of the clamp|reads the root row|cannot re-root/.test(
           e.message,
         ),
       );
@@ -62,8 +62,8 @@ const runtimeRefuses = (lens: LensNarrowing, rules: Condition[] = [], rows: obje
 };
 let lastRefusal = '';
 
-describe('R6-1/R6-3: one check decides a later grant, at the visits it applies to', () => {
-  test('a: a later grant on a column its parent hides is refused, by validation and runtime', () => {
+describe('R6-1/R6-3: one check decides a later clamp, at the visits it applies to', () => {
+  test('a: a later clamp on a column its parent hides is refused, by validation and runtime', () => {
     const schema: FieldMap = {
       models: {
         User: {
@@ -117,7 +117,7 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
   const amrBase = createLens({ maps: { app: amr }, mapName: 'app', model: 'A' });
   const kIsOne = rule({ field: 'r.k', operator: 'equals', value: 1 });
 
-  test('b: a later grant at a visit a layer-1 grant crosses: validation and runtime agree', () => {
+  test('b: a later clamp at a visit a layer-1 clamp crosses: validation and runtime agree', () => {
     const l1: LensNarrowing = {
       parent: amrBase,
       mapDefaults: {
@@ -194,7 +194,7 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
     );
   });
 
-  test('random later grants: validateNarrowing.ok ⇔ no posture refuses', () => {
+  test('random later clamps: validateNarrowing.ok ⇔ no posture refuses', () => {
     const names = ['A', 'B', 'C', 'D'];
     const rels: Record<string, [string, string, boolean][]> = {
       A: [
@@ -237,8 +237,8 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
       where?: Condition;
       relations?: Record<string, Node>;
     };
-    // A grant reading a random column one or two hops out.
-    const grant = (model: string): Condition => {
+    // A clamp reading a random column one or two hops out.
+    const clamp = (model: string): Condition => {
       const [r] = pick(rels[model]);
       const toOne = !rels[model].find(([name]) => name === r)?.[2];
       if (rnd() < 0.4) return rule({ field: pick(['x', 'y']), operator: 'exists' });
@@ -250,15 +250,15 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
         });
       return rule({ field: `${r}.${pick(['x', 'y'])}`, operator: 'exists' });
     };
-    const randNode = (model: string, depth: number, grants: boolean): Node => {
+    const randNode = (model: string, depth: number, clamps: boolean): Node => {
       const node: Node = {};
       if (rnd() < 0.3) node.picks = [pick(['x', 'y'])];
       if (rnd() < 0.2) node.omits = [pick(rels[model])[0]];
-      if (grants && rnd() < 0.5) node.where = grant(model);
+      if (clamps && rnd() < 0.5) node.where = clamp(model);
       if (depth > 0 && rnd() < 0.6) {
         node.relations = {};
         for (const [r, t] of rels[model])
-          if (rnd() < 0.5) node.relations[r] = randNode(t, depth - 1, grants);
+          if (rnd() < 0.5) node.relations[r] = randNode(t, depth - 1, clamps);
       }
       return node;
     };
@@ -273,11 +273,11 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
       };
       if (!validateNarrowing(l1).ok) continue;
       const later: Record<string, Node> = {};
-      for (const n of names) if (rnd() < 0.5) later[n] = { where: grant(n) };
+      for (const n of names) if (rnd() < 0.5) later[n] = { where: clamp(n) };
       const l2: LensNarrowing = {
         parent: l1,
         mapDefaults: { app: { models: later } },
-        ...(rnd() < 0.5 && { root: { where: grant('A') } }),
+        ...(rnd() < 0.5 && { root: { where: clamp('A') } }),
       };
       const rules = ['id', 'b.id', 'd.id', 'b.c.id', 'd.b.id'].map((f) =>
         rule({ field: f, operator: 'exists' }),
@@ -293,8 +293,8 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
   });
 });
 
-describe('R6-2: a pointer drops only its own layer’s carried grants', () => {
-  test('a later layer’s grant keeps the pointing layer’s narrowing', () => {
+describe('R6-2: a pointer drops only its own layer’s carried clamps', () => {
+  test('a later layer’s clamp keeps the pointing layer’s narrowing', () => {
     const schema: FieldMap = {
       models: {
         Post: {

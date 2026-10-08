@@ -207,7 +207,7 @@ describe('R11-F1: materializeSources requires every key a read walks, not only t
       };
       expect(validateNarrowing(lens).ok).toBe(true);
       const [query] = toSourceQueries(lens);
-      // The query reads Contact alone; the link to a FanUser (and its grant) is the recheck.
+      // The query reads Contact alone; the link to a FanUser (and its clamp) is the recheck.
       expect(query.model).toBe('Contact');
       expect(query.prisma.where).toEqual({});
       expect(query.recheck).toEqual({
@@ -230,8 +230,8 @@ describe('R11-F1: materializeSources requires every key a read walks, not only t
   });
 });
 
-describe('R11-F2: a grant no inverse can carry is a refusal, not an empty list', () => {
-  test('a one-sided relation under a root grant', () => {
+describe('R11-F2: a clamp no inverse can carry is a refusal, not an empty list', () => {
+  test('a one-sided relation under a root clamp', () => {
     const oneSided: FieldMap = {
       models: {
         User: {
@@ -295,7 +295,7 @@ describe('R11-F3: the caller’s input is a UsageError; the lens’s limits a Le
   });
 });
 
-describe('R11-F4: a lens grant a compile can’t hold refuses the rule, never a plain Error', () => {
+describe('R11-F4: a lens clamp a compile can’t hold refuses the rule, never a plain Error', () => {
   test.each([
     [
       'a window re-rooted under a to-one hop',
@@ -336,7 +336,7 @@ describe('R11-F4: a lens grant a compile can’t hold refuses the rule, never a 
       rule({ field: 'org.name', operator: 'exists' }),
     ],
     [
-      'a window in the root grant',
+      'a window in the root clamp',
       {
         where: rule({
           field: 'posts',

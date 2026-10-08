@@ -6,7 +6,7 @@ import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
 
-// An `all` grant must be FILTER-FIRST: out-of-scope rows are dropped before the window
+// An `all` clamp must be FILTER-FIRST: out-of-scope rows are dropped before the window
 // (orderBy/take/skip) and before the all-check, so only in-scope rows are evaluated. A per-row
 // `negate` implication (¬scope ∨ condition) is unsound under a window (the window picks rows from
 // the raw array first) and under partial comparison semantics (a missing/non-ordered field makes
@@ -36,7 +36,7 @@ const withParent = (
   rest: Omit<LensNarrowing, 'parent'>,
 ): LensNarrowing => ({ parent, ...rest });
 
-describe('narrowRule — `all` grant is filter-first', () => {
+describe('narrowRule — `all` clamp is filter-first', () => {
   test('windowed all: a deleted top-of-window row cannot mask a failing in-scope row (no leak)', () => {
     const n = withParent(lens, {
       mapDefaults: {
@@ -63,7 +63,7 @@ describe('narrowRule — `all` grant is filter-first', () => {
     expect(check(composed, data)).not.toBe(true);
   });
 
-  test('ordered-comparator grant: an out-of-scope (missing-field) row is exempt, not forced through', () => {
+  test('ordered-comparator clamp: an out-of-scope (missing-field) row is exempt, not forced through', () => {
     const n = withParent(lens, {
       mapDefaults: {
         prisma: {

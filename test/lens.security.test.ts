@@ -62,9 +62,9 @@ const map: FieldMap = {
 };
 const lens: Lens = { maps: { app: map }, mapName: 'app', model: 'Article' };
 const rule = (r: object): Condition => r as never;
-const granted: LensNarrowing = {
+const clamped: LensNarrowing = {
   parent: lens,
-  // The layer shows comments, so a child may grant on them.
+  // The layer shows comments, so a child may clamp on them.
   root: { relations: { comments: {} } },
   mapDefaults: {
     app: {
@@ -76,31 +76,31 @@ const granted: LensNarrowing = {
   },
 };
 
-describe("a child layer's own conditions read through its parent's grants", () => {
+describe("a child layer's own conditions read through its parent's clamps", () => {
   const probe = rule({
     field: 'comments',
     arrayOperator: 'any',
     condition: { field: 'body', operator: 'equals', value: 'secret' },
   });
   const child: LensNarrowing = {
-    parent: granted,
+    parent: clamped,
     root: { where: probe, sources: { title: probe } },
   };
   const row = { id: 'a', title: 't', comments: [{ body: 'secret', deleted: true }] };
 
   test('a child where cannot see a deleted comment the parent hides', () => {
-    expect(check(narrowRule(probe, granted), row)).not.toBe(true);
+    expect(check(narrowRule(probe, clamped), row)).not.toBe(true);
     expect(check(narrowRule(true, child), row)).not.toBe(true);
   });
 
-  test('a child source where carries the parent grant into its query', () => {
+  test('a child source where carries the parent clamp into its query', () => {
     const [query] = toSourceQueries(child);
     expect(JSON.stringify(query.composedWhere)).toContain('"deleted"');
   });
 });
 
-describe('refs that cross a relation carry its grant', () => {
-  // The author is outside the tenant grant; its salary must not be readable through any slot.
+describe('refs that cross a relation carry its clamp', () => {
+  // The author is outside the tenant clamp; its salary must not be readable through any slot.
   const row = {
     id: 'a1',
     score: 100,
@@ -111,7 +111,7 @@ describe('refs that cross a relation carry its grant', () => {
       { body: 'secret', votes: 50, deleted: true, author: { tenantId: 't1', salary: 1 } },
     ],
   };
-  const leaks = (r: object) => check(narrowRule(rule(r), granted), row) === true;
+  const leaks = (r: object) => check(narrowRule(rule(r), clamped), row) === true;
 
   test.each([
     ['a $. value path', { field: 'score', operator: 'equals', path: '$.author.salary' }],
@@ -143,7 +143,7 @@ describe('refs that cross a relation carry its grant', () => {
     expect(leaks(r)).toBe(false);
   });
 
-  test('an aggregate field through a relation sums only granted rows', () => {
+  test('an aggregate field through a relation sums only visible rows', () => {
     expect(
       leaks({
         field: 'comments',
@@ -154,7 +154,7 @@ describe('refs that cross a relation carry its grant', () => {
     ).toBe(false);
   });
 
-  test('an orderBy through a relation orders only granted rows', () => {
+  test('an orderBy through a relation orders only visible rows', () => {
     const orderedRow = {
       comments: [
         { body: 'top', deleted: false, author: { tenantId: 't2', salary: 999 } },
@@ -169,7 +169,7 @@ describe('refs that cross a relation carry its grant', () => {
       condition: { field: 'body', operator: 'equals', value: 'top' },
     });
     expect(check(r, orderedRow)).toBe(true);
-    expect(check(narrowRule(r, granted), orderedRow)).not.toBe(true);
+    expect(check(narrowRule(r, clamped), orderedRow)).not.toBe(true);
   });
 });
 
@@ -224,7 +224,7 @@ describe('option lists never offer what the lens hides', () => {
 describe('the gate refuses a node that is both logical and a leaf', () => {
   test('if + field', () => {
     const r = rule({ if: true, then: true, field: 'author.salary', operator: 'equals', value: 1 });
-    expect(validateRuleInLens(r, granted).errors.map((e) => e.code)).toContain(
+    expect(validateRuleInLens(r, clamped).errors.map((e) => e.code)).toContain(
       'ambiguous_condition',
     );
   });
@@ -283,7 +283,7 @@ describe('a relation is never read as a value', () => {
   });
 });
 
-describe("an option list on a relation reads only the rows under its ancestors' grants", () => {
+describe("an option list on a relation reads only the rows under its ancestors' clamps", () => {
   // The platform layer, the first narrowing, turns the relations on; the delegate sources them.
   const platform: LensNarrowing = {
     parent: lens,
@@ -303,17 +303,17 @@ describe("an option list on a relation reads only the rows under its ancestors' 
     return query;
   };
 
-  test('a grant carries down through the inverse relation', () => {
+  test('a clamp carries down through the inverse relation', () => {
     const comments = at('Comment');
-    const grant = { field: 'article.score', operator: 'greaterThan', value: 5 };
-    expect(JSON.stringify(comments.composedWhere)).toContain(JSON.stringify(grant));
+    const clamp = { field: 'article.score', operator: 'greaterThan', value: 5 };
+    expect(JSON.stringify(comments.composedWhere)).toContain(JSON.stringify(clamp));
     expect(check(comments.composedWhere, { article: { score: 3 } })).not.toBe(true);
     expect(check(comments.composedWhere, { article: { score: 9 } })).toBe(true);
     expect(check(comments.composedWhere, {})).not.toBe(true);
     expect(comments.sql.sql).toContain('JOIN "Article"');
   });
 
-  test('a grant no inverse can carry is refused, never an empty list', () => {
+  test('a clamp no inverse can carry is refused, never an empty list', () => {
     const throughAuthor: LensNarrowing = {
       parent: platform,
       root: { relations: { author: { sources: { tenantId: true } } } },

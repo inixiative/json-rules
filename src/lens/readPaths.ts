@@ -9,7 +9,7 @@ const joinPath = (prefix: string, path: string): string =>
  * The dotted paths a lens `where` reads from the row it is checked against — its fields, the value
  * side's paths, and each relation node's `orderBy` / `aggregate.field` — as `check(where, row)`
  * reads them: a relation node's `condition` / `filter` under its field, `$` refs up the relation
- * scopes, a bare value `path` from the row. Internal: the lens reads its own grants with it.
+ * scopes, a bare value `path` from the row. Internal: the lens reads its own clamps with it.
  */
 export const readPaths = (condition: Condition): string[] => {
   const found = new Set<string>();

@@ -184,7 +184,7 @@ describe('a source across a bridge over-fetches, and its recheck decides', () =>
     expect(toSourceQueries(label[1])[0].recheck).toBe(true);
   });
 
-  test('a path source past the bridge: the grants above are carried back across it', async () => {
+  test('a path source past the bridge: the clamps above are carried back across it', async () => {
     const profilesRoot = createLens({ maps, bridges, mapName: 'crm', model: 'Profile' } as never);
     const lens: LensNarrowing = {
       parent: profilesRoot,

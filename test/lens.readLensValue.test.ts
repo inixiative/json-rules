@@ -41,12 +41,12 @@ describe('readLensValue reads a value as the lens shows it', () => {
     expect(readLensValue(lens, ann, 'meta.a.toString')).toEqual({ ok: true, value: undefined });
   });
 
-  test('a related row its grant hides reads null, at every depth below it', () => {
+  test('a related row its clamp hides reads null, at every depth below it', () => {
     expect(readLensValue(lens, bob, 'org.name')).toEqual({ ok: true, value: null });
     expect(readLensValue(lens, bob, 'org.parent.name')).toEqual({ ok: true, value: null });
   });
 
-  test("a row the lens's own grant hides reads null", () => {
+  test("a row the lens's own clamp hides reads null", () => {
     const annOnly: LensNarrowing = {
       parent: lens,
       root: { where: { field: 'id', operator: 'equals', value: 1 } },

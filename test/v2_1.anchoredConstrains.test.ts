@@ -172,8 +172,8 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
   });
 
   test('arrayOperator: all — filter-first via the window filter, not naive AND or a per-row implication', () => {
-    // User rule: every comment matches foo. Grant: only in-scope comments participate. Filter-first:
-    // the grant becomes the array rule's window `filter` (check drops out-of-scope rows before
+    // User rule: every comment matches foo. Clamp: only in-scope comments participate. Filter-first:
+    // the clamp becomes the array rule's window `filter` (check drops out-of-scope rows before
     // order/take/skip AND before the all-check), so only in-scope rows are evaluated. The inner
     // condition stays the plain user condition — no `negate` implication (unsound under a window and
     // under partial comparison semantics).
@@ -192,7 +192,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
     const composed = narrowRule(userRule, n) as {
       condition: { filter?: Condition; condition?: Condition };
     };
-    // The grant is the window filter; the inner condition is the untouched user condition.
+    // The clamp is the window filter; the inner condition is the untouched user condition.
     expect(composed.condition.filter).toEqual(commentScope);
     expect(composed.condition.condition).toEqual({
       field: 'body',
@@ -290,7 +290,7 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
   });
 
   test('startsWith constraint under arrayOperator: all → filter-injected (no inverse needed, no throw)', () => {
-    // Filter-first needs no operator inverse, so a grant with a non-invertible operator (startsWith)
+    // Filter-first needs no operator inverse, so a clamp with a non-invertible operator (startsWith)
     // just becomes the window filter instead of throwing.
     const userRule = {
       field: 'posts',
@@ -301,12 +301,12 @@ describe('per-operator anchored constraint injection (Codex P1.2)', () => {
         condition: { field: 'body', operator: Operator.contains, value: 'foo' },
       },
     } as Condition;
-    const grant = { field: 'body', operator: Operator.startsWith, value: 'admin:' };
+    const clamp = { field: 'body', operator: Operator.startsWith, value: 'admin:' };
     const n = withParent(lens, {
-      mapDefaults: { prisma: { models: { Comment: { where: grant } } } },
+      mapDefaults: { prisma: { models: { Comment: { where: clamp } } } },
     });
     const composed = narrowRule(userRule, n) as { condition: { filter?: Condition } };
-    expect(composed.condition.filter).toEqual(grant);
+    expect(composed.condition.filter).toEqual(clamp);
   });
 });
 

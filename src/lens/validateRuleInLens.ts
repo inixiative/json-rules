@@ -112,7 +112,7 @@ const visit = (
           });
           continue;
         }
-        // A ref reads a column; a relation is rows, which the grant and the field's picks don't
+        // A ref reads a column; a relation is rows, which the clamp and the field's picks don't
         // scope.
         if (isRelationEntry(walked.entry)) {
           issues.push({
@@ -220,7 +220,7 @@ const visit = (
 /**
  * Gate a condition whose `field` refs are relative to the visit (mapName, modelName, relPath)
  * of `policy` — the shape of a narrowing `where` anchored at a relation node or a model
- * default (a `grant` policy, which may cross undeclared relations). The policy keeps its real
+ * default (a `clamp` policy, which may cross undeclared relations). The policy keeps its real
  * anchor, so a bare `path` ref still resolves at the lens root (the root row) and a
  * `$.` ref at the visit. Internal to the lens layer.
  */
@@ -245,12 +245,12 @@ export const validateRuleInLens = (
   const policy = resolvePolicy(lensOrNarrowing);
   try {
     const issues = checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []);
-    // What the gate admits, narrowRule must be able to narrow: a grant it can't re-root under a
+    // What the gate admits, narrowRule must be able to narrow: a clamp it can't re-root under a
     // hop the rule crosses is refused here, with its message.
     if (issues.length === 0) narrowRule(rule, lensOrNarrowing);
     return validationResult(issues);
   } catch (error) {
-    // A grant the lens refuses to apply on this rule's visits is the rule's refusal too.
+    // A clamp the lens refuses to apply on this rule's visits is the rule's refusal too.
     if (!(error instanceof LensRefusal)) throw error;
     return validationResult([{ path: '', code: error.code, message: error.message }]);
   }

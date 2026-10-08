@@ -332,7 +332,7 @@ describe('sources read only relations turned on', () => {
     }
   });
 
-  test("a source's eligibility where is a grant: it may read any relation", () => {
+  test("a source's eligibility where is a clamp: it may read any relation", () => {
     const n: LensNarrowing = {
       parent: base,
       root: {
@@ -369,7 +369,7 @@ describe('sources read only relations turned on', () => {
   });
 });
 
-describe('a later layer grants only on what its parent exposes', () => {
+describe('a later layer clamps only on what its parent exposes', () => {
   const pro = { field: 'org.plan', operator: 'equals', value: 'pro' } as Condition;
   const tenancy: LensNarrowing = {
     parent: base,
@@ -388,13 +388,13 @@ describe('a later layer grants only on what its parent exposes', () => {
     ]);
   });
 
-  test('a later grant may read a relation its parent turns on', () => {
+  test('a later clamp may read a relation its parent turns on', () => {
     const shown: LensNarrowing = { parent: base, root: { relations: { org: {} } } };
     expect(validateNarrowing({ parent: shown, root: { where: pro } }).ok).toBe(true);
   });
 });
 
-describe('grants read any relation', () => {
+describe('clamps read any relation', () => {
   test("the first narrowing's root, path and model where may read relations that are off", () => {
     const n: LensNarrowing = {
       parent: base,
@@ -410,14 +410,14 @@ describe('grants read any relation', () => {
   });
 });
 
-describe('fetch: exactly what is turned on, plus what grants read', () => {
+describe('fetch: exactly what is turned on, plus what clamps read', () => {
   test('toLensSelect selects no relation that is off', () => {
     expect(Object.keys(toLensSelect(base).select).sort()).toEqual(
       ['age', 'createdAt', 'id', 'meta', 'name', 'orgId', 'role', 'score', 'tags'].sort(),
     );
   });
 
-  test("a relation only a grant reads is fetched with that grant's columns alone", () => {
+  test("a relation only a clamp reads is fetched with that clamp's columns alone", () => {
     const n: LensNarrowing = {
       parent: base,
       root: { where: { field: 'org.plan', operator: 'equals', value: 'pro' } },

@@ -59,7 +59,7 @@ describe('R12-1: rows a viewer projection nulled are refused, not read as absent
     const fetched = materializeSources(lens, raw)[0].options.map((o) => o.value);
     expect(fetched).not.toContain('nine');
     expect(
-      materializeSources(lens, projectRows(lens, raw, { keepGrantColumns: true }))[0].options.map(
+      materializeSources(lens, projectRows(lens, raw, { keepClampColumns: true }))[0].options.map(
         (o) => o.value,
       ),
     ).toEqual(fetched);

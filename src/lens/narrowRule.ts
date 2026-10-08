@@ -14,7 +14,7 @@ import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import {
-  grantRefs,
+  clampRefs,
   LensRefusal,
   type RelationHop,
   relationHops,
@@ -55,57 +55,57 @@ const holdsWhenAbsent = (node: Condition): boolean => {
   }
 };
 
-// A node read through granted hops: each hop's grant AND-ed with it, so a related row outside its
-// grant fails the node. A missing related row is not a hidden one — where the node holds with its
-// path absent (a negation, notExists), a hop that isn't there satisfies it without the grant.
-const underHopGrants = (node: Condition, hops: HopGrant[]): Condition => {
+// A node read through clamped hops: each hop's clamp AND-ed with it, so a related row outside its
+// clamp fails the node. A missing related row is not a hidden one — where the node holds with its
+// path absent (a negation, notExists), a hop that isn't there satisfies it without the clamp.
+const underHopClamps = (node: Condition, hops: HopClamp[]): Condition => {
   if (!hops.length) return node;
-  if (!holdsWhenAbsent(node)) return allOf([...hops.flatMap((hop) => hop.grants), node]);
+  if (!holdsWhenAbsent(node)) return allOf([...hops.flatMap((hop) => hop.clamps), node]);
   const [hop, ...deeper] = hops;
   return anyOf([
-    allOf([...hop.grants, underHopGrants(node, deeper)]),
+    allOf([...hop.clamps, underHopClamps(node, deeper)]),
     allOf([{ field: hop.prefix, operator: 'notExists' } as Condition, node]),
   ]);
 };
 
-// Re-roots a related-model `where` grant so its field refs resolve from the current
-// anchor through the relation path (e.g. a User grant `tenantId` reached via `author`
+// Re-roots a related-model `where` clamp so its field refs resolve from the current
+// anchor through the relation path (e.g. a User clamp `tenantId` reached via `author`
 // becomes `author.tenantId`, and `users any …` on an Org becomes `org.users any …` — a relation
 // node's condition reads its elements, so only its field moves). Fails closed on shapes that
 // can't be re-rooted unambiguously — a `path` ref (root/current-element semantics don't survive
 // re-rooting), or a ref inside a relation node that climbs to the row being re-rooted — rather
-// than silently emitting a wrong or unenforced grant.
+// than silently emitting a wrong or unenforced clamp.
 export const prefixConditionFields = (cond: Condition, prefix: string): Condition =>
   mapCondition(cond, {
     rewrite: (node) => {
       if (isLogicalNode(node)) return node;
       if (typeof node.field !== 'string' || node.field === '')
         throw new LensRefusal(
-          `narrowRule: cannot re-root a relation grant of unknown shape under '${prefix}'`,
-          'unsupported_grant',
+          `narrowRule: cannot re-root a relation clamp of unknown shape under '${prefix}'`,
+          'unsupported_clamp',
         );
       const refs = valueRefs(node);
       if (refs.length) {
         throw new LensRefusal(
-          `narrowRule: cannot re-root a relation grant with a path reference ('${refs[0]}') ` +
-            `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
-          'unsupported_grant',
+          `narrowRule: cannot re-root a relation clamp with a path reference ('${refs[0]}') ` +
+            `under '${prefix}'. Author the clamp without 'path', or anchor it at the relation itself.`,
+          'unsupported_clamp',
         );
       }
       if (parseScopeRef(node.field)) {
         throw new LensRefusal(
-          `narrowRule: cannot re-root a relation grant with a scope ref field ('${node.field}') ` +
-            `under '${prefix}'. Author the grant against the model's own columns.`,
-          'unsupported_grant',
+          `narrowRule: cannot re-root a relation clamp with a scope ref field ('${node.field}') ` +
+            `under '${prefix}'. Author the clamp against the model's own columns.`,
+          'unsupported_clamp',
         );
       }
       if (isRelationNode(node))
         for (const inner of [node.condition, node.filter] as (Condition | undefined)[])
-          if (inner !== undefined && grantRefs(inner).escaping !== null)
+          if (inner !== undefined && clampRefs(inner).escaping !== null)
             throw new LensRefusal(
-              `narrowRule: cannot re-root a relation grant on '${node.field}' under '${prefix}': ` +
-                `'${grantRefs(inner).escaping}' inside it reads the row being re-rooted. Anchor such grants at the relation's own model.`,
-              'unsupported_grant',
+              `narrowRule: cannot re-root a relation clamp on '${node.field}' under '${prefix}': ` +
+                `'${clampRefs(inner).escaping}' inside it reads the row being re-rooted. Anchor such clamps at the relation's own model.`,
+              'unsupported_clamp',
             );
       return { ...node, field: `${prefix}.${node.field}` };
     },
@@ -117,37 +117,37 @@ type Visit = { mapName: string; modelName: string; relPath: readonly string[] };
 
 // Gathers the (re-rooted) wheres for each traversed relation hop so they can be AND-ed
 // with the rule at the current anchor. To-many hops have no scalar path to AND against —
-// their grant must be row-scoped via an arrayOperator condition — so reaching one here
-// (a to-many with a grant but no condition anchor) fails closed rather than dropping it.
-type HopGrant = { prefix: string; grants: Condition[] };
+// their clamp must be row-scoped via an arrayOperator condition — so reaching one here
+// (a to-many with a clamp but no condition anchor) fails closed rather than dropping it.
+type HopClamp = { prefix: string; clamps: Condition[] };
 
-const hopGrants = (policy: Policy, hops: RelationHop[]): HopGrant[] =>
+const hopClamps = (policy: Policy, hops: RelationHop[]): HopClamp[] =>
   hops.flatMap((hop) => {
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
     if (effect.whereClauses.length === 0) return [];
     if (hop.isList) {
       throw new LensRefusal(
-        `narrowRule: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
+        `narrowRule: cannot enforce a to-many relation clamp on '${hop.prefix}' without an ` +
           `arrayOperator condition to anchor it (row-scoped). Traverse '${hop.prefix}' via an ` +
-          `array operator (any/all/none/...) so the grant can be injected safely.`,
-        'unsupported_grant',
+          `array operator (any/all/none/...) so the clamp can be injected safely.`,
+        'unsupported_clamp',
       );
     }
     return [
       {
         prefix: hop.prefix,
-        grants: effect.whereClauses.map((where) => prefixConditionFields(where, hop.prefix)),
+        clamps: effect.whereClauses.map((where) => prefixConditionFields(where, hop.prefix)),
       },
     ];
   });
 
 const collectHopWheres = (policy: Policy, hops: RelationHop[]): Condition[] =>
-  hopGrants(policy, hops).flatMap((hop) => hop.grants);
+  hopClamps(policy, hops).flatMap((hop) => hop.clamps);
 
-// A scope is a visit the walk reached, or null inside a Json value (undeclared: nothing to grant).
+// A scope is a visit the walk reached, or null inside a Json value (undeclared: nothing to clamp).
 type Scope = Visit | null;
 
-// The relation hops a ref crosses from the scope it names, and the visit it ends on. Grants
+// The relation hops a ref crosses from the scope it names, and the visit it ends on. Clamps
 // re-root under the ref's own scope prefix (`$.` is the node's own scope, so none).
 const hopsAt = (
   ref: string,
@@ -162,7 +162,7 @@ const hopsAt = (
   return relationHops(policy.lens.maps, target.scope, target.path, prefix === '$.' ? '' : prefix);
 };
 
-// A value ref's hops. A bare one reads the root row on every rail, so its grants re-root at the
+// A value ref's hops. A bare one reads the root row on every rail, so its clamps re-root at the
 // root.
 const refHops = (ref: string, policy: Policy, scopes: readonly Scope[]): RelationHop[] => {
   if (parseScopeRef(ref)) return hopsAt(ref, policy, scopes).hops;
@@ -170,7 +170,7 @@ const refHops = (ref: string, policy: Policy, scopes: readonly Scope[]): Relatio
   return scopes[0] ? relationHops(policy.lens.maps, scopes[0], ref, prefix).hops : [];
 };
 
-// Where a node's field leads: every relation hop it crosses (each may carry a grant), and the
+// Where a node's field leads: every relation hop it crosses (each may carry a clamp), and the
 // scope its `condition` / `filter` read at — the relation's visit when its last segment is one,
 // an open scope for a relation node over a Json array.
 const anchorOf = (
@@ -183,14 +183,14 @@ const anchorOf = (
   return { hops, below: end };
 };
 
-// Injects each grant at its anchor. A relation node (array or aggregate) whose field ends on a
-// relation gets that relation's grants row-scoped: AND-ed into its `condition`, or — for `all`, a
+// Injects each clamp at its anchor. A relation node (array or aggregate) whose field ends on a
+// relation gets that relation's clamps row-scoped: AND-ed into its `condition`, or — for `all`, a
 // window, or a node with no `condition` (a count, an aggregate, emptiness) — into its `filter`,
 // which drops out-of-scope rows before anything else reads them; relations its `orderBy` or
-// `aggregate.field` cross add their grants there too. Every other hop's grant — on the field, or
+// `aggregate.field` cross add their clamps there too. Every other hop's clamp — on the field, or
 // on a value-side ref (`path`, an offset, an amount) — is re-rooted under the hop and AND-ed with
 // the node.
-/** A rule's grants injected at their anchors, the rule read from `root` under `policy`. */
+/** A rule's clamps injected at their anchors, the rule read from `root` under `policy`. */
 export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Condition =>
   mapCondition<readonly Scope[]>(
     rule,
@@ -211,10 +211,10 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
         const below = anchor.below;
         if (!below || !isRelationNode(node))
           return wrapWithWheres(
-            underHopGrants(node as Condition, hopGrants(policy, anchor.hops)),
+            underHopClamps(node as Condition, hopClamps(policy, anchor.hops)),
             valueWheres,
           );
-        const grants = [
+        const clamps = [
           ...resolveVisit(policy, below.mapName, below.modelName, below.relPath).whereClauses,
           ...collectHopWheres(
             policy,
@@ -226,14 +226,14 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
           node.arrayOperator === ArrayOperator.all ||
           hasWindow(node as WindowFields);
         const out: Record<string, unknown> = { ...node };
-        if (grants.length && filterFirst)
+        if (clamps.length && filterFirst)
           out.filter = allOf([
             ...(node.filter !== undefined ? [node.filter as Condition] : []),
-            ...grants,
+            ...clamps,
           ]);
-        else if (grants.length) out.condition = allOf([...grants, node.condition as Condition]);
+        else if (clamps.length) out.condition = allOf([...clamps, node.condition as Condition]);
         return wrapWithWheres(
-          underHopGrants(out as Condition, hopGrants(policy, anchor.hops.slice(0, -1))),
+          underHopClamps(out as Condition, hopClamps(policy, anchor.hops.slice(0, -1))),
           valueWheres,
         );
       },
@@ -241,7 +241,7 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
     [root],
   );
 
-/** A rule with the lens's grants (`where`s) injected at their anchors: the root's around it, each
+/** A rule with the lens's clamps (`where`s) injected at their anchors: the root's around it, each
  *  relation's where the rule descends into it — under an `all`, into its window `filter`. */
 export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
   const policy = resolvePolicy(lensOrNarrowing);

@@ -91,7 +91,7 @@ const userPosts: FieldMap = {
 };
 const base = createLens({ maps: { app: userPosts }, mapName: 'app', model: 'User' });
 
-describe('R9-A: a grant the fetch or an option query cannot compile is refused by the rule validator', () => {
+describe('R9-A: a clamp the fetch or an option query cannot compile is refused by the rule validator', () => {
   test.each([
     ['matches', rule({ field: 'title', operator: 'matches', value: '^a' })],
     [
@@ -102,7 +102,7 @@ describe('R9-A: a grant the fetch or an option query cannot compile is refused b
   ])('%s on a to-many relation: validation and toLensSelect refuse', (_, where) => {
     const lens: LensNarrowing = { parent: base, root: { relations: { posts: { where } } } };
     expect(validateNarrowing(lens).ok).toBe(false);
-    expect(refusal(() => toLensSelect(lens))).toMatch(/toLensSelect: the grant on 'posts'/);
+    expect(refusal(() => toLensSelect(lens))).toMatch(/toLensSelect: the clamp on 'posts'/);
   });
 
   test('matches in a source where: validation and toSourceQueries refuse', () => {
@@ -132,7 +132,7 @@ describe('R9-N2: toSourceQueries takes the compilers’ options', () => {
     },
   };
 
-  test('a relative-date grant in a source where compiles with `now`', () => {
+  test('a relative-date clamp in a source where compiles with `now`', () => {
     expect(validateNarrowing(lens).ok).toBe(true);
     const [query] = toSourceQueries(lens, { now: new Date('2026-10-08T00:00:00Z') });
     expect(JSON.stringify(query.prisma?.where)).toContain('2026-09-08');
@@ -219,7 +219,7 @@ describe('R9-P1: a source where across a bridge over-fetches, and its recheck de
       ['a@x', 'b@x'],
     ],
     [
-      'a grant carried across it',
+      'a clamp carried across it',
       {
         parent: bridged,
         root: {
@@ -251,7 +251,7 @@ describe('R9-N1/P2: the fetch pipeline offers what the database offers', () => {
       select: toLensSelect(lens).select as never,
       orderBy: { id: 'asc' },
     })) as Record<string, unknown>[];
-    const kept = projectRows(lens, fetched, { keepGrantColumns: true });
+    const kept = projectRows(lens, fetched, { keepClampColumns: true });
     const db: string[][] = [];
     for (const query of toSourceQueries(lens)) {
       const { prisma, sql } = await onRails(query);
@@ -267,7 +267,7 @@ describe('R9-N1/P2: the fetch pipeline offers what the database offers', () => {
 
   test.each<[string, LensNarrowing, string[]]>([
     [
-      'a to-one row its grant hides, at the sourced visit',
+      'a to-one row its clamp hides, at the sourced visit',
       {
         parent: prismaBase,
         root: {
@@ -282,7 +282,7 @@ describe('R9-N1/P2: the fetch pipeline offers what the database offers', () => {
       ['Acme'],
     ],
     [
-      'the sourced column read by the grant',
+      'the sourced column read by the clamp',
       {
         parent: prismaBase,
         root: {
@@ -297,7 +297,7 @@ describe('R9-N1/P2: the fetch pipeline offers what the database offers', () => {
       ['Acme'],
     ],
     [
-      'a root source through a to-one row its grant hides',
+      'a root source through a to-one row its clamp hides',
       {
         parent: prismaBase,
         root: {
@@ -308,7 +308,7 @@ describe('R9-N1/P2: the fetch pipeline offers what the database offers', () => {
       ['Ann', 'Dee', 'nullable'],
     ],
     [
-      'a nested source under a root grant, carried by the inverse relation',
+      'a nested source under a root clamp, carried by the inverse relation',
       {
         parent: prismaBase,
         root: {

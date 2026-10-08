@@ -331,11 +331,11 @@ describe('across a bridge', () => {
     ]);
   });
 
-  test('a path source across a bridge over-fetches; the grants above come back as its recheck', () => {
+  test('a path source across a bridge over-fetches; the clamps above come back as its recheck', () => {
     const lens = bridged(true);
     const q = query(lens);
     if (!q) throw new Error('no query');
-    // The far map's own tenancy is the database's to decide; the root grant reads across the bridge.
+    // The far map's own tenancy is the database's to decide; the root clamp reads across the bridge.
     expect(q.prisma).toEqual({
       model: 'Account',
       select: { tier: true, kingdomOrgId: true },
@@ -377,7 +377,7 @@ describe('a pointer never widens what a parent layer gave', () => {
     },
   };
 
-  test("a child's pointer still carries the grants of every layer above it", () => {
+  test("a child's pointer still carries the clamps of every layer above it", () => {
     const given = offered(parent);
     expect(given).toEqual(['T1', 'T4']);
     expect(offered(child)).toEqual(given);

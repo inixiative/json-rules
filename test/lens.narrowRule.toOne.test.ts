@@ -6,7 +6,7 @@ import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
 
-// FIX 3(c): a related-model `where` grant must be enforced on to-one / mid-path hops,
+// FIX 3(c): a related-model `where` clamp must be enforced on to-one / mid-path hops,
 // not only when the FINAL path segment is a relation. Mirror the to-many injection.
 const map: FieldMap = {
   models: {
@@ -51,7 +51,7 @@ const withParent = (
 
 const userWhere: Condition = { field: 'tenantId', operator: Operator.equals, value: 't1' };
 
-describe('narrowRule — to-one relation grant injection', () => {
+describe('narrowRule — to-one relation clamp injection', () => {
   test('mapDefaults.User.where is AND-ed at the relation level for author.email', () => {
     const n = withParent(lens, {
       mapDefaults: { prisma: { models: { User: { where: userWhere } } } },
@@ -64,7 +64,7 @@ describe('narrowRule — to-one relation grant injection', () => {
     });
   });
 
-  test('mid-path to-one hop (author.company.name) injects Company AND User grants', () => {
+  test('mid-path to-one hop (author.company.name) injects Company AND User clamps', () => {
     const companyWhere: Condition = { field: 'region', operator: Operator.equals, value: 'us' };
     const n = withParent(lens, {
       mapDefaults: {
@@ -90,7 +90,7 @@ describe('narrowRule — to-one relation grant injection', () => {
     expect(composed.all).toContainEqual(rule);
   });
 
-  test('no User grant → rule returned unchanged (no spurious injection)', () => {
+  test('no User clamp → rule returned unchanged (no spurious injection)', () => {
     const rule: Condition = { field: 'author.email', operator: Operator.equals, value: 'x' };
     expect(narrowRule(rule, lens)).toBe(rule);
   });
@@ -109,7 +109,7 @@ describe('narrowRule — to-one relation grant injection', () => {
     expect(composed.condition.all).toContainEqual(commentWhere);
   });
 
-  test('SECURITY: to-one grant with a path ref fails closed (throws)', () => {
+  test('SECURITY: to-one clamp with a path ref fails closed (throws)', () => {
     const n = withParent(lens, {
       mapDefaults: {
         prisma: {
@@ -130,7 +130,7 @@ describe('narrowRule — a missing related row is not a hidden one', () => {
   });
   const articles = {
     none: { author: null },
-    granted: { author: { tenantId: 't1', email: 'a@x' } },
+    visible: { author: { tenantId: 't1', email: 'a@x' } },
     hidden: { author: { tenantId: 't2', email: 'b@x' } },
   };
   const holds = (rule: Condition) =>
@@ -138,20 +138,20 @@ describe('narrowRule — a missing related row is not a hidden one', () => {
       .filter(([, row]) => check(narrowRule(rule, n), row) === true)
       .map(([name]) => name);
 
-  test('notExists on a granted relation holds where the relation is missing', () => {
+  test('notExists on a visible relation holds where the relation is missing', () => {
     expect(holds({ field: 'author', operator: Operator.notExists })).toEqual(['none']);
   });
 
   test('a negation through the hop keeps the missing row and never reads the hidden one', () => {
     expect(holds({ field: 'author.email', operator: Operator.notEquals, value: 'z' })).toEqual([
       'none',
-      'granted',
+      'visible',
     ]);
   });
 
-  test('a positive comparison reads only the granted row', () => {
+  test('a positive comparison reads only the visible row', () => {
     expect(holds({ field: 'author.email', operator: Operator.contains, value: '@' })).toEqual([
-      'granted',
+      'visible',
     ]);
   });
 

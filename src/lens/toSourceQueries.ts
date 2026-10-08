@@ -54,7 +54,7 @@ export type SourceQuery = {
   composedWhere: Condition; // node whereClauses ∧ source where(s)
   prisma: SourcePrismaQuery;
   sql: SourceSqlQuery;
-  /** Present when the source reads across a bridge (its where, a grant carried across one, its
+  /** Present when the source reads across a bridge (its where, a clamp carried across one, its
    * label or an axis); absent otherwise. **If `recheck` is present, the query's rows are
    * candidates, not options:** a database holds one side of a bridge, so the query folds what
    * reads across it to TRUE and over-fetches — it never misses an option, but may return more.
@@ -215,9 +215,9 @@ const compileOne = (
 /**
  * Compile a DISTINCT(value) query — Prisma and SQL — per sourced field across
  * the projected lens. The WHERE is the field's composed eligibility: the model's
- * own narrowing at that path, the grants above it carried down the path, its source
+ * own narrowing at that path, the clamps above it carried down the path, its source
  * where(s), the guards of the relations they cross and any allowed values. A
- * `from: 'mapDefaults'` source reads the model's own source and carries no grant from
+ * `from: 'mapDefaults'` source reads the model's own source and carries no clamp from
  * its layer on. The app runs these (with its own client) to materialize each field's
  * option set — feed the fetched rows to `materializeSourceQuery`. `options` is the clock a
  * relative date in the where compiles with (`now` required for one, as for any compile). A

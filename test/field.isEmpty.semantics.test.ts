@@ -5,12 +5,12 @@ import { Operator } from '../src/operator';
 // FIX 1: check()'s isEmpty/notEmpty must mean "null or empty string" — matching the
 // SQL backend `(field IS NULL OR field = '')` and Prisma `equals:null | equals:''`.
 // lodash isEmpty(Date)/isEmpty(number) is true, which wrongly lets soft-deleted rows
-// pass a `deletedAt isEmpty` grant.
+// pass a `deletedAt isEmpty` clamp.
 describe('check() isEmpty/notEmpty — null-or-empty-string semantics', () => {
   const isEmpty = { field: 'deletedAt', operator: Operator.isEmpty } as const;
   const notEmpty = { field: 'deletedAt', operator: Operator.notEmpty } as const;
 
-  test('a Date value is NOT empty (soft-delete grant bug)', () => {
+  test('a Date value is NOT empty (soft-delete clamp bug)', () => {
     expect(check(isEmpty, { deletedAt: new Date('2024-01-01') })).toBe('deletedAt must be empty');
     expect(check(notEmpty, { deletedAt: new Date('2024-01-01') })).toBe(true);
   });

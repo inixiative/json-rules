@@ -23,7 +23,7 @@ import { readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, the empty string, or an empty array — as the
 // compilers read a column, a Json value and a list. (lodash isEmpty would also treat Dates and
-// numbers as empty, which breaks soft-delete grants like `deletedAt isEmpty`.)
+// numbers as empty, which breaks soft-delete clamps like `deletedAt isEmpty`.)
 const isEmptyValue = (value: unknown): boolean =>
   value === null ||
   value === undefined ||

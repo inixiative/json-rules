@@ -3,7 +3,7 @@ import type { Condition, FieldMap, Lens, LensNarrowing } from '../index';
 import { narrowRule } from '../index';
 import { prefixConditionFields } from '../src/lens/narrowRule';
 
-// Where a grant cannot be placed soundly, narrowRule throws rather than emit a rule the grant
+// Where a clamp cannot be placed soundly, narrowRule throws rather than emit a rule the clamp
 // doesn't constrain.
 
 const map: FieldMap = {
@@ -36,7 +36,7 @@ const lens: Lens = { maps: { app: map }, mapName: 'app', model: 'Post' };
 const rule = (r: object): Condition => r as never;
 
 describe('narrowRule fails closed', () => {
-  test('a to-many grant reached by a dotted path, not an array operator', () => {
+  test('a to-many clamp reached by a dotted path, not an array operator', () => {
     const scoped: LensNarrowing = {
       parent: lens,
       mapDefaults: {
@@ -45,10 +45,10 @@ describe('narrowRule fails closed', () => {
     };
     expect(() =>
       narrowRule(rule({ field: 'comments.body', operator: 'equals', value: 'x' }), scoped),
-    ).toThrow("cannot enforce a to-many relation grant on 'comments'");
+    ).toThrow("cannot enforce a to-many relation clamp on 'comments'");
   });
 
-  test('a grant that cannot be re-rooted under its hop', () => {
+  test('a clamp that cannot be re-rooted under its hop', () => {
     expect(() =>
       prefixConditionFields(rule({ field: 'id', operator: 'equals', path: 'me' }), 'author'),
     ).toThrow('path reference');
@@ -87,7 +87,7 @@ describe('narrowRule fails closed', () => {
     });
   });
 
-  test('a re-rootable grant is prefixed through logical nodes', () => {
+  test('a re-rootable clamp is prefixed through logical nodes', () => {
     expect(
       prefixConditionFields(
         rule({ any: [{ field: 'tenantId', operator: 'equals', value: 't' }, true] }),

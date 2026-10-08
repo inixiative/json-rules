@@ -199,7 +199,7 @@ export const valueRefs = (node: Record<string, unknown>): string[] =>
   valueRefRoles(node).map((r) => r.ref);
 
 // The element fields a relation node orders or aggregates by — read per element, under the
-// element's grants.
+// element's clamps.
 export const elementRefs = (node: Record<string, unknown>): string[] => [
   ...(Array.isArray(node.orderBy)
     ? (node.orderBy as { field?: unknown }[]).flatMap((o) =>

@@ -19,7 +19,7 @@ import { map, openRails } from './rails/harness';
 
 // The adversarial review of 3.4 (round 10): each finding's repro, failing first. Expected options
 // come from an independent oracle — the seeded rows walked down the path by hand, each level's
-// grant a plain predicate — never from the lens's own plan.
+// clamp a plain predicate — never from the lens's own plan.
 
 const rule = (r: object): Condition => r as Condition;
 const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
@@ -105,7 +105,7 @@ const rails3 = async (lens: LensNarrowing) => {
     where: where as never,
     select: toLensSelect(lens).select as never,
   })) as Row[];
-  const kept = projectRows(lens, fetched, { keepGrantColumns: true });
+  const kept = projectRows(lens, fetched, { keepClampColumns: true });
   return {
     prisma,
     sql,
@@ -126,7 +126,7 @@ describe('R10-1: a path source offers exactly the rows reachable down its path',
   >([
     ['to-one then to-many (users in my org)', ['org', 'users'], 'name', null, {}, []],
     [
-      '… under a root grant',
+      '… under a root clamp',
       ['org', 'users'],
       'name',
       rule({ field: 'id', operator: 'equals', value: 1 }),
@@ -134,7 +134,7 @@ describe('R10-1: a path source offers exactly the rows reachable down its path',
       [first],
     ],
     [
-      '… under a relation grant',
+      '… under a relation clamp',
       ['org', 'users'],
       'name',
       null,
@@ -152,7 +152,7 @@ describe('R10-1: a path source offers exactly the rows reachable down its path',
     ['to-one, to-many, to-many', ['org', 'children', 'users'], 'name', null, {}, []],
     ['up then down a self-relation', ['org', 'parent', 'children'], 'name', null, {}, []],
     [
-      'up then down, granted',
+      'up then down, clamped',
       ['org', 'parent', 'children'],
       'name',
       rule({ field: 'age', operator: 'greaterThanEquals', value: 5 }),
@@ -236,7 +236,7 @@ describe('R10-5: materializeSources refuses rows a viewer projection cut', () =>
     ];
     expect(values(materializeSources(lens, fetched)[0].options)).toEqual(['bob']);
     expect(() => materializeSources(lens, projectRows(lens, fetched))).toThrow(
-      /fetched or keepGrantColumns rows/,
+      /fetched or keepClampColumns rows/,
     );
   });
 });
@@ -389,19 +389,19 @@ describe('R10-3/4: what toPrisma compiles of a literal, the validator says', () 
     expect(validateRule(r, at).ok).toBe(compiles);
   });
 
-  test('a grant or source a compile refuses is a refusal from the lens, never a plain Error', () => {
+  test('a clamp or source a compile refuses is a refusal from the lens, never a plain Error', () => {
     const orgBase = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' });
-    const grant = rule({ field: 'meta', operator: 'contains', value: 'A', caseInsensitive: true });
-    const asGrant: LensNarrowing = {
+    const clamp = rule({ field: 'meta', operator: 'contains', value: 'A', caseInsensitive: true });
+    const asClamp: LensNarrowing = {
       parent: orgBase,
-      root: { relations: { users: { where: grant } } },
+      root: { relations: { users: { where: clamp } } },
     };
     const asSource: LensNarrowing = {
       parent: orgBase,
-      root: { relations: { users: { sources: { name: grant } } } },
+      root: { relations: { users: { sources: { name: clamp } } } },
     };
     for (const [lens, run] of [
-      [asGrant, () => toLensSelect(asGrant)],
+      [asClamp, () => toLensSelect(asClamp)],
       [asSource, () => toSourceQueries(asSource)],
     ] as const) {
       expect(validateNarrowing(lens).ok).toBe(false);

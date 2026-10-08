@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.5.0 — grant → clamp
+
+A lens `where` only ever narrows: a row is hidden unless it holds. "Grant" read as permission
+given, so the concept is now a **clamp**. The `where` key is unchanged. A hard cut, no aliases.
+
+- **`keepClampColumns`** replaces `keepGrantColumns` (`ProjectRowsOptions`, `projectRows`).
+- **`LensRefusal.code` `unsupported_clamp`** replaces `unsupported_grant`.
+- **Messages** say clamp: "a later layer's clamp reads what its parent does not show", "the scope
+  ref … climbs out of the clamp", "cannot re-root a relation clamp …", "cannot enforce the clamp
+  on to-many relation …", "the clamps above can't be carried down to it", and the rest.
+- Docs (README, LENS, VERBS, TIMEZONE), JSDoc, internal names and tests follow.
+
 ## 3.4.2 — orderRecords
 
 - **`orderRecords(items, orderBy)`**: records sorted by an `OrderBy` exactly as a window orders them

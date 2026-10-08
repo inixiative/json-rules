@@ -121,7 +121,7 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
     postures(n2, 'd.b.c.e.z', false);
   });
 
-  test('p2b: validateNarrowing and the runtime agree on a later grant', () => {
+  test('p2b: validateNarrowing and the runtime agree on a later clamp', () => {
     const l1: LensNarrowing = {
       parent: base,
       mapDefaults: {
@@ -159,7 +159,7 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
   test('p2c: each spelled node grows its own default subtree; sources follow it', () => {
     const n3: LensNarrowing = {
       parent: base,
-      // The map is one-sided: a grant on d couldn't be carried down to the sources below it.
+      // The map is one-sided: a clamp on d couldn't be carried down to the sources below it.
       root: { relations: { d: {} } },
       mapDefaults: {
         app: {
@@ -361,11 +361,11 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
   });
 });
 
-describe('F3: a grant reads only its own row: no scope ref climbs out of it', () => {
+describe('F3: a clamp reads only its own row: no scope ref climbs out of it', () => {
   const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
   const lenses: [string, LensNarrowing, Condition][] = [
     [
-      '$$ value in a relation grant',
+      '$$ value in a relation clamp',
       {
         parent: base,
         root: {
@@ -377,7 +377,7 @@ describe('F3: a grant reads only its own row: no scope ref climbs out of it', ()
       rule({ field: 'org.name', operator: 'exists' }),
     ],
     [
-      '$$ field in a relation grant',
+      '$$ field in a relation clamp',
       {
         parent: base,
         root: {
@@ -423,19 +423,19 @@ describe('F3: a grant reads only its own row: no scope ref climbs out of it', ()
 
   test.each(lenses)('%s: validateNarrowing and every posture refuse it', (_, n, crossing) => {
     expect(validateNarrowing(n).errors.map((e) => e.code)).toContain('scope_out_of_bounds');
-    expect(() => toLensSelect(n)).toThrow(/climbs out of the grant/);
-    expect(() => projectRows(n, rails.rows as never)).toThrow(/climbs out of the grant/);
-    expect(() => narrowRule(crossing, n)).toThrow(/climbs out of the grant/);
-    expect(() => toPrisma(crossing, { lens: n })).toThrow(/climbs out of the grant/);
-    // A read crosses the grant only where its path does.
+    expect(() => toLensSelect(n)).toThrow(/climbs out of the clamp/);
+    expect(() => projectRows(n, rails.rows as never)).toThrow(/climbs out of the clamp/);
+    expect(() => narrowRule(crossing, n)).toThrow(/climbs out of the clamp/);
+    expect(() => toPrisma(crossing, { lens: n })).toThrow(/climbs out of the clamp/);
+    // A read crosses the clamp only where its path does.
     if ((crossing as { field?: string }).field === 'org.name')
       expect(() => readLensValue(n, rails.rows[0] as never, 'org.name')).toThrow(
-        /climbs out of the grant/,
+        /climbs out of the clamp/,
       );
   });
 
-  test('a $$ that stays inside the grant (one array down) is its own row: fine', () => {
-    // The users hop is to-many: its grant is row-scoped, and `$$.age` inside it reads the user.
+  test('a $$ that stays inside the clamp (one array down) is its own row: fine', () => {
+    // The users hop is to-many: its clamp is row-scoped, and `$$.age` inside it reads the user.
     const inside: LensNarrowing = {
       parent: base,
       root: {
@@ -460,7 +460,7 @@ describe('F3: a grant reads only its own row: no scope ref climbs out of it', ()
     const { errors } = validateNarrowing(inside);
     expect(errors.map((e) => e.message).join()).not.toMatch(/climbs out/);
     expect(errors.map((e) => e.message)).toEqual([
-      expect.stringMatching(/^toLensSelect: the grant on 'org.users': .*Prisma/),
+      expect.stringMatching(/^toLensSelect: the clamp on 'org.users': .*Prisma/),
     ]);
     expect(() => projectRows(inside, rails.rows as never)).not.toThrow();
   });

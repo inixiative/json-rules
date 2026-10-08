@@ -50,7 +50,7 @@ const refusedBy = (lens: LensNarrowing, rows?: Record<string, unknown>[]): strin
       ? [['materializeSources', () => materializeSources(lens, rows)] as [string, () => unknown]]
       : []),
     ['toLensSelect', () => toLensSelect(lens)],
-    ['projectRows', () => projectRows(lens, rows ?? [], { keepGrantColumns: true })],
+    ['projectRows', () => projectRows(lens, rows ?? [], { keepClampColumns: true })],
   ];
   for (const [name, attempt] of attempts) {
     try {
@@ -91,7 +91,7 @@ const userPosts: FieldMap = {
 const base = createLens({ maps: { app: userPosts }, mapName: 'app', model: 'User' });
 
 describe('R8-1: validateNarrowing runs the postures the runtime runs', () => {
-  test('a: a pointer reads its model at the model-intrinsic visit, where the grant reads a relation the parent turns on only along the path', () => {
+  test('a: a pointer reads its model at the model-intrinsic visit, where the clamp reads a relation the parent turns on only along the path', () => {
     const l1: LensNarrowing = {
       parent: base,
       root: {
@@ -122,9 +122,9 @@ describe('R8-1: validateNarrowing runs the postures the runtime runs', () => {
     expect(() => lensVisit(l2, 'posts')).toThrow(/does not show: 'author.id'/);
   });
 
-  // A list grant re-roots under a to-one hop (round 10); one whose inner ref reads the row being
+  // A list clamp re-roots under a to-one hop (round 10); one whose inner ref reads the row being
   // re-rooted (`$$.` inside `users any`) can't.
-  test('d: a source path crossing a to-one relation whose grant narrowRule cannot re-root', () => {
+  test('d: a source path crossing a to-one relation whose clamp narrowRule cannot re-root', () => {
     const l1: LensNarrowing = {
       parent: base,
       root: { sources: { name: rule({ field: 'org.id', operator: 'exists' }) } },
@@ -148,11 +148,11 @@ describe('R8-1: validateNarrowing runs the postures the runtime runs', () => {
     expect(refusedBy(l1)).toMatch(/^toSourceQueries: .*cannot re-root/);
   });
 
-  // A later grant on a column the parent hides, met where a source reads the relation's rows: the
-  // source now carries the grant (R8-3), so the grant applies there, and both refuse it. Where the
-  // parent shows the column, both accept, and the options carry the grant.
+  // A later clamp on a column the parent hides, met where a source reads the relation's rows: the
+  // source now carries the clamp (R8-3), so the clamp applies there, and both refuse it. Where the
+  // parent shows the column, both accept, and the options carry the clamp.
   test.each([
-    ['the parent hides the column the grant reads', true],
+    ['the parent hides the column the clamp reads', true],
     ['the parent shows it', false],
   ])('b: %s — validation and the runtime agree', (_, hidden) => {
     const l1: LensNarrowing = {
@@ -190,8 +190,8 @@ describe('R8-1: validateNarrowing runs the postures the runtime runs', () => {
   });
 });
 
-describe('R8-2: a later grant reads through every layer above it, the source declaring layer included', () => {
-  test('f: a label declared by the first narrowing, a later grant crossing the relation it turns on', () => {
+describe('R8-2: a later clamp reads through every layer above it, the source declaring layer included', () => {
+  test('f: a label declared by the first narrowing, a later clamp crossing the relation it turns on', () => {
     const l1: LensNarrowing = {
       parent: base,
       root: { relations: { org: {} }, sources: { name: { label: 'nick' } } },
@@ -211,11 +211,11 @@ describe('R8-2: a later grant reads through every layer above it, the source dec
 
 describe('R8-3: a source where narrows like a rule: options never come through rows the lens hides', () => {
   const live = rule({ field: 'deleted', operator: 'equals', value: false });
-  const offered = (where: Condition, grant: Condition = live) => {
+  const offered = (where: Condition, clamp: Condition = live) => {
     const lens: LensNarrowing = {
       parent: base,
       root: { relations: { posts: {} }, sources: { name: where } },
-      mapDefaults: { app: { models: { Post: { where: grant } } } },
+      mapDefaults: { app: { models: { Post: { where: clamp } } } },
     };
     expect(validateNarrowing(lens).ok).toBe(true);
     const rows = [
@@ -292,7 +292,7 @@ describe('R8-3: a source where narrows like a rule: options never come through r
     const plan = rule({ field: 'org.plan', operator: 'equals', value: 'pro' });
     const seats = (n: number) => rule({ field: 'seats', operator: 'greaterThan', value: n });
     // Ann's 'later' post has no views and her 'hello' post 10; her org, the one 'pro' org, 5 seats.
-    for (const [where, model, grant, expected, sql] of [
+    for (const [where, model, clamp, expected, sql] of [
       [posts('later'), 'Post', views, [], false],
       [posts('hello'), 'Post', views, [{ value: 'Ann' }], false],
       [plan, 'Org', seats(5), [], true],
@@ -301,7 +301,7 @@ describe('R8-3: a source where narrows like a rule: options never come through r
       const lens: LensNarrowing = {
         parent: prismaBase,
         root: { sources: { name: where } },
-        mapDefaults: { prisma: { models: { [model]: { where: grant } } } },
+        mapDefaults: { prisma: { models: { [model]: { where: clamp } } } },
       };
       expect(validateNarrowing(lens).ok).toBe(true);
       const [query] = toSourceQueries(lens);
@@ -322,7 +322,7 @@ describe('R8-4: refusals the planners make are lens refusals, and validation rep
     },
   };
 
-  test('e: a source where reading a granted to-many relation flat', () => {
+  test('e: a source where reading a clamped to-many relation flat', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -332,10 +332,10 @@ describe('R8-4: refusals the planners make are lens refusals, and validation rep
       mapDefaults: liveDefaults,
     };
     expect(validateNarrowing(lens).ok).toBe(false);
-    expect(refusedBy(lens)).toMatch(/^toSourceQueries: .*to-many relation grant on 'posts'/);
+    expect(refusedBy(lens)).toMatch(/^toSourceQueries: .*to-many relation clamp on 'posts'/);
   });
 
-  test('k: a to-many relation whose grant has a window the fetch select cannot compile', () => {
+  test('k: a to-many relation whose clamp has a window the fetch select cannot compile', () => {
     const windowed: LensNarrowing = {
       parent: createLens({ maps: { app: windowSchema }, mapName: 'app', model: 'User' }),
       root: { relations: { posts: {} } },
@@ -361,7 +361,7 @@ describe('R8-4: refusals the planners make are lens refusals, and validation rep
     expect(refusedBy(windowed)).toMatch(/^toLensSelect: .*Windowing/);
   });
 
-  test('a to-many relation whose grant needs a counting step', () => {
+  test('a to-many relation whose clamp needs a counting step', () => {
     const counted: LensNarrowing = {
       parent: createLens({ maps: { app: windowSchema }, mapName: 'app', model: 'User' }),
       root: { relations: { posts: {} } },
@@ -474,7 +474,7 @@ describe('R8-7: a source the option query cannot compile is refused by its shape
 
   test.each<[string, LensNarrowing]>([
     [
-      'a windowed grant carried into the source where',
+      'a windowed clamp carried into the source where',
       {
         parent: windowBase,
         root: { sources: { id: anyPost } },
@@ -496,7 +496,7 @@ describe('R8-7: a source the option query cannot compile is refused by its shape
     expect(refusedBy(lens)).toMatch(/^toSourceQueries: .*Windowing/);
   });
 
-  test('a counting grant in a source where compiles (the option query runs its steps)', () => {
+  test('a counting clamp in a source where compiles (the option query runs its steps)', () => {
     const lens: LensNarrowing = {
       parent: windowBase,
       root: { sources: { id: anyPost } },

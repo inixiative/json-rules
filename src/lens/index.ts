@@ -1,5 +1,6 @@
 export { bindLens, listLensBindings } from './bindings';
 export { getLensRoot } from './chain';
+export { clampLens, type LensClamps } from './clampLens';
 export { coerceRule } from './coerceRule';
 export { createLens } from './createLens';
 export type { RuleDescription } from './describeRule';

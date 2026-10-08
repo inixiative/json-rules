@@ -29,6 +29,8 @@ export type VisitEffect = {
   /** The chain index of the earliest layer that declared each source's label / axes (keyed by
    *  `declaredKey`): every layer after it that hides one of those columns drops it. */
   sourceDeclaredAt: Map<string, number>;
+  /** Fields whose path source points at the model's own source (`from: 'mapDefaults'`). */
+  sourcesFromMapDefaults: Set<string>;
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -41,7 +43,7 @@ export const isSourceSpec = (v: SourceEntry): v is SourceSpec =>
   typeof v === 'object' &&
   v !== null &&
   !Array.isArray(v) &&
-  ('where' in v || 'label' in v || 'groupBy' in v);
+  ('where' in v || 'label' in v || 'groupBy' in v || 'from' in v);
 
 /** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
 export const normalizeSource = (v: SourceEntry): SourceSpec => {
@@ -157,6 +159,7 @@ const accumulateInto = (
       }
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);
+      if (spec.from === 'mapDefaults') out.sourcesFromMapDefaults.add(field);
     }
   }
 };
@@ -176,6 +179,7 @@ export const resolveVisit = (
     sourceLabels: new Map(),
     sourceGroupBys: new Map(),
     sourceDeclaredAt: new Map(),
+    sourcesFromMapDefaults: new Set(),
     relations: new Map(),
   };
 
@@ -256,6 +260,26 @@ export const resolveVisit = (
 
   return out;
 };
+
+/** Whether some layer's mapDefaults declares the model's own source for `field` — what a
+ *  `from: 'mapDefaults'` path source offers. */
+export const declaresModelSource = (
+  policy: Policy,
+  mapName: string,
+  modelName: string,
+  field: string,
+): boolean => resolveVisit(policy, mapName, modelName, OFF_PATH).sources.has(field);
+
+/** A `from: 'mapDefaults'` path source whose model declares no source of its own. */
+export const undeclaredModelSource = (
+  path: string,
+  mapName: string,
+  modelName: string,
+  field: string,
+): Error =>
+  new Error(
+    `source '${field}' at '${path}' offers mapDefaults.${mapName}.models.${modelName}.sources.${field}, which no layer declares`,
+  );
 
 export const isFieldVisible = (effect: VisitEffect, fieldName: string): boolean => {
   if (effect.omits.has(fieldName)) return false;

@@ -5,7 +5,7 @@ import { inverseRelation } from '../toPrisma/relationUtils';
 import { allOf, visitCondition } from '../traverse';
 import type { Condition, Row } from '../types';
 import { prefixConditionFields } from './narrowRule.ts';
-import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import { OFF_PATH, type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { ProjectedVisit } from './projectPaths.ts';
 import { projectPaths } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -190,12 +190,12 @@ export type SourcePlan = {
   path: string;
   visit: ProjectedVisit;
   field: string;
+  from?: 'mapDefaults';
   label?: string;
   groupBy?: string[];
   eligibility: Condition[];
 };
 
-/** Every sourced field the lens projects, planned once for both materializers. */
 /**
  * The grants of every visit above a source's own, as conditions on the source's rows: each
  * ancestor's `where` carried down through the inverse of the hop below it — a to-one inverse by
@@ -245,28 +245,33 @@ const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[]
   return carried === null ? [] : [carried];
 };
 
+/** Every sourced field the lens projects, planned once for both materializers. A path source
+ *  carries the grants above it; one that offers its model's own source (`from: 'mapDefaults'`)
+ *  reads that model as the lens narrows it, with nothing carried from the path above. */
 export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   return Object.entries(projectPaths(lensOrNarrowing)).flatMap(([path, visit]) =>
     Object.entries(visit.sources).map(([field, sourceClauses]) => {
       const label = own(visit.sourceLabels, field);
       const groupBy = own(visit.sourceGroupBys, field);
+      const fromModel = Object.hasOwn(visit.sourceFrom, field);
       const relPath = path.split('.').slice(1);
       const guards = traversalGuards(
         policy,
         visit.mapName,
         visit.model,
-        relPath,
+        fromModel ? OFF_PATH : relPath,
         groupBy ?? [],
         sourceClauses,
         label,
       );
       const allowed = own(visit.fields, field)?.values;
-      const above = ancestorGrants(policy, relPath);
+      const above = fromModel ? [] : ancestorGrants(policy, relPath);
       return {
         path,
         visit,
         field,
+        ...(fromModel && { from: 'mapDefaults' as const }),
         ...(label !== undefined && { label }),
         ...(groupBy !== undefined && { groupBy }),
         eligibility: [

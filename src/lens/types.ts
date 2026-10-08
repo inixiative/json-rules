@@ -50,9 +50,13 @@ export type ModelDefaultNarrowing = {
  * Condition; the unconstrained spelling is `true`.
  */
 export type SourceSpec =
-  | { where: Condition; label?: string; groupBy?: string | string[] }
-  | { where?: Condition; label: string; groupBy?: string | string[] }
-  | { where?: Condition; label?: string; groupBy: string | string[] };
+  | { where: Condition; label?: string; groupBy?: string | string[]; from?: never }
+  | { where?: Condition; label: string; groupBy?: string | string[]; from?: never }
+  | { where?: Condition; label?: string; groupBy: string | string[]; from?: never }
+  /** A path source that offers its model's own source — `mapDefaults[map].models[model]
+   *  .sources[field]` for the map and model this path reaches — instead of the rows reachable
+   *  down the path. Its label and axes are the model source's; its `where` can only narrow. */
+  | { from: 'mapDefaults'; where?: Condition; label?: never; groupBy?: never };
 
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
 export type SourceEntry = Condition | SourceSpec;

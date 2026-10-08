@@ -3,11 +3,13 @@ import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
 import { own } from '../own';
 import type { Condition } from '../types.ts';
 import {
+  declaresModelSource,
   isFieldVisible,
   type Policy,
   resolvePolicy,
   resolveVisit,
   sourceReadsVisible,
+  undeclaredModelSource,
   type VisitEffect,
 } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -24,6 +26,9 @@ export type ProjectedVisit = {
   sourceLabels: Record<string, string>;
   /** Per-field option-partition axes for a sourced field (from a SourceSpec's `groupBy`). */
   sourceGroupBys: Record<string, string[]>;
+  /** Sourced fields that offer their model's own source (`from: 'mapDefaults'`) rather than
+   *  the rows reachable down this path. */
+  sourceFrom: Record<string, 'mapDefaults'>;
 };
 
 /** Each declared path's projected visit, keyed by dotted path from the lens model. */
@@ -135,6 +140,14 @@ export const projectPaths = (
         sourceGroupBys[fieldName] = groupBy;
     }
 
+    const sourceFrom: Record<string, 'mapDefaults'> = {};
+    for (const fieldName of effect.sourcesFromMapDefaults) {
+      if (!Object.hasOwn(sources, fieldName)) continue;
+      if (!declaresModelSource(policy, mapName, modelName, fieldName))
+        throw undeclaredModelSource(dottedPath, mapName, modelName, fieldName);
+      sourceFrom[fieldName] = 'mapDefaults';
+    }
+
     out[dottedPath] = {
       mapName,
       model: modelName,
@@ -143,6 +156,7 @@ export const projectPaths = (
       sources,
       sourceLabels,
       sourceGroupBys,
+      sourceFrom,
     };
 
     for (const relField of effect.relations.keys()) {

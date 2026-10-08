@@ -435,10 +435,13 @@ type ModelDefaultNarrowing = {
   sources?: Record<string, SourceEntry>;                  // per-field option sources (see README)
 };
 
-/** A `sources` entry: a bare eligibility Condition, or a spec with a label and/or groupBy. */
+/** A `sources` entry: a bare eligibility Condition, a spec with a label and/or groupBy, or —
+ *  on a path — a pointer to the model's own source in mapDefaults (see README, "Two kinds of
+ *  source"). */
 type SourceEntry =
   | Condition
-  | { where?: Condition; label?: string; groupBy?: string | string[] }; // at least one key
+  | { where?: Condition; label?: string; groupBy?: string | string[] } // at least one key
+  | { from: 'mapDefaults'; where?: Condition };                         // offers the model source
 
 /** Narrowing for a model at a specific traversal path. Adds relations. */
 type ModelNarrowing = ModelDefaultNarrowing & {
@@ -672,7 +675,7 @@ import { projectLens } from '@inixiative/json-rules';
 const projection = projectLens(narrowing);
 // Record<dottedPath, ProjectedVisit> — a plain object
 //   key:   dotted path from the lens anchor, e.g. "Post", "Post.author", "Post.editor"
-//   value: { mapName, model, fields, whereClauses, sources, sourceLabels, sourceGroupBys }
+//   value: { mapName, model, fields, whereClauses, sources, sourceLabels, sourceGroupBys, sourceFrom }
 ```
 
 Pass `{ sourceValues }` (from `materializeSources` / `materializeSourceQuery`) to attach

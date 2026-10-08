@@ -46,7 +46,12 @@ export const materializeSources = (
   rows: readonly Row[],
   options?: CheckOptions,
 ): SourceValues[] =>
-  sourcePlans(lensOrNarrowing).map(({ path, visit, field, label, groupBy, eligibility }) => {
+  sourcePlans(lensOrNarrowing).map(({ path, visit, field, from, label, groupBy, eligibility }) => {
+    // A model source offers rows the fetched collection needn't hold (a tag nobody has yet).
+    if (from)
+      throw new Error(
+        `materializeSources: '${path}.${field}' offers its model's own source, which a fetched collection can't hold — query it with toSourceQueries and materializeSourceQuery.`,
+      );
     const where = allOf(eligibility);
     const byKey = new Map<string, SourceOption>();
     for (const row of rowsAtPath(rows, path)) {

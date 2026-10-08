@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.3.0 — read a value through a lens
+
+- **`readLensValue(lens, row, path, options?)`**: one value off a row as the lens shows it. The
+  path is gated by the walk `validateRuleInLens` uses (hidden / missing / past a column refused);
+  each row on the way, the root included, is checked against its visit's grants, so a row a grant
+  hides reads `null`; only own properties are read, into Json too; a path ending on a relation or
+  crossing a list is refused. First consumer: template's email interpolation, which read token
+  values with lodash `get` over rows `projectRows` had cut.
+
 ## 3.2.0 — compile and fetch under a lens
 
 Additive. Each function replaces code template wrote around the lens.

@@ -833,7 +833,7 @@ Lens & bridges:
 - `createLens`, `storeLens`, `composeLens`, `StoredLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`, `getLensRoot`
-- `projectLens`, `walkLensPath`, `describeRule`, `describeRuleSources`
+- `projectLens`, `walkLensPath`, `readLensValue`, `LensValue`, `describeRule`, `describeRuleSources`
 - `toLensSelect`, `projectRows`, `LensSelect`, `LensRelationSelect`, `LensSelectOptions`, `ProjectRowsOptions`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
 - `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`
@@ -1085,6 +1085,7 @@ Composition across chained narrowings is pure intersection. `where` clauses are 
 | `describeRule(rule, lens)` | `{ sources, bridgesCrossed, supportedTargets, errors }`: the maps a rule reads, whether it crosses a bridge, which of `check` / `toPrisma` / `toSql` can run it (by the rule's shape, as `validateRule` reads it — a compiler may still refuse a field's kind, such as a date rule on a String column on Prisma), and the lens gate's `ValidationIssue`s. For routing and UX; `validateRuleInLens` stays the gate. |
 | `getLensRoot(lensOrNarrowing)` | The base lens a narrowing chain is rooted at; a lens is its own. Throws on a cyclic chain. |
 | `walkLensPath(lens, path)` | Resolves one dotted path through the lens hop by hop: `{ outcome: 'resolved', hops, terminal, jsonSubPath }`, or `hidden` / `missing` / `pastScalar` with the failing `index`. |
+| `readLensValue(lens, row, path, options?)` | One value off a row, as the lens shows it: `{ ok: true, value }`, or `{ ok: false, reason }` — `hidden` / `missing` / `pastScalar` (the walk `validateRuleInLens` gates a field with), `relation` (the path ends on rows, not a value) or `list` (it crosses a to-many). Each row on the way, the root included, is checked against its visit's grants: one a grant hides, or a missing one, reads `null`. Only own properties are read, into a Json column too. `options` is what each grant is checked with (`now`, `bindings`). For values a template interpolates. |
 | `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the grant goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
 

@@ -98,16 +98,17 @@ describe('Logical Operators Examples', () => {
     expect(check({ any: [false, true] }, {})).toBe(true);
   });
 
-  test('[P1] checkArray reads from data (current element), not always root context', () => {
-    // In a nested all, data is the current element. checkArray should use data.
+  test('[P1] checkArray reads from the current element, not the root row', () => {
+    // Inside an array, a nested all's field reads the element: the root row has no 'items'.
     const rule = {
-      all: [{ field: 'items', arrayOperator: ArrayOperator.notEmpty }],
+      field: 'groups',
+      arrayOperator: ArrayOperator.all,
+      condition: { all: [{ field: 'items', arrayOperator: ArrayOperator.notEmpty }] },
     };
-    // data = element with its own 'items'; context = root (no 'items')
-    const element = { items: ['a', 'b'] };
-    const rootContext = { noItems: [] } as unknown as typeof element;
-    expect(check(rule as Parameters<typeof check>[0], element, { context: rootContext })).toBe(
-      true,
-    );
+    const root = { noItems: [], groups: [{ items: ['a', 'b'] }, { items: ['c'] }] };
+    expect(check(rule as Parameters<typeof check>[0], root)).toBe(true);
+    expect(
+      check(rule as Parameters<typeof check>[0], { ...root, groups: [{ items: [] }] }),
+    ).not.toBe(true);
   });
 });

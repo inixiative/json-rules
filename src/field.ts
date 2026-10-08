@@ -135,7 +135,6 @@ export const applyCoercion = (
 export const checkField = (
   condition: Rule,
   scopes: Scopes,
-  context: unknown,
   bindings?: Record<string, RuleValue>,
   config: DateConfig = {},
   // A computed left-hand side (an aggregate) in place of the field's value.
@@ -147,8 +146,7 @@ export const checkField = (
   // Only a DateTime coercion reads the zone.
   const zone =
     kind === 'DateTime'
-      ? resolveDateConfig(config, (source) => readValueSource(source, scopes, context, bindings))
-          .timeZone
+      ? resolveDateConfig(config, (source) => readValueSource(source, scopes, bindings)).timeZone
       : DEFAULT_ZONE;
   // An absent path reads as NULL, as a column does on the compiled rails.
   const fieldValue = applyCoercion(fromBigInt(raw), kind, zone);
@@ -157,14 +155,9 @@ export const checkField = (
   const needsValue = !NO_VALUE_OPERATORS.includes(condition.operator);
   const value = needsValue
     ? shift(
-        applyCoercion(
-          fromBigInt(readValueSource(condition, scopes, context, bindings) ?? null),
-          kind,
-          zone,
-        ),
+        applyCoercion(fromBigInt(readValueSource(condition, scopes, bindings) ?? null), kind, zone),
         condition,
         scopes,
-        context,
         bindings,
       )
     : undefined;
@@ -288,11 +281,10 @@ const shift = (
   value: unknown,
   condition: Rule,
   scopes: Scopes,
-  context: unknown,
   bindings?: Record<string, RuleValue>,
 ): unknown => {
   if (condition.offset === undefined) return value;
-  const amount = offsetAmount(readValueSource(condition.offset, scopes, context, bindings));
+  const amount = offsetAmount(readValueSource(condition.offset, scopes, bindings));
   return amount === null ? null : addOffset(value, amount);
 };
 

@@ -1,6 +1,6 @@
 # Lens deep-dive guide
 
-> The Lens primitive as of 3.2. For library basics (operators, `check()`,
+> The Lens primitive as of 3.4. For library basics (operators, `check()`,
 > `toPrisma()`, `toSql()`, bridges, multi-source data evaluation), see the
 > [README](../README.md).
 
@@ -16,6 +16,37 @@ visible, and these are the rows in scope, *anywhere this model is reached.*"
 injects the scope where clauses at the *right anchor points* in the rule tree
 so the resulting query/check operates only on rows the lens admits.
 
+### Layers only get darker
+
+A lens is a stack of filters. Each layer may only narrow what the layers above it show, never
+widen it, so layers compose and the result is monotonic: adding a layer can only take away.
+Stacking layers is the point.
+
+One stack answers every posture, and every layer filters every posture:
+
+| Posture | Calls |
+| --- | --- |
+| reason | the gate: `validateRuleInLens`, and `toPrisma` / `toSql` with `{ lens }` |
+| fetch | `toPrisma(true, { lens })` + `toLensSelect` + `projectRows` |
+| read | `readLensValue` |
+
+Postures may differ in what they see: grants reason over columns a viewer never gets back, and
+`projectRows({ keepGrantColumns: true })` output is for an in-memory re-check only.
+
+Each layer works on its parent's projection: it may only mention — pick, omit, restate, grant
+on — what its parent shows. The base lens is the menu: every column, no relation turned on.
+
+What one layer may do, given the layers above it (layer 1 is the first narrowing over the base):
+
+| Part | Composes | A layer may |
+| --- | --- | --- |
+| `picks` / `omits` / `enumPicks` / `enumOmits` | intersect (omits union) | only hide more; naming what an ancestor hid is an error. `picks` names columns only (a relation in it is `wrong_kind`); `omits` may name a relation, beside `picks` too |
+| `relations` (turning on) | exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ = exposedₖ₋₁ ∧ ¬ layer k hides it | layer 1: turn on any relation, along the path (`root.relations`) or at a model default (`mapDefaults…models.M.relations`). Later layers: hide it with `omits`, or restate one the parent shows to narrow that hop (else `not_visible`); a restatement hides nothing else |
+| model-default relations | each edge `Model.relation` once per path | spell deeper recursion under `root.relations`; the cap holds for every posture |
+| `where` grants | AND at their anchor | only add. Layer 1's may read any relation on the schema; a later layer's only what its parent shows |
+| `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a grant (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
+| `from: 'mapDefaults'` pointers | — | escape only their own layer's path grants; every other layer's still apply |
+
 ## 2. Two kinds of narrowing
 
 The most important thing to internalize: a `LensNarrowing` contains two distinct
@@ -27,7 +58,7 @@ to write a lens that "works" but leaks scope.
 `picks` / `omits` / `enumPicks` / `enumOmits` control the **type surface**. The
 SDK, the AI, the OpenAPI emission — none of them can *mention* a narrowed-away
 field or enum value. `projectLens(lens)` produces the path-keyed projection
-that reflects this surface, with each declared path getting its own resolved
+that reflects this surface, with each shown path getting its own resolved
 narrowing.
 
 ### Data narrowing — which *rows* are in scope
@@ -67,6 +98,60 @@ The surface narrowing means a rule like `{ field: 'deletedAt', operator: 'exists
 will be rejected by `validateRuleInLens` (the field isn't in the projected
 surface). The scope narrowing leaves the field visible but guarantees that every
 rule executed against the lens runs over non-deleted rows.
+
+### Relations — fields, off by default
+
+A relation is a field, and it is off until the first narrowing over the base lens turns it on.
+A bare lens reads its anchor model's own columns and nothing else. Without this, a lens that
+shows `org` would hand a rule the full map any model reaches — `org.parent.users.org…`, back and
+forth through every relation.
+
+Two ways to turn one on, both through the relation object, never `picks`:
+
+```ts
+const n: LensNarrowing = {
+  parent: lens, // anchor: User
+  // along the path: org at the root, parent at org
+  root: { relations: { org: { relations: { parent: {} } } } },
+  // at the model default: users wherever Org is visited
+  mapDefaults: { prisma: { models: { Org: { relations: { users: {} } } } } },
+};
+// accepted: org.name, org.parent.name, org.users.name, { field: 'org', operator: 'exists' }
+// refused (not_in_lens, walkLensPath 'hidden'): posts.title, org.parent.parent.name
+```
+
+The relation object carries that hop's narrowing — `where`, `picks` / `omits` of the target's
+columns, further `relations`. On a model default it narrows the hop wherever the model is
+visited, and may nest (`Org.relations.users.relations.posts` turns posts on below Org.users only).
+
+**Each edge once per path.** A relation turned on at a model default crosses each edge
+(`Model.relation`) at most once along a path. With `User.org` and `Org.users` on at the defaults,
+`org.users.name` resolves and `org.users.org` does not — `User.org` is already on the path —
+unless the path is spelled under `root.relations` (`org: { relations: { users: { relations: {
+org: {} } } } }`); a spelled path is always followed. The cap lives in the one walk every posture
+shares, so the gate, `walkLensPath`, `readLensValue`, the projections, the sources, the fetch and
+`validateNarrowing` agree, and each ends.
+
+What turning on governs:
+
+- **Everything a rule reads.** A `field`, a value-side `path` or `$` ref, an offset or magnitude
+  ref, an `orderBy` / aggregate field, and presence tests (`exists` / `notExists`) on the relation
+  itself. A relation that is off is `hidden` — `walkLensPath` reports it, `readLensValue` refuses
+  with reason `hidden`, the gate with `not_in_lens`, and `toPrisma` / `toSql` `{ lens }` throw.
+- **What a lens exposes and fetches.** `projectLens` lists a relation field only where it is on and
+  follows only those; `toLensSelect` opens only those, and `projectRows` keeps only those.
+- **Source labels and axes.** A dotted `label` or `groupBy` crosses only relations shown at every
+  visit where the source is projected — a model source in `mapDefaults` included.
+
+Later layers:
+
+- **Narrow, never turn on.** A later layer may `omits: ['org']` (the next layer can't turn it back
+  on), or restate `relations.org = { where }` to add a grant on that hop — a restatement hides
+  nothing else. Naming a relation its parent doesn't show is `not_visible`, and does nothing at
+  runtime.
+- **Grant on what the parent shows.** A later layer's `where` (and source eligibility `where`)
+  may cross only relations its parent shows; otherwise a delegate's grant would probe what it
+  can't see. Layer 1's grants read the schema.
 
 ## 3. The three anchor layers for `where`
 
@@ -127,7 +212,7 @@ For "scope the lens itself" use `n1` (`root.where`).
 This is the case anchored composition exists for. Consider:
 
 - Schema: `User { comments: Comment[] }`, `Comment { body, deletedAt }`.
-- Lens scope: `mapDefaults.prisma.models.Comment.where = { deletedAt isEmpty }`.
+- Lens scope: `root.relations.comments` declared, `mapDefaults.prisma.models.Comment.where = { deletedAt isEmpty }`.
 - User rule: `comments.all(body matches /foo/)`.
 
 **The intent**: "Every comment that the user can see matches `foo`." The
@@ -225,6 +310,9 @@ only further restrict what the layers above admit.
 - `enumOmits`: per-field union
 - `where`: collected and AND'd at the anchor (across all layers contributing a where to the same anchor)
 - `defaults` + path-specific intersect cleanly: both apply, both narrow
+- `relations`: turned on by the first narrowing only (its path tree and model defaults); every
+  layer's `omits` hides one. A later layer's relation object restates a relation its parent shows
+  to narrow that hop, and hides nothing else.
 
 `validateNarrowing()` enforces strict inheritance at construction time. Each
 layer can mention only items still visible from layers above *plus same-layer
@@ -241,9 +329,20 @@ assertValidNarrowing(child);
 // root.picks: 'password' was omitted by ancestor
 ```
 
+Relations work the same way: a later layer that names a relation its parent doesn't show is an
+error, and `picks` naming a relation is one too.
+
+```ts
+// withOrg = { parent: lens, root: { relations: { org: {} } } }
+validateNarrowing({ parent: withOrg, root: { relations: { org: { relations: { parent: {} } } } } });
+// { ok: false, errors: [{ path: 'root.relations.org.relations', code: 'not_visible', ... }] }
+validateNarrowing({ parent: lens, root: { picks: ['id', 'org'] } });
+// { ok: false, errors: [{ path: 'root.picks', code: 'wrong_kind', ... }] }
+```
+
 The codes are `not_in_lens`, `not_visible`, `conflicting_selection`, `wrong_kind`,
-`value_not_allowed`, `invalid_source` and `invalid_binding`, plus the lens gate's own
-codes for a `where`.
+`value_not_allowed`, `invalid_source` and `invalid_binding`, plus the lens gate's own codes for a
+`where`.
 
 The strict check means you find bad lens code at construction, not at query
 time with a silently empty result.
@@ -251,7 +350,7 @@ time with a silently empty result.
 `projectLens()` is the projection primitive. A model-keyed projection can't
 represent "User looks different at `sourceUser` vs `targetUser`": two sibling
 relation paths targeting the same model collapse into one entry. `projectLens`
-returns a plain `Record<dottedPath, ProjectedVisit>`, so each declared path keeps
+returns a plain `Record<dottedPath, ProjectedVisit>`, so each shown path keeps
 its own resolved narrowing. See section 10 for the API.
 
 ## 6. Defaults vs path-specific
@@ -445,7 +544,7 @@ type SourceEntry =
 
 /** Narrowing for a model at a specific traversal path. Adds relations. */
 type ModelNarrowing = ModelDefaultNarrowing & {
-  relations?: Record<string, ModelNarrowing>;             // descend further
+  relations?: Record<string, ModelNarrowing>;             // the relations a rule may cross from here
 };
 
 /** Narrowing for an enum *type* (anywhere the enum is referenced in this map). */
@@ -539,13 +638,14 @@ import { Operator } from '@inixiative/json-rules';
 
 const narrowing: LensNarrowing = {
   parent: lens,
+  root: { relations: { posts: {} } }, // rules may cross User.posts, and nothing else
   mapDefaults: {
     prisma: {
       models: {
         // every User row visited, anywhere, must match tenantId
         User: {
           omits: ['deletedAt'], // schema: hide the field too
-          where: { field: 'tenantId', operator: Operator.equals, path: 'tenantId' },
+          where: { field: 'tenantId', operator: Operator.equals, bind: 'tenantId' },
         },
         // every Post: not deleted
         Post: {
@@ -596,6 +696,7 @@ It walks the rule AST per-path, resolves every field against the projected
 surface at the right visit, and reports:
 
 - field paths that don't resolve through the narrowed lens
+- relations a path crosses that the lens doesn't turn on (`not_in_lens`)
 - enum values not in the allowed set
 - nested-condition fields validated against the *relation target*, not the
   lens root
@@ -668,7 +769,7 @@ const where = await executePrismaPlan(plan, { post: prisma.post });
 ```
 
 `{ lens }` does all of it in one call: the rule gated by the lens (a rule it refuses throws; a
-bare value `path` is the caller's context on these rails, not a column), narrowed by it, and
+bare value `path` is a root-row column, gated like a field), narrowed by it, and
 compiled against its base lens (`getLensRoot`) and that lens's `mapName` / `model`. `toSql` takes it the same way. Passing `lens`
 with `map`, `mapName` or `model` throws.
 
@@ -679,22 +780,22 @@ const plan = toPrisma(anyPublishedRule, { lens: narrowing });
 ### Fetching rows under a lens
 
 `toLensSelect(narrowing, options?)` gives the `findMany` `select` for the rows a lens shows: each
-projected path's visible columns, the relations its declared paths open, and every column a
-`where` on the way reads. A to-many relation carries its grants as its `where`, unless a grant
-reads that list — a grant reads a list whole, as the database does. `rules` (on both calls) opens
-each relation the rules you'll re-check read past the declared paths, grants applied. `projectRows(
-narrowing, rows, options?)` cuts fetched rows to what the lens shows: hidden columns and relations
-removed, a row a `where` hides dropped (a to-one row becomes `null`). With
+shown visit's visible columns and the relations turned on, and every column a `where` on the way
+reads. A relation that is off is not fetched. A to-many
+relation carries its grants as its `where`, unless a grant reads that list — a grant reads a list
+whole, as the database does. `projectRows(narrowing, rows, options?)` cuts fetched rows to what the
+lens shows: hidden columns, and relations that are off or omitted, removed, a row a `where` hides
+dropped (a to-one row becomes `null`). With
 `keepGrantColumns: true` it keeps the columns those `where`s read, and a hidden to-one row, or a hidden row of a list a grant reads, as
 those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the grants as the
-database does, for a rule passed in `rules` (or one reading only the declared paths); that output carries hidden values and is never for a viewer. See the README,
+database does, for any rule the lens admits; that output carries hidden values and is never for a viewer. See the README,
 "Fetching Under a Lens".
 
 ```ts
 const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
-const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now, rules: [rule] }) });
+const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now }) });
 const shown = projectRows(narrowing, rows, { now });
-const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, rules: [rule], now });
+const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, now });
 ```
 
 ### `projectLens(lens)` — path-keyed projection
@@ -722,7 +823,7 @@ Sibling paths to the same model are independent — `Post.author` and
 foundation for any path-aware consumer: validation whitelists, SDK schema
 generation, search-field enumeration.
 
-Example — enumerate all reachable scalar/enum paths through the lens:
+Example — enumerate every scalar/enum path the lens declares:
 
 ```ts
 const projection = projectLens(lens);
@@ -753,8 +854,8 @@ The per-path counterpart of `projectLens`: the walk `validateRuleInLens`
 gates a rule's `field` with, exposed for consumers that resolve paths of their
 own — template tokens, loop bindings, presence guards. It verifies as it walks:
 every hop is checked against the narrowing at that visit, so `hidden` is a
-column the model has but the narrowing does not expose there, `missing` a
-column (or model) the map does not have, `pastScalar` a segment after a scalar.
+column the model has but the narrowing does not expose there (or a relation it
+doesn't turn on there), `missing` a column (or model) the map does not have, `pastScalar` a segment after a scalar.
 A path that continues below a Json column resolves at the column with the
 remainder in `jsonSubPath`, the same boundary `check`/`toPrisma`/`toSql`
 resolve at evaluation time. Each hop carries its `FieldMapEntry`, so a consumer
@@ -775,19 +876,28 @@ const surface = projectLens(narrowing, { by: 'model' }); // a Lens — maps inta
 ```
 
 It is the **leak-safe server→client surface**. A field appears on a model iff
-it is visible on *at least one* reachable, narrowed path — root applied at the
-anchor, path-specific narrowing along declared relation paths, `mapDefaults`
-everywhere else, unioned per model. Fields hidden on every path (including those
+it is visible on *at least one* shown path — root applied at the anchor,
+path-specific narrowing and `mapDefaults` along each relation turned on,
+unioned per model — and a relation field only where it is on. A model no
+relation reaches is absent. A bare lens projects its anchor model's columns
+alone; a surface spanning several models (a synthetic root whose relations lead
+to each slot) turns each slot on under `root.relations`. Fields hidden on every path (including those
 hidden only by `root`) are absent, so it never exposes the raw, un-narrowed lens.
 `where` (data scope) is dropped, and the emitted enum registry carries only
-exposed values. The traversal is cycle-safe, so recursive schemas
-(`User → Org → members(User) → …`) terminate.
+exposed values. A model-default relation crosses each edge once per path, so
+recursive schemas (`User → Org → members(User) → …`) project only as deep as
+that, or as a spelled path goes.
 
 > **Lens vs Projection.** Both derive from a lens, but they are different shapes:
 > a **Lens** keeps its maps (the model→field→model graph) and is navigable; a
 > **Projection** (`projectLens`) is a path-keyed read that has flattened the
 > graph away. `projectLens(lens, { by: 'model' }): Lens`; `projectLens(lens): Projection`.
 > Pair them when both navigation *and* per-path divergence matter.
+>
+> **A surface is not a gate.** The Lens `by: 'model'` returns carries maps, not narrowing: used as a
+> lens itself it is a bare lens, which declares no relation, so `validateRuleInLens`, `coerceRule`,
+> `describeRule` and `{ lens }` compiles against it refuse or skip every relation path. Gate, coerce
+> and describe against the narrowing the surface was projected from.
 
 > **Trust boundaries.** `projectLens(…, { by: 'model' })` strips `where` because the client never
 > executes the rule. A server→subtenant handoff is different: the subtenant *does*
@@ -844,6 +954,30 @@ narrows for you; with a bare `map`, nothing does. Treat validate → apply (or
 `{ lens }`) as the bottleneck for every rule entering execution.
 
 ## 12. Migration
+
+### To 3.4
+
+**Relations are off until turned on.** Turn on every relation you cross — in rules, value refs,
+source labels and axes, reads and fetches — with `relations`, on the first narrowing over the base
+lens: along the path (`root.relations`, one level per hop) or at the model default
+(`mapDefaults…models.M.relations`, wherever M is visited; each edge once per path). Remove
+relation names from `picks` (`wrong_kind` now):
+
+```ts
+// before: picking org made org.parent.name reachable whenever Org's fields were visible
+{ parent: lens, root: { picks: ['id', 'org'] } }
+// 3.4
+{ parent: lens, root: { picks: ['id'], relations: { org: { relations: { parent: {} } } } } }
+```
+
+A later layer can't turn a relation on — move turn-ons to the first narrowing — and its grants
+read only what its parent shows. `toLensSelect` and `projectRows` no longer take `rules`, and no
+longer fetch or keep a relation that is off.
+
+**`context` is gone.** Caller values are binds (`{ bind }`; `check(…, { bindings })`, `bindRule`
+before compiling). A bare `path` is a root-row column on every rail: `check()` reads the row,
+`toSql` compiles a column, `toPrisma` a Prisma field reference between columns of the same model
+and type, else it throws. `timeZone` is a string or a `{ bind }`.
 
 ### To 3.0
 
@@ -1021,6 +1155,7 @@ import { Operator } from '@inixiative/json-rules';
 
 const buildNarrowing = (currentTenantId: string): LensNarrowing => ({
   parent: lens,
+  root: { relations: { posts: {} } },
   mapDefaults: {
     prisma: {
       models: {

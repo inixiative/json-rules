@@ -8,11 +8,11 @@ export type Lens = FieldMapSet & {
 
 /**
  * Narrowing applied wherever a model appears (intrinsic to the model).
- * Has no `relations` because relations are path-specific by definition.
  *
  * Two kinds of narrowing live here:
- * - SCHEMA narrowing (picks/omits/enumPicks/enumOmits): controls what's visible
- *   in the type surface. AI/SDK consumers can't see narrowed-away fields.
+ * - SCHEMA narrowing (picks/omits/enumPicks/enumOmits, relations): controls what's visible in the
+ *   type surface. AI/SDK consumers can't see narrowed-away fields. `picks` names columns only;
+ *   a relation is a field turned on through `relations`.
  * - DATA narrowing (where): controls which ROWS are in scope. Filter-first
  *   semantic, anchored to the model. Under arrayOperator: 'all', it becomes the window filter
  *   (filter-first) — see narrowRule.
@@ -39,6 +39,14 @@ export type ModelDefaultNarrowing = {
    * via `mapDefaults`, path-specific via `root`/`relations`); a later layer's `label` wins.
    */
   sources?: Record<string, SourceEntry>; // fieldName → eligibility where | SourceSpec
+  /**
+   * Relations are fields, off by default. A key here turns that relation on at this node — on a
+   * path node, at that visit; on a model default, wherever the model is visited — and its value is
+   * that hop's narrowing (`where`, `picks`/`omits` of the target's columns, further `relations`).
+   * Only the first narrowing over the base lens turns a relation on; a later layer may only narrow
+   * one its parent shows. Grants (`where`) may read any relation.
+   */
+  relations?: Record<string, ModelNarrowing>;
 };
 
 /**
@@ -61,10 +69,8 @@ export type SourceSpec =
 /** A `sources` entry: a bare eligibility `Condition`, or a richer `SourceSpec`. */
 export type SourceEntry = Condition | SourceSpec;
 
-/** Narrowing for a model at a specific traversal path. Adds relations to the default shape. */
-export type ModelNarrowing = ModelDefaultNarrowing & {
-  relations?: Record<string, ModelNarrowing>;
-};
+/** Narrowing for a model at a specific traversal path: the same shape as a model default. */
+export type ModelNarrowing = ModelDefaultNarrowing;
 
 /** Narrowing for an enum type (applies anywhere the enum is referenced). */
 export type EnumNarrowing = {
@@ -72,7 +78,7 @@ export type EnumNarrowing = {
   omits?: readonly string[];
 };
 
-/** Applies-everywhere narrowings for one map — per-model (no relations) + per-enum-type. */
+/** Applies-everywhere narrowings for one map — per-model + per-enum-type. */
 export type NarrowingDefaults = {
   models?: Record<string, ModelDefaultNarrowing>;
   enums?: Record<string, EnumNarrowing>;
@@ -82,8 +88,8 @@ export type LensNarrowing = {
   // The composed form: the layer above as an object. A database stores layers as StoredLens records.
   parent: Lens | LensNarrowing;
   /**
-   * Path-specific narrowing anchored at (lens.mapName, lens.model). Descends via
-   * `.relations` and may cross maps through bridge relations.
+   * Path-specific narrowing anchored at (lens.mapName, lens.model). Descends via `.relations` —
+   * which turns those relations on — and may cross maps through bridge relations.
    */
   root?: ModelNarrowing;
   /**

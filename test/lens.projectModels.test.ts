@@ -39,14 +39,25 @@ const socialMap: FieldMap = {
 };
 
 describe('projectModels — reachability', () => {
-  test('keeps the entrypoint and all reachable models, drops unreachable ones', () => {
+  test('keeps the entrypoint and the models its declared relations reach, drops the rest', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const reduced = projectLens(lens, { by: 'model' });
+    const declared: LensNarrowing = {
+      parent: lens,
+      root: { relations: { orgs: { relations: { secrets: {} } } } },
+    };
+    const reduced = projectLens(declared, { by: 'model' });
 
     expect(reduced.mapName).toBe('app');
     expect(reduced.model).toBe('User');
     expect(Object.keys(reduced.maps.app.models).sort()).toEqual(['Org', 'OrgSecret', 'User']);
     expect(reduced.maps.app.models.Unreferenced).toBeUndefined();
+  });
+
+  test('a bare lens exposes its anchor model alone, without its relation fields', () => {
+    const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
+    const reduced = projectLens(lens, { by: 'model' });
+    expect(Object.keys(reduced.maps.app.models)).toEqual(['User']);
+    expect(reduced.maps.app.models.User.fields.orgs).toBeUndefined();
   });
 
   test('prunes the enum registry to enum types still referenced by a visible field', () => {
@@ -56,20 +67,30 @@ describe('projectModels — reachability', () => {
     expect(reduced.maps.app.enums?.Unused).toBeUndefined();
   });
 
-  test('is cycle-safe — User → Org → members(User) → orgs(Org) terminates', () => {
+  test('a declared back-and-forth — User → orgs → members(User) — projects each model once', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const reduced = projectLens(lens, { by: 'model' });
-    // Org.members points back to User, User.orgs points back to Org — both kept once.
+    const declared: LensNarrowing = {
+      parent: lens,
+      root: { relations: { orgs: { relations: { members: {} } } } },
+    };
+    const reduced = projectLens(declared, { by: 'model' });
     expect(reduced.maps.app.models.Org.fields.members.type).toBe('User');
     expect(reduced.maps.app.models.User.fields.orgs.type).toBe('Org');
+    // Org.secrets is visible but never declared: not part of the surface.
+    expect(reduced.maps.app.models.Org.fields.secrets).toBeUndefined();
+    expect(reduced.maps.app.models.OrgSecret).toBeUndefined();
   });
 });
 
 describe('projectModels — model-default narrowing applied', () => {
   test('omitting a field removes it and severs any models only reachable through it', () => {
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const narrowing: LensNarrowing = {
+    const declared: LensNarrowing = {
       parent: lens,
+      root: { relations: { orgs: { relations: { secrets: {} } } } },
+    };
+    const narrowing: LensNarrowing = {
+      parent: declared,
       mapDefaults: {
         app: {
           models: {
@@ -152,7 +173,10 @@ describe('projectModels — multi-source bridges', () => {
       mapName: 'prisma',
       model: 'FanUser',
     });
-    const reduced = projectLens(lens, { by: 'model' });
+    const reduced = projectLens(
+      { parent: lens, root: { relations: { 'salesforce:Contact': {} } } },
+      { by: 'model' },
+    );
 
     expect(reduced.maps.prisma.models.FanUser).toBeDefined();
     expect(reduced.maps.salesforce.models.Contact).toBeDefined();
@@ -208,8 +232,17 @@ describe('projectModels — multi-source bridges', () => {
     // Omit BOTH of the FanUser↔Contact bridge's injected fields. Contact is still
     // reachable via Org's bridge, so both endpoint models survive — but the
     // FanUser↔Contact bridge now has no surviving field and must be dropped.
-    const narrowing: LensNarrowing = {
+    const declared: LensNarrowing = {
       parent: lens,
+      root: {
+        relations: {
+          'salesforce:Contact': {},
+          org: { relations: { 'salesforce:Contact': {} } },
+        },
+      },
+    };
+    const narrowing: LensNarrowing = {
+      parent: declared,
       mapDefaults: {
         prisma: { models: { FanUser: { omits: ['salesforce:Contact'] } } },
         salesforce: { models: { Contact: { omits: ['prisma:FanUser'] } } },
@@ -257,7 +290,10 @@ describe('projectModels — root narrowing must not leak (server→client surfac
 
   test('root picks at the anchor expose only the allow-list', () => {
     const lens = createLens({ maps: { app: acyclicMap }, mapName: 'app', model: 'User' });
-    const narrowing: LensNarrowing = { parent: lens, root: { picks: ['email', 'posts'] } };
+    const narrowing: LensNarrowing = {
+      parent: lens,
+      root: { picks: ['email'], relations: { posts: {} } },
+    };
     const reduced = projectLens(narrowing, { by: 'model' });
     expect(Object.keys(reduced.maps.app.models.User.fields).sort()).toEqual(['email', 'posts']);
     expect(reduced.maps.app.models.Post).toBeDefined(); // posts kept → Post reachable
@@ -266,9 +302,12 @@ describe('projectModels — root narrowing must not leak (server→client surfac
   test('union: a field root-hidden at the anchor still appears if another path exposes it', () => {
     // User cycles back via Org.members, where no narrowing hides password.
     const lens = createLens({ maps: { app: socialMap }, mapName: 'app', model: 'User' });
-    const narrowing: LensNarrowing = { parent: lens, root: { omits: ['password'] } };
+    const narrowing: LensNarrowing = {
+      parent: lens,
+      root: { omits: ['password'], relations: { orgs: { relations: { members: {} } } } },
+    };
     const reduced = projectLens(narrowing, { by: 'model' });
-    // Anchor hides password, but Org.members(User) exposes it → it is legitimately
+    // Anchor hides password, but the declared orgs.members(User) exposes it → it is legitimately
     // in the total exposed surface. Per-path enforcement is artifact #2's job.
     expect(reduced.maps.app.models.User.fields.password).toBeDefined();
   });

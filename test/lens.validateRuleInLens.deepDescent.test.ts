@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
+import type { LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, Operator } from '../src/operator';
 
@@ -30,7 +31,10 @@ const map: FieldMap = {
   },
 };
 
-const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+const lens: LensNarrowing = {
+  parent: createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' }),
+  root: { relations: { posts: { relations: { comments: {} } } } },
+};
 
 describe('validateRuleInLens — deep descent into nested relations', () => {
   test('arrayRule → arrayRule (relation within relation) resolves at each anchor', () => {

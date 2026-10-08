@@ -148,14 +148,12 @@ describe('checkDate — bindable anchoring zone', () => {
     expect(check(rule, data, optional)).toBe(check(rule, data));
   });
 
-  test('a zone read from context', () => {
+  test('a zone is a string or a bind; a path reads the row, which has no one zone', () => {
     expect(
-      check(rule, data, {
-        timeZone: { path: 'user.tz' },
-        context: { user: { tz: 'Asia/Kolkata' } },
-      }),
+      check(rule, data, { timeZone: { bind: 'tz' }, bindings: { tz: 'Asia/Kolkata' } }),
     ).toEqual(check(rule, data, { timeZone: 'Asia/Kolkata' }));
-    expect(() => check(rule, data, { timeZone: { path: '$.tz' } })).toThrow('one per evaluation');
+    for (const path of ['user.tz', '$.tz'])
+      expect(() => check(rule, data, { timeZone: { path } })).toThrow('one per evaluation');
   });
 
   test('a Date-object value is still absolute under a bound zone', () => {

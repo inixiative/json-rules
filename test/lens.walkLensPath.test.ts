@@ -57,14 +57,19 @@ const maps: FieldMapSet['maps'] = {
 
 const bare: Lens = { maps, mapName: 'app', model: 'User' };
 
+const turnedOn: LensNarrowing = {
+  parent: bare,
+  root: { relations: { posts: { relations: { author: {} } }, org: {} } },
+};
+
 const narrowed: LensNarrowing = {
   parent: bare,
-  root: { picks: ['name', 'posts'], relations: { posts: { picks: ['title'] } } },
+  root: { picks: ['name'], relations: { posts: { picks: ['title'] } } },
 };
 
 describe('walkLensPath — one dotted path through the lens, verified hop by hop', () => {
   test('a scalar, a relation terminal, and a bridge into another map all resolve with their hops', () => {
-    const scalar = walkLensPath(bare, 'posts.title');
+    const scalar = walkLensPath(turnedOn, 'posts.title');
     expect(scalar.outcome).toBe('resolved');
     if (scalar.outcome !== 'resolved') return;
     expect(scalar.hops.map((hop) => [hop.field, hop.model, hop.relPath])).toEqual([
@@ -73,11 +78,11 @@ describe('walkLensPath — one dotted path through the lens, verified hop by hop
     ]);
     expect(scalar.terminal.entry.kind).toBe('scalar');
 
-    const relation = walkLensPath(bare, 'posts.author');
+    const relation = walkLensPath(turnedOn, 'posts.author');
     expect(relation.outcome).toBe('resolved');
     if (relation.outcome === 'resolved') expect(relation.terminal.entry.kind).toBe('object');
 
-    const bridged = walkLensPath(bare, 'org.label');
+    const bridged = walkLensPath(turnedOn, 'org.label');
     expect(bridged.outcome).toBe('resolved');
     if (bridged.outcome === 'resolved') expect(bridged.terminal.mapName).toBe('crm');
   });
@@ -91,9 +96,9 @@ describe('walkLensPath — one dotted path through the lens, verified hop by hop
   });
 
   test('missing is a column the model lacks, pastScalar a segment after a scalar — each with the index', () => {
-    expect(walkLensPath(bare, 'posts.nope')).toMatchObject({ outcome: 'missing', index: 1 });
+    expect(walkLensPath(turnedOn, 'posts.nope')).toMatchObject({ outcome: 'missing', index: 1 });
     expect(walkLensPath(bare, 'name.length')).toMatchObject({ outcome: 'pastScalar', index: 0 });
-    expect(walkLensPath(bare, 'posts.title.length')).toMatchObject({
+    expect(walkLensPath(turnedOn, 'posts.title.length')).toMatchObject({
       outcome: 'pastScalar',
       index: 1,
     });
@@ -109,10 +114,20 @@ describe('walkLensPath — one dotted path through the lens, verified hop by hop
     expect(walkLensPath(narrowed, 'posts.title').outcome).toBe('resolved');
   });
 
+  test('hidden is also a relation the lens does not turn on at that visit', () => {
+    expect(walkLensPath(bare, 'posts.title')).toMatchObject({ outcome: 'hidden', index: 0 });
+    expect(walkLensPath(bare, 'org.label')).toMatchObject({ outcome: 'hidden', index: 0 });
+    expect(walkLensPath(turnedOn, 'posts.author.posts')).toMatchObject({
+      outcome: 'hidden',
+      index: 2,
+    });
+  });
+
   test('the gate and the walk agree: a hidden path is a violation, a resolved one is not', () => {
     const rule = (field: string) => ({ field, operator: Operator.exists });
     expect(validateRuleInLens(rule('posts.title'), narrowed).ok).toBe(true);
     expect(validateRuleInLens(rule('posts.author.name'), narrowed).ok).toBe(false);
     expect(validateRuleInLens(rule('meta.settings.theme'), bare).ok).toBe(true);
+    expect(validateRuleInLens(rule('posts.title'), bare).ok).toBe(false);
   });
 });

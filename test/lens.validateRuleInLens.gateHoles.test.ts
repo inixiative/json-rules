@@ -32,6 +32,7 @@ describe('validateRuleInLens — path (RHS) refs are gated', () => {
     },
   };
   const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'Article' };
+  const declared = withParent(lens, { root: { relations: { author: {} } } });
 
   test('non-$ path to an omitted related field → ok:false', () => {
     const n = withParent(lens, { root: { relations: { author: { omits: ['secret'] } } } });
@@ -43,12 +44,17 @@ describe('validateRuleInLens — path (RHS) refs are gated', () => {
 
   test('non-$ path to an IN-lens related field → ok:true (control)', () => {
     const rule: Condition = { field: 'title', operator: Operator.equals, path: 'author.name' };
-    expect(validateRuleInLens(rule, lens).ok).toBe(true);
+    expect(validateRuleInLens(rule, declared).ok).toBe(true);
   });
 
   test('non-$ path to a non-existent field → ok:false', () => {
     const rule: Condition = { field: 'title', operator: Operator.equals, path: 'author.ghost' };
-    expect(validateRuleInLens(rule, lens).ok).toBe(false);
+    expect(validateRuleInLens(rule, declared).errors.map((v) => v.code)).toEqual(['not_in_lens']);
+  });
+
+  test('non-$ path through a relation that is off → ok:false', () => {
+    const rule: Condition = { field: 'title', operator: Operator.equals, path: 'author.name' };
+    expect(validateRuleInLens(rule, lens).errors.map((v) => v.code)).toEqual(['not_in_lens']);
   });
 
   test('$.-prefixed path to an omitted current-element field → ok:false', () => {
@@ -81,6 +87,7 @@ describe('validateRuleInLens — window filter/orderBy are gated', () => {
     },
   };
   const lens: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
+  const declared = withParent(lens, { root: { relations: { posts: {} } } });
   const omitScore = withParent(lens, { root: { relations: { posts: { omits: ['score'] } } } });
 
   test('window filter referencing an omitted element field → ok:false', () => {
@@ -102,7 +109,7 @@ describe('validateRuleInLens — window filter/orderBy are gated', () => {
       filter: { field: 'title', operator: Operator.equals, value: 'x' },
       condition: { field: 'title', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    expect(validateRuleInLens(rule, lens).ok).toBe(true);
+    expect(validateRuleInLens(rule, declared).ok).toBe(true);
   });
 
   test('orderBy on an omitted element field → ok:false', () => {
@@ -124,6 +131,6 @@ describe('validateRuleInLens — window filter/orderBy are gated', () => {
       orderBy: [{ field: 'title', dir: 'asc' }],
       condition: { field: 'title', operator: Operator.equals, value: 'x' },
     } as unknown as Condition;
-    expect(validateRuleInLens(rule, lens).ok).toBe(true);
+    expect(validateRuleInLens(rule, declared).ok).toBe(true);
   });
 });

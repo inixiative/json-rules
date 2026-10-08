@@ -81,6 +81,7 @@ const pathLabeled = (): LensNarrowing =>
         enrichments: {
           picks: ['mapId'],
           sources: { mapId: { label: 'map.definition.label' } },
+          relations: { map: { relations: { definition: {} } } },
         },
       },
     },
@@ -95,7 +96,11 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
     const n = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['mapId'], sources: { mapId: { label: 'map.nope.label' } } },
+          enrichments: {
+            picks: ['mapId'],
+            sources: { mapId: { label: 'map.nope.label' } },
+            relations: { map: {} },
+          },
         },
       },
     });
@@ -113,14 +118,18 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
     const n = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['mapId'], sources: { mapId: { label: 'map.definition' } } },
+          enrichments: {
+            picks: ['mapId'],
+            sources: { mapId: { label: 'map.definition' } },
+            relations: { map: { relations: { definition: {} } } },
+          },
         },
       },
     });
     expect(() => assertValidNarrowing(n)).toThrow(/label must end on a scalar column/);
   });
 
-  test("a hop excluded by an ancestor node's picks is an error", () => {
+  test('a hop the ancestor does not turn on is an error, and the label is never projected', () => {
     const parent = withParent(base, {
       root: { picks: ['id'], relations: { enrichments: { picks: ['mapId'] } } },
     });
@@ -131,11 +140,35 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
+    expect(() => assertValidNarrowing(child)).toThrow(/does not show there/);
+    expect(projectLens(child)['User.enrichments'].sourceLabels).toEqual({});
+  });
+
+  test('a hop an ancestor turns on but hides is an error', () => {
+    const parent = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: { picks: ['mapId'], relations: { map: { relations: { definition: {} } } } },
+        },
+      },
+      mapDefaults: { app: { models: { Enrichment: { omits: ['map'] } } } },
+    });
+    const child = withParent(parent, {
+      root: {
+        relations: {
+          enrichments: { sources: { mapId: { label: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => assertValidNarrowing(child)).toThrow(/does not show there/);
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
     const parent = withParent(base, {
+      root: {
+        relations: { enrichments: { relations: { map: { relations: { definition: {} } } } } },
+      },
       mapDefaults: { app: { models: { FieldDef: { omits: ['label'] } } } },
     });
     const child = withParent(parent, {
@@ -189,6 +222,7 @@ describe('toSourceQueries — dotted label compile', () => {
           enrichments: {
             picks: ['mapId'],
             sources: { mapId: { label: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -226,6 +260,7 @@ describe('toSourceQueries — dotted label compile', () => {
             sources: {
               value: { label: 'map.definition.id', groupBy: 'map.definition.label' },
             },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -246,7 +281,13 @@ describe('toSourceQueries — dotted label compile', () => {
       withParent(base, {
         root: {
           picks: ['id'],
-          relations: { enrichments: { picks: ['value'], sources: { value: spec } } },
+          relations: {
+            enrichments: {
+              picks: ['value'],
+              sources: { value: spec },
+              relations: { map: { relations: { definition: {} } } },
+            },
+          },
         },
         mapDefaults: {
           app: {
@@ -342,6 +383,7 @@ describe('materializeSources — dotted label from an already-fetched collection
           enrichments: {
             picks: ['mapId'],
             sources: { mapId: { label: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },

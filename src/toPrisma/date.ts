@@ -54,7 +54,7 @@ export const buildDateRule = (rule: DateRule, options?: ToPrismaOptions): Prisma
 
 const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown => {
   const config = dateConfigOf(options);
-  const read = prismaRead(options);
+  const read = prismaRead;
   const shift = (instant: Date | null): Date | null =>
     rule.offset === undefined ? instant : offsetDate(instant, rule.offset, options);
   const instantOf = (value: unknown): Date | null => {
@@ -63,7 +63,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
     const expr = resolveExpr(value, read);
     return expr && resolvePointForOperator(expr, rule.dateOperator, config).toDate();
   };
-  const source = () => readSource(rule, options);
+  const source = () => readSource(rule);
   const point = (): Date | null => shift(instantOf(source()));
   const range = (): [Date, Date] | null => {
     const v = source();

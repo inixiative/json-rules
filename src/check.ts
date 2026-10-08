@@ -30,12 +30,12 @@ import type {
 } from './types';
 import { applyWindow } from './window';
 
+/** `bindings`: the caller's values, read by `{ bind }`. The rest is the clock and zone. */
 export type CheckOptions = {
-  context?: CheckData;
   bindings?: Record<string, RuleValue>;
 } & DateConfig;
 
-type EvalOptions = CheckOptions & { context: CheckData; scopes: Scopes };
+type EvalOptions = CheckOptions & { scopes: Scopes };
 
 // Over a root array, every leaf is a fieldless array rule, composed with all / any only.
 const validateRootArrayShape = (rule: Condition): void =>
@@ -57,11 +57,7 @@ export const check = <TData extends CheckData>(
   options?: CheckOptions,
 ): boolean | string => {
   if (Array.isArray(data)) validateRootArrayShape(conditions);
-  return evaluate(conditions, data, {
-    ...options,
-    context: options?.context ?? data,
-    scopes: [data],
-  });
+  return evaluate(conditions, data, { ...options, scopes: [data] });
 };
 
 const evaluate = <TData extends CheckData>(
@@ -84,9 +80,9 @@ const evaluate = <TData extends CheckData>(
     case 'aggregate':
       return checkAggregate(node, opts);
     case 'date':
-      return checkDate(node, opts.scopes, opts.context as Row, opts, opts.bindings);
+      return checkDate(node, opts.scopes, opts, opts.bindings);
     case 'field':
-      return checkField(node, opts.scopes, opts.context as Row, opts.bindings, opts);
+      return checkField(node, opts.scopes, opts.bindings, opts);
     default:
       throw ambiguousCondition();
   }
@@ -198,7 +194,7 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   const sum = numbers.reduce((total, n) => total + n, 0);
   const result = mode === 'sum' || numbers.length === 0 ? sum : sum / numbers.length;
   const labelled = { ...condition, field: `${condition.field} ${mode}` } as unknown as Rule;
-  return checkField(labelled, opts.scopes, opts.context, opts.bindings, opts, { value: result });
+  return checkField(labelled, opts.scopes, opts.bindings, opts, { value: result });
 };
 
 const checkArray = (condition: ArrayRule, opts: EvalOptions): boolean | string => {

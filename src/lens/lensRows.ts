@@ -1,10 +1,13 @@
 import { type CheckOptions, check } from '../check';
+import { isRelationEntry } from '../fieldMap/entry.ts';
+import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
 import { modelOf, own, ownEntry } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
+import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
-import type { Condition, Row } from '../types';
+import type { Row } from '../types';
 import {
   isFieldVisible,
   type Policy,
@@ -19,19 +22,12 @@ import type { Lens, LensNarrowing } from './types.ts';
 export type LensSelect = { [field: string]: true | LensRelationSelect };
 export type LensRelationSelect = { select?: LensSelect; where?: PrismaWhere };
 
-/** `rules`: the rules the rows will be re-checked with — each relation they read past the declared
- *  paths opens as a declared one. The rest is what a grant's compile reads: the clock and context,
- *  never a schema (the lens is it). */
-export type LensSelectOptions = Omit<ToPrismaOptions, 'map' | 'mapName' | 'model' | 'lens'> & {
-  rules?: readonly Condition[];
-};
+/** What a grant's compile reads: the clock, never a schema (the lens is it). */
+export type LensSelectOptions = Omit<ToPrismaOptions, 'map' | 'mapName' | 'model' | 'lens'>;
 
-/** `keepGrantColumns`: keep the columns the lens's `where`s read, though it hides them. `rules`: as
- *  `toLensSelect`'s. The rest is what each `where` is checked with. */
-export type ProjectRowsOptions = CheckOptions & {
-  keepGrantColumns?: boolean;
-  rules?: readonly Condition[];
-};
+/** `keepGrantColumns`: keep the columns the lens's `where`s read, though it hides them. The rest is
+ *  what each `where` is checked with. */
+export type ProjectRowsOptions = CheckOptions & { keepGrantColumns?: boolean };
 
 // The paths a visit must keep, as a tree of segments.
 type PathTree = { [segment: string]: PathTree };
@@ -63,13 +59,9 @@ const grantTree = (policy: Policy, at: MapVisit, below: PathTree | undefined): P
     grantPaths(resolveVisit(policy, at.mapName, at.modelName, at.relPath)),
   );
 
-// A visit the lens projects or a rule reads (`declared`: its relations follow their narrowing), one
-// it shows off a declared path (`shallow`: its columns, no relations), or one only a grant reads
-// (`paths`).
-type Mode = 'declared' | 'shallow' | 'paths';
-
-const ruleReads = (rules: readonly Condition[] | undefined): PathTree =>
-  addPaths({}, (rules ?? []).flatMap(readPaths));
+// A visit the lens shows (`declared`: its visible columns, the relations turned on), or one only a
+// grant reads (`paths`: the columns the grant reads).
+type Mode = 'declared' | 'paths';
 
 const rootVisit = (policy: Policy): MapVisit => ({
   mapName: policy.lens.mapName,
@@ -85,14 +77,6 @@ const childVisit = (
   ...target,
   relPath: [...at.relPath, field],
 });
-
-// The relation a visible field opens: through its declared narrowing or a rule's read, or shallow.
-const openedMode = (mode: Mode, effect: VisitEffect, field: string, read: PathTree | undefined) =>
-  read !== undefined || (mode === 'declared' && effect.relations.has(field))
-    ? 'declared'
-    : mode === 'declared'
-      ? 'shallow'
-      : 'paths';
 
 const grantWhere = (
   policy: Policy,
@@ -115,13 +99,34 @@ const grantWhere = (
   return Object.keys(where).length ? where : undefined;
 };
 
+// The one column a relation that shows none is fetched by: its join key on the related row, else
+// that row's `id`, else its first column — never the whole row, which would fetch what the lens hides.
+const keyColumn = (
+  map: FieldMap | undefined,
+  model: string,
+  field: string,
+  entry: FieldMapEntry,
+): string | undefined => {
+  const target = modelOf(map, entry.type)?.fields ?? {};
+  const column = (name: string | undefined): string | undefined => {
+    const found = name === undefined ? undefined : own(target, name);
+    return found && !isRelationEntry(found) ? name : undefined;
+  };
+  const inverse = map ? inverseRelation(map, model, field, entry) : null;
+  return (
+    column(entry.toFields?.[0]) ??
+    column(inverse?.entry.fromFields?.[0]) ??
+    column('id') ??
+    Object.entries(target).find(([, other]) => !isRelationEntry(other))?.[0]
+  );
+};
+
 const selectAt = (
   policy: Policy,
   at: MapVisit,
   mode: Mode,
   extra: PathTree,
-  reads: PathTree,
-  options: Omit<LensSelectOptions, 'rules'>,
+  options: LensSelectOptions,
 ): LensSelect => {
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
@@ -130,17 +135,18 @@ const selectAt = (
   for (const [field, entry] of Object.entries(fields)) {
     const visible = mode !== 'paths' && isFieldVisible(effect, field);
     const below = own(paths, field);
-    const read = mode === 'paths' ? undefined : own(reads, field);
     // A bridge is another source: nothing a Prisma select can open.
     if ((!visible && below === undefined) || entry.kind === 'bridge') continue;
     if (entry.kind !== 'object') {
       select[field] = true;
       continue;
     }
-    if (mode === 'shallow' && below === undefined && read === undefined) continue;
-    const childMode = visible ? openedMode(mode, effect, field, read) : 'paths';
+    // A relation turned on opens as a shown visit; any other only for the columns a grant reads.
+    const childMode: Mode = visible ? 'declared' : 'paths';
+    // A relation that is off, and that no grant reads, is not fetched.
+    if (childMode === 'paths' && below === undefined) continue;
     const child = childVisit(at, field, { mapName: at.mapName, modelName: entry.type });
-    const childSelect = selectAt(policy, child, childMode, below ?? {}, read ?? {}, options);
+    const childSelect = selectAt(policy, child, childMode, below ?? {}, options);
     // A grant reads a list whole, as the database does: one it reads is fetched unnarrowed.
     const where =
       entry.isList && childMode !== 'paths' && below === undefined
@@ -151,9 +157,13 @@ const selectAt = (
             options,
           )
         : undefined;
-    // A relation that shows no column is fetched whole: Prisma can't select nothing.
-    select[field] = Object.keys(childSelect).length
-      ? { select: childSelect, ...(where && { where }) }
+    // Prisma can't select nothing: a relation that shows no column is fetched by its key alone.
+    const key = Object.keys(childSelect).length
+      ? undefined
+      : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
+    const shown = key === undefined ? childSelect : { [key]: true as const };
+    select[field] = Object.keys(shown).length
+      ? { select: shown, ...(where && { where }) }
       : where
         ? { where }
         : true;
@@ -162,10 +172,9 @@ const selectAt = (
 };
 
 /**
- * Prisma `findMany` args for the rows a lens shows, at its base model: each projected path's
- * visible columns, the relations its declared paths open (a visible relation off them, its columns
- * only), the relations `rules` read past them (opened as declared), and the columns every `where`
- * on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so
+ * Prisma `findMany` args for the rows a lens shows, at its base model: each shown visit's visible
+ * columns and the relations turned on there (one that is off is not fetched), and the
+ * columns every `where` on the way reads, through any relation. A to-many relation carries its visit's grants compiled as its `where`, so
  * related rows come pre-narrowed, unless a grant reads that list (it reads it whole); a to-one relation can't (Prisma
  * takes no `where` there), so `projectRows` drops one its grant hides. The root's own grants are the
  * query's `where`: `toPrisma(rule, { lens })`. Bridges are not selected. A relation grant that needs
@@ -173,12 +182,10 @@ const selectAt = (
  */
 export const toLensSelect = (
   lensOrNarrowing: Lens | LensNarrowing,
-  { rules, ...options }: LensSelectOptions = {},
+  options: LensSelectOptions = {},
 ): { select: LensSelect } => {
   const policy = resolvePolicy(lensOrNarrowing);
-  return {
-    select: selectAt(policy, rootVisit(policy), 'declared', {}, ruleReads(rules), options),
-  };
+  return { select: selectAt(policy, rootVisit(policy), 'declared', {}, options) };
 };
 
 // A relation's value, each related row through `cut`: a list keeps the rows it returns, a single
@@ -211,10 +218,8 @@ const pickPaths = (policy: Policy, at: MapVisit, row: Row, tree: PathTree): Row 
 const cutRow = (
   policy: Policy,
   at: MapVisit,
-  mode: Mode,
   row: Row,
   extra: PathTree,
-  reads: PathTree,
   keepGrants: boolean,
   options: CheckOptions,
 ): Row | null => {
@@ -225,17 +230,14 @@ const cutRow = (
   const out: Row = {};
   for (const [field, entry] of Object.entries(fields)) {
     if (!Object.hasOwn(row, field)) continue;
-    const visible = isFieldVisible(effect, field);
     const below = own(keep, field);
-    const read = own(reads, field);
     const target = relationTargetOf(entry, at.mapName);
     if (!target) {
-      if (visible || below !== undefined) out[field] = row[field];
+      if (isFieldVisible(effect, field) || below !== undefined) out[field] = row[field];
       continue;
     }
     const child = childVisit(at, field, target);
-    if (visible && (mode === 'declared' || read !== undefined)) {
-      const childMode = openedMode(mode, effect, field, read);
+    if (isFieldVisible(effect, field)) {
       // A row its grant hides is still there for a re-check when the database would read it — a
       // to-one row, or a list row a grant reads — as its grant columns alone, so the narrowed
       // rule's grant fails on it while an unnarrowed grant still counts it.
@@ -243,7 +245,7 @@ const cutRow = (
       out[field] = mapRelation(
         row[field],
         (r) =>
-          cutRow(policy, child, childMode, r, below ?? {}, read ?? {}, keepGrants, options) ??
+          cutRow(policy, child, r, below ?? {}, keepGrants, options) ??
           (keepGrants && readWhole
             ? pickPaths(policy, child, r, grantTree(policy, child, below))
             : null),
@@ -256,25 +258,23 @@ const cutRow = (
 };
 
 /**
- * Rows cut to what a lens shows, recursively from its base model: hidden columns and relations
- * removed, and every row a visit's `where` hides gone — a root or list row dropped, a to-one row
+ * Rows cut to what a lens shows, recursively from its base model: hidden columns, and relations
+ * hidden or off, removed, and every row a visit's `where` hides gone — a root or list row dropped, a to-one row
  * null. `keepGrantColumns` also keeps the columns those `where`s read (hidden or not), and a hidden to-one row, or a hidden row of a list a grant
  * reads, as those columns alone, so a later `check(narrowRule(rule, lens), row)` re-tests the
- * grants as the database does — for the rules passed in `rules`, or ones reading only the declared
- * paths. Its output carries hidden values: it's for that re-check, never for
+ * grants as the database does for any rule the lens admits. Its output carries hidden values: it's for that re-check, never for
  * a viewer. The rest of `options` is what each
  * `where` is checked with (`now`, `bindings`). Plain JSON in and out; the input is not mutated.
  */
 export const projectRows = (
   lensOrNarrowing: Lens | LensNarrowing,
   rows: readonly Row[],
-  { keepGrantColumns = false, rules, ...options }: ProjectRowsOptions = {},
+  { keepGrantColumns = false, ...options }: ProjectRowsOptions = {},
 ): Row[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   const root = rootVisit(policy);
-  const reads = ruleReads(rules);
   return rows.flatMap((row) => {
-    const kept = cutRow(policy, root, 'declared', row, {}, reads, keepGrantColumns, options);
+    const kept = cutRow(policy, root, row, {}, keepGrantColumns, options);
     return kept === null ? [] : [kept];
   });
 };

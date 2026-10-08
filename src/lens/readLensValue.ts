@@ -13,7 +13,7 @@ export type LensValue =
 
 /**
  * One value off a row, as the lens shows it: the path walked as `validateRuleInLens` walks a
- * field (a hidden, missing or past-scalar segment is refused), each related row checked against
+ * field (a hidden segment — a column it doesn't keep, a relation it doesn't turn on — or a missing or past-scalar one is refused), each related row checked against
  * its visit's grants, the row itself included (a row a grant hides, or a missing one, reads `null`), and only the row's own
  * properties read, into a Json column too. A path ending on a relation, or crossing a list, names
  * rows rather than a value and is refused. `options` is what each grant is checked with.

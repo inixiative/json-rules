@@ -385,7 +385,11 @@ test("a child's narrowing of a relation below a pointer still guards the label i
     parent: base,
     root: {
       relations: {
-        tagAttachments: { relations: { tag: { sources: { id: { from: 'mapDefaults' } } } } },
+        tagAttachments: {
+          relations: {
+            tag: { sources: { id: { from: 'mapDefaults' } }, relations: { org: {} } },
+          },
+        },
       },
     },
     mapDefaults: { app: { models: { Tag: { sources: { id: { label: 'org.name' } } } } } },
@@ -404,7 +408,9 @@ test("a child's narrowing of a relation below a pointer still guards the label i
       },
     },
   };
+  expect(validateNarrowing(child).ok).toBe(true);
   const query = toSourceQueries(child).find((q) => q.path === PATH);
+  expect(query?.label).toBe('org.name');
   const rows: Row[] = [
     { id: 'open', org: { name: 'o', secret: false } },
     { id: 'hidden', org: { name: 'h', secret: true } },

@@ -39,8 +39,14 @@ describe('projectPaths — picks/omits composition', () => {
   });
 
   test('pure omits at root (no picks anywhere → everything else visible)', () => {
-    expect(fieldsAt(withParent(lens, { root: { omits: ['secret'] } }), 'Post')).toEqual([
+    const turnedOn = { omits: ['secret'], relations: { author: {} } };
+    expect(fieldsAt(withParent(lens, { root: turnedOn }), 'Post')).toEqual([
       'author',
+      'id',
+      'title',
+    ]);
+    // A relation it doesn't turn on is no part of the projection.
+    expect(fieldsAt(withParent(lens, { root: { omits: ['secret'] } }), 'Post')).toEqual([
       'id',
       'title',
     ]);
@@ -53,7 +59,7 @@ describe('projectPaths — picks/omits composition', () => {
   });
 
   test('omits across chain layers union', () => {
-    const n1 = withParent(lens, { root: { omits: ['secret'] } });
+    const n1 = withParent(lens, { root: { omits: ['secret'], relations: { author: {} } } });
     const n2 = withParent(n1, { root: { omits: ['title'] } });
     expect(fieldsAt(n2, 'Post')).toEqual(['author', 'id']);
   });
@@ -92,14 +98,14 @@ describe('projectPaths — picks/omits composition', () => {
     expect(fieldsAt(n, 'Post.author')).toEqual(['name']);
   });
 
-  test('picks at root + relations declared but no nested picks (relation auto-added to picks)', () => {
+  test('picks at root + a relation turned on: picks names columns, the relation shows beside them', () => {
     const n = withParent(lens, {
       root: {
         picks: ['title'],
         relations: { author: {} },
       },
     });
-    // `author` auto-added to picks via augmentPicksWithRelations
+    // `author` is turned on by `relations`; picks never govern a relation
     expect(fieldsAt(n, 'Post')).toEqual(['author', 'title']);
     // Nested visit has no narrowing → all User fields visible
     expect(fieldsAt(n, 'Post.author')).toEqual(['email', 'id', 'name', 'password']);
@@ -107,9 +113,11 @@ describe('projectPaths — picks/omits composition', () => {
 
   test('chain composition + defaults all stack at one path', () => {
     // Layer 1 picks {a,b,c,d}, Layer 2 picks {a,b,c}, defaults omits {b} → final {a,c}
-    const n1 = withParent(lens, { root: { picks: ['id', 'title', 'secret', 'author'] } });
+    const n1 = withParent(lens, {
+      root: { picks: ['id', 'title', 'secret'], relations: { author: {} } },
+    });
     const n2 = withParent(n1, {
-      root: { picks: ['id', 'title', 'author'] },
+      root: { picks: ['id', 'title'] },
       mapDefaults: { prisma: { models: { Post: { omits: ['title'] } } } },
     });
     expect(fieldsAt(n2, 'Post')).toEqual(['author', 'id']);
@@ -117,7 +125,7 @@ describe('projectPaths — picks/omits composition', () => {
 });
 
 describe('projectPaths — a relation the visit hides is not projected', () => {
-  test('a child layer omits a relation the parent declared', () => {
+  test('a child layer omits a relation the parent turned on', () => {
     const parent = withParent(lens, { root: { relations: { author: { picks: ['name'] } } } });
     expect(Object.hasOwn(projectPaths(parent), 'Post.author')).toBe(true);
     const child = withParent(parent, { root: { omits: ['author'] } });

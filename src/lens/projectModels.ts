@@ -1,9 +1,7 @@
 import { endpointKey } from '../fieldMap/endpointKey.ts';
-import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { Bridge, FieldMap, FieldMapEntry, FieldMapSet, SourceOption } from '../fieldMap/types';
-import { relationTargetOf } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
-import { OFF_PATH, type Policy, resolvePolicy, resolveVisit } from './policy.ts';
+import { type Policy, resolvePolicy, shownVisits } from './policy.ts';
 import { type ProjectLensOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -29,8 +27,8 @@ const unionFieldInto = (
   } else if (!entry.values && existing.values) {
     next = { ...next, values: undefined };
   }
-  // A later visit may carry the partition axes an earlier (e.g. off-path) visit
-  // lacked; divergence was already rejected before this merge.
+  // A later visit may carry the partition axes an earlier visit lacked; divergence was
+  // already rejected before this merge.
   if (entry.groupBy !== undefined && next.groupBy === undefined) {
     next = { ...next, groupBy: entry.groupBy };
   }
@@ -57,49 +55,22 @@ export const projectModels = (
   }
 
   const surface = new Map<string, SurfaceModel>();
-  const visitedDeclared = new Set<string>();
-  const visitedOffPath = new Set<string>();
-
-  type Visit = {
-    mapName: string;
-    modelName: string;
-    relPath: readonly string[];
-    declared: boolean;
-  };
-  const queue: Visit[] = [
-    { mapName: lens.mapName, modelName: lens.model, relPath: [], declared: true },
-  ];
-
-  while (queue.length > 0) {
-    const { mapName, modelName, relPath, declared } = queue.shift() as Visit;
+  for (const { at, effect } of shownVisits(policy)) {
+    const { mapName, modelName } = at;
     const model = modelOf(own(lens.maps, mapName), modelName);
     if (!model) continue;
-
     const key = modelKey(mapName, modelName);
-    if (declared) {
-      const dkey = `${key}::${relPath.join('.')}`;
-      if (visitedDeclared.has(dkey)) continue;
-      visitedDeclared.add(dkey);
-    } else {
-      if (visitedOffPath.has(key)) continue;
-      visitedOffPath.add(key);
-    }
-
-    const effect = resolveVisit(policy, mapName, modelName, declared ? relPath : OFF_PATH);
-
     let acc = surface.get(key);
     if (!acc) {
       acc = { mapName, modelName, fields: new Map() };
       surface.set(key, acc);
     }
 
-    const at = { mapName, modelName, relPath: declared ? relPath : OFF_PATH };
     const fields = projectFields(policy, effect, at, model, (field) => {
       const fetched = fetchedByModelField.get(`${mapName}::${modelName}::${field}`);
       return fetched && [...fetched.values()];
     });
     for (const [fieldName, nextEntry] of Object.entries(fields)) {
-      const entry = nextEntry;
       // The surface flattens per model: two paths grouping one field by DIFFERENT axes would
       // union two incompatible partition namespaces — fail loud instead of merging them.
       const axes = nextEntry.groupBy;
@@ -113,26 +84,6 @@ export const projectModels = (
           `projectLens: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
         );
       unionFieldInto(acc.fields, fieldName, nextEntry);
-
-      if (isRelationEntry(entry)) {
-        const target = relationTargetOf(entry, mapName);
-        if (!target) continue;
-        if (declared && effect.relations.has(fieldName)) {
-          queue.push({
-            mapName: target.mapName,
-            modelName: target.modelName,
-            relPath: [...relPath, fieldName],
-            declared: true,
-          });
-        } else {
-          queue.push({
-            mapName: target.mapName,
-            modelName: target.modelName,
-            relPath: [],
-            declared: false,
-          });
-        }
-      }
     }
   }
 

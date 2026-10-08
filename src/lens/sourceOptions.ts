@@ -278,7 +278,7 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
       const above = ancestorGrants(
         pointsFrom === undefined
           ? policy
-          : { lens: policy.lens, chain: policy.chain.filter((_, layer) => layer !== pointsFrom) },
+          : { ...policy, chain: policy.chain.filter((_, layer) => layer !== pointsFrom) },
         relPath,
       );
       return {

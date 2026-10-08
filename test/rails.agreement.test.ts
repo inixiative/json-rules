@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
-import { narrowRule } from '../index';
+import { bindRule, narrowRule } from '../index';
 import { agree, map, openRails, type Rails } from './rails/harness';
 
 // check(), toSql on Postgres and toPrisma on Prisma agree on every rule they all compile.
@@ -36,13 +36,11 @@ describe('an absent to-one relation reads as NULL', () => {
 });
 
 describe('a string operator with nothing to compare against', () => {
-  const missing = { context: {} };
+  const missing = { bind: 'q', bindOptional: true };
   for (const operator of ['contains', 'startsWith', 'endsWith'])
-    test(operator, () =>
-      expectRails({ field: 'name', operator, path: 'missing' }, agree([]), missing),
-    );
+    test(operator, () => expectRails({ field: 'name', operator, ...missing }, agree([])));
   test('notContains keeps the NULL fields only', () =>
-    expectRails({ field: 'name', operator: 'notContains', path: 'missing' }, agree([3]), missing));
+    expectRails({ field: 'name', operator: 'notContains', ...missing }, agree([3])));
 });
 
 describe('Json columns and paths', () => {
@@ -127,7 +125,8 @@ type Case = {
 
 const RELATION_ARRAYS = 'relation arrays are not supported in SQL';
 const RELATION_AGGREGATES = 'cannot aggregate relation lists';
-const NO_COLUMN_COMPARE = 'no column-to-column comparison';
+// Prisma compares a column only with one of its own model and type, without arithmetic.
+const NO_COLUMN_COMPARE = 'compares to a column, which';
 const NO_WEEKDAY = 'has no Prisma form';
 const NY = { timeZone: 'America/New_York' };
 const NOT_FOR_ENUMS = 'does not apply to the enum';
@@ -337,35 +336,36 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'org.id', operator: 'notEquals', bind: 'x', bindOptional: true },
     ids: [1, 2, 3],
   },
-  'a required column equals a context path reading null': {
-    rule: { field: 'id', operator: 'equals', path: 'ctx.missing' },
+  // A bare path is a root-row column: the null it reads is the row's.
+  'a required column equals a nullable column reading null': {
+    rule: { field: 'id', operator: 'equals', path: 'orgId' },
     ids: [],
-    options: { context: { ctx: { missing: null } } },
   },
-  'a required column notEquals a context path reading null': {
-    rule: { field: 'id', operator: 'notEquals', path: 'ctx.missing' },
+  'a required column notEquals a nullable column reading null': {
+    rule: { field: 'id', operator: 'notEquals', path: 'orgId' },
     ids: [1, 2, 3, 4, 5],
-    options: { context: { ctx: { missing: null } } },
   },
   'an aggregate threshold reading null matches nothing': {
     rule: {
       field: 'posts',
       aggregate: { mode: 'sum', field: 'views' },
       operator: 'greaterThan',
-      path: 'ctx.n',
+      bind: 'n',
+      bindOptional: true,
     },
     ids: [],
-    options: { context: { ctx: { n: null } } },
     refuses: { sql: 'relation' },
   },
   'a negated date range missing an end keeps every row': {
-    rule: {
-      if: { field: 'createdAt', dateOperator: 'between', path: 'ctx.range' },
-      then: false,
-      else: true,
-    },
+    rule: bindRule(
+      {
+        if: { field: 'createdAt', dateOperator: 'between', bind: 'range' },
+        then: false,
+        else: true,
+      } as never,
+      { range: [null, '2026-10-05'] },
+    ) as object,
     ids: [1, 2, 3, 4, 5],
-    options: { context: { ctx: { range: [null, '2026-10-05'] } } },
   },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },

@@ -1,5 +1,66 @@
 # Changelog
 
+## 3.4.0 — relations are fields, off by default; `context` removed
+
+Breaking, with no compatibility path (no users).
+
+### Relations
+
+Before, the gate resolved visibility per model: with `root: { picks: ['id', 'org'] }` a rule on
+`org.parent.name` passed because Org's fields were visible — a lens that showed one relation handed
+a rule the whole map, back and forth. The fetch opened such a relation "shallow", and 3.2's `rules`
+option opened whatever re-checked rules read. Now relations are fields, off by default, and every
+posture — the gate, `walkLensPath`, `readLensValue`, the projections, the sources, the fetch —
+reads one exposure from `src/lens/policy.ts`.
+
+- **Off until turned on.** A bare lens reads its anchor's columns only. The first narrowing over
+  the base lens turns a relation on through the relation object — along the path
+  (`root.relations.org`) or at the model default (`mapDefaults…models.Org.relations.users`, which
+  `ModelDefaultNarrowing` now takes, nested relation objects included). A relation that is off is
+  `hidden`: `walkLensPath` / `readLensValue` say so, the gate refuses with `not_in_lens`, `{ lens }`
+  compiles throw, and `projectLens` / `toLensSelect` / `projectRows` leave it out.
+- **Later layers narrow.** exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ =
+  exposedₖ₋₁ ∧ ¬ layer k hides it. A later layer hides a relation with `omits`, or restates one its
+  parent shows to narrow that hop (a restatement hides nothing else); naming one its parent doesn't
+  show is `not_visible`.
+- **`picks` names columns only.** A relation in `picks` is `wrong_kind`; `omits` may name a
+  relation beside `picks`.
+- **Each edge once per path.** A model-default relation crosses each edge `Model.relation` at most
+  once along a path; deeper recursion is spelled under `root.relations`. The cap holds on every
+  posture, so projections and fetches end.
+- **Grants.** The first narrowing's `where`s and source eligibility `where`s may read any relation
+  on the schema; a later layer's only what its parent shows (a delegate can't probe what it can't
+  see).
+- **Sources.** A dotted `label` / `groupBy` crosses only relations shown at each visit it is
+  projected (else `invalid_source`, and the projection drops it); a source keyed on a relation, or
+  a bare `label` naming one, is `wrong_kind`.
+- **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
+  read. The `rules` option and the shallow fetch are removed. A relation that shows no column is
+  selected by its key column alone, never whole.
+
+### `context` removed
+
+`check(rule, data, { context })` (since the first commit) read a bare `path` from a second object, and 3.0 made
+the compilers read it from `options.context` — a second caller-value channel beside binds, which
+`narrowRule` read as a column. It is gone from `CheckOptions`, `ToPrismaOptions` and
+`ToSqlOptions`.
+
+- **Caller values are binds:** `{ bind }`, `check(…, { bindings })`, `bindRule` before compiling.
+  `timeZone` is a string or a `{ bind }`.
+- **A bare `path` is a root-row column on every rail,** gated and narrowed like a field:
+  `check()` reads the root row; `toSql` compiles a column (equality, ordered); `toPrisma` compiles a
+  Prisma field reference (`{ __field }`, resolved by `executePrismaPlan` to
+  `prisma.<model>.fields.<column>`) between two columns of the same model at the same visit (a bare
+  path at the root, `$.` in a relation filter), of exactly the same type, with `equals` /
+  `notEquals` / `lessThan(Equals)` / `greaterThan(Equals)` and no offset — NULL rows as
+  `IS [NOT] DISTINCT FROM`. Anything else throws, and `validateRule(rule, { target: 'toPrisma',
+  map, model })` / `describeRule` report it first. A substring operator against a column throws on
+  both compilers (it would be a LIKE pattern).
+
+Migration: turn on every relation you cross with `relations` (path or mapDefaults) on the first
+narrowing; remove relation names from `picks`; drop `rules` from `toLensSelect` / `projectRows`;
+pass caller values as binds, not `context`.
+
 ## 3.3.1 — browser bundles, own-property reads, CJS types
 
 - **No top-level `node:module` import.** `toPrisma`'s Prisma `AnyNull` lookup imported

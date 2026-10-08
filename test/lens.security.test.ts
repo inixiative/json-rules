@@ -281,9 +281,13 @@ describe('a relation is never read as a value', () => {
 });
 
 describe("an option list on a relation reads only the rows under its ancestors' grants", () => {
+  // The platform layer, the first narrowing, turns the relations on; the delegate sources them.
   const platform: LensNarrowing = {
     parent: lens,
-    root: { where: rule({ field: 'score', operator: 'greaterThan', value: 5 }) },
+    root: {
+      where: rule({ field: 'score', operator: 'greaterThan', value: 5 }),
+      relations: { comments: {}, author: {} },
+    },
   };
   const delegate: LensNarrowing = {
     parent: platform,

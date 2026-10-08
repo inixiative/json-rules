@@ -1,13 +1,13 @@
 import type { FieldMapEntry, ModelEntry, SourceOption } from '../fieldMap/types';
-import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
-import { own } from '../own';
+import type { MapVisit } from '../fieldMap/walk.ts';
+import { modelOf, own } from '../own';
 import type { Condition } from '../types.ts';
 import {
   declaresModelSource,
   isFieldVisible,
   type Policy,
   resolvePolicy,
-  resolveVisit,
+  shownVisits,
   sourceReadsVisible,
   undeclaredModelSource,
   type VisitEffect,
@@ -51,7 +51,7 @@ export type SourceValues = {
 export type ProjectLensOptions = { sourceValues?: readonly SourceValues[] };
 
 /**
- * One visit's fields as the lens exposes them: the visible fields, a value-gated field carrying
+ * One visit's fields as the lens exposes them: the visible columns and the relations turned on, a value-gated field carrying
  * its allowed `values`, fetched source `options` attached, and a grouped source's `groupBy` axes.
  * Both projections build their fields through it.
  */
@@ -96,21 +96,12 @@ export const projectPaths = (
     fetchedByPathField.set(`${sv.path}|${sv.field}`, sv.options);
   }
 
-  const visit = (
-    mapName: string,
-    modelName: string,
-    relPath: string[],
-    dottedPath: string,
-  ): void => {
-    if (Object.hasOwn(out, dottedPath)) return;
-    const model = own(own(policy.lens.maps, mapName)?.models ?? {}, modelName);
-    if (!model) return;
-
-    const effect = resolveVisit(policy, mapName, modelName, relPath);
+  for (const { path: dottedPath, at, effect } of shownVisits(policy)) {
+    const { mapName, modelName } = at;
+    const model = modelOf(own(policy.lens.maps, mapName), modelName) as ModelEntry;
 
     // A sourced field's fetched pairs win; otherwise a value-gated field surfaces its resolved
     // allowed-set as options, so every selectable field exposes `options`.
-    const at = { mapName, modelName, relPath };
     const fields = projectFields(policy, effect, at, model, (field) => {
       const fetched = fetchedByPathField.get(`${dottedPath}|${field}`);
       const values = effect.enumValuesByField.get(field);
@@ -157,18 +148,6 @@ export const projectPaths = (
       sourceGroupBys,
       sourceFrom,
     };
-
-    for (const relField of effect.relations.keys()) {
-      // A relation this visit hides is not projected, as projectModels skips it.
-      if (!isFieldVisible(effect, relField)) continue;
-      const entry = own(model.fields, relField);
-      if (!entry) continue;
-      const target = relationTargetOf(entry, mapName);
-      if (!target) continue;
-      visit(target.mapName, target.modelName, [...relPath, relField], `${dottedPath}.${relField}`);
-    }
-  };
-
-  visit(policy.lens.mapName, policy.lens.model, [], policy.lens.model);
+  }
   return out;
 };

@@ -175,10 +175,12 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
 
-  // A set or a pattern is bound when compiling; one read per row has no SQL form.
+  // A set, a pattern or a substring is bound when compiling (a substring escaped into a LIKE
+  // pattern); one read per row has no SQL form.
   if (
     rhsCol !== undefined &&
-    (SET_OPERATORS.includes(rule.operator) || getValueShape(rule.operator, 'field') === 'pattern')
+    (SET_OPERATORS.includes(rule.operator) ||
+      ['pattern', 'string'].includes(getValueShape(rule.operator, 'field')))
   )
     throw noCompiledForm(
       'toSql',

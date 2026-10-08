@@ -36,7 +36,7 @@ export type {
  * const where = await executePrismaPlan(plan, prisma);
  * await prisma.user.findMany({ where });
  *
- * toPrisma(rule, { lens: narrowing, now }); // gated, narrowed (a bare value path read as context), compiled against the base lens
+ * toPrisma(rule, { lens: narrowing, now }); // gated, narrowed, compiled against the base lens
  * ```
  */
 export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToPrismaResult => {

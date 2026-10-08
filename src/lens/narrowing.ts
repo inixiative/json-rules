@@ -13,8 +13,9 @@ import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
 import {
   allowedEnumValues,
-  augmentPicksWithRelations,
+  crossedBefore,
   declaresModelSource,
+  hiddenHop,
   intersectStringSet,
   isSourceSpec,
   normalizeGroupBy,
@@ -24,10 +25,11 @@ import {
   relationHops,
   resolvePolicy,
   resolveVisit,
+  type ShownVisit,
+  shownVisits,
   sourceReadsVisible,
   undeclaredModelSource,
 } from './policy.ts';
-import { projectPaths } from './projectPaths.ts';
 import type {
   EnumNarrowing,
   LensNarrowing,
@@ -43,8 +45,9 @@ type WhereVisit = { mapName: string; modelName: string; relPath: readonly string
 
 // A where filters incoming rows, so its refs must resolve on the parent surface at the visit it
 // is anchored to — never against this layer's own picks/omits, and never against a re-anchored
-// lens: the policy keeps its real root so a bare `path` ref (check()'s root context) is gated at
-// the lens anchor while `field` and `$.` refs are gated at the visit.
+// lens: the policy keeps its real root so a bare `path` ref (the root row) is gated at
+// the lens anchor while `field` and `$.` refs are gated at the visit. In the first narrowing it
+// may cross any relation; in a later layer only what the parent exposes.
 const validateWhere = (
   condition: Condition | undefined,
   parentPolicy: Policy,
@@ -54,8 +57,11 @@ const validateWhere = (
 ): void => {
   if (condition === undefined) return;
   const seen = new Set<string>();
+  // The first narrowing's grants read the menu — any relation; a later layer's read only what its
+  // parent exposes, or a delegate's `where` would probe what it can't see.
+  const grant: Policy = { ...parentPolicy, grant: parentPolicy.chain.length === 0 };
   for (const { mapName, modelName, relPath } of visits) {
-    for (const v of checkConditionAtVisit(condition, parentPolicy, mapName, modelName, relPath)) {
+    for (const v of checkConditionAtVisit(condition, grant, mapName, modelName, relPath)) {
       // The gate's own code carries through: what is wrong, not only that something is.
       const message = `'${v.path}' ${v.message}`;
       if (seen.has(message)) continue;
@@ -65,10 +71,10 @@ const validateWhere = (
   }
 };
 
-// A label or axis is client-visible option data: at every visit the node applies to, it may read
-// only what the layers after its earliest declaration show (`sourceReadsVisible`, the rule
-// projectLens enforces). The declaring layer itself stays free — visibility ≠ materialization
-// within one layer.
+// A label or axis is client-visible option data: at every visit the node applies to, it may cross
+// only relations the lens declares there, and read only what the layers after its earliest
+// declaration show (`sourceReadsVisible`, the rule projectLens enforces). The declaring layer
+// itself stays free to source a column it hides — visibility ≠ materialization within one layer.
 const validateSourceTargetVisibility = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   current: LensNarrowing,
@@ -77,7 +83,7 @@ const validateSourceTargetVisibility = (
   position: string,
   errors: ValidationIssue[],
 ): void => {
-  const policy: Policy = { lens: parentPolicy.lens, chain: [...parentPolicy.chain, current] };
+  const policy: Policy = { ...parentPolicy, chain: [...parentPolicy.chain, current] };
   const reported = new Set<string>();
   for (const at of visits) {
     const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
@@ -90,6 +96,17 @@ const validateSourceTargetVisibility = (
         const inForce =
           kind === 'label' ? effect.sourceLabels.get(field) : effect.sourceGroupBys.get(field);
         if (JSON.stringify(declared) !== JSON.stringify(inForce)) continue;
+        const paths = typeof inForce === 'string' ? [inForce] : (inForce ?? []);
+        const off = paths.map((path) => hiddenHop(policy, at, path)).find((hop) => hop !== null);
+        if (off) {
+          reported.add(`${field}|${kind}`);
+          errors.push({
+            path: `${position}.sources.${field}`,
+            code: 'invalid_source',
+            message: `${kind} '${String(spec[kind])}' crosses '${off}', a relation the lens does not show there (not turned on, or omitted)`,
+          });
+          continue;
+        }
         if (sourceReadsVisible(policy, effect, at, field, kind)) continue;
         reported.add(`${field}|${kind}`);
         errors.push({
@@ -125,19 +142,20 @@ const toOnePathError = (
   return hops.length === segments.length - 1 ? null : `${kind} segment '${seg}' is not a relation`;
 };
 
-// Why a field a layer names is already hidden: an ancestor's picks leave it out (a relation it
-// narrows counts as picked) or its omits drop it, or a path node's own-layer defaults do.
+// Why a field a layer names is already hidden: an ancestor's picks leave a column out or its omits
+// drop the field, or a path node's own-layer defaults do. Picks never govern a relation.
 const hiddenBy = (
   field: string,
+  isRelation: boolean,
   ancestors: readonly ModelNarrowing[],
   defaults: ModelDefaultNarrowing | undefined,
 ): string | null => {
   for (const anc of ancestors) {
-    const picks = augmentPicksWithRelations(anc);
-    if (picks && !picks.includes(field)) return "not in ancestor's picks";
+    if (!isRelation && anc.picks && !anc.picks.includes(field)) return "not in ancestor's picks";
     if (anc.omits?.includes(field)) return 'was omitted by ancestor';
   }
-  if (defaults?.picks && !defaults.picks.includes(field)) return 'not visible from defaults.picks';
+  if (!isRelation && defaults?.picks && !defaults.picks.includes(field))
+    return 'not visible from defaults.picks';
   if (defaults?.omits?.includes(field)) return 'already excluded by defaults';
   return null;
 };
@@ -157,25 +175,24 @@ const validateModelNode = (
   whereVisits: readonly WhereVisit[],
   isDefault = false,
 ): void => {
-  if (narrowing.picks && narrowing.omits) {
+  // Picks name columns and omits may always name relations: only omitting a column beside picks
+  // conflicts.
+  const omitsColumn = narrowing.omits?.some((f) => {
+    const entry = own(modelFields, f);
+    return entry === undefined || !isRelationEntry(entry);
+  });
+  if (narrowing.picks && omitsColumn) {
     errors.push({
       path: `${position}`,
       code: 'conflicting_selection',
-      message: `cannot specify both picks and omits`,
-    });
-  }
-
-  if (isDefault && 'relations' in narrowing && (narrowing as ModelNarrowing).relations) {
-    errors.push({
-      path: `${position}`,
-      code: 'invalid_source',
-      message: `defaults cannot declare 'relations' — relations are path-specific only`,
+      message: `cannot specify both picks and omits of a column`,
     });
   }
 
   for (const kind of ['picks', 'omits'] as const)
     for (const f of narrowing[kind] ?? []) {
-      if (!own(modelFields, f)) {
+      const named = own(modelFields, f);
+      if (!named) {
         errors.push({
           path: `${position}.${kind}`,
           code: 'not_in_lens',
@@ -183,7 +200,16 @@ const validateModelNode = (
         });
         continue;
       }
-      const hidden = hiddenBy(f, ancestorChain, isDefault ? undefined : sameLayerDefaults);
+      const isRelation = isRelationEntry(named);
+      if (isRelation && kind === 'picks') {
+        errors.push({
+          path: `${position}.picks`,
+          code: 'wrong_kind',
+          message: `'${f}' is a relation: picks names columns; turn a relation on with \`relations\``,
+        });
+        continue;
+      }
+      const hidden = hiddenBy(f, isRelation, ancestorChain, sameLayerDefaults);
       if (hidden)
         errors.push({
           path: `${position}.${kind}`,
@@ -235,11 +261,20 @@ const validateModelNode = (
   validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
-    if (!own(modelFields, field)) {
+    const sourced = own(modelFields, field);
+    if (!sourced) {
       errors.push({
         path: `${position}.sources`,
         code: 'not_in_lens',
         message: `field '${field}' not on model`,
+      });
+      continue;
+    }
+    if (isRelationEntry(sourced)) {
+      errors.push({
+        path: `${position}.sources.${field}`,
+        code: 'wrong_kind',
+        message: `'${field}' is a relation: a source offers a column's values`,
       });
       continue;
     }
@@ -275,12 +310,20 @@ const validateModelNode = (
             code: 'invalid_source',
             message: `${err}`,
           });
-      } else if (!own(modelFields, spec.label)) {
-        errors.push({
-          path: `${position}.sources.${field}`,
-          code: 'not_in_lens',
-          message: `label column '${spec.label}' not on model`,
-        });
+      } else {
+        const labelEntry = own(modelFields, spec.label);
+        if (!labelEntry)
+          errors.push({
+            path: `${position}.sources.${field}`,
+            code: 'not_in_lens',
+            message: `label column '${spec.label}' not on model`,
+          });
+        else if (isRelationEntry(labelEntry))
+          errors.push({
+            path: `${position}.sources.${field}`,
+            code: 'wrong_kind',
+            message: `label '${spec.label}' is a relation, not a column`,
+          });
       }
     }
     const axes = normalizeGroupBy(spec.groupBy);
@@ -418,7 +461,15 @@ const validateEnumInheritance = (
     }
 };
 
-const validatePathNarrowing = (
+// Where a node applies: the parent's visits it narrows (its `where` resolves there, and a relation it
+// names must be shown there), the composed lens's visits (where its labels and axes are shown), and
+// whether it is a model default (its `where` resolves at the model-intrinsic visit too).
+type NodeVisits = { parent: WhereVisit[]; composed: WhereVisit[]; isDefault: boolean };
+
+const across = (visits: readonly WhereVisit[], relation: string, target: string, map: string) =>
+  visits.map((v) => ({ mapName: map, modelName: target, relPath: [...v.relPath, relation] }));
+
+const validateNode = (
   narrowing: ModelNarrowing,
   ancestorChain: ModelNarrowing[],
   current: LensNarrowing,
@@ -429,20 +480,21 @@ const validatePathNarrowing = (
   position: string,
   errors: ValidationIssue[],
   parentPolicy: Policy,
-  relPath: readonly string[],
+  visits: NodeVisits,
 ): void => {
   const fieldMap = own(maps, mapName);
   const model = modelOf(fieldMap, modelName);
   if (!model) return;
+  const isFirst = chain.length === 0;
 
-  const sameLayerDefaultsForModel = own(own(current.mapDefaults, mapName)?.models, modelName);
+  const sameLayerDefaultsForModel = visits.isDefault
+    ? undefined
+    : own(own(current.mapDefaults, mapName)?.models, modelName);
   const ancestorDefaultsForModel = chain
     .map((a) => own(own(a.mapDefaults, mapName)?.models, modelName))
     .filter((x): x is ModelDefaultNarrowing => x !== undefined);
-  const synthAncestors = [
-    ...ancestorDefaultsForModel.map((d) => d as ModelNarrowing),
-    ...ancestorChain,
-  ];
+  const synthAncestors = [...ancestorDefaultsForModel, ...ancestorChain];
+  const intrinsic = { mapName, modelName, relPath: OFF_PATH };
 
   validateModelNode(
     narrowing,
@@ -456,17 +508,22 @@ const validatePathNarrowing = (
     position,
     errors,
     parentPolicy,
-    [{ mapName, modelName, relPath }],
-    false,
+    visits.isDefault ? [intrinsic, ...visits.parent] : visits.parent,
+    visits.isDefault,
   );
 
   validateEnumInheritance(
     narrowing,
-    {
-      lens: parentPolicy.lens,
-      chain: [...parentPolicy.chain, { parent: current.parent, mapDefaults: current.mapDefaults }],
-    },
-    { mapName, modelName, relPath },
+    visits.isDefault
+      ? parentPolicy
+      : {
+          lens: parentPolicy.lens,
+          chain: [
+            ...parentPolicy.chain,
+            { parent: current.parent, mapDefaults: current.mapDefaults },
+          ],
+        },
+    visits.isDefault ? intrinsic : (visits.parent[0] ?? intrinsic),
     model.fields,
     fieldMap?.enums,
     position,
@@ -477,22 +534,23 @@ const validatePathNarrowing = (
     narrowing,
     current,
     parentPolicy,
-    [{ mapName, modelName, relPath }],
+    visits.composed,
     position,
     errors,
   );
 
   // A path source that offers its model's own source needs one declared in some layer.
-  const composed: Policy = { lens: parentPolicy.lens, chain: [...parentPolicy.chain, current] };
-  for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
-    if (!isSourceSpec(entry) || entry.from !== 'mapDefaults') continue;
-    if (!declaresModelSource(composed, mapName, modelName, field))
-      errors.push({
-        path: `${position}.sources.${field}`,
-        code: 'invalid_source',
-        message: undeclaredModelSource(position, mapName, modelName, field).message,
-      });
-  }
+  const composed: Policy = { ...parentPolicy, chain: [...parentPolicy.chain, current] };
+  if (!visits.isDefault)
+    for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
+      if (!isSourceSpec(entry) || entry.from !== 'mapDefaults') continue;
+      if (!declaresModelSource(composed, mapName, modelName, field))
+        errors.push({
+          path: `${position}.sources.${field}`,
+          code: 'invalid_source',
+          message: undeclaredModelSource(position, mapName, modelName, field).message,
+        });
+    }
 
   for (const [relField, sub] of Object.entries(narrowing.relations ?? {})) {
     const entry = own(model.fields, relField);
@@ -512,6 +570,27 @@ const validatePathNarrowing = (
       });
       continue;
     }
+    // The base lens is the menu: the first narrowing may turn any relation on. A later layer
+    // narrows only what its parent shows — on a model default, wherever the parent visits it.
+    // A visit where the edge was already crossed on the way shows it to no one: restating it there
+    // narrows nothing, so it doesn't count against a model default.
+    const shown = (v: WhereVisit) =>
+      resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField) ||
+      (visits.isDefault && crossedBefore(parentPolicy, v, relField));
+    if (
+      !isFirst &&
+      (!visits.parent.some((v) =>
+        resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField),
+      ) ||
+        !visits.parent.every(shown))
+    ) {
+      errors.push({
+        path: `${position}.relations`,
+        code: 'not_visible',
+        message: `'${relField}' is not shown by the parent${visits.isDefault ? ` wherever ${modelName} is visited` : ''}: only the first narrowing over the base lens turns a relation on`,
+      });
+      continue;
+    }
     const target = relationTargetOf(entry, mapName);
     if (!target) continue;
     if (!modelOf(own(maps, target.mapName), target.modelName)) {
@@ -525,7 +604,7 @@ const validatePathNarrowing = (
     const childAncestorChain = ancestorChain
       .map((anc) => own(anc.relations, relField))
       .filter((x): x is ModelNarrowing => x !== undefined);
-    validatePathNarrowing(
+    validateNode(
       sub,
       childAncestorChain,
       current,
@@ -536,21 +615,31 @@ const validatePathNarrowing = (
       `${position}.relations.${relField}`,
       errors,
       parentPolicy,
-      [...relPath, relField],
+      {
+        parent: across(visits.parent, relField, target.modelName, target.mapName),
+        composed: across(visits.composed, relField, target.modelName, target.mapName),
+        isDefault: visits.isDefault,
+      },
     );
   }
 };
 
-/** A narrowing layer checked against the layers above it: it names only what they still show and
- *  only narrows. Each problem is an issue with a code (`not_in_lens`, `not_visible`,
- *  `conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`,
- *  `invalid_binding`, or the lens gate's for a `where`). */
+/** A narrowing layer checked against the layers above it: it names only what they still show —
+ *  a relation it turns on or narrows included, unless it is the first narrowing over the base
+ *  lens — and only narrows. `picks` names columns only. Each problem is an issue with a code
+ *  (`not_in_lens`, `not_visible`, `conflicting_selection`, `wrong_kind`, `value_not_allowed`,
+ *  `invalid_source`, `invalid_binding`, or the lens gate's for a `where`). */
 export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult => {
   const errors: ValidationIssue[] = [];
   const set = getLensRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
   const parentPolicy = resolvePolicy(narrowing.parent);
-  const parentVisits = projectPaths(narrowing.parent);
+  const parentVisits = shownVisits(parentPolicy);
+  // The visits this layer's model defaults apply at on the lens it composes.
+  const composedVisits = shownVisits({
+    lens: parentPolicy.lens,
+    chain: [...parentPolicy.chain, narrowing],
+  });
 
   for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
     const fieldMap = own(set.maps, mapName);
@@ -577,44 +666,23 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
         .map((anc) => own(own(anc.mapDefaults, mapName)?.models, modelName))
         .filter((x): x is ModelDefaultNarrowing => x !== undefined);
       // A model default applies at EVERY visit of the model: the model-intrinsic (off-path)
-      // visit plus each path the parent declares for it, so its where must resolve at all.
-      const whereVisits: WhereVisit[] = [{ mapName, modelName, relPath: OFF_PATH }];
-      for (const [path, visit] of Object.entries(parentVisits)) {
-        if (visit.mapName === mapName && visit.model === modelName) {
-          whereVisits.push({ mapName, modelName, relPath: path.split('.').slice(1) });
-        }
-      }
-      validateModelNode(
+      // visit plus each visit of it the parent shows; its labels show at the composed lens's.
+      const of = (visits: readonly ShownVisit[]) =>
+        visits
+          .map(({ at }) => at)
+          .filter((at) => at.mapName === mapName && at.modelName === modelName);
+      validateNode(
         dflt,
-        ancestorDefaultsForModel as ModelNarrowing[],
-        undefined,
+        ancestorDefaultsForModel,
+        narrowing,
+        ancestors,
         set.maps,
         mapName,
-        model.fields,
         modelName,
-        fieldMap.enums,
         `mapDefaults.${mapName}.models.${modelName}`,
         errors,
         parentPolicy,
-        whereVisits,
-        true,
-      );
-      validateEnumInheritance(
-        dflt,
-        parentPolicy,
-        { mapName, modelName, relPath: OFF_PATH },
-        model.fields,
-        fieldMap.enums,
-        `mapDefaults.${mapName}.models.${modelName}`,
-        errors,
-      );
-      validateSourceTargetVisibility(
-        dflt,
-        narrowing,
-        parentPolicy,
-        whereVisits,
-        `mapDefaults.${mapName}.models.${modelName}`,
-        errors,
+        { parent: of(parentVisits), composed: of(composedVisits), isDefault: true },
       );
     }
 
@@ -643,7 +711,8 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
       const ancestorChainForRoot = ancestors
         .map((anc) => anc.root)
         .filter((x): x is ModelNarrowing => x !== undefined);
-      validatePathNarrowing(
+      const anchor = { mapName: lensMapName, modelName: lensModel, relPath: [] };
+      validateNode(
         narrowing.root,
         ancestorChainForRoot,
         narrowing,
@@ -654,7 +723,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
         'root',
         errors,
         parentPolicy,
-        [],
+        { parent: [anchor], composed: [anchor], isDefault: false },
       );
     }
   }

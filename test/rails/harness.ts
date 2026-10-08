@@ -45,7 +45,6 @@ export type RailResult = number[] | `throws: ${string}`;
 export type Rails = { check: RailResult; sql: RailResult; prisma: RailResult };
 /** `lens`: compile with `{ lens }` on the compiled rails, and check `narrowRule(rule, lens)`. */
 export type RailOptions = {
-  context?: Record<string, unknown>;
   timeZone?: string;
   now?: Date;
   lens?: Lens | LensNarrowing;

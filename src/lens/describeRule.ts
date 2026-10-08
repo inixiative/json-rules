@@ -56,7 +56,14 @@ export const describeRule = (
     sources: [...acc.sources].sort(),
     bridgesCrossed: acc.bridgesCrossed,
     supportedTargets: ALL_TARGETS.filter(
-      (target) => (target === 'check' || !acc.bridgesCrossed) && validateRule(rule, { target }).ok,
+      (target) =>
+        (target === 'check' || !acc.bridgesCrossed) &&
+        validateRule(rule, {
+          target,
+          map: acc.policy.lens,
+          mapName: acc.policy.lens.mapName,
+          model: acc.policy.lens.model,
+        }).ok,
     ),
     errors: validateRuleInLens(rule, lensOrNarrowing).errors,
   };

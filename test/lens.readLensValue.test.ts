@@ -13,6 +13,7 @@ const lens: LensNarrowing = {
         where: { field: 'plan', operator: 'equals', value: 'pro' },
         relations: { parent: {} },
       },
+      posts: {},
     },
   },
 };
@@ -74,5 +75,12 @@ describe('readLensValue reads a value as the lens shows it', () => {
   test('a relation is rows, not a value: ending on one, or crossing a list, is refused', () => {
     expect(readLensValue(lens, ann, 'org')).toEqual({ ok: false, reason: 'relation' });
     expect(readLensValue(lens, ann, 'posts.title')).toEqual({ ok: false, reason: 'list' });
+  });
+
+  test('a relation the lens does not turn on is hidden, never read', () => {
+    expect(readLensValue(lens, ann, 'org.parent.parent.name')).toEqual({
+      ok: false,
+      reason: 'hidden',
+    });
   });
 });

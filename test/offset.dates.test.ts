@@ -40,14 +40,14 @@ afterAll(async () => {
   await db.close();
 });
 
-type Opts = { context?: Record<string, unknown>; bindings?: Record<string, unknown> };
+type Opts = { bindings?: Record<string, unknown> };
 
 const ids = async (condition: Condition, opts: Opts = {}) => {
   const inMemory = rows
     .filter((r) => check(condition, r, { now: NOW, ...opts } as never) === true)
     .map((r) => r.id);
   const compiled = opts.bindings ? bindRule(condition, opts.bindings as never) : condition;
-  const { sql, params } = toSql(compiled, { now: NOW, context: opts.context });
+  const { sql, params } = toSql(compiled, { now: NOW });
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
   ).rows.map((r) => r.id);
@@ -112,8 +112,8 @@ describe('offset on a row path', () => {
   });
 });
 
-describe('offset on a context path', () => {
-  test('a literal offset', async () => {
+describe('offset on a bare path: the root row', () => {
+  test('a literal offset reads the same column as $.', async () => {
     await bothRails(
       rule({
         field: 'ts',
@@ -121,35 +121,19 @@ describe('offset on a context path', () => {
         path: 'anchor',
         offset: { value: { ago: { days: 7 } } },
       }),
-      [1, 3, 6],
-      { context: { anchor: '2026-10-01T00:00:00Z' } },
+      [1],
     );
   });
 
-  test('between shifts both endpoints', async () => {
-    // [09-01, 09-10] + 15 days = [09-16, 09-25].
-    await bothRails(
-      rule({
-        field: 'ts',
-        dateOperator: 'between',
-        path: 'window',
-        offset: { value: { ahead: { days: 15 } } },
-      }),
-      [1, 3],
-      { context: { window: ['2026-09-01T00:00:00Z', '2026-09-10T00:00:00Z'] } },
-    );
-  });
-
-  test('a null context value fails closed', async () => {
+  test('a bare magnitude reads the root row', async () => {
     await bothRails(
       rule({
         field: 'ts',
         dateOperator: 'before',
         path: 'anchor',
-        offset: { value: { ago: { days: 7 } } },
+        offset: { value: { ago: { days: { path: 'days' } } } },
       }),
-      [],
-      { context: { anchor: null } },
+      [1],
     );
   });
 });
@@ -182,23 +166,64 @@ describe('offset on a bind', () => {
     );
   });
 
-  test('a context-path magnitude', async () => {
+  test('between shifts both endpoints', async () => {
+    // [09-01, 09-10] + 15 days = [09-16, 09-25].
+    await bothRails(
+      rule({
+        field: 'ts',
+        dateOperator: 'between',
+        bind: 'window',
+        offset: { value: { ahead: { days: 15 } } },
+      }),
+      [1, 3],
+      { bindings: { window: ['2026-09-01T00:00:00Z', '2026-09-10T00:00:00Z'] } },
+    );
+  });
+
+  test('a null bound value fails closed', async () => {
     await bothRails(
       rule({
         field: 'ts',
         dateOperator: 'before',
         bind: 'anchor',
-        offset: { value: { ago: { days: { path: 'grace' } } } },
+        offset: { value: { ago: { days: 7 } } },
+      }),
+      [],
+      { bindings: { anchor: null } },
+    );
+  });
+
+  test('a bound magnitude', async () => {
+    await bothRails(
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        bind: 'anchor',
+        offset: { value: { ago: { days: { bind: 'grace' } } } },
       }),
       [1, 3, 6],
-      { bindings: { anchor: '2026-10-01T00:00:00Z' }, context: { grace: 7 } },
+      { bindings: { anchor: '2026-10-01T00:00:00Z', grace: 7 } },
+    );
+  });
+
+  test('a row magnitude on a bound date', async () => {
+    // before 10-01 − days: rows 1, 3 (09-20 < 09-24) and 6 (days 0); null ts or days fail closed.
+    await bothRails(
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        bind: 'anchor',
+        offset: { value: { ago: { days: { path: 'days' } } } },
+      }),
+      [1, 3, 6],
+      { bindings: { anchor: '2026-10-01T00:00:00Z' } },
     );
   });
 });
 
 describe('toPrisma and date offsets', () => {
-  test('a context path plus a literal offset compiles to the shifted instant', () => {
-    const where = getWhere(
+  test('a date compared with a column is not a Prisma form', () => {
+    expect(() =>
       toPrisma(
         rule({
           field: 'ts',
@@ -206,10 +231,8 @@ describe('toPrisma and date offsets', () => {
           path: 'anchor',
           offset: { value: { ago: { days: 7 } } },
         }),
-        { context: { anchor: '2026-10-01T00:00:00Z' } },
       ),
-    );
-    expect(where).toEqual({ ts: { lt: new Date('2026-09-24T00:00:00Z') } });
+    ).toThrow('Prisma rail');
   });
 
   test('a resolved bind plus an offset compiles', () => {
@@ -225,16 +248,12 @@ describe('toPrisma and date offsets', () => {
   });
 
   test('a row-path magnitude is rejected', () => {
-    expect(() =>
-      toPrisma(
-        rule({
-          field: 'ts',
-          dateOperator: 'before',
-          path: 'anchor',
-          offset: { value: { ago: { days: { path: '$.days' } } } },
-        }),
-        { context: { anchor: '2026-10-01T00:00:00Z' } },
-      ),
-    ).toThrow('toPrisma');
+    const r = rule({
+      field: 'ts',
+      dateOperator: 'before',
+      bind: 'anchor',
+      offset: { value: { ago: { days: { path: '$.days' } } } },
+    });
+    expect(() => toPrisma(bindRule(r, { anchor: '2026-10-01T00:00:00Z' }))).toThrow('Prisma rail');
   });
 });

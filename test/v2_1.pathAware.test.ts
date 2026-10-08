@@ -55,11 +55,11 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
     //   .posts → Post → .author → User, picks ['name']  (no email visible via posts.author)
     const n = withParent(lens, {
       root: {
-        picks: ['id', 'manager', 'posts'],
+        picks: ['id'],
         relations: {
           manager: { picks: ['email', 'name'] },
           posts: {
-            picks: ['author'],
+            picks: [],
             relations: {
               author: { picks: ['name'] }, // intentionally no email
             },
@@ -85,11 +85,11 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
   test('Two paths each declare User narrowing; rule must use the right field per path', () => {
     const n = withParent(lens, {
       root: {
-        picks: ['manager', 'posts'],
+        picks: [],
         relations: {
           manager: { picks: ['email'] }, // only email visible via .manager
           posts: {
-            picks: ['author'],
+            picks: [],
             relations: {
               author: { picks: ['name'] }, // only name visible via .posts.author
             },
@@ -150,10 +150,10 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
       root: {
         relations: {
           spaceUsers: {
-            picks: ['spaceId', 'user'],
+            picks: ['spaceId'],
             relations: {
               user: {
-                picks: ['spaceUsers'],
+                picks: [],
                 relations: {
                   spaceUsers: {
                     picks: ['orgId', 'role'], // visit-2 picks are independent of visit-1
@@ -280,13 +280,13 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
     // posts.author: picks email
     const n = withParent(lens, {
       root: {
-        picks: ['manager', 'posts'],
+        picks: [],
         relations: {
           // NOTE: cannot pick password if defaults excludes it — strict validation
           // applies. So we just pick email here.
           manager: { picks: ['email'] },
           posts: {
-            picks: ['author'],
+            picks: [],
             relations: { author: { picks: ['email'] } },
           },
         },

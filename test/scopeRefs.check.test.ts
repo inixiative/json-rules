@@ -136,13 +136,14 @@ describe('scope refs — $$. reaches the enclosing element', () => {
     expect(check(rule, data)).toBe(true);
   });
 
-  test('bare path reads external context; $$. at depth one reads the root row', () => {
+  test('a bare path and $$. at depth one both read the root row; a caller value is a bind', () => {
     const row = { limit: 1, orders: [{ total: 50 }] };
-    const context = { limit: 100 };
-    const viaContext = eachOrder({ field: 'total', operator: Operator.greaterThan, path: 'limit' });
+    const viaBare = eachOrder({ field: 'total', operator: Operator.greaterThan, path: 'limit' });
     const viaRoot = eachOrder({ field: 'total', operator: Operator.greaterThan, path: '$$.limit' });
-    expect(typeof check(viaContext, row, { context })).toBe('string');
-    expect(check(viaRoot, row, { context })).toBe(true);
+    const viaBind = eachOrder({ field: 'total', operator: Operator.greaterThan, bind: 'limit' });
+    expect(check(viaBare, row)).toBe(true);
+    expect(check(viaRoot, row)).toBe(true);
+    expect(typeof check(viaBind, row, { bindings: { limit: 100 } })).toBe('string');
   });
 
   test('top level: $.a against $.b is a same-row comparison', () => {

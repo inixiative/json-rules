@@ -1,7 +1,7 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
 import type { FieldShape } from '../fieldMap/shape';
-import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
 import { resolveField } from './join';
@@ -21,18 +21,16 @@ export const NO_VALUE: ResolvedRhs = { type: 'value', value: null };
 export const isMissing = (rhs: ResolvedRhs): boolean =>
   rhs.type === 'value' && (rhs.value === null || rhs.value === undefined);
 
-/** A ref on the SQL rail: `$.x` reads the current row the way a `field` does — relation hops
- *  join, a Json column's tail is a JSON path; a bare ref reads context. */
+/** A ref on the SQL rail reads the row the way a `field` does — relation hops join, a Json
+ *  column's tail is a JSON path. The rail compiles no relation arrays, so a bare ref (the root row)
+ *  and `$.` read the same row. */
 const resolveRef = (ref: string, state: BuilderState): ResolvedRhs => {
-  const scoped = parseScopeRef(ref);
-  if (scoped) {
-    if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
-    const column = resolveField(scoped.path, state);
-    if (column.shape === 'relation')
-      throw new Error(`'${ref}' is a relation; a value ref reads a column`);
-    return { type: 'column', ...column };
-  }
-  return { type: 'value', value: readContextRef(ref, state.context, 'toSql') };
+  const scoped = parseScopeRef(ref) ?? { depth: 1, path: ref };
+  if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toSql'));
+  const column = resolveField(scoped.path, state);
+  if (column.shape === 'relation')
+    throw new Error(`'${ref}' is a relation; a value ref reads a column`);
+  return { type: 'column', ...column };
 };
 
 /** A value source on the SQL rail: a parameter, or a `$.` column. */

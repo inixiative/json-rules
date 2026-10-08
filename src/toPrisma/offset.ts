@@ -9,8 +9,8 @@ import { dateConfigOf, prismaRead, readSource } from './valueSource';
 // An offset moves the comparison value by what its own value source reads; null when either
 // reads nothing. Prisma has no arithmetic, so every side is known at compile time.
 
-export const offsetNumber = (value: unknown, offset: NumberOffset, options?: ToPrismaOptions) => {
-  const amount = offsetAmount(readSource(offset, options));
+export const offsetNumber = (value: unknown, offset: NumberOffset) => {
+  const amount = offsetAmount(readSource(offset));
   return amount === null ? null : addOffset(value, amount);
 };
 
@@ -20,8 +20,8 @@ export const offsetDate = (
   options?: ToPrismaOptions,
 ): Date | null => {
   if (instant === null) return null;
-  const move = offsetShift(readSource(offset, options));
-  const units = move && resolveUnits(move[0], prismaRead(options));
+  const move = offsetShift(readSource(offset));
+  const units = move && resolveUnits(move[0], prismaRead);
   if (!move || !units) return null;
   return shiftByUnits(dayjs(instant), units, move[1], dateConfigOf(options).timeZone).toDate();
 };

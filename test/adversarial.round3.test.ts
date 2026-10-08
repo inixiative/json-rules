@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
+import { validateNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { LensNarrowing } from '../src/lens/types';
@@ -42,7 +43,7 @@ describe('Bug #1 — catalog rejects prototype keys', () => {
 });
 
 // Bug #2: bridges must be pruned when the bridge-key field is narrowed away.
-// The user must explicitly pick the full <map>:<Model> key to retain bridge access.
+// The user must explicitly declare the full <map>:<Model> key to retain bridge access.
 describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () => {
   const prismaMap: FieldMap = {
     models: {
@@ -81,17 +82,23 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       model: 'FanUser',
     });
 
-  test('bridge-key field present at anchor when explicitly picked', () => {
+  test('bridge-key field present at anchor when turned on', () => {
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
-      root: { picks: ['email', 'salesforce:Contact'] },
+      root: { picks: ['email'], relations: { 'salesforce:Contact': {} } },
     };
     const projected = projectPaths(narrowing);
     expect(at(projected, 'FanUser').fields['salesforce:Contact']).toBeDefined();
+    // Picking it is not the spelling: picks names columns only.
+    const picked: LensNarrowing = {
+      parent: lens,
+      root: { picks: ['email', 'salesforce:Contact'] },
+    };
+    expect(validateNarrowing(picked).errors.map((e) => e.code)).toEqual(['wrong_kind']);
   });
 
-  test('bridge-key field gone when anchor picks omit it', () => {
+  test('bridge-key field gone when not turned on (picks name columns only)', () => {
     const lens = buildLens();
     const narrowing: LensNarrowing = {
       parent: lens,
@@ -185,8 +192,13 @@ describe('Bug #8 — validateRuleInLens validates aggregate sub-fields', () => {
     },
   };
 
+  const declared = (): LensNarrowing => ({
+    parent: createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' }),
+    root: { relations: { orders: {} } },
+  });
+
   test('aggregate.field referencing a non-existent leaf is flagged', () => {
-    const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+    const lens = declared();
     const rule = {
       field: 'orders',
       aggregate: { mode: 'sum' as const, field: 'ghostField' }, // not on Order
@@ -199,7 +211,7 @@ describe('Bug #8 — validateRuleInLens validates aggregate sub-fields', () => {
   });
 
   test('aggregate.field referencing a real leaf passes', () => {
-    const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+    const lens = declared();
     const rule = {
       field: 'orders',
       aggregate: { mode: 'sum' as const, field: 'total' },
@@ -212,7 +224,7 @@ describe('Bug #8 — validateRuleInLens validates aggregate sub-fields', () => {
 
   test('arrayRule.field on a relation resolves against the relation target', () => {
     // Already covered by existing tests but reassert the surface
-    const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+    const lens = declared();
     const rule = {
       field: 'orders',
       arrayOperator: 'any' as const,

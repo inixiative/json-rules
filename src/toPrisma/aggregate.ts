@@ -8,6 +8,7 @@ import { AGGREGATE_MODES, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasWindow, windowRewrite } from '../window';
+import { nestedScope } from './columnRef';
 import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
@@ -74,7 +75,7 @@ const buildAggregateStep = (
   // A parent with no matching children has the empty aggregate (0) and no group: when the
   // comparison holds for it, select the parents outside the groups where it fails.
   const holdsEmpty =
-    checkField(leaf as unknown as Rule, [{}], undefined, undefined, {}, { value: 0 }) === true;
+    checkField(leaf as unknown as Rule, [{}], undefined, {}, { value: 0 }) === true;
   const target = (holdsEmpty ? negate(leaf as Condition) : leaf) as unknown as Rule;
   const filter = comparisonFilter(target, options);
   const aggregate = { [rule.aggregate.mode === 'sum' ? '_sum' : '_avg']: filter };
@@ -84,7 +85,7 @@ const buildAggregateStep = (
     : { [itemField]: aggregate };
 
   const where = rule.condition
-    ? buildCondition(rule.condition, { ...options, model: path.target }, state)
+    ? buildCondition(rule.condition, nestedScope({ ...options, model: path.target }), state)
     : matchAll();
   const membership = groupMembership(state, path, where, having, holdsEmpty);
   // check() reads the array under an absent to-one relation as empty.

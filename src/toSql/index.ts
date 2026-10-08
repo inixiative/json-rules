@@ -15,7 +15,6 @@ export const builderState = (options?: ToSqlOptions): BuilderState => {
   return {
     params: [],
     paramIndex: 0,
-    context: options?.context,
     dateConfig: { now: options?.now, timeZone: options?.timeZone, weekStart: options?.weekStart },
     map,
     currentModel: options?.model,

@@ -80,7 +80,10 @@ describe('projectModels — fetched sourceValues fold onto field.options (per mo
   });
 
   test('options for the same model+field across paths union (dedup by value, label kept)', () => {
-    const surface = projectModels(lens, {
+    // Region is on the surface only where the lens declares the relation that reaches it.
+    expect(projectModels(lens).maps.app.models.Region).toBeUndefined();
+    const declared: LensNarrowing = { parent: lens, root: { relations: { region: {} } } };
+    const surface = projectModels(declared, {
       sourceValues: [
         {
           path: 'User.region',

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
+import type { LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, Operator } from '../src/operator';
 
@@ -30,7 +31,11 @@ const map: FieldMap = {
   },
 };
 
-const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' });
+const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' });
+const lens: LensNarrowing = {
+  parent: base,
+  root: { relations: { orders: { relations: { lineItems: {} } } } },
+};
 
 const atLineItems = (leaf: unknown) => ({
   field: 'orders',
@@ -72,7 +77,10 @@ describe('lens gate — scoped path refs walk from the ancestor visit', () => {
   });
 
   test('$$. path outside the narrowed lens is a violation', () => {
-    const narrowed = { parent: lens, root: { relations: { orders: { omits: ['maxQty'] } } } };
+    const narrowed: LensNarrowing = {
+      parent: lens,
+      root: { relations: { orders: { omits: ['maxQty'], relations: { lineItems: {} } } } },
+    };
     const result = validateRuleInLens(
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$.maxQty' }) as never,
       narrowed,

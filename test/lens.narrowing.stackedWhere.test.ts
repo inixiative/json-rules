@@ -53,10 +53,10 @@ const base: Lens = { maps, mapName: 'app', model: 'User' };
 const projection: LensNarrowing = {
   parent: base,
   root: {
-    picks: ['id', 'name', 'tagAttachments'],
+    picks: ['id', 'name'],
     relations: {
       tagAttachments: {
-        picks: ['tag'],
+        picks: [],
         where: { field: 'deletedAt', operator: Operator.notExists },
         relations: { tag: { picks: ['id', 'name'] } },
       },

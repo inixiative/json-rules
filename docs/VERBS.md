@@ -22,6 +22,7 @@ modules allowed to implement it, and every exported function must appear in this
 | project | `projectLens` | What a lens exposes: by declared path (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
 | project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations and rows removed. |
 | walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop. |
+| read | `readLensValue` | One value off a row, as a lens shows it: gated path, grants checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |
 | describe | `describeRule` | A rule's sources, bridge crossings and compile targets under a lens. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |

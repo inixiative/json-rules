@@ -368,8 +368,11 @@ const refusedBy = (s: Schema, lens: LensNarrowing, row: Row, valid: boolean): st
     try {
       attempt();
     } catch (error) {
+      // A rail that can't hold the lens's grants on a rule is the caller's pick of rail, not a
+      // refusal of the lens (check() runs it).
       const refused =
-        (error as Error).constructor.name === 'LensRefusal' ||
+        ((error as Error).constructor.name === 'LensRefusal' &&
+          (error as { code?: string }).code !== 'unsupported_target') ||
         (error as { refusal?: boolean }).refusal;
       if (refused) return `${name}: ${(error as Error).message}`;
       // The lens's own queries and projections refuse what they can't run; they never throw.

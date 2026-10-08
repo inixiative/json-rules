@@ -53,7 +53,7 @@ export const readBinding = (
 ): RuleValue => {
   if (!bindings || !Object.hasOwn(bindings, name)) {
     if (optional === true) return null;
-    throw new Error(`Missing binding for "${name}"`);
+    throw new UsageError(`Missing binding for "${name}"`);
   }
   const bound = bindings[name];
   return bound === undefined ? null : bound;

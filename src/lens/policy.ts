@@ -297,6 +297,7 @@ const accumulateInto = (
 
 /** A narrowing the lens refuses to apply: a grant validateNarrowing reports, met at runtime. */
 export class LensRefusal extends Error {
+  override name = 'LensRefusal';
   constructor(
     message: string,
     readonly code: string,

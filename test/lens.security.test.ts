@@ -8,6 +8,7 @@ import {
   toPrisma,
   toSourceQueries,
   toSql,
+  validateNarrowing,
   validateRuleInLens,
 } from '../index';
 
@@ -293,12 +294,7 @@ describe("an option list on a relation reads only the rows under its ancestors' 
   };
   const delegate: LensNarrowing = {
     parent: platform,
-    root: {
-      relations: {
-        comments: { sources: { body: true } },
-        author: { sources: { tenantId: true } },
-      },
-    },
+    root: { relations: { comments: { sources: { body: true } } } },
   };
   const queries = toSourceQueries(delegate);
   const at = (model: string) => {
@@ -317,7 +313,16 @@ describe("an option list on a relation reads only the rows under its ancestors' 
     expect(comments.sql.sql).toContain('JOIN "Article"');
   });
 
-  test('a grant no inverse can carry offers nothing', () => {
-    expect(check(at('User').composedWhere, { tenantId: 't1' })).not.toBe(true);
+  test('a grant no inverse can carry is refused, never an empty list', () => {
+    const throughAuthor: LensNarrowing = {
+      parent: platform,
+      root: { relations: { author: { sources: { tenantId: true } } } },
+    };
+    expect(
+      validateNarrowing(throughAuthor)
+        .errors.map((e) => e.message)
+        .join(),
+    ).toMatch(/declares no inverse/);
+    expect(() => toSourceQueries(throughAuthor)).toThrow(/declares no inverse/);
   });
 });

@@ -91,7 +91,14 @@ reads one exposure from `src/lens/policy.ts`.
   source that fails on a literal is a `LensRefusal`; a missing clock or unbound bind stays the caller's
   usage error. `validateRule` (toPrisma) also reports a case-insensitive comparison on
   Json, a list literal holding null, and an element condition over an array column, and accepts a
-  case-insensitive set of members on a list column.
+  case-insensitive set of members on a list column. Errors say whose input went wrong:
+  `UsageError` (a missing or invalid `now`, an invalid time zone, a bind never bound) and
+  `LensRefusal` (with a `code`) are exported, each with its `name`. A rail that can't hold the
+  lens's grants on a rule refuses it (`LensRefusal`, code `unsupported_target`) rather than throw a
+  plain Error. `materializeSources` requires every key a read walks — through relations and list
+  elements to the column — and each relation as one row or a list, as the map declares it. A
+  grant a source's path can't carry down (no inverse declared) is a `LensRefusal`; a path across a
+  bridge is routed to caller rows.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
   can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has

@@ -53,7 +53,7 @@ export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
     throw new UsageError('date expressions require `now` to be supplied to the evaluator');
   const base = dayjs(config.now).tz(config.timeZone);
-  if (!base.isValid()) throw new Error(`invalid \`now\`: ${String(config.now)}`);
+  if (!base.isValid()) throw new UsageError(`invalid \`now\`: ${String(config.now)}`);
   return base;
 };
 

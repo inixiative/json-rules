@@ -7,6 +7,7 @@ export {
   engineGlobals,
   type PrismaProvider,
 } from './src/engineGlobals';
+export { UsageError } from './src/errors';
 export {
   assertValidFieldMaps,
   type Bridge,
@@ -77,6 +78,7 @@ export {
   validateRuleInLens,
   walkLensPath,
 } from './src/lens';
+export { LensRefusal } from './src/lens/policy';
 export { ArrayOperator, DateOperator, Operator } from './src/operator';
 export {
   ALL_KINDS,

@@ -13,7 +13,7 @@ import {
   resolvePointForOperator,
   shiftByUnits,
 } from './dateExpr';
-import { rangeExprRequired, unknownOperator } from './errors';
+import { rangeExprRequired, UsageError, unknownOperator } from './errors';
 import { isOrderedValue, orderPair, readPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
@@ -219,15 +219,28 @@ const parseCompareDates = (
 export const resolveDateConfig = (config: DateConfig, read: ReadSource): ResolvedDateConfig => {
   const zone = config.timeZone;
   if (zone === undefined || typeof zone === 'string')
-    return { ...config, timeZone: zone ?? DEFAULT_ZONE };
+    return { ...config, timeZone: knownZone(zone ?? DEFAULT_ZONE) };
   if (rowRef(zone))
     throw new Error(
       `timeZone is one per evaluation; give it as a string or a { bind }, not the row path '${zone.path}'`,
     );
   const read_ = read(zone);
   if (read_ !== null && read_ !== undefined && typeof read_ !== 'string')
-    throw new Error(`timeZone reads a zone name (got ${String(read_)})`);
-  return { ...config, timeZone: read_ ?? DEFAULT_ZONE };
+    throw new UsageError(`timeZone reads a zone name (got ${String(read_)})`);
+  return { ...config, timeZone: knownZone(read_ ?? DEFAULT_ZONE) };
+};
+
+// A zone the runtime knows, checked once per name: an unknown one is the caller's input.
+const KNOWN_ZONES = new Set<string>();
+const knownZone = (zone: string): string => {
+  if (KNOWN_ZONES.has(zone)) return zone;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new UsageError(`invalid time zone: ${zone}`);
+  }
+  KNOWN_ZONES.add(zone);
+  return zone;
 };
 
 // Whether a date STRING names its own zone (never String(Date), whose render is host-locale-

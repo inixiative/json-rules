@@ -1,5 +1,7 @@
 import { type CheckOptions, check } from '../check.ts';
+import { UsageError } from '../errors';
 import type { SourceOption } from '../fieldMap/types';
+import { type MapVisit, walkMaps } from '../fieldMap/walk';
 import { readOwnPath } from '../scope';
 import { allOf } from '../traverse';
 import type { Condition, Row } from '../types';
@@ -15,19 +17,49 @@ import {
 } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
-// The first segment of each path a condition reads off a row: what the row must hold.
-const keysRead = (condition: Condition): string[] =>
-  readPaths(condition).map((path) => path.split('.')[0]);
-
 /** A row a viewer's projection cut (or rows that don't hold a bridge's far side): absence is not
  *  NULL — a fetch returns every key it selects — so materializing it would offer the wrong set. */
-const lacking = (path: string, key: string): Error =>
-  new Error(
-    `materializeSources needs fetched or keepGrantColumns rows, not viewer rows: a row at '${path}' lacks '${key}', which its source reads${key.includes(':') ? ' — rows across a bridge must hold the far side inline under its bridge field' : ''}`,
+const usage = (path: string, problem: string): UsageError =>
+  new UsageError(
+    `materializeSources needs fetched or keepGrantColumns rows, not viewer rows: a row at '${path}' ${problem}${problem.includes(':') ? ' — rows across a bridge hold the far side inline under its bridge field' : ''}`,
   );
 
-const requireKeys = (row: Row, path: string, keys: readonly string[]): void => {
-  for (const key of keys) if (key !== '' && !Object.hasOwn(row, key)) throw lacking(path, key);
+/** Every key each read walks on a row: each relation on the way — one row, or each element of a
+ *  list; none past a null one or an empty list — and the column it ends on (a Json column's
+ *  inside is the value's own). */
+const requireReads = (
+  policy: Policy,
+  at: MapVisit,
+  row: Row,
+  path: string,
+  reads: readonly string[],
+): void => {
+  for (const read of reads) {
+    let holders: unknown[] = [row];
+    for (const { index, field, entry, next } of walkMaps(policy.lens.maps, at, read)) {
+      if (!entry) break;
+      const walked = read
+        .split('.')
+        .slice(0, index + 1)
+        .join('.');
+      const below: unknown[] = [];
+      for (const holder of holders) {
+        if (holder === null || typeof holder !== 'object') continue;
+        if (!Object.hasOwn(holder, field))
+          throw usage(path, `lacks '${walked}', which a read needs`);
+        const value = (holder as Row)[field];
+        if (!next || value === null || value === undefined) continue;
+        if (Array.isArray(value) !== (entry.isList === true))
+          throw usage(
+            path,
+            `'${walked}' holds ${Array.isArray(value) ? 'a list where it names one row' : 'one row where it names a list'}`,
+          );
+        below.push(...(Array.isArray(value) ? value : [value]));
+      }
+      if (!next) break;
+      holders = below;
+    }
+  }
 };
 
 // The rows a source's path reaches in a fetched tree, each level's grants met on the way down —
@@ -38,7 +70,7 @@ const rowsAtPath = (
   rows: readonly Row[],
   path: string,
   options: CheckOptions | undefined,
-): Row[] => {
+): { rows: Row[]; visit: MapVisit } => {
   const relPath = path.split('.').slice(1);
   const anchor = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
   const levels = [
@@ -53,10 +85,10 @@ const rowsAtPath = (
     const visit = levels[level];
     const grants = resolveVisit(policy, visit.mapName, visit.modelName, visit.relPath).whereClauses;
     const where = allOf(grants);
-    const keys = grants.flatMap(keysRead);
+    const reads = grants.flatMap(readPaths);
     const at = [policy.lens.model, ...relPath.slice(0, level)].join('.');
     return candidates.filter((row) => {
-      requireKeys(row, at, keys);
+      requireReads(policy, visit, row, at, reads);
       return check(where, row, options) === true;
     });
   };
@@ -70,7 +102,7 @@ const rowsAtPath = (
     }
     current = admitted(level + 1, next);
   }
-  return current;
+  return { rows: current, visit: levels[levels.length - 1] };
 };
 
 /**
@@ -104,16 +136,16 @@ export const materializeSources = (
         throw new Error(
           `materializeSources: '${path}.${field}' offers its model's own source, which a fetched collection can't hold — query it with toSourceQueries and materializeSourceQuery.`,
         );
-      const keys = [
+      const reads = [
         field,
-        ...keysRead(rowWhere),
-        ...[...(label === undefined ? [] : [label]), ...(groupBy ?? [])].map(
-          (read) => read.split('.')[0],
-        ),
+        ...readPaths(rowWhere),
+        ...(label === undefined ? [] : [label]),
+        ...(groupBy ?? []),
       ];
       const byKey = new Map<string, SourceOption>();
-      for (const row of rowsAtPath(policy, rows, path, options)) {
-        requireKeys(row, path, keys);
+      const reached = rowsAtPath(policy, rows, path, options);
+      for (const row of reached.rows) {
+        requireReads(policy, reached.visit, row, path, reads);
         if (check(rowWhere, row, options) !== true) continue;
         // A dotted label reads through the same nested rows a groupBy axis does; an
         // unreachable axis (null hop) leaves the option ungrouped, never partial.

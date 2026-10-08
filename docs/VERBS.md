@@ -40,6 +40,17 @@ modules allowed to implement it, and every exported function must appear in this
 `ArrayOperator`, `FieldKind`, `RuleTarget`, `ValueShape`, `NUMERIC_KINDS` and `ALL_KINDS` are
 the catalog's constants.
 
+Two error classes say whose input is wrong (each sets `name`, so `instanceof` or `error.name`
+tells them apart):
+
+- `LensRefusal` — what the lens itself can't do: a grant a later layer may not read, a grant or
+  source a compile can't hold, a link a source's path can't carry. It carries a `code`;
+  `validateNarrowing` reports the same refusal as an issue before anything runs.
+- `UsageError` — the caller's input missing or malformed: no `now` for a relative date, an invalid
+  `now` or time zone, a bind that was never bound.
+
+Any other Error is a rule-shape problem the validators report (`validateRule`).
+
 ## Internal verbs and their owners
 
 | Verb | Owner | Rule (`test/verbs.test.ts`) |

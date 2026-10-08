@@ -159,7 +159,8 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
   test('p2c: each spelled node grows its own default subtree; sources follow it', () => {
     const n3: LensNarrowing = {
       parent: base,
-      root: { relations: { d: { where: rule({ field: 'id', operator: 'equals', value: 't' }) } } },
+      // The map is one-sided: a grant on d couldn't be carried down to the sources below it.
+      root: { relations: { d: {} } },
       mapDefaults: {
         app: {
           models: {

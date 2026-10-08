@@ -191,9 +191,9 @@ export type SourcePlan = {
 /**
  * The grants of every visit above a source's own, as conditions on the source's rows: each
  * ancestor's `where` carried down through the inverse of the hop below it — a to-one inverse by
- * prefixing its fields, a to-many one through `any`. An option list never offers what the rows
- * under the grant don't hold, so a grant no inverse can carry (none declared, a bridge, a path
- * ref) offers nothing. `linked`: the rows must also be reached down the path — the inverse carried
+ * prefixing its fields, a to-many one through `any`. A grant no inverse can carry is refused; past
+ * a bridge the source is routed to caller rows (`bridged`), save a pointer with nothing to carry.
+ * `linked`: the rows must also be reached down the path — the inverse carried
  * where no grant sits too — as a path source's are; a pointer's rows needn't be. A relation whose
  * map declares no inverse links nothing where no grant sits: the query offers the rows the grants
  * admit, reached or not.
@@ -203,18 +203,21 @@ const ancestorGrants = (
   relPath: readonly string[],
   carriedTo: Map<string, Condition | null>,
   linked: boolean,
-): Condition[] => {
+): Condition[] | { bridged: string } => {
   if (relPath.length === 0) return [];
   const root = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
   const { hops, end } = relationHops(policy.lens.maps, root, relPath.join('.'));
-  if (!end) return [false];
+  if (!end)
+    throw new LensRefusal(
+      `source at '${relPath.join('.')}': its path doesn't resolve on the field maps`,
+      'not_in_lens',
+    );
   const visits = [root, ...hops.map((hop) => ({ mapName: hop.map, modelName: hop.model }))];
   // What the levels above carry is the same for every source below them: start below the deepest
   // level already carried.
   let from = relPath.length;
   while (from > 0 && !carriedTo.has(relPath.slice(0, from).join('.'))) from--;
   let carried = from > 0 ? (carriedTo.get(relPath.slice(0, from).join('.')) ?? null) : null;
-  if (carried === false) return [false];
   for (let level = from; level < relPath.length; level++) {
     const done = (value: Condition | null): void => {
       carried = value;
@@ -234,18 +237,27 @@ const ancestorGrants = (
     }
     const map = own(policy.lens.maps, at.mapName);
     const entry = map && fieldOf(map, at.modelName, relPath[level]);
-    const inverse =
-      map && entry && entry.kind === 'object' && visits[level + 1].mapName === at.mapName
-        ? inverseRelation(map, at.modelName, relPath[level], entry)
-        : null;
+    // Past a bridge no database holds both sides: the link and the grants can't be carried, and
+    // the source is materialized from rows holding both — save a pointer with nothing to carry.
+    if (!entry || entry.kind === 'bridge' || visits[level + 1].mapName !== at.mapName) {
+      if (grants.length === 0 && !linked) {
+        done(null);
+        continue;
+      }
+      return { bridged: relPath.slice(0, level + 1).join('.') };
+    }
+    const inverse = map ? inverseRelation(map, at.modelName, relPath[level], entry) : null;
+    // A map that declares no inverse links nothing (see the doc above); a grant it can't carry is
+    // refused, never an empty list.
     if (!inverse && grants.length === 0) {
       done(null);
       continue;
     }
-    if (!inverse) {
-      done(false);
-      return [false];
-    }
+    if (!inverse)
+      throw new LensRefusal(
+        `source at '${relPath.join('.')}': '${relPath[level]}' on ${at.modelName} declares no inverse, so the grants above can't be carried down to it`,
+        'unsupported_grant',
+      );
     const here = allOf(grants);
     try {
       const present = { field: inverse.field, operator: 'exists' } as Condition;
@@ -317,12 +329,14 @@ export const sourcePlansWith = (
       // the pointing layer (the chain keeps its indices), so no layer's narrowing is lost.
       const pointsFrom = fromModel ? effect.sourcesFromMapDefaults.get(field) : undefined;
       const skip = pointsFrom === undefined ? undefined : policy.chain[pointsFrom];
-      const above = ancestorGrants(
+      const carried = ancestorGrants(
         skip === undefined ? policy : { ...policy, skipGrantsOf: skip },
         at.relPath,
         carriedFor(skip),
         skip === undefined && !fromModel,
       );
+      const above = Array.isArray(carried) ? carried : [];
+      const pathBridged = Array.isArray(carried) ? undefined : carried.bridged;
       const eligibility = [
         ...above,
         ...wheres,
@@ -340,11 +354,13 @@ export const sourcePlansWith = (
       const fieldMap = policy.lens.bridges?.length
         ? resolveFieldMap(policy.lens, at.mapName, 'toPrisma')
         : undefined;
-      const bridged = fieldMap
-        ? [...readPaths(where), ...(label === undefined ? [] : [label]), ...(groupBy ?? [])].find(
-            (read) => hitsBridge(read, fieldMap, at.modelName),
-          )
-        : undefined;
+      const bridged =
+        pathBridged ??
+        (fieldMap
+          ? [...readPaths(where), ...(label === undefined ? [] : [label]), ...(groupBy ?? [])].find(
+              (read) => hitsBridge(read, fieldMap, at.modelName),
+            )
+          : undefined);
       // The option query compiles it: a shape it has no form for is refused here, so validation
       // and every materializer refuse it alike.
       const refusal = prismaRefusal(

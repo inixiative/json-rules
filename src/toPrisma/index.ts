@@ -1,5 +1,5 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import { compileUnderLens } from '../lens/compileUnderLens';
+import { compileWithLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
 import { recordRefs } from './sentinels';
@@ -40,8 +40,10 @@ export type {
  * toPrisma(rule, { lens: narrowing, now }); // gated, narrowed, compiled against the base lens
  * ```
  */
-export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToPrismaResult => {
-  const { condition, options } = compileUnderLens(rule, compileOptions, 'toPrisma');
+export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToPrismaResult =>
+  compileWithLens(rule, compileOptions, 'toPrisma', compilePrisma);
+
+const compilePrisma = (condition: Condition, options?: ToPrismaOptions): ToPrismaResult => {
   const state: PrismaBuildState = { steps: [] };
   const where = buildCondition(condition, normalizeOptions(options), state);
   // Each step records where its own references sit; nothing else is ever resolved.

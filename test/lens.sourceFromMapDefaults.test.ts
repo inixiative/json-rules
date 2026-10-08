@@ -330,9 +330,10 @@ describe('across a bridge', () => {
     ]);
   });
 
-  test('a path source across a bridge still offers nothing', () => {
+  test('a path source across a bridge has no query: it is routed to rows holding both sides', () => {
     const q = query(bridged(true));
-    expect(accounts.filter((a) => check(q?.composedWhere ?? false, a) === true)).toEqual([]);
+    expect(q?.prisma).toBeNull();
+    expect(q?.sql.error).toMatch(/across a bridge/);
   });
 });
 

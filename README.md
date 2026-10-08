@@ -951,6 +951,26 @@ if (!result.ok) {
 assertValidRule(rule, { target: 'toPrisma' });
 ```
 
+Two error classes say whose input went wrong; each sets `name`, so check with `instanceof` or
+`error.name`:
+
+| Class | Thrown when | Fix |
+| --- | --- | --- |
+| `UsageError` | The caller's input is missing or malformed: no `now` for a relative date, an invalid `now` or time zone, a bind never bound (`bindRule` / `bindLens` before compiling; `bindings` for `check`). | Supply the input. |
+| `LensRefusal` (`code`) | The lens itself can't do it: a later layer's grant reads what its parent hides, a grant or source a compile has no form for, a source path that can't carry its link. | Fix the lens — `validateNarrowing` reports the same refusal as an issue. |
+
+```ts
+import { LensRefusal, UsageError } from '@inixiative/json-rules';
+
+try {
+  toPrisma(rule, { lens, now });
+} catch (error) {
+  if (error instanceof UsageError) /* the caller's input */;
+  else if (error instanceof LensRefusal) /* the lens: error.code */;
+  else throw error; // the rule's shape — validateRule reports it
+}
+```
+
 ## Root-Array Rules in `check()`
 
 When `data` is an array, the rule must be a tree of `all` / `any` whose leaves are **fieldless** `ArrayRule`s (no `field`, `arrayOperator` operates on the array itself).
@@ -1225,7 +1245,7 @@ const projection = projectLens(narrowing, { sourceValues: [values] });
 | --- | --- |
 | `toSourceQueries(lensOrNarrowing, options?)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql }`. `options` is the clock (`now`, `timeZone`, `weekStart`) a relative date in the where compiles with — required for one, a plain usage error without it; bind a lens's binds with `bindLens` first. `prisma.steps` is present when the where needs `executePrismaPlan`. `sql.sql` is `null` with an `error` when SQL can't express the where. A where that crosses a bridge has no query at all: `prisma` is `null` and `sql.error` says so — a database holds one side of it, so materialize it with `materializeSources` over rows holding both. `distinct` is the value and a sibling label column; a grouped source or a dotted label drops it, so every label comes back and the least one is picked. |
 | `materializeSourceQuery(query, rows, { rowShape? })` | One query's fetched rows as `SourceValues`. `rowShape` is `'prisma'` (default: a dotted `label` and each `groupBy` axis come nested) or `'sql'` (they come flat as `__label` / `__group_i`). Options are deduplicated and sorted. |
-| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from the rows the lens fetches — `toLensSelect`'s rows as fetched, or as `projectRows(…, { keepGrantColumns: true })` keeps them. A viewer's projection drops what sources read: a row lacking a key a source or a grant on its path reads throws (a fetch returns every key it selects, NULL as `null`). The path is walked down the rows — the tree is its link — each level's grants met, and each row it reaches must meet, through `check()` with `options`, its visit's grants, its source `where` narrowed as a rule is, the guards of the relations its label and axes cross and the values the lens allows — so it offers what `toSourceQueries` does. A scalar-list field gives one option per element; a value takes its least label. A `from: 'mapDefaults'` source throws (see below). |
+| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from the rows the lens fetches — `toLensSelect`'s rows as fetched, or as `projectRows(…, { keepGrantColumns: true })` keeps them. A viewer's projection drops what sources read: a row lacking any key a read walks — through each relation and list element to the column — that a source or a grant on its path reads throws a `UsageError` (a fetch returns every key it selects, NULL as `null`). The path is walked down the rows — the tree is its link — each level's grants met, and each row it reaches must meet, through `check()` with `options`, its visit's grants, its source `where` narrowed as a rule is, the guards of the relations its label and axes cross and the values the lens allows — so it offers what `toSourceQueries` does. A scalar-list field gives one option per element; a value takes its least label. A `from: 'mapDefaults'` source throws (see below). |
 
 Options never offer a value the lens disallows: `projectLens` drops fetched values outside a
 field's allowed set. Nor do they come through a row the lens hides: each source `where` is
@@ -1277,25 +1297,28 @@ theirs, so a child's pointer can only narrow what its parent gave, and a tenant 
 pointer always narrows it. How depends on how it scopes: through `mapDefaults` (the model's own
 grant or source) the pointer still offers unlinked rows; through a root `where` the grant can only
 reach the pointer down the path, so it offers just the linked rows — and across a bridge, where no
-grant crosses, nothing. Scope tenancy through `mapDefaults` to keep a pointer's unlinked rows.
+grant crosses, no query at all (it is routed to caller rows, below). Scope tenancy through `mapDefaults` to keep a pointer's unlinked rows.
 A pointer whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws
 from `projectLens` (by path) / `toSourceQueries` / `materializeSources`, even where a layer hides
 its field; `projectLens(…, { by: 'model' })` and `describeRuleSources` read the lens without
 validating it. Across a bridge it is how a picker gets options at all: the
 model source compiles against the far map alone, with that map's own tenancy, where a path source
-offers nothing (until a later layer scopes by a root `where`, as above). `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
+has no query (see "Sources across a bridge"). A grant a path can't carry down — a relation whose
+map declares no inverse — is a `LensRefusal`, never an empty list. `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
 rows; query it with `toSourceQueries` and `materializeSourceQuery`.
 
 #### Sources across a bridge
 
-A source whose `where`, `label` or an axis reads across a bridge has neither a database form (no
+A source whose path, `where`, `label` or an axis reads across a bridge has neither a database form (no
 database holds both sides) nor a fetch form (`toLensSelect` selects no bridge). `toSourceQueries`
 returns it with `prisma: null`, `sql.sql: null` and an `sql.error` that names the path. Materialize
 it yourself: pass `materializeSources` the rows at the source's path, each holding the bridged
 row inline under its bridge field — for a `FanUser.email` source reading
 `salesforce:Contact.industry`, `{ id, email, crmId, 'salesforce:Contact': { id, industry } }`
 (the `indexBridges` output). A pointer whose model source crosses a bridge is materialized the same
-way, over the rows you supply. Rows without the bridged side throw rather than offer a wrong set.
+way, over the rows you supply. Every key a read walks must be there — the bridged row as one row
+where the bridge names one, each column a source or a grant reads — or `materializeSources` throws a
+`UsageError` rather than offer a wrong set.
 
 ### Fetching Under a Lens
 

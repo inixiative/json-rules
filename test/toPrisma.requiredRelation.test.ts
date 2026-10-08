@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { type FieldMap, toPrisma } from '../index';
 import { getWhere } from './fixtures/helpers';
 
-// A required relation is present whenever its row is, so its existence compiles through the
-// optional hops above it — but only when every hop says whether it is required.
+// A relation's existence is `is: {}`: present where it and every hop above it are, with no
+// `null` filter Prisma rejects on a required relation and no requiredness to know.
 const map = (bRequired?: boolean): FieldMap => ({
   models: {
     A: {
@@ -22,19 +22,10 @@ const map = (bRequired?: boolean): FieldMap => ({
 const where = (operator: 'exists' | 'notExists', bRequired?: boolean) =>
   getWhere(toPrisma({ field: 'b.c', operator }, { map: map(bRequired), model: 'A' }));
 
-describe('existence of a required relation', () => {
-  test('under required hops it always holds', () => {
-    expect(where('exists', true)).toEqual({});
-    expect(where('notExists', true)).toEqual({ OR: [] });
-  });
-
-  test('under an optional hop it is missing exactly where the hop is', () => {
-    expect(where('exists', false)).toEqual({ NOT: { b: { is: null } } });
-    expect(where('notExists', false)).toEqual({ b: { is: null } });
-  });
-
-  test('under a hop of unknown requiredness it keeps the relation filter', () => {
-    expect(where('exists')).toEqual({ b: { c: { isNot: null } } });
-    expect(where('notExists')).toEqual({ b: { c: { is: null } } });
-  });
+describe('existence of a relation compiles without null, required or not', () => {
+  for (const bRequired of [true, false, undefined])
+    test(`under a hop whose requiredness is ${String(bRequired)}`, () => {
+      expect(where('exists', bRequired)).toEqual({ b: { c: { is: {} } } });
+      expect(where('notExists', bRequired)).toEqual({ NOT: { b: { c: { is: {} } } } });
+    });
 });

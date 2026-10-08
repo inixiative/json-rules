@@ -10,9 +10,9 @@
   narrowed `org` is guarded, as a path source's is).
 - An undeclared pointer throws when projected even where a layer hides its field, as
   `validateNarrowing` reports it.
-- `exists` / `notExists` on a required relation take the 3.0.1 shortcut only when every to-one hop
-  above it says whether it's required; under a hop of unknown requiredness (a hand-written map) the
-  relation filter stays, so a missing hop is never read as present.
+- A relation's existence compiles to `{ is: {} }` (present) / `NOT { is: {} }` (missing), required
+  or not: no `null` filter for Prisma to reject on a required relation, and no requiredness to know
+  — a hand-written map without `isRequired` gets it right too. Replaces 3.0.1's shortcut.
 
 ## 3.1.0 — a path source can offer its model's own source
 

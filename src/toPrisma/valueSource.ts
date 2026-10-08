@@ -6,45 +6,42 @@ import { ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
 import { type Settle, settleLiteral } from '../negate';
 import { ORDERED_OPERATORS } from '../operatorCatalog';
-import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
+import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { Rule, ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
+import { holdsReservedKey } from './sentinels';
 import type { ToPrismaOptions } from './types';
 
-/** A path on the Prisma rail: a context read. Prisma WHERE has no column-to-column comparison
- *  or arithmetic, so a row (`$.`) ref has no form here. */
-const readPathValue = (ref: string, options?: ToPrismaOptions): unknown => {
+/** A path reads a column, bare (the root row) or `$.`: Prisma WHERE has no general
+ *  column-to-column comparison or arithmetic, so it has no form here. */
+const readPathValue = (ref: string): never => {
   const scoped = parseScopeRef(ref);
-  if (scoped) {
-    if (scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toPrisma'));
-    throw new Error(
-      `Path '${ref}' is not supported by toPrisma(): Prisma WHERE has no column-to-column ` +
-        `comparison or arithmetic. Use toSql() or prisma.$queryRaw.`,
-    );
-  }
-  return readContextRef(ref, options?.context, 'toPrisma');
+  if (scoped && scoped.depth > 1) throw new Error(checkOnlyScopeRef(ref, 'toPrisma'));
+  throw new Error(
+    `Path '${ref}' compares to a column, which isn't supported on the Prisma rail; use toSql() or check().`,
+  );
 };
 
-/** A value source on the Prisma rail: its value, a context read, or an unresolved bind. */
-export const readSource = (
-  source: ValueSourceFields<unknown>,
-  options?: ToPrismaOptions,
-): unknown =>
+/** A value source on the Prisma rail: its value, or an unresolved bind. */
+export const readSource = (source: ValueSourceFields<unknown>): unknown =>
   matchSource<unknown>(source, {
-    value: (value) => value,
-    path: (ref) => readPathValue(ref, options),
+    value: (value) => {
+      if (holdsReservedKey(value))
+        throw new Error(
+          `toPrisma: a value holding a '__step' or '__field' key is reserved for the plan's own references`,
+        );
+      return value;
+    },
+    path: (ref) => readPathValue(ref),
     bind: (name, optional) => compileBinding(name, optional, 'toPrisma'),
   });
 
-export const prismaRead =
-  (options?: ToPrismaOptions): ReadSource =>
-  (source) =>
-    readSource(source, options);
+export const prismaRead: ReadSource = (source) => readSource(source);
 
 export const dateConfigOf = (options?: ToPrismaOptions): ResolvedDateConfig =>
   resolveDateConfig(
     { now: options?.now, timeZone: options?.timeZone, weekStart: options?.weekStart },
-    prismaRead(options),
+    prismaRead,
   );
 
 /** A leaf with its value source and offset read as the Prisma rail reads them, for negation;
@@ -58,6 +55,9 @@ export const settleLeaf =
       (typeof leaf.path === 'string' && leaf.path !== '') ||
       typeof leaf.bind === 'string';
     if (!comparison || 'aggregate' in leaf || !sourced) return leaf;
+    // A column compared with a column stays one: its complement compiles to a field reference.
+    if (typeof leaf.operator === 'string' && typeof leaf.path === 'string' && leaf.path !== '')
+      return leaf;
     // The complement of an ordered comparison keeps the values of other types, which Prisma's
     // Json filters can't test for.
     const shape = ruleShape(
@@ -75,9 +75,8 @@ export const settleLeaf =
         `The complement of '${leaf.operator}' on the Json value '${leaf.field}'`,
         'it keeps values of other types',
       );
-    const value = readSource(leaf, options);
-    const offset =
-      leaf.offset === undefined ? undefined : readSource(leaf.offset as never, options);
+    const value = readSource(leaf);
+    const offset = leaf.offset === undefined ? undefined : readSource(leaf.offset as never);
     if (leaf.offset !== undefined && (offset === null || offset === undefined)) return null;
     const { path: _path, bind: _bind, bindOptional: _optional, ...rest } = leaf;
     const literal = {

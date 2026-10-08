@@ -43,10 +43,21 @@ const withParent = (
 ): LensNarrowing => ({ parent, ...rest });
 
 describe('validateRuleInLens — deep-path rejection through un-narrowed relations', () => {
-  test('unrestricted lens: deep path passes', () => {
+  test('bare lens: a deep path crosses undeclared relations and is rejected', () => {
     const result = validateRuleInLens(
       { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
       lens,
+    );
+    expect(result.errors.map((e) => e.code)).toEqual(['not_in_lens']);
+  });
+
+  test('every hop declared: deep path passes', () => {
+    const declared = withParent(lens, {
+      root: { relations: { orgUsers: { relations: { organization: {} } } } },
+    });
+    const result = validateRuleInLens(
+      { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
+      declared,
     );
     expect(result.ok).toBe(true);
   });

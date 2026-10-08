@@ -14,13 +14,11 @@ const withParent = (
 const postLens: Lens = { maps: { prisma: multiRelMap }, mapName: 'prisma', model: 'Post' };
 
 describe('projectPaths — path-keyed projection (v2.4)', () => {
-  test('lens-only (no narrowing): single root entry with all fields', () => {
+  test('lens-only (no narrowing): single root entry with its columns, no relation turned on', () => {
     const projection = projectPaths(postLens);
     expect(Object.keys(projection)).toEqual(['Post']);
     expect(Object.keys(at(projection, 'Post').fields).sort()).toEqual([
-      'author',
       'authorId',
-      'editor',
       'editorId',
       'id',
     ]);
@@ -93,18 +91,18 @@ describe('projectPaths — path-keyed projection (v2.4)', () => {
     expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['id']);
   });
 
-  test('multi-layer chain: each layer contributes; descent picks up relations from any layer', () => {
-    // Layer 1: declares author relation with name pick
-    // Layer 2: declares editor relation with id pick + further narrows author
+  test('multi-layer chain: each layer narrows the relations the first turns on', () => {
+    // Layer 1: turns on author (name, email, id) and editor
+    // Layer 2: narrows editor to id + further narrows author
     // Layer 3: applies a mapDefaults omit to User
     const n1 = withParent(postLens, {
-      root: { relations: { author: { picks: ['name', 'email', 'id'] } } },
+      root: { relations: { author: { picks: ['name', 'email', 'id'] }, editor: {} } },
     });
     const n2 = withParent(n1, {
       root: {
         relations: {
           author: { picks: ['name', 'email'] }, // narrows layer 1
-          editor: { picks: ['id'] }, // new relation
+          editor: { picks: ['id'] }, // narrows layer 1
         },
       },
     });
@@ -117,6 +115,12 @@ describe('projectPaths — path-keyed projection (v2.4)', () => {
     expect(Object.keys(at(projection, 'Post.author').fields).sort()).toEqual(['name']);
     // editor: only layer2 picks; mapDefaults still applies → {id} (email not picked anyway)
     expect(Object.keys(at(projection, 'Post.editor').fields).sort()).toEqual(['id']);
+  });
+
+  test('a later layer cannot turn on a relation its parent does not show', () => {
+    const n1 = withParent(postLens, { root: { relations: { author: {} } } });
+    const n2 = withParent(n1, { root: { relations: { author: {}, editor: { picks: ['id'] } } } });
+    expect(Object.keys(projectPaths(n2)).sort()).toEqual(['Post', 'Post.author']);
   });
 });
 
@@ -149,10 +153,10 @@ describe('projectPaths — recursive same model on one path', () => {
       root: {
         relations: {
           spaceUsers: {
-            picks: ['spaceId', 'user'],
+            picks: ['spaceId'],
             relations: {
               user: {
-                picks: ['spaceUsers'],
+                picks: [],
                 relations: {
                   spaceUsers: { picks: ['orgId', 'role'] },
                 },

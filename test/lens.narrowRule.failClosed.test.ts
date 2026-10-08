@@ -60,14 +60,31 @@ describe('narrowRule fails closed', () => {
         rule({
           field: 'tags',
           arrayOperator: 'any',
+          condition: { field: 'x', operator: 'equals', path: '$$.y' },
+        }),
+        'author',
+      ),
+    ).toThrow('reads the row being re-rooted');
+    expect(() => prefixConditionFields(rule({ operator: 'exists' }), 'author')).toThrow(
+      'unknown shape',
+    );
+  });
+
+  test('a relation node re-roots by its field: its condition reads its elements', () => {
+    expect(
+      prefixConditionFields(
+        rule({
+          field: 'tags',
+          arrayOperator: 'any',
           condition: { field: 'x', operator: 'exists' },
         }),
         'author',
       ),
-    ).toThrow('nested array/aggregate condition');
-    expect(() => prefixConditionFields(rule({ operator: 'exists' }), 'author')).toThrow(
-      'unknown shape',
-    );
+    ).toEqual({
+      field: 'author.tags',
+      arrayOperator: 'any',
+      condition: { field: 'x', operator: 'exists' },
+    });
   });
 
   test('a re-rootable grant is prefixed through logical nodes', () => {

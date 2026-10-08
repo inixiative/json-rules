@@ -16,8 +16,7 @@ import type { Lens, LensNarrowing } from './types.ts';
  * The values one rule compares at one declared source — keyed the way `projectPaths`
  * keys a source (`path` + `field`), so the caller can join it back to the source's
  * model without spelling a path of its own. A `mapDefaults`-declared source resolves
- * wherever its model appears, so `path` may name a relation chain the narrowing never
- * spelled under `root.relations`; the dotted format is the same.
+ * wherever its model appears on the declared relations; the dotted format is the same.
  */
 export type RuleSourceDescription = {
   path: string;
@@ -79,14 +78,14 @@ const dedupeKey = (value: RuleValue): string => {
  * vocabulary, so it answers questions about it; callers never spell a path. A leaf reaches a
  * source by its absolute path through the lens: nested (`{ field: 'orders', arrayOperator,
  * condition: { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`) spellings are one path,
- * resolved by `lensPathEnd` — visibility, `mapDefaults`, and the Json boundary all apply, so a
- * source declared in `mapDefaults` answers wherever its model appears. Quantifier-blind on
+ * resolved by `lensPathEnd` — declared relations, visibility, `mapDefaults`, and the Json boundary
+ * all apply, so a source declared in `mapDefaults` answers wherever a declared path reaches its model. Quantifier-blind on
  * purpose — a `none` relation names its value as much as an `any` one, `notIn` as much as `in` —
  * but shape-aware via the operator catalog: only literal-naming shapes contribute `values`;
  * substring / pattern / range / window operators, and operators the catalog does not know, mark
  * the source `dynamic` instead of inventing values. A relation node's own comparison (an
  * aggregate's threshold, an array `count`) belongs to the node, not to a source. Paths invisible
- * under the lens, unmapped segments, and sub-paths beneath a Json column are silent.
+ * or undeclared under the lens, unmapped segments, and sub-paths beneath a Json column are silent.
  */
 export const describeRuleSources = (
   rule: Condition,

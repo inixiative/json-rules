@@ -123,12 +123,13 @@ describe('Date Operations Examples', () => {
       ],
     };
 
-    // Test with a valid weekday in the near future
+    // Test with a valid weekday in the near future — a UTC one, the zone the rule reads in (the
+    // host's local day can be a different day of the week).
     const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     // If tomorrow is weekend, skip to Monday
-    if (tomorrow.getDay() === 0) tomorrow.setDate(tomorrow.getDate() + 1);
-    if (tomorrow.getDay() === 6) tomorrow.setDate(tomorrow.getDate() + 2);
+    if (tomorrow.getUTCDay() === 0) tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    if (tomorrow.getUTCDay() === 6) tomorrow.setUTCDate(tomorrow.getUTCDate() + 2);
 
     const validBooking = { bookingDate: tomorrow.toISOString() };
     expect(check(bookingRule, validBooking)).toBe(true);

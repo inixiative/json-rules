@@ -48,11 +48,18 @@ describe('prototype-named fields never resolve', () => {
 });
 
 describe('prototype names read as absent on every rail', () => {
-  test('a context path', () => {
-    const rule = { field: 'email', operator: Operator.equals, path: 'toString' } as never;
-    expect(check(rule, { email: null }, { context: {} })).toBe(true);
-    expect(toSql(rule, { context: {} }).sql).toBe('"email" IS NULL');
-    expect(getWhere(toPrisma(rule, { context: {} }))).toEqual({ email: { equals: null } });
+  test('a bare root-row path and an optional bind', () => {
+    const pathRule = { field: 'email', operator: Operator.equals, path: 'toString' } as never;
+    expect(check(pathRule, { email: null })).toBe(true);
+    const bound = {
+      field: 'email',
+      operator: Operator.equals,
+      bind: 'toString',
+      bindOptional: true,
+    } as never;
+    expect(check(bound, { email: null }, { bindings: {} })).toBe(true);
+    expect(toSql(bound).sql).toBe('"email" IS NULL');
+    expect(getWhere(toPrisma(bound))).toEqual({ email: { equals: null } });
   });
 
   test('a row path and an array item field', () => {

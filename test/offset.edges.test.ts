@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition, FieldMap } from '../index';
-import { check, toPrisma, toSql, validateRule } from '../index';
+import { bindRule, check, toPrisma, toSql, validateRule } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { getWhere } from './fixtures/helpers';
@@ -34,12 +34,14 @@ const table = (ddl: string, rows: Row[], columns: string[]) => {
   return async (
     condition: Condition,
     expected: number[],
-    opts: { context?: Record<string, unknown>; timeZone?: string } = {},
+    opts: { bindings?: Record<string, unknown>; timeZone?: string } = {},
   ) => {
     const inMemory = rows
       .filter((r) => check(condition, r, { now: NOW, ...opts } as never) === true)
       .map((r) => r.id);
-    const { sql, params } = toSql(condition, { now: NOW, ...opts } as never);
+    const { bindings, ...compile } = opts;
+    const bound = bindings ? bindRule(condition, bindings as never) : condition;
+    const { sql, params } = toSql(bound, { now: NOW, ...compile });
     const viaSql = (
       await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
     ).rows.map((r) => r.id);
@@ -106,15 +108,18 @@ describe('magnitudes read from data: calendar units are whole, every unit non-ne
     );
   });
 
-  test('a fractional or negative context magnitude matches nothing', async () => {
+  test("a fractional or negative bound magnitude is the caller's error, as a literal is", () => {
     const r = rule({
       field: 'ts',
       dateOperator: 'before',
       path: '$.anchor',
-      offset: { value: { ago: { days: { path: 'k' } } } },
+      offset: { value: { ago: { days: { bind: 'k' } } } },
     });
-    await both(r, [], { context: { k: 1.5 } });
-    await both(r, [], { context: { k: -1 } });
+    const row = { ts: new Date('2026-09-20T00:00:00Z'), anchor: new Date('2026-10-01T00:00:00Z') };
+    for (const k of [1.5, -1]) {
+      expect(() => check(r, row, { now: NOW, bindings: { k } })).toThrow('non-negative whole');
+      expect(() => toSql(bindRule(r, { k }), { now: NOW })).toThrow();
+    }
   });
 
   test('validateRule rejects a fractional literal calendar unit', () => {
@@ -136,9 +141,9 @@ describe('a range with one missing end matches nothing, and negation keeps null 
   ];
   const both = table('CREATE TABLE t (id INT, ts TIMESTAMPTZ, n INT)', rows, ['id', 'ts', 'n']);
 
-  test('notBetween over a context pair with a null end', async () => {
-    await both(rule({ field: 'ts', dateOperator: 'notBetween', path: 'range' }), [2], {
-      context: { range: ['2024-01-01T00:00:00Z', null] },
+  test('notBetween over a bound pair with a null end', async () => {
+    await both(rule({ field: 'ts', dateOperator: 'notBetween', bind: 'range' }), [2], {
+      bindings: { range: ['2024-01-01T00:00:00Z', null] },
     });
   });
 
@@ -153,15 +158,16 @@ describe('a range with one missing end matches nothing, and negation keeps null 
     );
   });
 
-  test('a numeric notBetween over a context pair with a null end', async () => {
+  test('a numeric notBetween over a bound pair with a null end', async () => {
     const numbers = rule({
       field: 'n',
       operator: 'notBetween',
-      path: 'range',
+      bind: 'range',
       offset: { value: 1 },
     });
-    expect(check(numbers, { id: 1, n: 50 }, { context: { range: [10, null] } })).not.toBe(true);
-    expect(check(numbers, { id: 1, n: null }, { context: { range: [10, null] } })).toBe(true);
+    const bindings = { range: [10, null] };
+    expect(check(numbers, { id: 1, n: 50 }, { bindings })).not.toBe(true);
+    expect(check(numbers, { id: 1, n: null }, { bindings })).toBe(true);
   });
 });
 
@@ -196,24 +202,26 @@ describe('between with row-computed ends sorts them like check()', () => {
 });
 
 describe('numeric bases the compilers must take as check() does', () => {
-  test('a bigint context base', () => {
-    const r = rule({ field: 'n', operator: 'greaterThan', path: 'base', offset: { value: 5 } });
-    expect(check(r, { n: 20 }, { context: { base: 10n } })).toBe(true);
-    expect(toSql(r, { context: { base: 10n } }).params).toEqual([15]);
-    expect(getWhere(toPrisma(r, { context: { base: 10n } }))).toEqual({ n: { gt: 15 } });
+  test('a bigint bound base', () => {
+    const r = rule({ field: 'n', operator: 'greaterThan', bind: 'base', offset: { value: 5 } });
+    const bindings = { base: 10n } as never;
+    expect(check(r, { n: 20 }, { bindings })).toBe(true);
+    expect(toSql(bindRule(r, bindings)).params).toEqual([15]);
+    expect(getWhere(toPrisma(bindRule(r, bindings)))).toEqual({ n: { gt: 15 } });
   });
 
   test('a Decimal string base', () => {
     const r = rule({
       field: 'n',
       operator: 'greaterThan',
-      path: 'base',
+      bind: 'base',
       offset: { value: 1 },
       coerceType: 'Decimal',
     });
-    expect(check(r, { n: '7' }, { context: { base: '5.5' } })).toBe(true);
-    expect(toSql(r, { context: { base: '5.5' } }).params).toEqual([6.5]);
-    expect(getWhere(toPrisma(r, { context: { base: '5.5' } }))).toEqual({ n: { gt: 6.5 } });
+    const bindings = { base: '5.5' };
+    expect(check(r, { n: '7' }, { bindings })).toBe(true);
+    expect(toSql(bindRule(r, bindings)).params).toEqual([6.5]);
+    expect(getWhere(toPrisma(bindRule(r, bindings)))).toEqual({ n: { gt: 6.5 } });
   });
 });
 
@@ -289,16 +297,16 @@ describe('shifts run in the configured zone, across DST, on every rail', () => {
     );
   });
 
-  test('a literal offset on a context anchor', async () => {
+  test('a literal offset on a bound anchor', async () => {
     await both(
       rule({
         field: 'ts',
         dateOperator: 'onOrAfter',
-        path: 'anchor',
+        bind: 'anchor',
         offset: { value: { ahead: { days: 1 } } },
       }),
       [1, 2],
-      { ...opts, context: { anchor: '2026-03-07T17:00:00Z' } },
+      { ...opts, bindings: { anchor: '2026-03-07T17:00:00Z' } },
     );
   });
 });

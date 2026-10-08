@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { DateOperator, Operator, toSql } from '../index';
+import { bindRule, DateOperator, Operator, toSql } from '../index';
 import { blogMap } from './fixtures/blogMap';
 import { compositeFkMap } from './fixtures/compositeFkMap';
 import { multiRelMap } from './fixtures/multiRelMap';
@@ -75,40 +75,66 @@ describe('toSql path ref: $.field', () => {
   });
 });
 
-// ─── path ref: context.path ───────────────────────────────────────────────────
-describe('toSql path ref: context.path', () => {
-  it('context.path → resolves value and emits as param', () => {
+// ─── path ref: a bare path is the root row ───────────────────────────────────
+describe('toSql path ref: a bare path reads the root row', () => {
+  it('a bare path → the same column comparison as `$.` at the root', () => {
+    const bare = toSql({ field: 'endDate', operator: Operator.greaterThan, path: 'startDate' });
+    expect(bare).toEqual(
+      toSql({ field: 'endDate', operator: Operator.greaterThan, path: '$.startDate' }),
+    );
+    expect(bare.sql).toBe('"endDate" > "startDate"');
+  });
+
+  it('a dotted bare path joins like a field', () => {
+    const { sql, joins } = toSql(
+      { field: 'title', operator: Operator.equals, path: 'author.name' },
+      { map: blogMap, model: 'Post', alias: 't0' },
+    );
+    expect(sql).toBe('"t0"."title" IS NOT DISTINCT FROM "t1"."name"');
+    expect(joins).toHaveLength(1);
+  });
+
+  it('date rule: a bare path → column-to-column', () => {
+    const { sql, params } = toSql({
+      field: 'endDate',
+      dateOperator: DateOperator.after,
+      path: 'startDate',
+    });
+    expect(sql).toBe(
+      'to_timestamp(EXTRACT(EPOCH FROM "endDate")) > to_timestamp(EXTRACT(EPOCH FROM "startDate"))',
+    );
+    expect(params).toEqual([]);
+  });
+});
+
+// ─── a caller's value is a bind ──────────────────────────────────────────────
+describe("toSql: a caller's value is a bind", () => {
+  it('a bound value → param', () => {
     const { sql, params } = toSql(
-      { field: 'userId', operator: Operator.equals, path: 'currentUser.id' },
-      { context: { currentUser: { id: 'u-123' } } },
+      bindRule(
+        { field: 'userId', operator: Operator.equals, bind: 'currentUserId' },
+        {
+          currentUserId: 'u-123',
+        },
+      ),
     );
     expect(sql).toBe('"userId" = $1');
     expect(params).toEqual(['u-123']);
   });
 
-  it('nested context.path', () => {
-    const { sql, params } = toSql(
-      { field: 'orgId', operator: Operator.equals, path: 'session.org.id' },
-      { context: { session: { org: { id: 'org-abc' } } } },
-    );
-    expect(sql).toBe('"orgId" = $1');
-    expect(params).toEqual(['org-abc']);
-  });
-
-  it('date rule: context.path → param', () => {
+  it('date rule: a bound date → param', () => {
     const since = new Date('2024-01-01');
     const { sql, params } = toSql(
-      { field: 'createdAt', dateOperator: DateOperator.after, path: 'filters.since' },
-      { context: { filters: { since } } },
+      bindRule({ field: 'createdAt', dateOperator: DateOperator.after, bind: 'since' }, { since }),
     );
     expect(sql).toBe('"createdAt" > $1');
     expect(params).toEqual([since.toISOString()]);
   });
 
-  it('context.path without context → throws', () => {
+  it('an unresolved bind → throws', () => {
     expect(() =>
-      toSql({ field: 'userId', operator: Operator.equals, path: 'currentUser.id' }),
-    ).toThrow('context');
+      toSql({ field: 'userId', operator: Operator.equals, bind: 'currentUserId' }),
+    ).toThrow("Unresolved binding 'currentUserId'");
   });
 });
 

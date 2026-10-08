@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { FieldMap } from '../src/fieldMap/types';
-import type { Lens } from '../src/lens/types';
+import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, DateOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
@@ -69,11 +69,18 @@ const stitched = stitchFieldMaps({
   ],
 });
 
-const lens: Lens = { ...stitched, mapName: 'db', model: 'Event' };
-const contactLens: Lens = { ...stitched, mapName: 'crm', model: 'Contact' };
+type At = Lens | LensNarrowing;
+const lens: LensNarrowing = {
+  parent: { ...stitched, mapName: 'db', model: 'Event' },
+  root: { relations: { account: {}, items: {}, 'crm:Contact': {} } },
+};
+const contactLens: LensNarrowing = {
+  parent: { ...stitched, mapName: 'crm', model: 'Contact' },
+  root: { relations: { 'db:Event': {} } },
+};
 
-const run = (rule: unknown, at: Lens = lens) => validateRuleInLens(rule as Condition, at);
-const reasons = (rule: unknown, at: Lens = lens) => run(rule, at).errors.map((v) => v.message);
+const run = (rule: unknown, at: At = lens) => validateRuleInLens(rule as Condition, at);
+const reasons = (rule: unknown, at: At = lens) => run(rule, at).errors.map((v) => v.message);
 
 describe('validateRuleInLens — operator must apply to the field kind', () => {
   test('contains on a DateTime field', () => {
@@ -338,24 +345,27 @@ describe('validateRuleInLens — an arrayOperator needs a list', () => {
   });
 
   test('an object relation with no isList declared reads as to-one', () => {
-    const bare: Lens = {
-      maps: {
-        db: {
-          models: {
-            A: { fields: { b: { kind: 'object', type: 'B' } } },
-            B: { fields: { id: { kind: 'scalar', type: 'String' } } },
+    const bare: LensNarrowing = {
+      parent: {
+        maps: {
+          db: {
+            models: {
+              A: { fields: { b: { kind: 'object', type: 'B' } } },
+              B: { fields: { id: { kind: 'scalar', type: 'String' } } },
+            },
           },
         },
+        mapName: 'db',
+        model: 'A',
       },
-      mapName: 'db',
-      model: 'A',
+      root: { relations: { b: {} } },
     };
     expect(run({ field: 'b', arrayOperator: ArrayOperator.notEmpty }, bare).ok).toBe(false);
   });
 });
 
 describe('validateRuleInLens — rules that must stay valid', () => {
-  const valid: Record<string, [unknown, Lens?]> = {
+  const valid: Record<string, [unknown, At?]> = {
     'day-only date on a DateTime field operator': [
       { field: 'createdAt', operator: Operator.greaterThan, value: '2026-09-01' },
     ],

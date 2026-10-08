@@ -1,5 +1,5 @@
 import type { FieldMap } from '../fieldMap/types';
-import type { CompileOptions, DateConfig, Row } from '../types';
+import type { CompileOptions, DateConfig } from '../types';
 
 export type ToSqlResult = {
   sql: string;
@@ -10,7 +10,6 @@ export type ToSqlResult = {
 export type BuilderState = {
   params: unknown[];
   paramIndex: number;
-  context?: Row;
   dateConfig?: DateConfig;
   // Map-aware state (only populated when map+model are provided)
   map?: FieldMap;

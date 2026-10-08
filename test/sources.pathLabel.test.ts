@@ -81,6 +81,7 @@ const pathLabeled = (): LensNarrowing =>
         enrichments: {
           picks: ['mapId'],
           sources: { mapId: { label: 'map.definition.label' } },
+          relations: { map: { relations: { definition: {} } } },
         },
       },
     },
@@ -95,7 +96,11 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
     const n = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['mapId'], sources: { mapId: { label: 'map.nope.label' } } },
+          enrichments: {
+            picks: ['mapId'],
+            sources: { mapId: { label: 'map.nope.label' } },
+            relations: { map: {} },
+          },
         },
       },
     });
@@ -113,14 +118,18 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
     const n = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['mapId'], sources: { mapId: { label: 'map.definition' } } },
+          enrichments: {
+            picks: ['mapId'],
+            sources: { mapId: { label: 'map.definition' } },
+            relations: { map: { relations: { definition: {} } } },
+          },
         },
       },
     });
     expect(() => assertValidNarrowing(n)).toThrow(/label must end on a scalar column/);
   });
 
-  test("a hop excluded by an ancestor node's picks is an error", () => {
+  test('a hop the ancestor does not turn on is an error, and the label is never projected', () => {
     const parent = withParent(base, {
       root: { picks: ['id'], relations: { enrichments: { picks: ['mapId'] } } },
     });
@@ -131,11 +140,35 @@ describe('validateNarrowing — a dotted label is validated like a groupBy axis'
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
+    expect(() => assertValidNarrowing(child)).toThrow(/does not show there/);
+    expect(projectLens(child)['User.enrichments'].sourceLabels).toEqual({});
+  });
+
+  test('a hop an ancestor turns on but hides is an error', () => {
+    const parent = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: { picks: ['mapId'], relations: { map: { relations: { definition: {} } } } },
+        },
+      },
+      mapDefaults: { app: { models: { Enrichment: { omits: ['map'] } } } },
+    });
+    const child = withParent(parent, {
+      root: {
+        relations: {
+          enrichments: { sources: { mapId: { label: 'map.definition.label' } } },
+        },
+      },
+    });
+    expect(() => assertValidNarrowing(child)).toThrow(/does not show there/);
   });
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
     const parent = withParent(base, {
+      root: {
+        relations: { enrichments: { relations: { map: { relations: { definition: {} } } } } },
+      },
       mapDefaults: { app: { models: { FieldDef: { omits: ['label'] } } } },
     });
     const child = withParent(parent, {
@@ -161,11 +194,12 @@ describe('projectPaths — a dotted label surfaces verbatim', () => {
 });
 
 describe('toSourceQueries — dotted label compile', () => {
-  test('nests the label path into the prisma select and keeps DISTINCT on the value', () => {
+  test('nests the label path into the prisma select and fetches every label', () => {
     const [q] = toSourceQueries(pathLabeled());
     expect(q.label).toBe('map.definition.label');
-    expect(q.prisma.distinct).toEqual(['mapId']);
-    expect(q.prisma.select).toEqual({
+    // No DISTINCT: every label row comes back, and materializeSourceQuery picks the least.
+    expect(q.prisma?.distinct).toBeUndefined();
+    expect(q.prisma?.select).toEqual({
       mapId: true,
       map: { select: { definition: { select: { label: true } } } },
     });
@@ -189,6 +223,7 @@ describe('toSourceQueries — dotted label compile', () => {
           enrichments: {
             picks: ['mapId'],
             sources: { mapId: { label: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -226,12 +261,13 @@ describe('toSourceQueries — dotted label compile', () => {
             sources: {
               value: { label: 'map.definition.id', groupBy: 'map.definition.label' },
             },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
     });
     const [q] = toSourceQueries(n);
-    expect(q.prisma.select).toEqual({
+    expect(q.prisma?.select).toEqual({
       value: true,
       map: { select: { definition: { select: { label: true, id: true } } } },
     });
@@ -246,7 +282,13 @@ describe('toSourceQueries — dotted label compile', () => {
       withParent(base, {
         root: {
           picks: ['id'],
-          relations: { enrichments: { picks: ['value'], sources: { value: spec } } },
+          relations: {
+            enrichments: {
+              picks: ['value'],
+              sources: { value: spec },
+              relations: { map: { relations: { definition: {} } } },
+            },
+          },
         },
         mapDefaults: {
           app: {
@@ -319,14 +361,15 @@ describe('materializeSourceQuery — dotted label materialization', () => {
 });
 
 describe('materializeSources — dotted label from an already-fetched collection', () => {
-  test('labels come off the nested rows, first non-null wins', () => {
+  test('labels come off the nested rows, the least label wins', () => {
     const rows = [
       {
         id: 'u1',
         enrichments: [
           { mapId: 'm1', map: { definition: { label: 'Business Unit' } } },
           { mapId: 'm1', map: { definition: { label: 'Ignored Duplicate' } } },
-          { mapId: 'm2', map: null },
+          // A label hop with no row (a null to-one with its key set reads as a viewer's cut).
+          { mapId: 'm2', map: { definition: null } },
         ],
       },
     ];
@@ -342,6 +385,7 @@ describe('materializeSources — dotted label from an already-fetched collection
           enrichments: {
             picks: ['mapId'],
             sources: { mapId: { label: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -382,7 +426,7 @@ describe('mutation control — a sibling label is untouched by the path spelling
 
   test('prisma select stays flat and sql keeps the bare column, no "__label" alias', () => {
     const [q] = toSourceQueries(sibling());
-    expect(q.prisma.select).toEqual({ mapId: true, value: true });
+    expect(q.prisma?.select).toEqual({ mapId: true, value: true });
     expect(q.sql.sql).toBe(
       'SELECT DISTINCT "t0"."mapId", "t0"."value" FROM "Enrichment" AS "t0" WHERE TRUE',
     );

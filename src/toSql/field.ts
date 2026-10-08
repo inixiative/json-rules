@@ -1,3 +1,4 @@
+import { columnCompareProblem } from '../columnCompare';
 import { compileFieldLiteral } from '../compileLiteral';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
@@ -17,7 +18,9 @@ import {
   SET_OPERATORS,
 } from '../operatorCatalog';
 import { postgresSource, readPattern } from '../pattern';
+import { parseScopeRef } from '../scope';
 import type { Rule } from '../types';
+import { hasPath } from '../valueSource';
 import { compareSql, noOperandSql, orderedSql, orNull as orNullSql, rangeSql } from './compare';
 import { type FieldSql, resolveField, resolveFieldSql } from './join';
 import { buildJsonComparison } from './json';
@@ -38,6 +41,25 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   if (resolved.shape === 'relation' && !isExistenceTest(rule)) throw relationNotValue(rule.field);
   // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
   const nullable = lhs === undefined;
+  // A column compared with a column: an enum on either side compares exactly, natively, or not at
+  // all.
+  const columnPath =
+    hasPath(rule) && state.map && state.currentModel
+      ? (parseScopeRef(rule.path) ?? { depth: 1, path: rule.path }).path
+      : null;
+  if (columnPath !== null) {
+    const problem = columnCompareProblem(
+      fieldEntry(rule.field, state.map, state.currentModel),
+      fieldEntry(columnPath, state.map, state.currentModel),
+      rule.operator,
+    );
+    if (problem)
+      throw noCompiledForm(
+        'toSql',
+        `Comparing '${rule.field}' with the column '${rule.path}'`,
+        problem,
+      );
+  }
   // An enum compares against its declared values (see enumMatches).
   if (resolved.shape === 'enum' && !NO_VALUE_OPERATORS.includes(rule.operator)) {
     const operand = knownOperand(rule, state);
@@ -53,7 +75,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   }
   // An enum's exact comparisons read its value as text, which a string parameter matches.
   const compared: FieldSql =
-    resolved.shape === 'enum' && !NO_VALUE_OPERATORS.includes(rule.operator)
+    resolved.shape === 'enum' && !NO_VALUE_OPERATORS.includes(rule.operator) && columnPath === null
       ? { ...resolved, sql: `${resolved.sql}::text` }
       : resolved;
   // A Json value against an operand known now compares as JSON.
@@ -175,10 +197,12 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
   const rhsVal = rhs.type === 'value' ? rhs.value : undefined;
   const rhsCol = rhs.type === 'column' ? rhs.sql : undefined;
 
-  // A set or a pattern is bound when compiling; one read per row has no SQL form.
+  // A set, a pattern or a substring is bound when compiling (a substring escaped into a LIKE
+  // pattern); one read per row has no SQL form.
   if (
     rhsCol !== undefined &&
-    (SET_OPERATORS.includes(rule.operator) || getValueShape(rule.operator, 'field') === 'pattern')
+    (SET_OPERATORS.includes(rule.operator) ||
+      ['pattern', 'string'].includes(getValueShape(rule.operator, 'field')))
   )
     throw noCompiledForm(
       'toSql',

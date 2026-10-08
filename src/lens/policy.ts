@@ -1,9 +1,11 @@
-import { declaredEnumValues, isJsonEntry } from '../fieldMap/entry';
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
+import type { FieldMap, FieldMapEntry, ModelEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
-import { modelOf, own } from '../own';
-import { readScopeRef } from '../scope';
+import { fieldOf, modelOf, own } from '../own';
+import { parseScopeRef, readScopeRef } from '../scope';
+import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition } from '../types.ts';
+import type { ValidationIssue } from '../validate';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
@@ -14,6 +16,7 @@ import type {
   SourceEntry,
   SourceSpec,
 } from './types.ts';
+import { checkConditionAtVisit } from './validateRuleInLens.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;
@@ -21,6 +24,9 @@ export type VisitEffect = {
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
   sources: Map<string, Condition[]>;
+  /** Per-field source eligibility wheres as each layer wrote them, unnarrowed: what a source plan
+   *  narrows under the whole lens, as a rule is. */
+  sourceWheres: Map<string, Condition[]>;
   /** Per-field display label (from a SourceSpec's `label`): a sibling column or a dotted
    * to-one path; a later layer wins. */
   sourceLabels: Map<string, string>;
@@ -32,7 +38,11 @@ export type VisitEffect = {
   /** Fields whose path source points at the model's own source (`from: 'mapDefaults'`), with
    *  the chain index of the earliest layer that points: the layers above it still carry. */
   sourcesFromMapDefaults: Map<string, number>;
-  relations: Map<string, ModelNarrowing>;
+  /** The relations turned on at this visit and not omitted: the only ones a rule, a source
+   *  label or axis, a read or a fetch may cross from here. */
+  relations: Set<string>;
+  /** Every relation field of the visit's model: what `picks` never governs. */
+  relationFields: Set<string>;
 };
 
 /** Normalize a `groupBy` declaration to its axes array (a bare string is one axis). */
@@ -46,27 +56,146 @@ export const isSourceSpec = (v: SourceEntry): v is SourceSpec =>
   !Array.isArray(v) &&
   ('where' in v || 'label' in v || 'groupBy' in v || 'from' in v);
 
-/** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`. */
+/** Normalize a `sources` entry to a `SourceSpec` — a bare `Condition` becomes its `where`; `{}` is
+ *  neither, and refused. */
 export const normalizeSource = (v: SourceEntry): SourceSpec => {
   if (isSourceSpec(v)) return v;
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
-    throw new Error('sources: {} is not a Condition — use `true` for an unconstrained source');
+    throw emptySource();
   return { where: v };
 };
+
+export const emptySource = (): LensRefusal =>
+  new LensRefusal(
+    'sources: {} is not a Condition — use `true` for an unconstrained source',
+    'invalid_source',
+  );
 
 export type Policy = {
   lens: Lens;
   chain: LensNarrowing[];
+  /** The first narrowing over the base lens — the one layer that turns relations on. A policy
+   *  whose chain a caller filters keeps it, so a dropped layer never makes another one first. */
+  origin?: LensNarrowing;
+  /** A read off the menu: any relation not omitted, turned on or not. The first narrowing's
+   *  grants read the schema this way; column visibility still applies. */
+  grant?: boolean;
+  /** What this call has worked out, shared by the policies it derives. */
+  memo?: CallMemo;
+  /** A layer whose own grants are dropped (a source pointer's), keeping the chain's indices — so
+   *  later layers' grants still read through it. */
+  skipGrantsOf?: LensNarrowing;
+  /** Skip the runtime vetting of later layers' grants: validateNarrowing enumerating the visits
+   *  they apply at before it checks them. */
+  unvetted?: boolean;
+  /** A layer whose own picks and omits are not applied, keeping the chain's indices: a source's
+   *  label or axes read what every layer but the one declaring them shows. */
+  skipHidingOf?: LensNarrowing;
+  /** validateNarrowing running the postures: each runs as at runtime and refuses what it refuses,
+   *  but compiles nothing, so no value — a binding, the clock, a literal — is read. */
+  inspect?: boolean;
 };
 
-/** A relPath matching no declared `root.relations` path — `resolveVisit` then applies
- * mapDefaults only: the model-intrinsic visit a model gets wherever it is reached off-path. */
+/** One call's work, kept for that call alone — never past it, so a narrowing edited in place reads
+ *  fresh next time (the default trees excepted, kept on the first narrowing by fingerprint). */
+type CallMemo = {
+  /** The model-default trees, by spelled node. */
+  trees: Map<string, DefaultTree>;
+  /** The later grants already checked at a visit, keyed by grant, visit and the layers it reads
+   *  through. */
+  vetted: Set<string>;
+  /** The visits resolved, keyed by visit and the policy's layers. */
+  effects: Map<string, ResolvedVisit>;
+  /** Where each visit stands: its trail and the relations the first narrowing turns on there,
+   *  keyed by visit and that narrowing. */
+  places: Map<string, Place>;
+  /** Each model's fields as read. */
+  models: Map<ModelEntry, ModelFields>;
+  /** Each grant's first bare value ref and first ref climbing out of it. */
+  refs: Map<Condition, { bare: string | null; escaping: string | null }>;
+  /** Why toPrisma can't compile a condition at a model (null: it can), by map and model. */
+  compiles: Map<Condition, Map<string, string | null>>;
+};
+
+type Place = { trail: MapVisit[] | null; turnedOn: string[] };
+type ModelFields = { relations: Set<string>; gated: [string, FieldMapEntry][] };
+
+/** A resolved visit, and — resolved unvetted — the checks of its later grants not yet made. */
+type ResolvedVisit = { effect: VisitEffect; unchecked: (() => void)[] | null };
+
+/** A relPath reached from no anchor — `resolveVisit` then applies the model's own defaults only:
+ * the model-intrinsic visit a model default's grant and source are checked at. */
 export const OFF_PATH: readonly string[] = ['__offpath__'];
+
+// Trees are kept on the first narrowing under a fingerprint of the base lens it stands on and its
+// model defaults (and, per tree, of its spelled node's own turn-ons and omits): a narrowing edited
+// or re-parented in place grows fresh trees. A field map edited in place is not seen.
+const TREES = new WeakMap<
+  LensNarrowing,
+  { fingerprint: string; trees: Map<string, DefaultTree> }
+>();
+const treesFor = (lens: Lens, origin: LensNarrowing | undefined): Map<string, DefaultTree> => {
+  if (!origin) return new Map();
+  const fingerprint = JSON.stringify([
+    idOf(origin.parent),
+    idOf(lens.maps),
+    lens.mapName,
+    lens.model,
+    origin.mapDefaults ?? null,
+  ]);
+  const kept = TREES.get(origin);
+  if (kept?.fingerprint === fingerprint) return kept.trees;
+  const trees = new Map<string, DefaultTree>();
+  TREES.set(origin, { fingerprint, trees });
+  return trees;
+};
+
+// A stable id per object, for memo keys.
+const IDS = new WeakMap<object, number>();
+let nextId = 0;
+const idOf = (value: object): number => {
+  let id = IDS.get(value);
+  if (id === undefined) {
+    id = nextId++;
+    IDS.set(value, id);
+  }
+  return id;
+};
+
+// Joins the parts of a memo key: no name holds it.
+const SEP = '\u0000';
+
+// What resolveVisit reads off a model on every visit: its relation fields, and the fields a set of
+// values gates (options, an enum, or `values`).
+const modelFields = (model: ModelEntry): ModelFields => {
+  const entries = Object.entries(model.fields);
+  return {
+    relations: new Set(entries.filter(([, entry]) => isRelationEntry(entry)).map(([f]) => f)),
+    gated: entries.filter(
+      ([, entry]) =>
+        entry.options !== undefined || entry.kind === 'enum' || entry.values !== undefined,
+    ),
+  };
+};
+const idOrNone = (value: object | undefined): string => (value ? String(idOf(value)) : '');
 
 export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => {
   const lens = getLensRoot(lensOrNarrowing);
   const chain = isLens(lensOrNarrowing) ? [] : collectChain(lensOrNarrowing);
-  return { lens, chain };
+  return {
+    lens,
+    chain,
+    origin: chain[0],
+    memo: {
+      trees: treesFor(lens, chain[0]),
+      vetted: new Set(),
+      effects: new Map(),
+      places: new Map(),
+      models: new Map(),
+      refs: new Map(),
+      compiles: new Map(),
+    },
+  };
 };
 
 export const intersectStringSet = (
@@ -77,24 +206,11 @@ export const intersectStringSet = (
   return new Set(next.filter((x) => cur.has(x)));
 };
 
-export const augmentPicksWithRelations = (
-  n: ModelDefaultNarrowing | ModelNarrowing,
-): readonly string[] | undefined => {
-  if (!n.picks) return undefined;
-  if (!('relations' in n) || !n.relations) return n.picks;
-  const out = [...n.picks];
-  for (const rel of Object.keys(n.relations)) {
-    if (!out.includes(rel)) out.push(rel);
-  }
-  return out;
-};
-
 const accumulatePicksOmitsInto = (
   state: { picks: Set<string> | null; omits: Set<string> },
   n: ModelDefaultNarrowing | ModelNarrowing,
 ): void => {
-  const augmented = augmentPicksWithRelations(n);
-  if (augmented) state.picks = intersectStringSet(state.picks, augmented);
+  if (n.picks) state.picks = intersectStringSet(state.picks, n.picks);
   if (n.omits) for (const f of n.omits) state.omits.add(f);
 };
 
@@ -137,15 +253,28 @@ const accumulateInto = (
   n: ModelDefaultNarrowing | ModelNarrowing,
   narrow: (condition: Condition) => Condition,
   layer: number,
+  vet: (condition: Condition, source?: boolean) => void,
+  grants: boolean,
+  hiding: boolean,
 ): void => {
-  accumulatePicksOmitsInto(out, n);
-  if (n.where !== undefined) out.whereClauses.push(narrow(n.where));
+  if (hiding) accumulatePicksOmitsInto(out, n);
+  if (n.where !== undefined && grants) {
+    vet(n.where);
+    out.whereClauses.push(narrow(n.where));
+  }
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
-      if (spec.where !== undefined) clauses.push(narrow(spec.where));
-      out.sources.set(field, clauses); // register the field even when only a label is set
+      const wheres = out.sourceWheres.get(field) ?? [];
+      if (spec.where !== undefined && grants) {
+        vet(spec.where, true);
+        clauses.push(narrow(spec.where));
+        wheres.push(spec.where);
+      }
+      // Register the field even when only a label is set.
+      out.sources.set(field, clauses);
+      out.sourceWheres.set(field, wheres);
       const axes = normalizeGroupBy(spec.groupBy);
       // The layer that set the value in force is the one its reads are exempt for: restating it
       // keeps that layer, changing it moves to this one.
@@ -166,28 +295,274 @@ const accumulateInto = (
   }
 };
 
+/** A narrowing the lens refuses to apply: a grant validateNarrowing reports, met at runtime. */
+export class LensRefusal extends Error {
+  override name = 'LensRefusal';
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+}
+
+/** A bare value `path` reads the root row: only a root grant may compare with one. */
+export const misanchoredPath = (ref: string): LensRefusal =>
+  new LensRefusal(
+    `a bare path ('${ref}') reads the root row, which a grant at a relation visit or a model default doesn't stand on: use a literal, a bind, or a \`$\` scope ref`,
+    'invalid_value_source',
+  );
+
+/**
+ * What a later layer's grant reads that its parent doesn't show, at the visit it applies to: the
+ * one check validateNarrowing and every runtime posture make — the gate itself, over the parent's
+ * surface (every hop and the column at its end).
+ */
+export const laterGrantIssues = (
+  condition: Condition,
+  parent: Policy,
+  at: MapVisit,
+): ValidationIssue[] =>
+  checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
+
+/** A later layer's grant reading what its parent doesn't show. */
+export const unshownGrant = (issue: ValidationIssue): LensRefusal =>
+  new LensRefusal(
+    `a later layer's grant reads what its parent does not show: '${issue.path}' ${issue.message}`,
+    issue.code,
+  );
+
+/** A scope ref in a grant that climbs above the grant's own row. */
+export const escapingGrantRef = (ref: string): LensRefusal =>
+  new LensRefusal(
+    `the scope ref '${ref}' climbs out of the grant: a grant reads its own row ('$.'), literals and binds`,
+    'scope_out_of_bounds',
+  );
+
+/** What a grant reads past its own row: its first bare value ref (a root-row read), and its first
+ *  scope ref — a field or a value ref — that climbs above its own row (`$$.` at its top, `$$$.`
+ *  one array down, …); each null when there is none. */
+export const grantRefs = (
+  condition: Condition,
+): { bare: string | null; escaping: string | null } => {
+  let bare: string | null = null;
+  let escaping: string | null = null;
+  visitCondition<number>(
+    condition,
+    (node, depth) => {
+      if (isLogicalNode(node)) return;
+      const values = valueRefs(node);
+      for (const ref of [...(typeof node.field === 'string' ? [node.field] : []), ...values]) {
+        const scoped = parseScopeRef(ref);
+        if (escaping === null && scoped && scoped.depth > depth) escaping = ref;
+      }
+      for (const ref of values) if (bare === null && !parseScopeRef(ref)) bare = ref;
+      return isRelationNode(node) ? depth + 1 : undefined;
+    },
+    1,
+  );
+  return { bare, escaping };
+};
+
+/** The models a visit's relation path passes through from the lens anchor, the visit's own last;
+ *  null when the path doesn't lead from the anchor to it (an off-path visit). */
+const visitTrail = (policy: Policy, at: MapVisit): MapVisit[] | null => {
+  const anchor = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
+  const trail: MapVisit[] = [anchor];
+  if (at.relPath.length > 0)
+    for (const hop of relationHops(policy.lens.maps, anchor, at.relPath.join('.')).hops)
+      trail.push({ mapName: hop.map, modelName: hop.model, relPath: hop.relPath });
+  const end = trail[trail.length - 1];
+  return trail.length === at.relPath.length + 1 &&
+    end.mapName === at.mapName &&
+    end.modelName === at.modelName
+    ? trail
+    : null;
+};
+
+const follow = (
+  node: ModelNarrowing | undefined,
+  segments: readonly string[],
+): ModelNarrowing | undefined => {
+  let at = node;
+  for (const seg of segments) at = own(at?.relations, seg);
+  return at;
+};
+
+/**
+ * The narrowing nodes one layer applies at a visit: each model default that reaches it — the
+ * model's own, or a relation object of a model default above it on the path, outermost first —
+ * and its path node under `root`.
+ */
+const layerNodes = (
+  narrowing: LensNarrowing,
+  at: MapVisit,
+  trail: readonly MapVisit[] | null,
+): { defaults: ModelNarrowing[]; path: ModelNarrowing | undefined } => {
+  const dflt = (visit: MapVisit) =>
+    own(own(narrowing.mapDefaults, visit.mapName)?.models, visit.modelName);
+  if (!trail) {
+    const intrinsic = dflt(at);
+    return { defaults: intrinsic ? [intrinsic] : [], path: undefined };
+  }
+  const defaults: ModelNarrowing[] = [];
+  for (const [k, visit] of trail.entries()) {
+    const node = follow(dflt(visit), at.relPath.slice(k));
+    if (node) defaults.push(node);
+  }
+  return { defaults, path: follow(narrowing.root, at.relPath) };
+};
+
+// The relations the model defaults turn on below one spelled node (the anchor, or a path spelled
+// under `root`): for each node of the tree, keyed by its relation path below the spelled node,
+// the relations it crosses.
+type DefaultTree = Map<string, string[]>;
+
+/**
+ * The tree the first narrowing's model defaults grow under a spelled node: breadth-first, each
+ * model at most once — at its nearest reach, ties to the earlier parent and then the relation
+ * declared first — never one already on the spelled path. Its own `omits` cut an edge; a relation
+ * the spelled node spells is not a tree edge (the spelled path follows it). Computed once per
+ * spelled node and API call.
+ */
+const defaultTree = (
+  lens: Lens,
+  origin: LensNarrowing,
+  spelled: MapVisit,
+  byNode: Map<string, DefaultTree>,
+): DefaultTree => {
+  const node = follow(origin.root, spelled.relPath);
+  const key = [
+    spelled.relPath.join(SEP),
+    Object.keys(node?.relations ?? {}).join(SEP),
+    (node?.omits ?? []).join(SEP),
+  ].join(`${SEP}${SEP}`);
+  const cached = byNode.get(key);
+  if (cached) return cached;
+  const tree: DefaultTree = new Map();
+  const policy: Policy = { lens, chain: [origin], origin };
+  const trail = visitTrail(policy, spelled) ?? [spelled];
+  const seen = new Set(trail.map((visit) => `${visit.mapName}:${visit.modelName}`));
+  const queue: { at: MapVisit; below: string[] }[] = [{ at: spelled, below: [] }];
+  while (queue.length > 0) {
+    const { at, below } = queue.shift() as (typeof queue)[number];
+    const fields = modelOf(own(lens.maps, at.mapName), at.modelName)?.fields ?? {};
+    const { defaults, path } = layerNodes(origin, at, visitTrail(policy, at));
+    const turnedOn = new Set(defaults.flatMap((node) => Object.keys(node.relations ?? {})));
+    const omitted = new Set(
+      [...defaults, ...(path ? [path] : [])].flatMap((node) => node.omits ?? []),
+    );
+    const crossed: string[] = [];
+    for (const [relation, entry] of Object.entries(fields)) {
+      if (!turnedOn.has(relation) || omitted.has(relation)) continue;
+      if (path?.relations !== undefined && Object.hasOwn(path.relations, relation)) continue;
+      const target = relationTargetOf(entry, at.mapName);
+      if (!target || !modelOf(own(lens.maps, target.mapName), target.modelName)) continue;
+      const model = `${target.mapName}:${target.modelName}`;
+      if (seen.has(model)) continue;
+      seen.add(model);
+      crossed.push(relation);
+      queue.push({
+        at: { ...target, relPath: [...at.relPath, relation] },
+        below: [...below, relation],
+      });
+    }
+    tree.set(below.join('.'), crossed);
+  }
+  byNode.set(key, tree);
+  return tree;
+};
+
+/** The relations the first narrowing turns on at a visit: those its path spells there, and the
+ *  default-tree edges below the nearest spelled node. */
+const turnedOnAt = (
+  policy: Policy,
+  origin: LensNarrowing,
+  at: MapVisit,
+  trail: readonly MapVisit[] | null,
+): string[] => {
+  // Off the anchor's paths (a model's own visit), its defaults' relations — no tree applies.
+  if (!trail)
+    return layerNodes(origin, at, null).defaults.flatMap((node) =>
+      Object.keys(node.relations ?? {}),
+    );
+  let spelledDepth = at.relPath.length;
+  while (spelledDepth > 0 && follow(origin.root, at.relPath.slice(0, spelledDepth)) === undefined)
+    spelledDepth--;
+  const spelledAt = { ...trail[spelledDepth], relPath: at.relPath.slice(0, spelledDepth) };
+  const tree = defaultTree(policy.lens, origin, spelledAt, policy.memo?.trees ?? new Map());
+  const below = tree.get(at.relPath.slice(spelledDepth).join('.')) ?? [];
+  const spelled =
+    spelledDepth === at.relPath.length
+      ? Object.keys(follow(origin.root, at.relPath)?.relations ?? {})
+      : [];
+  return [...spelled, ...below];
+};
+
+/** The first relation a path crosses from a visit that is not shown there (off, or omitted), as
+ *  its dotted prefix; null when every relation it crosses is shown. Columns are not its concern. */
+export const hiddenHop = (policy: Policy, from: MapVisit, path: string): string | null => {
+  let at = from;
+  for (const hop of relationHops(policy.lens.maps, from, path).hops) {
+    const relation = hop.relPath[hop.relPath.length - 1];
+    if (!resolveVisit(policy, at.mapName, at.modelName, at.relPath).relations.has(relation))
+      return hop.prefix;
+    at = { mapName: hop.map, modelName: hop.model, relPath: hop.relPath };
+  }
+  return null;
+};
+
 export const resolveVisit = (
   policy: Policy,
   mapName: string,
   modelName: string,
   relPath: readonly string[],
 ): VisitEffect => {
+  const key = policy.memo ? visitKey(policy, mapName, modelName, relPath) : null;
+  const kept = key === null ? undefined : policy.memo?.effects.get(key);
+  if (kept) {
+    // Resolved unvetted earlier: vetted, its later grants are checked now, as a fresh resolve would.
+    if (!policy.unvetted && kept.unchecked) {
+      for (const check of kept.unchecked) check();
+      kept.unchecked = null;
+    }
+    return kept.effect;
+  }
+  const unchecked: (() => void)[] = [];
   const out: VisitEffect = {
     picks: null,
     omits: new Set(),
     enumValuesByField: new Map(),
     whereClauses: [],
     sources: new Map(),
+    sourceWheres: new Map(),
     sourceLabels: new Map(),
     sourceGroupBys: new Map(),
     sourceDeclaredAt: new Map(),
     sourcesFromMapDefaults: new Map(),
-    relations: new Map(),
+    relations: new Set(),
+    relationFields: new Set(),
   };
 
   const fieldMap: FieldMap | undefined = own(policy.lens.maps, mapName);
   const model = modelOf(fieldMap, modelName);
   if (!model) return out;
+  let fields = policy.memo?.models.get(model);
+  if (!fields) {
+    fields = modelFields(model);
+    policy.memo?.models.set(model, fields);
+  }
+  out.relationFields = fields.relations;
+  const at = { mapName, modelName, relPath };
+  const origin = policy.origin ?? policy.chain[0];
+  const placeKey = `${idOrNone(origin)}${SEP}${mapName}${SEP}${modelName}${SEP}${relPath.join(SEP)}`;
+  let place = policy.memo?.places.get(placeKey);
+  if (!place) {
+    const trail = visitTrail(policy, at);
+    place = { trail, turnedOn: origin ? turnedOnAt(policy, origin, at, trail) : [] };
+    policy.memo?.places.set(placeKey, place);
+  }
+  const { trail } = place;
 
   const fieldEnumPicks = new Map<string, Set<string>>();
   const fieldEnumOmits = new Map<string, Set<string>>();
@@ -198,45 +573,77 @@ export const resolveVisit = (
   // grants of every layer above, as a user rule's do — a child can't see what its parent hides.
   let narrow = (condition: Condition): Condition => condition;
   let current = 0;
+  let vet: (condition: Condition, source?: boolean) => void = () => {};
+  let grants = true;
+  let hiding = true;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow, current);
+    accumulateInto(out, n, narrow, current, vet, grants, hiding);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
   for (const [layer, narrowing] of policy.chain.entries()) {
     current = layer;
-    const parent: Policy = { lens: policy.lens, chain: policy.chain.slice(0, layer) };
+    // A later layer's grants read through every layer above it, a pointer's included.
+    const parent: Policy = {
+      ...policy,
+      grant: false,
+      skipGrantsOf: undefined,
+      skipHidingOf: undefined,
+      chain: policy.chain.slice(0, layer),
+    };
+    grants = narrowing !== policy.skipGrantsOf;
+    hiding = narrowing !== policy.skipHidingOf;
     narrow = (condition) =>
       layer === 0 ? condition : narrowAt(condition, parent, { mapName, modelName, relPath });
-    const visitMapDefaults = own(narrowing.mapDefaults, mapName);
-    if (visitMapDefaults) {
-      const dflt = own(visitMapDefaults.models, modelName);
-      if (dflt) applyNode(dflt);
-      for (const [enumName, enumN] of Object.entries(visitMapDefaults.enums ?? {})) {
-        if (enumN.picks) intersectIntoMap(typeEnumPicks, enumName, enumN.picks);
-        if (enumN.omits) unionIntoMap(typeEnumOmits, enumName, enumN.omits);
-      }
+    for (const [enumName, enumN] of Object.entries(
+      own(narrowing.mapDefaults, mapName)?.enums ?? {},
+    )) {
+      if (enumN.picks) intersectIntoMap(typeEnumPicks, enumName, enumN.picks);
+      if (enumN.omits) unionIntoMap(typeEnumOmits, enumName, enumN.omits);
     }
-
-    let node: ModelNarrowing | undefined = narrowing.root;
-    if (relPath.length === 0) {
-      if (mapName === policy.lens.mapName && modelName === policy.lens.model && node) {
-        applyNode(node);
-        for (const [rel, sub] of Object.entries(node.relations ?? {})) out.relations.set(rel, sub);
-      }
-    } else {
-      for (const seg of relPath) {
-        node = own(node?.relations, seg);
-        if (!node) break;
-      }
-      if (node) {
-        applyNode(node);
-        for (const [rel, sub] of Object.entries(node.relations ?? {})) out.relations.set(rel, sub);
-      }
+    const { defaults, path } = layerNodes(narrowing, at, trail);
+    // A grant refused at construction (validateNarrowing) is refused here too, never applied.
+    const grantParent: Policy | null = layer === 0 ? null : parent;
+    const vetGrant =
+      (rootGrant: boolean) =>
+      (condition: Condition, source = false): void => {
+        let refs = policy.memo?.refs.get(condition);
+        if (!refs) {
+          refs = grantRefs(condition);
+          policy.memo?.refs.set(condition, refs);
+        }
+        // Only the root `where` stands on the root row; a source's eligibility reads option rows.
+        if (refs.bare !== null && !(rootGrant && !source)) throw misanchoredPath(refs.bare);
+        if (refs.escaping !== null) throw escapingGrantRef(refs.escaping);
+        if (!grantParent) return;
+        const check = (): void => {
+          const key =
+            typeof condition === 'object' && condition !== null
+              ? `${idOf(condition)}${SEP}${visitKey(grantParent, mapName, modelName, relPath)}`
+              : null;
+          if (key !== null && grantParent.memo?.vetted.has(key)) return;
+          const [issue] = laterGrantIssues(condition, grantParent, at);
+          if (issue) throw unshownGrant(issue);
+          if (key !== null) grantParent.memo?.vetted.add(key);
+        };
+        if (policy.unvetted) unchecked.push(check);
+        else check();
+      };
+    vet = vetGrant(false);
+    for (const node of defaults) applyNode(node);
+    if (path) {
+      vet = vetGrant(relPath.length === 0 && trail !== null);
+      applyNode(path);
     }
   }
+  // The first narrowing over the base lens turns relations on — the base is the menu — along its
+  // spelled paths and the model-default tree below each; a later layer only narrows what it
+  // inherits. exposedₖ = exposedₖ₋₁ ∧ ¬hideₖ.
+  if (origin && policy.chain.includes(origin))
+    for (const relation of place.turnedOn)
+      if (out.relationFields.has(relation) && !out.omits.has(relation)) out.relations.add(relation);
 
-  for (const [fieldName, entry] of Object.entries(model.fields)) {
+  for (const [fieldName, entry] of fields.gated) {
     const isEnum = entry.kind === 'enum';
     // Enums draw from the registry; any other kind (scalar, Json) is gated by an explicit
     // `values` set. A hydrated source's folded `options` gate too and win when present — a
@@ -260,6 +667,55 @@ export const resolveVisit = (
     out.enumValuesByField.set(fieldName, vals);
   }
 
+  if (key !== null)
+    policy.memo?.effects.set(key, { effect: out, unchecked: unchecked.length ? unchecked : null });
+  return out;
+};
+
+// A visit's key in a call's resolved visits: the visit, and every part of the policy its effect
+// reads — the layers (by identity), the first of them, and the layers it skips. Vetting is not a
+// part: an unvetted resolve keeps the checks it skipped, for a vetted one to make.
+const visitKey = (
+  policy: Policy,
+  mapName: string,
+  modelName: string,
+  relPath: readonly string[],
+): string => {
+  let layers = LAYERS_KEY.get(policy);
+  if (layers === undefined) {
+    layers = `${idOrNone(policy.origin)}${SEP}${idOrNone(policy.skipGrantsOf)}${SEP}${idOrNone(policy.skipHidingOf)}${SEP}`;
+    for (const layer of policy.chain) layers += `${idOf(layer)},`;
+    LAYERS_KEY.set(policy, layers);
+  }
+  return `${layers}${SEP}${mapName}${SEP}${modelName}${SEP}${relPath.join(SEP)}`;
+};
+// A policy's layers part of its visit keys, per policy object (one is never edited once built).
+const LAYERS_KEY = new WeakMap<Policy, string>();
+
+/** A visit the lens shows: its dotted path from the anchor model, and its effect. */
+export type ShownVisit = { path: string; at: MapVisit; effect: VisitEffect };
+
+/**
+ * Every visit the lens shows, from its anchor, along the relations turned on: the spelled paths
+ * and the model-default tree under each — at most spelled nodes × models visits.
+ */
+export const shownVisits = (policy: Policy): ShownVisit[] => {
+  const out: ShownVisit[] = [];
+  const visit = (at: MapVisit, path: string): void => {
+    const fieldMap = own(policy.lens.maps, at.mapName);
+    if (!modelOf(fieldMap, at.modelName)) return;
+    const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
+    out.push({ path, at, effect });
+    for (const relation of effect.relations) {
+      const entry = fieldOf(fieldMap, at.modelName, relation);
+      const target = entry && relationTargetOf(entry, at.mapName);
+      if (target) visit({ ...target, relPath: [...at.relPath, relation] }, `${path}.${relation}`);
+    }
+  };
+  visit(
+    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] },
+    policy.lens.model,
+  );
   return out;
 };
 
@@ -278,13 +734,17 @@ export const undeclaredModelSource = (
   mapName: string,
   modelName: string,
   field: string,
-): Error =>
-  new Error(
+): LensRefusal =>
+  new LensRefusal(
     `source '${field}' at '${path}' offers mapDefaults.${mapName}.models.${modelName}.sources.${field}, which no layer declares`,
+    'invalid_source',
   );
 
+/** Whether a visit shows a field: a relation when it is turned on there, a column when the picks
+ *  keep it; omitted, neither. */
 export const isFieldVisible = (effect: VisitEffect, fieldName: string): boolean => {
   if (effect.omits.has(fieldName)) return false;
+  if (effect.relationFields.has(fieldName)) return effect.relations.has(fieldName);
   if (effect.picks !== null && !effect.picks.has(fieldName)) return false;
   return true;
 };
@@ -305,9 +765,10 @@ export type LensPathHop = {
 
 /**
  * Where a dotted path lands through the lens, hop by hop. `hidden` is a field the model has but
- * the narrowing does not expose at this visit; `missing` is a field the model does not have (or a
- * model the map does not have); `pastScalar` is a segment after a scalar. A path that continues
- * below a Json column resolves at the column with the remainder in `jsonSubPath`.
+ * the narrowing does not expose at this visit — a column it doesn't keep, or a relation it doesn't
+ * turn on (or omits); `missing` is a field the model does not have (or a model the map does not
+ * have); `pastScalar` is a segment after a scalar. A path that continues below a Json column
+ * resolves at the column with the remainder in `jsonSubPath`.
  */
 export type LensPathResolution =
   | { outcome: 'resolved'; hops: LensPathHop[]; terminal: LensPathHop; jsonSubPath: string[] }
@@ -328,8 +789,12 @@ export const resolvePolicyPath = (
   )) {
     if (!entry) return { resolution: { outcome: 'missing', index: i, hops }, effects };
     const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
-    if (!isFieldVisible(effect, fieldName))
-      return { resolution: { outcome: 'hidden', index: i, hops }, effects };
+    // A grant may cross any relation not omitted, turned on or not.
+    const visible =
+      policy.grant && isRelationEntry(entry)
+        ? !effect.omits.has(fieldName)
+        : isFieldVisible(effect, fieldName);
+    if (!visible) return { resolution: { outcome: 'hidden', index: i, hops }, effects };
     const hop: LensPathHop = {
       field: fieldName,
       entry,
@@ -359,11 +824,11 @@ export const resolvePolicyPath = (
 };
 
 /**
- * Whether a source's label or axes, as in force at a visit, read only columns every layer but
- * their earliest declaration shows. The declaring layer may source a column it hides itself; any
- * other layer that hides it — an ancestor, or a layer after — drops it, so re-declaring an
- * ancestor's label never revives what a layer in between hid. A path that doesn't resolve stays,
- * for the compile to refuse.
+ * Whether a source's label or axes, as in force at a visit, cross only relations the lens declares
+ * there and read only columns every layer but their earliest declaration shows. The declaring
+ * layer may source a column it hides itself; any other layer that hides it — an ancestor, or a
+ * layer after — drops it, so re-declaring an ancestor's label never revives what a layer in
+ * between hid. A path that doesn't resolve stays, for the compile to refuse.
  */
 export const sourceReadsVisible = (
   policy: Policy,
@@ -375,10 +840,17 @@ export const sourceReadsVisible = (
   const value =
     kind === 'label' ? effect.sourceLabels.get(field) : effect.sourceGroupBys.get(field);
   if (value === undefined) return true;
-  const from = effect.sourceDeclaredAt.get(declaredKey(field, kind, value)) ?? -1;
-  const others = { lens: policy.lens, chain: policy.chain.filter((_, i) => i !== from) };
+  const from = effect.sourceDeclaredAt.get(declaredKey(field, kind, value));
+  const shown = (reader: Policy, path: string): boolean =>
+    resolvePolicyPath(reader, at, path).resolution.outcome !== 'hidden';
+  // Skipping a layer's hiding only shows more: what every layer shows needs no second read.
+  const all: Policy = { ...policy, grant: true };
+  const others: Policy = {
+    ...all,
+    skipHidingOf: from === undefined ? undefined : policy.chain[from],
+  };
   return (typeof value === 'string' ? [value] : value).every(
-    (path) => resolvePolicyPath(others, at, path).resolution.outcome !== 'hidden',
+    (path) => hiddenHop(policy, at, path) === null && (shown(all, path) || shown(others, path)),
   );
 };
 
@@ -410,6 +882,33 @@ export const lensPathEnd = (
   };
 };
 
+/** The issue for a path `lensPathEnd` refuses: `message`, or — when it stops at a relation the lens
+ *  doesn't turn on — how to turn it on. */
+export const unresolvedIssue = (
+  policy: Policy,
+  from: MapVisit,
+  path: string,
+  message: string,
+): { code: 'not_in_lens'; message: string } => {
+  const { resolution } = resolvePolicyPath(policy, from, path);
+  if (resolution.outcome !== 'hidden') return { code: 'not_in_lens', message };
+  const segments = path.split('.');
+  const at = resolution.hops.at(-1);
+  const visit = at
+    ? { mapName: at.mapName, modelName: at.model, relPath: [...at.relPath, at.field] }
+    : from;
+  const target = at && relationTargetOf(at.entry, at.mapName);
+  const reached = target ? { ...target, relPath: visit.relPath } : from;
+  const effect = resolveVisit(policy, reached.mapName, reached.modelName, reached.relPath);
+  const field = segments[resolution.index];
+  if (!effect.relationFields.has(field) || effect.omits.has(field))
+    return { code: 'not_in_lens', message };
+  return {
+    code: 'not_in_lens',
+    message: `'${segments.slice(0, resolution.index + 1).join('.')}' is a relation the lens does not turn on (turn it on with \`relations\`)`,
+  };
+};
+
 /** Where a rule visit stands: a model reached through the lens, or open inside a Json value. */
 export type VisitScope = MapVisit & { open: boolean };
 
@@ -433,7 +932,12 @@ export const stepIntoField = (
   field: string,
 ):
   | { from: VisitScope; next: VisitScope; walked: LensWalk | null }
-  | { issue: { code: 'scope_out_of_bounds' | 'not_in_lens'; message: string } } => {
+  | {
+      issue: {
+        code: 'scope_out_of_bounds' | 'not_in_lens';
+        message: string;
+      };
+    } => {
   const target = readScopeRef(field, scopes);
   if ('outOfBounds' in target)
     return { issue: { code: 'scope_out_of_bounds', message: target.outOfBounds } };
@@ -441,7 +945,12 @@ export const stepIntoField = (
   const walked = lensPathEnd(policy, target.scope, target.path);
   if (!walked)
     return {
-      issue: { code: 'not_in_lens', message: 'path does not resolve through the narrowed lens' },
+      issue: unresolvedIssue(
+        policy,
+        target.scope,
+        target.path,
+        'path does not resolve through the narrowed lens',
+      ),
     };
   const open = isJsonEntry(walked.entry);
   const relation = relationTargetOf(walked.entry, walked.mapName);

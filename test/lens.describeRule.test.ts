@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../index';
+import type { FieldMap, LensNarrowing } from '../index';
 import {
   ArrayOperator,
   createLens,
@@ -41,9 +41,12 @@ const salesforce: FieldMap = {
   },
 };
 
-const singleSource = createLens({ maps: { prisma }, mapName: 'prisma', model: 'User' });
+const singleSource: LensNarrowing = {
+  parent: createLens({ maps: { prisma }, mapName: 'prisma', model: 'User' }),
+  root: { relations: { posts: {} } },
+};
 
-const bridged = createLens({
+const bridgedLens = createLens({
   maps: { prisma, salesforce },
   bridges: [
     {
@@ -57,6 +60,10 @@ const bridged = createLens({
   mapName: 'prisma',
   model: 'User',
 });
+const bridged: LensNarrowing = {
+  parent: bridgedLens,
+  root: { relations: { posts: {}, 'salesforce:Contact': {} } },
+};
 
 describe('describeRule — single source', () => {
   test('a plain equality is single-source and supported on all targets', () => {
@@ -115,6 +122,14 @@ describe('describeRule — bridge crossing is check-only', () => {
     expect(d.supportedTargets).toEqual(['check']);
   });
 
+  test('a bridge the lens does not turn on is refused', () => {
+    const d = describeRule(
+      { field: 'salesforce:Contact.industry', operator: Operator.equals, value: 'tech' },
+      bridgedLens,
+    );
+    expect(d.errors.map((e) => e.code)).toEqual(['not_in_lens']);
+  });
+
   test('a same-source rule on a bridged lens does not cross', () => {
     const d = describeRule(
       { field: 'email', operator: Operator.equals, value: 'a@b.com' },
@@ -166,7 +181,13 @@ describe('describeRule — windowing restricts targets', () => {
     const d = describeRule(rule, singleSource);
     expect(d.supportedTargets).toEqual(
       (['check', 'toPrisma', 'toSql'] as const).filter(
-        (target) => validateRule(rule, { target }).ok,
+        (target) =>
+          validateRule(rule, {
+            target,
+            map: { maps: { prisma } },
+            mapName: 'prisma',
+            model: 'User',
+          }).ok,
       ),
     );
     expect(d.supportedTargets).not.toContain('toSql');

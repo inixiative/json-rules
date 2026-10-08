@@ -1,5 +1,6 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { unitAmountProblem } from './amount';
+import { columnCompareProblem } from './columnCompare';
 import { parseDateValue } from './date';
 import {
   DEFAULT_ZONE,
@@ -9,20 +10,29 @@ import {
   namedPeriod,
   rollingShift,
 } from './dateExpr';
+import { resolveCaseInsensitive } from './engineGlobals';
 import {
   ambiguousCondition,
   conditionRequired,
   countRequired,
+  noCompiledForm,
   rangeExprRequired,
   unknownAggregateMode,
   unknownOperator,
   windowUnsupported,
 } from './errors';
+import { isJsonEntry, isRelationEntry } from './fieldMap/entry';
+import { resolveFieldMap } from './fieldMap/resolveFieldMap';
+import { comparesText } from './fieldMap/shape';
+import type { FieldMap, FieldMapSet } from './fieldMap/types';
+import { fieldEntry, relationTarget } from './fieldMap/walk';
 import { isOrderedValue, readOrderedPair } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
   AGGREGATE_OPERATORS,
+  ARRAY_COUNT_OPERATORS,
+  CONTAINS_OPERATORS,
   catalogEntry,
   DAY_NAMES,
   FieldKind,
@@ -35,13 +45,16 @@ import {
   PERIOD_UNITS,
   RANGE_OPERATORS,
   type RuleTarget,
+  SET_OPERATORS,
   type ValueShape,
   WINDOW_OPERATORS,
 } from './operatorCatalog';
 import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
+import { columnCompare, columnCompareError } from './toPrisma/columnRef';
+import { groupPath } from './toPrisma/groupStep';
 import { conditionShape } from './traverse';
-import type { AggregateMode, ArrayRule, Condition, DateExpr, WindowFields } from './types';
+import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
 
@@ -71,10 +84,22 @@ export const throwIfInvalid = (result: ValidationResult, label: string): void =>
 type ValidationContext = {
   target: RuleTarget;
   errors: ValidationIssue[];
+  map?: FieldMap;
+  /** The model each scope reads, outermost first (index = depth - 1), where the map knows it. */
+  scopeModels: (string | undefined)[];
+  /** Whether each scope sits inside a counting step (a count or relation aggregate condition). */
+  stepScopes: boolean[];
 };
 
-/** Which engine a rule must compile for; `check` (the default) accepts every rule. */
-export type ValidateRuleOptions = { target?: RuleTarget };
+/** Which engine a rule must compile for; `check` (the default) accepts every rule. The schema
+ *  (`map` — a FieldMap, or a FieldMapSet with `mapName` — and `model`) lets the Prisma target
+ *  accept a column compared with a column it can compile. */
+export type ValidateRuleOptions = {
+  target?: RuleTarget;
+  map?: FieldMap | FieldMapSet;
+  mapName?: string;
+  model?: string;
+};
 
 /** A rule's shape checked without data: every node well formed, and runnable on `target`
  *  (operators, windows, scope refs, patterns). */
@@ -85,6 +110,9 @@ export const validateRule = (
   const context: ValidationContext = {
     target: options.target ?? 'check',
     errors: [],
+    map: resolveFieldMap(options.map, options.mapName, 'toPrisma'),
+    scopeModels: [options.model],
+    stepScopes: [false],
   };
 
   validateCondition(condition, '$', context, 1);
@@ -184,8 +212,10 @@ const validateRef = (
   issuePath: string,
   context: ValidationContext,
   depth: number,
+  columnCompare = false,
 ): void => {
-  const parsed = parseScopeRef(ref);
+  // A bare value path reads the root row: the scope `depth` levels out.
+  const parsed = parseScopeRef(ref) ?? (key === 'path' ? { depth, path: ref } : null);
   if (!parsed) return;
   const label = key === 'field' ? 'Field' : 'Path';
   if (parsed.depth > depth) {
@@ -196,12 +226,15 @@ const validateRef = (
       scopeOutOfBounds(ref, parsed.depth, depth),
     );
   }
-  if (context.target === 'toPrisma') {
+  // A field rule's comparison column is the Prisma rail's to judge (validateFieldRule).
+  if (context.target === 'toPrisma' && !columnCompare) {
     pushIssue(
       context,
       issuePath,
       `unsupported_prisma_${key}`,
-      `${label} '${ref}' is not supported by toPrisma()`,
+      key === 'path'
+        ? `Path '${ref}' compares to a column, which isn't supported on the Prisma rail; use toSql() or check()`
+        : `${label} '${ref}' is not supported by toPrisma()`,
     );
   } else if (context.target === 'toSql' && (key === 'field' || parsed.depth > 1)) {
     pushIssue(
@@ -215,6 +248,21 @@ const validateRef = (
 
 type SourceForm = (typeof SOURCE_FORMS)[number];
 
+// A relation node's condition / filter reads the relation's model one scope in.
+const enterScope = (
+  context: ValidationContext,
+  depth: number,
+  field: unknown,
+  step = false,
+): void => {
+  context.stepScopes[depth] = step || context.stepScopes[depth - 1] === true;
+  const outer = context.scopeModels[depth - 1];
+  context.scopeModels[depth] =
+    context.map && outer && typeof field === 'string'
+      ? (relationTarget(field, context.map, outer) ?? undefined)
+      : undefined;
+};
+
 // One value source — `{ value } | { path } | { bind }` — wherever it appears: a rule's comparison
 // value, an offset, a unit amount. Exactly one form; `bindOptional` only beside `bind`; a path is
 // gated like any ref. Returns the form, or null when it is malformed.
@@ -223,6 +271,7 @@ const validateSource = (
   at: string,
   context: ValidationContext,
   depth: number,
+  columnCompare = false,
 ): SourceForm | null => {
   const forms = SOURCE_FORMS.filter((form) => source[form] !== undefined);
   if (forms.length > 1) {
@@ -248,7 +297,8 @@ const validateSource = (
       'invalid_value_source',
       'bindOptional is a boolean beside bind',
     );
-  if (form === 'path') validateRef(source.path as string, 'path', `${at}.path`, context, depth);
+  if (form === 'path')
+    validateRef(source.path as string, 'path', `${at}.path`, context, depth, columnCompare);
   return form;
 };
 
@@ -385,11 +435,88 @@ const validateFieldRule = (
     return;
   }
 
-  if (validateSource(rule, path, context, depth) === null) return;
+  if (validateSource(rule, path, context, depth, true) === null) return;
   rejectSqlRowRange(rule, operator, path, context);
+  if (context.target === 'toPrisma' && typeof rule.path === 'string') {
+    const compare = columnCompare(
+      rule as unknown as Rule,
+      context.map,
+      context.scopeModels[depth - 1],
+      depth > 1,
+      context.stepScopes[depth - 1] === true,
+    );
+    if ('problem' in compare)
+      pushIssue(
+        context,
+        `${path}.path`,
+        'unsupported_prisma_path',
+        columnCompareError(rule.path, compare.problem).message,
+      );
+  }
+  if (context.target === 'toSql' && typeof rule.path === 'string' && context.map) {
+    const model = context.scopeModels[depth - 1];
+    const column = (parseScopeRef(rule.path) ?? { path: rule.path }).path;
+    const problem = columnCompareProblem(
+      fieldEntry(rule.field as string, context.map, model),
+      fieldEntry(column, context.map, model),
+      operator,
+    );
+    if (problem)
+      pushIssue(context, `${path}.path`, 'unsupported_sql_path', `'${rule.path}': ${problem}`);
+  }
+  // A substring, pattern or set is bound when toSql compiles; against a column there is no SQL
+  // form — save a list holding a column's value (membership).
+  if (
+    context.target === 'toSql' &&
+    typeof rule.path === 'string' &&
+    ['array', 'pattern', 'string'].includes(shape)
+  ) {
+    const field = context.map
+      ? fieldEntry(rule.field as string, context.map, context.scopeModels[depth - 1])
+      : undefined;
+    if (!(field?.isList && CONTAINS_OPERATORS.includes(operator)))
+      pushIssue(
+        context,
+        `${path}.path`,
+        'unsupported_sql_path',
+        `'${operator}' against the column '${rule.path}' has no SQL form`,
+      );
+  }
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
+  validatePrismaLiteral(rule, operator, path, context, depth);
 
   validateValueShape(shape, rule.value, operator, `${path}.value`, context);
+};
+
+// What toPrisma reads off a literal against the column it names, as its compile does: a list
+// column's filters take no null element and no case-insensitive mode (a set of members excepted,
+// which compiles to membership), and a case-insensitive comparison against Json has no exact form.
+const validatePrismaLiteral = (
+  rule: Record<string, unknown>,
+  operator: Operator,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  if (context.target !== 'toPrisma' || !context.map || typeof rule.field !== 'string') return;
+  const entry = fieldEntry(rule.field, context.map, context.scopeModels[depth - 1]);
+  if (!entry) return;
+  const value = rule.value;
+  const insensitive = resolveCaseInsensitive(rule.caseInsensitive as boolean | undefined);
+  const members = SET_OPERATORS.includes(operator) && Array.isArray(value);
+  const refuse = (what: string) =>
+    pushIssue(
+      context,
+      `${path}.value`,
+      'unsupported_prisma_operator',
+      noCompiledForm('toPrisma', what).message,
+    );
+  if (entry.isList && !members && Array.isArray(value) && value.includes(null))
+    refuse(`A list holding null in '${rule.field}'`);
+  else if (entry.isList && !members && insensitive && comparesText('text', value))
+    refuse(`A case-insensitive comparison on the list '${rule.field}'`);
+  else if (isJsonEntry(entry) && insensitive)
+    refuse(`A case-insensitive comparison on the Json column '${rule.field}'`);
 };
 
 const validateValueShape = (
@@ -455,12 +582,33 @@ const validateValueShape = (
   }
 };
 
+// A count or a relation aggregate compiles to a Prisma group step over the relation it names; the
+// compiler's own path check says whether that relation can carry one (a list relation with its
+// keys declared — not a Json list, nor an implicit many-to-many).
+const validateGroupStep = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+  kind: 'Count operators' | 'Aggregate rules',
+): void => {
+  const model = context.scopeModels[depth - 1];
+  if (context.target !== 'toPrisma' || !context.map || !model || typeof rule.field !== 'string')
+    return;
+  try {
+    groupPath(rule.field, context.map, model, kind);
+  } catch (error) {
+    pushIssue(context, `${path}.field`, 'unsupported_prisma_relation', (error as Error).message);
+  }
+};
+
 const validateAggregateRule = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
   depth: number,
 ): void => {
+  validateGroupStep(rule, path, context, depth, 'Aggregate rules');
   if (rule.offset !== undefined)
     pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
   validateWindow(rule, path, context, depth);
@@ -521,6 +669,7 @@ const validateAggregateRule = (
         `Aggregate condition filtering is not supported by toSql(); use check() or toPrisma()`,
       );
     }
+    enterScope(context, depth, rule.field, true);
     validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
   }
 
@@ -580,6 +729,21 @@ const validateArrayRule = (
   }
 
   const operator = rule.arrayOperator as ArrayOperator;
+  if (ARRAY_COUNT_OPERATORS.includes(operator))
+    validateGroupStep(rule, path, context, depth, 'Count operators');
+  // An array a column holds (a scalar list, a Json array) has no Prisma filter over its elements:
+  // only its emptiness compiles.
+  const held =
+    context.target === 'toPrisma' && context.map && typeof rule.field === 'string'
+      ? fieldEntry(rule.field, context.map, context.scopeModels[depth - 1])
+      : undefined;
+  if (held && !isRelationEntry(held) && operator !== 'empty' && operator !== 'notEmpty')
+    pushIssue(
+      context,
+      `${path}.arrayOperator`,
+      'unsupported_prisma_array_operator',
+      noCompiledForm('toPrisma', `'${operator}' over the array column '${rule.field}'`).message,
+    );
 
   if (!isOperatorSupportedForTarget(operator, 'array', context.target)) {
     pushIssue(
@@ -613,8 +777,10 @@ const validateArrayRule = (
       );
     refuseCount();
   } else if (shape === 'predicate') {
-    if (hasCondition) validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-    else
+    if (hasCondition) {
+      enterScope(context, depth, rule.field);
+      validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+    } else
       pushIssue(
         context,
         `${path}.condition`,
@@ -635,8 +801,10 @@ const validateArrayRule = (
         'invalid_count',
         'count must be a non-negative whole number',
       );
-    if (hasCondition) validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-    else if (context.target === 'check')
+    if (hasCondition) {
+      enterScope(context, depth, rule.field, true);
+      validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+    } else if (context.target === 'check')
       pushIssue(
         context,
         `${path}.condition`,
@@ -894,6 +1062,7 @@ const validateWindow = (
   }
 
   if ('filter' in rule && rule.filter !== undefined) {
+    enterScope(context, depth, rule.field);
     validateCondition(rule.filter, `${path}.filter`, context, depth + 1);
   }
 

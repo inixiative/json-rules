@@ -17,7 +17,7 @@ import {
 } from '../errors';
 import { hasNoOperand, isExistenceTest, listMembership } from '../field';
 import { acceptsEmptyString, comparesText, type FieldShape, ruleShape } from '../fieldMap/shape';
-import type { FieldMap } from '../fieldMap/types';
+import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { fieldEntry, optionalToOneHops, walkFieldPath, walkWith } from '../fieldMap/walk';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
@@ -33,7 +33,9 @@ import {
 } from '../operatorCatalog';
 import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
+import { hasPath } from '../valueSource';
 import { prismaAnyNull } from './anyNull';
+import { columnCompare, columnCompareError, isNestedScope, isStepScope } from './columnRef';
 import { andWhere, matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
 import { buildCondition } from './recurse';
@@ -251,6 +253,38 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
       );
   }
 
+  // A column compared with a column: a Prisma field reference, NULL rows kept on a negation.
+  if (hasPath(rule)) {
+    const compare = columnCompare(
+      rule,
+      options?.map as FieldMap | undefined,
+      options?.model,
+      isNestedScope(options),
+      isStepScope(options),
+    );
+    if ('problem' in compare) throw columnCompareError(rule.path, compare.problem);
+    const filter = at({ [compare.key]: compare.ref });
+    // Equality compares as IS NOT DISTINCT FROM, as check() and toSql do: two NULLs are equal, a
+    // NULL and a value are not; an ordered comparison with a NULL holds for no row.
+    const isNull = (path: string, entry: FieldMapEntry) =>
+      entry.isRequired === false ? buildMapAwareFilter(path, { equals: null }, options) : null;
+    const isSet = (path: string, entry: FieldMapEntry) =>
+      entry.isRequired === false ? buildMapAwareFilter(path, { not: null }, options) : MATCH_ALL;
+    const fieldNull = isNull(rule.field, compare.field);
+    const columnNull = isNull(compare.columnPath, compare.column);
+    if (rule.operator === Operator.equals)
+      return fieldNull && columnNull
+        ? orWhere([filter, andWhere([fieldNull, columnNull])])
+        : filter;
+    if (rule.operator === Operator.notEquals)
+      return orWhere([
+        notLeaf(filter),
+        ...(fieldNull ? [andWhere([fieldNull, isSet(compare.columnPath, compare.column)])] : []),
+        ...(columnNull ? [andWhere([isSet(rule.field, compare.field), columnNull])] : []),
+      ]);
+    return filter;
+  }
+
   // Nothing to compare against (see hasNoOperand): no row matches; a negation keeps the absent
   // rows only.
   const value = resolveRuleValue(rule, options);
@@ -355,12 +389,12 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
 const resolveRuleValue = (rule: Rule, options?: ToPrismaOptions): unknown => {
   const value = compileFieldLiteral(
     rule,
-    readSource(rule, options),
+    readSource(rule),
     walkWith(rule.field, options?.map as FieldMap | undefined, options?.model),
     'toPrisma',
     () => dateConfigOf(options).timeZone,
   );
-  return rule.offset === undefined ? value : offsetNumber(value, rule.offset, options);
+  return rule.offset === undefined ? value : offsetNumber(value, rule.offset);
 };
 
 /** A leaf's comparison as a Prisma field filter, in the form its field's shape takes (a negated

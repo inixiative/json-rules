@@ -286,7 +286,7 @@ describe('projectPaths — direct self-referential relation', () => {
       root: {
         relations: {
           manager: {
-            picks: ['name', 'manager'],
+            picks: ['name'],
             relations: {
               manager: { picks: ['email'] },
             },

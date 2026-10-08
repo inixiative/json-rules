@@ -45,7 +45,6 @@ export type RailResult = number[] | `throws: ${string}`;
 export type Rails = { check: RailResult; sql: RailResult; prisma: RailResult };
 /** `lens`: compile with `{ lens }` on the compiled rails, and check `narrowRule(rule, lens)`. */
 export type RailOptions = {
-  context?: Record<string, unknown>;
   timeZone?: string;
   now?: Date;
   lens?: Lens | LensNarrowing;
@@ -77,7 +76,10 @@ export const openRails = async (seed = '') => {
   const rows = await prisma.user.findMany({
     include: {
       org: {
-        include: { users: { include: { org: true } }, parent: { include: { parent: true } } },
+        include: {
+          users: { include: { org: true, posts: true } },
+          parent: { include: { parent: true } },
+        },
       },
       posts: { include: { author: true } },
     },
@@ -118,7 +120,7 @@ export const openRails = async (seed = '') => {
     rmSync(dir, { recursive: true, force: true });
   };
 
-  return { run, close, rows, prisma };
+  return { run, close, rows, prisma, db };
 };
 
 /** All three rails returning `ids`. */

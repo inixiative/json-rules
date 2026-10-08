@@ -8,6 +8,7 @@ import {
   toPrisma,
   toSourceQueries,
   toSql,
+  validateNarrowing,
   validateRuleInLens,
 } from '../index';
 
@@ -63,6 +64,8 @@ const lens: Lens = { maps: { app: map }, mapName: 'app', model: 'Article' };
 const rule = (r: object): Condition => r as never;
 const granted: LensNarrowing = {
   parent: lens,
+  // The layer shows comments, so a child may grant on them.
+  root: { relations: { comments: {} } },
   mapDefaults: {
     app: {
       models: {
@@ -281,18 +284,17 @@ describe('a relation is never read as a value', () => {
 });
 
 describe("an option list on a relation reads only the rows under its ancestors' grants", () => {
+  // The platform layer, the first narrowing, turns the relations on; the delegate sources them.
   const platform: LensNarrowing = {
     parent: lens,
-    root: { where: rule({ field: 'score', operator: 'greaterThan', value: 5 }) },
+    root: {
+      where: rule({ field: 'score', operator: 'greaterThan', value: 5 }),
+      relations: { comments: {}, author: {} },
+    },
   };
   const delegate: LensNarrowing = {
     parent: platform,
-    root: {
-      relations: {
-        comments: { sources: { body: true } },
-        author: { sources: { tenantId: true } },
-      },
-    },
+    root: { relations: { comments: { sources: { body: true } } } },
   };
   const queries = toSourceQueries(delegate);
   const at = (model: string) => {
@@ -311,7 +313,16 @@ describe("an option list on a relation reads only the rows under its ancestors' 
     expect(comments.sql.sql).toContain('JOIN "Article"');
   });
 
-  test('a grant no inverse can carry offers nothing', () => {
-    expect(check(at('User').composedWhere, { tenantId: 't1' })).not.toBe(true);
+  test('a grant no inverse can carry is refused, never an empty list', () => {
+    const throughAuthor: LensNarrowing = {
+      parent: platform,
+      root: { relations: { author: { sources: { tenantId: true } } } },
+    };
+    expect(
+      validateNarrowing(throughAuthor)
+        .errors.map((e) => e.message)
+        .join(),
+    ).toMatch(/declares no inverse/);
+    expect(() => toSourceQueries(throughAuthor)).toThrow(/declares no inverse/);
   });
 });

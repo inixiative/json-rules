@@ -4,6 +4,7 @@ import { ArrayOperator } from '../operator';
 import { comparatorOf } from '../operatorCatalog';
 import type { ArrayRule } from '../types';
 import { holdsForEmpty } from './array';
+import { nestedScope } from './columnRef';
 import { groupMembership, groupPath } from './groupStep';
 import { matchAll } from './logical';
 import { buildCondition } from './recurse';
@@ -33,7 +34,11 @@ export const buildCountStep = (
   const count = rule.count;
   if (rule.arrayOperator === ArrayOperator.atLeast && count === 0) return matchAll();
 
-  const where = buildCondition(rule.condition, { ...options, model: path.target }, state);
+  const where = buildCondition(
+    rule.condition,
+    nestedScope({ ...options, model: path.target }, options, true),
+    state,
+  );
   // The zero-inclusive operators hold for a parent with no matching children, which no group
   // carries: atMost N = NOT(atLeast N+1), exactly 0 = NOT(atLeast 1).
   const complement = holdsForEmpty(rule);

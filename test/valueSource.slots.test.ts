@@ -91,17 +91,19 @@ describe('a bound unit amount', () => {
 describe('the time zone is a value source', () => {
   const naive = rule({ field: 'ts', dateOperator: 'after', value: '2024-06-15' });
 
-  test('both compilers read it from context', () => {
-    const fromContext = {
-      timeZone: { path: 'user.tz' },
-      context: { user: { tz: 'Asia/Kolkata' } },
-    };
-    expect(toSql(naive, fromContext).params).toEqual(
-      toSql(naive, { timeZone: 'Asia/Kolkata' }).params,
-    );
-    expect(getWhere(toPrisma(naive, fromContext))).toEqual(
-      getWhere(toPrisma(naive, { timeZone: 'Asia/Kolkata' })),
-    );
+  test('a path is refused on every rail: one zone per evaluation, and a path reads the row', () => {
+    const fromPath = { timeZone: { path: 'tz' } };
+    const row = { ts: new Date('2024-06-16T00:00:00Z'), tz: 'Asia/Kolkata' };
+    expect(() => check(naive, row, fromPath)).toThrow('one per evaluation');
+    expect(() => toSql(naive, fromPath)).toThrow('one per evaluation');
+    expect(() => toPrisma(naive, fromPath)).toThrow('one per evaluation');
+  });
+
+  test('check() reads a bound zone as it reads the zone given directly', () => {
+    const at = { ts: new Date('2024-06-14T20:00:00Z') };
+    const bound = { timeZone: { bind: 'tz' }, bindings: { tz: 'Asia/Kolkata' } };
+    expect(check(naive, at, bound)).toBe(check(naive, at, { timeZone: 'Asia/Kolkata' }));
+    expect(check(naive, at, bound)).not.toBe(check(naive, at, { timeZone: 'UTC' }));
   });
 
   test('an unresolved zone bind is a compile error, not a silent UTC', () => {

@@ -60,36 +60,30 @@ const base: Lens = { maps: { prisma: map }, mapName: 'prisma', model: 'User' };
 const live: Condition = { field: 'deletedAt', operator: 'notExists' };
 
 describe('toLensSelect', () => {
-  test('selects the visible columns of each declared path; a declared relation nests', () => {
+  test('selects the visible columns of each shown visit; a relation turned on nests', () => {
     const lens: LensNarrowing = {
       parent: base,
-      root: { picks: ['id', 'org'], relations: { org: { picks: ['name'] } } },
+      root: { picks: ['id'], relations: { org: { picks: ['name'] } } },
     };
     expect(toLensSelect(lens)).toEqual({
       select: { id: true, org: { select: { name: true } } },
     });
   });
 
-  test('a visible relation off the declared paths brings its visible columns, no relations', () => {
+  test('a relation the lens does not turn on is not fetched', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: { omits: ['posts', 'meta'] },
       mapDefaults: { prisma: { models: { Org: { omits: ['deletedAt'] } } } },
     };
-    expect(toLensSelect(lens).select).toEqual({
-      id: true,
-      name: true,
-      email: true,
-      status: true,
-      org: { select: { id: true, name: true, plan: true } },
-    });
+    expect(toLensSelect(lens).select).toEqual({ id: true, name: true, email: true, status: true });
   });
 
   test("a to-many relation carries its visit's grants as its where; its grant columns are selected", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'posts'],
+        picks: ['id'],
         relations: { posts: { picks: ['title'], where: live } },
       },
     };
@@ -102,9 +96,11 @@ describe('toLensSelect', () => {
   test("a to-one relation's grant can't ride the select: its columns come, it carries no where", () => {
     const lens: LensNarrowing = {
       parent: base,
-      root: { picks: ['org'], relations: { org: { picks: ['name'], where: live } } },
+      root: { picks: [], relations: { org: { picks: ['name'], where: live } } },
     };
+    // The root shows no column, so it is fetched by its id (R7-4).
     expect(toLensSelect(lens).select).toEqual({
+      id: true,
       org: { select: { name: true, deletedAt: true } },
     });
   });
@@ -113,7 +109,7 @@ describe('toLensSelect', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'posts'],
+        picks: ['id'],
         relations: {
           posts: {
             picks: ['title'],
@@ -139,19 +135,19 @@ describe('toLensSelect', () => {
     expect(toLensSelect(lens).select).toEqual({ id: true, org: { select: { plan: true } } });
   });
 
-  test('a relation that shows no column is fetched whole: Prisma selects nothing never', () => {
+  test('a relation that shows no column is fetched by its key alone, never another column', () => {
     const lens: LensNarrowing = {
       parent: base,
-      root: { picks: ['posts'], relations: { posts: { picks: [] } } },
+      root: { picks: [], relations: { posts: { picks: [] } } },
     };
-    expect(toLensSelect(lens).select).toEqual({ posts: true });
+    expect(toLensSelect(lens).select).toEqual({ id: true, posts: { select: { id: true } } });
   });
 
   test('a relation grant that needs a counting step throws', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['posts'],
+        picks: [],
         relations: {
           posts: {
             picks: ['id'],
@@ -167,7 +163,7 @@ describe('toLensSelect', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['posts'],
+        picks: [],
         relations: {
           posts: {
             picks: ['id'],
@@ -200,7 +196,7 @@ describe('projectRows', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'org'],
+        picks: ['id'],
         relations: { org: { picks: ['id'], where: live } },
       },
       mapDefaults: {
@@ -225,7 +221,7 @@ describe('projectRows', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'org'],
+        picks: ['id'],
         relations: { org: { picks: ['id'] } },
         where: { field: 'org.plan', operator: 'equals', value: 'pro' },
       },
@@ -240,7 +236,7 @@ describe('projectRows', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'posts'],
+        picks: ['id'],
         relations: {
           posts: {
             picks: [],
@@ -288,23 +284,28 @@ describe('projectRows', () => {
   });
 
   test('stacked layers: a projection, a model default scope and a target each decide', () => {
+    // The projection layer scopes Tag by a column it hides (a grant reads what a viewer can't); a
+    // later layer may scope only by what its parent shows.
     const projection: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'name', 'posts'],
+        picks: ['id', 'name'],
         relations: {
           posts: { picks: [], where: live, relations: { tag: { picks: ['id', 'name'] } } },
         },
       },
-    };
-    const scoped: LensNarrowing = {
-      parent: projection,
       mapDefaults: {
         prisma: {
           models: {
             Tag: { where: { field: 'ownerModel', operator: 'equals', value: 'platform' } },
           },
         },
+      },
+    };
+    const scoped: LensNarrowing = {
+      parent: projection,
+      mapDefaults: {
+        prisma: { models: { Tag: { where: { field: 'name', operator: 'equals', value: 'vip' } } } },
       },
     };
     const targeted: LensNarrowing = {
@@ -328,21 +329,24 @@ describe('projectRows', () => {
     ]);
   });
 
-  test('a visible relation off the declared paths is cut to its visible columns and admitted', () => {
-    const lens: LensNarrowing = {
+  test('a relation is cut to its visible columns and admitted only when turned on', () => {
+    const rows = [
+      { id: 'u1', org: { id: 'o1', name: 'A', plan: 'pro', deletedAt: null } },
+      { id: 'u2', org: { id: 'o2', name: 'B', plan: 'pro', deletedAt: '2026-01-01' } },
+    ];
+    const mapDefaults = { prisma: { models: { Org: { omits: ['plan'], where: live } } } };
+    const on: LensNarrowing = {
       parent: base,
-      root: { picks: ['id', 'org'] },
-      mapDefaults: { prisma: { models: { Org: { omits: ['plan'], where: live } } } },
+      root: { picks: ['id'], relations: { org: {} } },
+      mapDefaults,
     };
-    expect(
-      projectRows(lens, [
-        { id: 'u1', org: { id: 'o1', name: 'A', plan: 'pro', deletedAt: null } },
-        { id: 'u2', org: { id: 'o2', name: 'B', plan: 'pro', deletedAt: '2026-01-01' } },
-      ]),
-    ).toEqual([
+    expect(projectRows(on, rows)).toEqual([
       { id: 'u1', org: { id: 'o1', name: 'A', deletedAt: null } },
       { id: 'u2', org: null },
     ]);
+    // Off: dropped whole.
+    const off: LensNarrowing = { parent: base, root: { picks: ['id'] }, mapDefaults };
+    expect(projectRows(off, rows)).toEqual([{ id: 'u1' }, { id: 'u2' }]);
   });
 
   test('own properties only, and the input is not mutated', () => {

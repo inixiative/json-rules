@@ -83,7 +83,7 @@ describe('validateRule — offset', () => {
   });
 
   test('a row path on a date offset is check-only', () => {
-    const r = { field: 'ts', dateOperator: 'before', path: 'a', offset: { path: '$.g' } };
+    const r = { field: 'ts', dateOperator: 'before', bind: 'a', offset: { path: '$.g' } };
     expect(codes(r, 'check')).toEqual([]);
     expect(codes(r, 'toSql')).toEqual(['unsupported_sql_path']);
     expect(codes(r, 'toPrisma')).toEqual(['unsupported_prisma_path']);
@@ -178,7 +178,7 @@ describe('validateRule — path magnitudes', () => {
       dateOperator: 'before',
       value: { ago: { seconds: { path: '$.s' } } },
     };
-    const rowOffset = { field: 'score', operator: 'equals', path: 'a', offset: { path: '$.d' } };
+    const rowOffset = { field: 'score', operator: 'equals', bind: 'a', offset: { path: '$.d' } };
     expect(codes(rowMagnitude, 'toSql')).toEqual([]);
     expect(codes(rowMagnitude, 'toPrisma')).toEqual(['unsupported_prisma_path']);
     expect(codes(rowOffset, 'toPrisma')).toEqual(['unsupported_prisma_path']);
@@ -210,7 +210,8 @@ const map: FieldMap = {
   },
 };
 
-const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Incident' });
+const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Incident' });
+const lens = { parent: base, root: { relations: { rule: {} } } };
 const narrowed = {
   parent: lens,
   root: { relations: { rule: { omits: ['secret'] } } },
@@ -253,10 +254,15 @@ describe('lens gate — offset and magnitude refs', () => {
     expect(result.errors[0]?.path).toBe('$.rule.secret');
   });
 
+  test('a magnitude ref through a relation that is off is a violation', () => {
+    expect(gate(autoResolve, base).errors.map((e) => [e.path, e.code])).toEqual([
+      ['$.rule.autoResolveAfterSeconds', 'not_in_lens'],
+    ]);
+  });
+
   test('a magnitude must name a number', () => {
     const result = gate({ ...autoResolve, value: { ago: { seconds: { path: '$.rule.name' } } } });
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]?.path).toBe('$.rule.name');
+    expect(result.errors.map((e) => [e.path, e.code])).toEqual([['$.rule.name', 'not_in_lens']]);
   });
 
   test('a numeric offset needs a numeric field', () => {
@@ -291,10 +297,19 @@ describe('describeRule — offset and magnitude refs restrict targets like path'
     ).toEqual(['check', 'toSql']);
   });
 
-  test('context refs keep every target', () => {
+  test('bare refs read the root row: they drop toPrisma as $. refs do', () => {
     expect(
       describeRule(
         rule({ field: 'score', operator: 'equals', path: 'x', offset: { path: 'y' } }),
+        lens,
+      ).supportedTargets,
+    ).toEqual(['check', 'toSql']);
+  });
+
+  test("a caller's values are binds, which keep every target", () => {
+    expect(
+      describeRule(
+        rule({ field: 'score', operator: 'equals', bind: 'x', offset: { bind: 'y' } }),
         lens,
       ).supportedTargets,
     ).toEqual(['check', 'toPrisma', 'toSql']);

@@ -4,7 +4,7 @@ import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { isPlainObject } from 'lodash-es';
-import { rangeExprRequired } from './errors';
+import { rangeExprRequired, UsageError } from './errors';
 import {
   type INTERVAL_FIELDS,
   leafCatalogEntry,
@@ -51,9 +51,9 @@ export type ResolvedDateConfig = Omit<DateConfig, 'timeZone'> & { timeZone: stri
 
 export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
   if (config.now === undefined)
-    throw new Error('date expressions require `now` to be supplied to the evaluator');
+    throw new UsageError('date expressions require `now` to be supplied to the evaluator');
   const base = dayjs(config.now).tz(config.timeZone);
-  if (!base.isValid()) throw new Error(`invalid \`now\`: ${String(config.now)}`);
+  if (!base.isValid()) throw new UsageError(`invalid \`now\`: ${String(config.now)}`);
   return base;
 };
 

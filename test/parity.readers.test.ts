@@ -1,31 +1,30 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
 import { check, toPrisma, toSql } from '../index';
-import { getWhere } from './fixtures/helpers';
 
-// The path reader reads a caller's data by own property — bracket indices, a string's length —
-// and never anything inherited (a class getter, Object.prototype); and every zoned date string reads as its instant.
+// The path reader reads the root row by own property — bracket indices, a string's length — and
+// never anything inherited (a class getter, Object.prototype); and every zoned date string reads
+// as its instant.
 
 const rule = (r: object): Condition => r as never;
 
 describe('path reads', () => {
-  test('a bracket index on every rail', () => {
+  test('a bracket index reads the root row; toSql reads it as `$.` does', () => {
     const r = rule({ field: 'n', operator: 'equals', path: 'ids[1]' });
-    const context = { ids: [1, 2] };
-    expect(check(r, { n: 2 }, { context })).toBe(true);
-    expect(toSql(r, { context }).params).toEqual([2]);
-    expect(getWhere(toPrisma(r, { context }))).toEqual({ n: { equals: 2 } });
+    expect(check(r, { n: 2, ids: [1, 2] })).toBe(true);
+    expect(check(r, { n: 1, ids: [1, 2] })).not.toBe(true);
+    expect(toSql(r)).toEqual(toSql(rule({ field: 'n', operator: 'equals', path: '$.ids[1]' })));
+    expect(() => toPrisma(r)).toThrow('Prisma rail');
   });
 
-  test('a getter on a class instance in context reads nothing', () => {
+  test('a getter on a class instance in the row reads nothing', () => {
     class User {
       get userId() {
         return 'u1';
       }
     }
     const r = rule({ field: 'owner', operator: 'equals', path: 'user.userId' });
-    expect(check(r, { owner: 'u1' }, { context: { user: new User() } })).not.toBe(true);
-    expect(toSql(r, { context: { user: new User() } }).params).toEqual([]);
+    expect(check(r, { owner: 'u1', user: new User() })).not.toBe(true);
   });
 
   test('a bracket index and a string length as fields', () => {
@@ -39,7 +38,7 @@ describe('path reads', () => {
 
   test('Object.prototype names and methods never resolve', () => {
     const r = rule({ field: 'x', operator: 'equals', path: 'list.map' });
-    expect(check(r, { x: null }, { context: { list: [1] } })).toBe(true);
+    expect(check(r, { x: null, list: [1] })).toBe(true);
   });
 });
 

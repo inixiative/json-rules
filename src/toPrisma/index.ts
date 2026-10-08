@@ -1,8 +1,9 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import { compileUnderLens } from '../lens/compileUnderLens';
+import { compileWithLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
-import type { PrismaBuildState, ToPrismaOptions, ToPrismaResult } from './types';
+import { recordRefs } from './sentinels';
+import type { PrismaBuildState, PrismaStep, ToPrismaOptions, ToPrismaResult } from './types';
 
 const normalizeOptions = (options?: ToPrismaOptions): ToPrismaOptions | undefined =>
   options?.map
@@ -36,14 +37,24 @@ export type {
  * const where = await executePrismaPlan(plan, prisma);
  * await prisma.user.findMany({ where });
  *
- * toPrisma(rule, { lens: narrowing, now }); // gated, narrowed (a bare value path read as context), compiled against the base lens
+ * toPrisma(rule, { lens: narrowing, now }); // gated, narrowed, compiled against the base lens
  * ```
  */
-export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToPrismaResult => {
-  const { condition, options } = compileUnderLens(rule, compileOptions, 'toPrisma');
+export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToPrismaResult =>
+  compileWithLens(rule, compileOptions, 'toPrisma', compilePrisma);
+
+const compilePrisma = (condition: Condition, options?: ToPrismaOptions): ToPrismaResult => {
   const state: PrismaBuildState = { steps: [] };
   const where = buildCondition(condition, normalizeOptions(options), state);
+  // Each step records where its own references sit; nothing else is ever resolved.
+  const withRefs = <S extends PrismaStep>(step: S, root: unknown): S => {
+    const refs = recordRefs(root);
+    return refs.length ? { ...step, refs } : step;
+  };
   return {
-    steps: [...state.steps, { operation: 'where', where }],
+    steps: [
+      ...state.steps.map((step) => withRefs(step, step.args)),
+      withRefs({ operation: 'where' as const, where }, where),
+    ],
   };
 };

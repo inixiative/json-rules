@@ -32,14 +32,14 @@ afterAll(async () => {
   await db.close();
 });
 
-type Opts = { context?: Record<string, unknown>; bindings?: Record<string, unknown> };
+type Opts = { bindings?: Record<string, unknown> };
 
 const bothRails = async (condition: Condition, expected: number[], opts: Opts = {}) => {
   const inMemory = golfers
     .filter((r) => check(condition, r, { now: NOW, ...opts } as never) === true)
     .map((r) => r.id);
   const compiled = opts.bindings ? bindRule(condition, opts.bindings as never) : condition;
-  const { sql, params } = toSql(compiled, { now: NOW, context: opts.context });
+  const { sql, params } = toSql(compiled, { now: NOW });
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
   ).rows.map((r) => r.id);
@@ -116,7 +116,14 @@ describe('a numeric offset from each source', () => {
     expect(() => check(r, golfers[0], { bindings: {} })).toThrow('Missing binding for "strokes"');
     expect(() => toSql(r)).toThrow('Unresolved binding');
     expect(() =>
-      toPrisma({ ...(r as object), path: 'par' } as never, { context: { par: 72 } }),
+      toPrisma(
+        rule({
+          field: 'score',
+          operator: 'lessThanEquals',
+          value: 72,
+          offset: { bind: 'strokes' },
+        }),
+      ),
     ).toThrow('Unresolved binding');
   });
 });
@@ -179,30 +186,34 @@ describe('a date offset from each source', () => {
     const r = rule({
       field: 'ts',
       dateOperator: 'before',
-      path: 'anchor',
+      bind: 'anchor',
       offset: { bind: 'grace' },
     });
     const opts = {
-      context: { anchor: '2026-10-10T00:00:00Z' },
-      bindings: { grace: { ago: { days: 3 } } },
+      bindings: { anchor: '2026-10-10T00:00:00Z', grace: { ago: { days: 3 } } },
     };
     expect(check(r, ts, opts)).toBe(true);
     expect(check(r, { ts: d('2026-10-08T00:00:00Z') }, opts)).not.toBe(true);
-    expect(getWhere(toPrisma(bindRule(r, opts.bindings), { context: opts.context }))).toEqual({
+    expect(getWhere(toPrisma(bindRule(r, opts.bindings)))).toEqual({
       ts: { lt: d('2026-10-07T00:00:00Z') },
     });
+    expect(toSql(bindRule(r, opts.bindings)).params).toEqual([
+      d('2026-10-07T00:00:00Z').toISOString(),
+    ]);
   });
 
-  test('context path', () => {
+  test('a bare path reads the root row: a row date offset is check-only', () => {
     const r = rule({
       field: 'ts',
       dateOperator: 'before',
       path: 'anchor',
       offset: { path: 'grace' },
     });
-    const context = { anchor: '2026-10-10T00:00:00Z', grace: { ago: { days: 3 } } };
-    expect(check(r, ts, { context })).toBe(true);
-    expect(toSql(r, { context }).params).toEqual([d('2026-10-07T00:00:00Z').toISOString()]);
+    const row = { ...ts, anchor: '2026-10-10T00:00:00Z', grace: { ago: { days: 3 } } };
+    expect(check(r, row)).toBe(true);
+    expect(check(r, { ...row, ts: d('2026-10-08T00:00:00Z') })).not.toBe(true);
+    expect(() => toSql(r)).toThrow('check()');
+    expect(() => toPrisma(r)).toThrow('Prisma rail');
   });
 
   test('a row path is check-only', () => {
@@ -214,19 +225,19 @@ describe('a date offset from each source', () => {
     });
     expect(check(r, { ...ts, grace: { ago: { days: 3 } } })).toBe(true);
     expect(() => toSql(r)).toThrow('check()');
-    expect(() => toPrisma(r)).toThrow('toPrisma');
+    expect(() => toPrisma(r)).toThrow('Prisma rail');
   });
 
   test('an offset that reads something other than ago / ahead throws', () => {
     const r = rule({
       field: 'ts',
       dateOperator: 'before',
-      path: 'anchor',
+      bind: 'anchor',
       offset: { bind: 'grace' },
     });
-    expect(() =>
-      check(r, ts, { context: { anchor: '2026-10-10T00:00:00Z' }, bindings: { grace: 3 } }),
-    ).toThrow('ago');
+    expect(() => check(r, ts, { bindings: { anchor: '2026-10-10T00:00:00Z', grace: 3 } })).toThrow(
+      'ago',
+    );
   });
 
   test('describeRule: a row date-offset path keeps check only', () => {

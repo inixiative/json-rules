@@ -4,6 +4,7 @@ import {
   coerceRule,
   createLens,
   describeRule,
+  type LensNarrowing,
   narrowRule,
   projectLens,
   validateRuleInLens,
@@ -36,7 +37,10 @@ const map: FieldMap = {
   enums: { Status: ['active', 'banned'] },
 };
 
-const lens = createLens({ maps: { app: map }, mapName: 'app', model: 'User' });
+const lens: LensNarrowing = {
+  parent: createLens({ maps: { app: map }, mapName: 'app', model: 'User' }),
+  root: { relations: { posts: {} } },
+};
 
 describe('validateRuleInLens — Json sub-paths', () => {
   test('a dotted sub-path into a visible Json column resolves (no violation)', () => {
@@ -315,7 +319,7 @@ describe('narrowRule — Json sub-paths', () => {
 describe('projection — the Json column is the leaf it already is', () => {
   test('projectPaths exposes the column and keys no path below it', () => {
     const proj = projectLens(lens);
-    expect(Object.keys(proj)).toEqual(['User']);
+    expect(Object.keys(proj)).toEqual(['User', 'User.posts']);
     expect(proj.User?.fields.metadata).toEqual({ kind: 'scalar', type: 'Json' });
   });
 
@@ -328,7 +332,8 @@ describe('projection — the Json column is the leaf it already is', () => {
         projectLens({ parent: lens, root: { picks: ['metadata'] } }, { by: 'model' }).maps.app
           .models.User.fields,
       ),
-    ).toEqual(['metadata']);
+      // picks names columns: the relation the parent turns on stays shown.
+    ).toEqual(['metadata', 'posts']);
   });
 });
 

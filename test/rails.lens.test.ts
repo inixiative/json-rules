@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
+  bindRule,
   type Condition,
   check,
   createLens,
@@ -10,6 +11,7 @@ import {
   toLensSelect,
   toPrisma,
   toSql,
+  validateNarrowing,
 } from '../index';
 import { agree, map, openRails } from './rails/harness';
 
@@ -28,7 +30,10 @@ afterAll(async () => {
 describe('toPrisma / toSql with { lens }', () => {
   const lens: LensNarrowing = {
     parent: base,
-    root: { where: { field: 'age', operator: 'greaterThanEquals', value: 5 } },
+    root: {
+      where: { field: 'age', operator: 'greaterThanEquals', value: 5 },
+      relations: { org: {} },
+    },
     mapDefaults: {
       prisma: { models: { Org: { where: { field: 'plan', operator: 'equals', value: 'pro' } } } },
     },
@@ -59,15 +64,7 @@ describe('toPrisma / toSql with { lens }', () => {
     expect(() => toSql(rule, { lens: hidden })).toThrow(/leaves the lens/);
   });
 
-  test("a context ref is the caller's value, not a column: it compiles under the lens", async () => {
-    const shown: LensNarrowing = { parent: base, root: { picks: ['id', 'name', 'org'] } };
-    const rule: Condition = { field: 'id', operator: 'equals', path: 'viewer.id' };
-    expect(await rails.run(rule, { lens: shown, context: { viewer: { id: 1 } } })).toEqual(
-      agree([1]),
-    );
-  });
-
-  test("a context key named like a relation gets no grant: it's the caller's value", async () => {
+  test('a caller value is a bind: the rails agree under a lens', async () => {
     const proOrgs: LensNarrowing = {
       parent: base,
       mapDefaults: {
@@ -75,15 +72,25 @@ describe('toPrisma / toSql with { lens }', () => {
       },
     };
     const deny: Condition = {
-      if: { field: 'id', operator: 'equals', path: 'org.id' },
+      if: { field: 'id', operator: 'equals', bind: 'blockedId' },
       then: false,
       else: true,
     };
-    const options = { context: { org: { id: 2 } } };
-    const unlensed = await rails.run(deny, options);
-    const lensed = await rails.run(deny, { ...options, lens: proOrgs });
-    expect(lensed.sql).toEqual(unlensed.sql);
-    expect(lensed.prisma).toEqual(unlensed.prisma);
+    const bound = bindRule(deny, { blockedId: 2 });
+    expect(await rails.run(bound, { lens: proOrgs })).toEqual(agree([1, 3, 4, 5]));
+  });
+
+  test('a bare path is a root-row column: gated, narrowed and compiled like a field', async () => {
+    const shown: LensNarrowing = { parent: base, root: { relations: { org: {} } } };
+    const rule: Condition = { field: 'age', operator: 'greaterThan', path: 'orgId' };
+    expect(await rails.run(rule, { lens: shown })).toEqual(agree([1]));
+    const hidden: LensNarrowing = { parent: base, root: { omits: ['orgId'] } };
+    expect(() => toSql(rule, { lens: hidden })).toThrow(/leaves the lens/);
+    const across: Condition = { field: 'age', operator: 'greaterThan', path: 'org.seats' };
+    expect(() => toSql(across, { lens: base })).toThrow(/leaves the lens/);
+    const viaOrg = await rails.run(across, { lens: shown });
+    expect(viaOrg.check).toEqual(viaOrg.sql);
+    expect(viaOrg.prisma).toMatch(/Prisma rail/);
   });
 
   test('a narrowing inheriting a base key from its prototype keeps its chain', () => {
@@ -109,6 +116,12 @@ describe('toPrisma / toSql with { lens }', () => {
     expect(() => toPrisma(true, { lens: stray })).toThrow(/base lens key/);
   });
 
+  test('a rule crossing a relation the lens does not turn on throws instead of compiling', () => {
+    const rule: Condition = { field: 'org.parent.name', operator: 'equals', value: 'Acme' };
+    expect(() => toPrisma(rule, { lens })).toThrow(/leaves the lens/);
+    expect(() => toSql(rule, { lens })).toThrow(/leaves the lens/);
+  });
+
   test('a lens with map / mapName / model is refused', () => {
     expect(() => toPrisma(true, { lens, map })).toThrow(/not both/);
     expect(() => toSql(true, { lens, model: 'User' })).toThrow(/not both/);
@@ -119,7 +132,7 @@ describe("toLensSelect: a to-many relation's grants as its where agree with chec
   const lens: LensNarrowing = {
     parent: base,
     root: {
-      picks: ['id', 'name', 'posts', 'org'],
+      picks: ['id', 'name'],
       relations: {
         posts: {
           picks: ['id', 'title'],
@@ -182,17 +195,17 @@ describe("toLensSelect: a to-many relation's grants as its where agree with chec
 });
 
 describe('fetch, project, re-check: the documented pipeline answers as the database does', () => {
-  const fetchUnder = async (lens: LensNarrowing, rules: Condition[] = []) => {
+  const fetchUnder = async (lens: LensNarrowing) => {
     const where = await executePrismaPlan(toPrisma(true, { lens }), rails.prisma as never);
     const rows = (await rails.prisma.user.findMany({
       where: where as never,
-      select: toLensSelect(lens, { rules }).select as never,
+      select: toLensSelect(lens).select as never,
       orderBy: { id: 'asc' },
     })) as Record<string, unknown>[];
-    return projectRows(lens, rows, { keepGrantColumns: true, rules });
+    return projectRows(lens, rows, { keepGrantColumns: true });
   };
   const recheck = async (lens: LensNarrowing, rule: Condition) =>
-    (await fetchUnder(lens, [rule]))
+    (await fetchUnder(lens))
       .filter((row) => check(narrowRule(rule, lens), row) === true)
       .map((row) => row.id);
   const database = async (lens: LensNarrowing, rule: Condition) =>
@@ -202,10 +215,10 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'org'],
+        picks: ['id'],
         relations: {
           org: {
-            picks: ['id', 'name', 'users'],
+            picks: ['id', 'name'],
             where: {
               field: 'users',
               arrayOperator: 'none',
@@ -231,7 +244,7 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     const lens: LensNarrowing = {
       parent: base,
       root: {
-        picks: ['id', 'posts'],
+        picks: ['id'],
         where: {
           field: 'posts',
           arrayOperator: 'any',
@@ -255,14 +268,107 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     ['equals', { field: 'org.parent.name', operator: 'equals', value: 'Acme' }],
     ['notEquals', { field: 'org.parent.name', operator: 'notEquals', value: 'Acme' }],
     ['notExists', { field: 'org.parent', operator: 'notExists' }],
-  ])('a rule reading past the declared paths (%s) re-checks as the database does', async (_, rule) => {
+  ])('a rule reading two hops turned on (%s) re-checks as the database does', async (_, rule) => {
     const lens: LensNarrowing = {
       parent: base,
-      root: { picks: ['id', 'org'] },
+      root: { picks: ['id'], relations: { org: { relations: { parent: {} } } } },
       mapDefaults: {
         prisma: { models: { Org: { where: { field: 'seats', operator: 'exists' } } } },
       },
     };
+    expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
+  });
+
+  test('a relation that is off is neither fetched nor ruled on', async () => {
+    const lens: LensNarrowing = { parent: base, root: { picks: ['id'], relations: { org: {} } } };
+    expect(toLensSelect(lens).select.org).toEqual({
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        seats: true,
+        foundedAt: true,
+        settings: true,
+        parentId: true,
+      },
+    });
+    const rows = await fetchUnder(lens);
+    expect(rows.every((row) => !Object.hasOwn((row.org ?? {}) as object, 'parent'))).toBe(true);
+    const picked: LensNarrowing = { parent: base, root: { picks: ['id', 'org'] } };
+    expect(validateNarrowing(picked).errors.map((e) => e.code)).toEqual(['wrong_kind']);
+    const rule: Condition = { field: 'org.parent.name', operator: 'equals', value: 'Acme' };
+    const refused = await rails.run(rule, { lens });
+    expect(refused.sql).toMatch(/leaves the lens/);
+    expect(refused.prisma).toMatch(/leaves the lens/);
+  });
+
+  test('a spelled path with model defaults below it re-checks as the database does', async () => {
+    // org.users re-enters User, so it is spelled; User.posts below it comes from the defaults.
+    const lens: LensNarrowing = {
+      parent: base,
+      root: { picks: ['id'], relations: { org: { relations: { users: {} } } } },
+      mapDefaults: { prisma: { models: { User: { relations: { posts: {} } } } } },
+    };
+    expect(validateNarrowing(lens).ok).toBe(true);
+    const rule: Condition = {
+      field: 'org.users',
+      arrayOperator: 'any',
+      condition: {
+        field: 'posts',
+        arrayOperator: 'any',
+        condition: { field: 'title', operator: 'equals', value: 'hello' },
+      },
+    };
+    expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
+  });
+
+  test('a relation shown with no column is fetched by its key alone, and re-checks as the database does', async () => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: {
+        picks: ['id'],
+        where: { field: 'org', operator: 'exists' },
+        relations: { posts: { picks: [] } },
+      },
+    };
+    // Presence needs the rows: each is fetched by its key (the join key Post.authorId), hidden or
+    // not — never another column.
+    expect(toLensSelect(lens).select).toEqual({
+      id: true,
+      org: { select: { id: true } },
+      posts: { select: { authorId: true } },
+    });
+    for (const rule of [
+      { field: 'posts', arrayOperator: 'any', condition: true },
+      { field: 'posts', arrayOperator: 'none', condition: true },
+      { field: 'posts', arrayOperator: 'atLeast', count: 1, condition: true },
+    ] as Condition[])
+      expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
+    // A viewer's projection carries no key.
+    const shown = projectRows(lens, rails.rows as unknown as Record<string, unknown>[]);
+    expect(JSON.stringify(shown)).not.toContain('authorId');
+  });
+
+  test.each<[string, Condition]>([
+    ['notEquals', { field: 'org.name', operator: 'notEquals', value: 'x' }],
+    ['exists', { field: 'org', operator: 'exists' }],
+    ['notExists', { field: 'org', operator: 'notExists' }],
+  ])('a grant reading a relation that is off (%s) re-checks as the database does', async (_, rule) => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: { picks: ['id'], relations: { org: { picks: ['id', 'name'] } } },
+      mapDefaults: {
+        prisma: {
+          models: { Org: { where: { field: 'parent.plan', operator: 'equals', value: 'pro' } } },
+        },
+      },
+    };
+    expect(validateNarrowing(lens).ok).toBe(true);
+    expect((toLensSelect(lens).select.org as { select: object }).select).toEqual({
+      id: true,
+      name: true,
+      parent: { select: { plan: true } },
+    });
     expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
   });
 });

@@ -15,14 +15,17 @@ import {
 import type { Condition, DateRule, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
+import { narrowRule } from './narrowRule.ts';
 import type { Policy } from './policy.ts';
 import {
   allowedEnumValues,
+  LensRefusal,
   type LensWalk,
   lensPathEnd,
   lensRootScope,
   resolvePolicy,
   stepIntoField,
+  unresolvedIssue,
   type VisitScope,
 } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -32,7 +35,6 @@ const visit = (
   policy: Policy,
   root: VisitScope,
   issues: ValidationIssue[],
-  bareRefsReadContext = false,
 ): void =>
   visitCondition<readonly VisitScope[]>(
     rule,
@@ -86,13 +88,11 @@ const visit = (
 
       // Gate every value-side ref — the RHS `path`, an offset `{ path }`, each magnitude `{ path }` —
       // the same way the LHS `field` is gated; otherwise a rule can reference outside the lens
-      // through its comparison value. Prefixed refs resolve at the scope they name; bare refs are
-      // root/context refs (resolve at the lens anchor). Inside an open scope a prefixed ref points
+      // through its comparison value. Prefixed refs resolve at the scope they name; bare refs read
+      // the root row (resolve at the lens anchor). Inside an open scope a prefixed ref points
       // into the JSON value, so there is nothing to resolve — a root ref is still gated. An amount
       // reads a number, and a calendar unit's amount a whole number.
       for (const { ref, role } of valueRefRoles(cond as Record<string, unknown>)) {
-        // On the compile rails a bare ref reads the caller's context, never a column.
-        if (!parseScopeRef(ref) && bareRefsReadContext) continue;
         const target = parseScopeRef(ref)
           ? scopeFor(ref)
           : { scope: lensRootScope(policy), field: ref };
@@ -101,11 +101,14 @@ const visit = (
         if (!walked) {
           issues.push({
             path: ref,
-            code: 'not_in_lens',
-            message:
+            ...unresolvedIssue(
+              policy,
+              target.scope,
+              target.field,
               role === 'value'
                 ? 'path (comparison ref) does not resolve through the narrowed lens'
                 : 'offset or magnitude ref does not resolve through the narrowed lens',
+            ),
           });
           continue;
         }
@@ -178,8 +181,12 @@ const visit = (
           if (ref !== '' && !lensPathEnd(policy, next, ref))
             issues.push({
               path: ref,
-              code: 'not_in_lens',
-              message: 'an orderBy or aggregate field does not resolve through the narrowed lens',
+              ...unresolvedIssue(
+                policy,
+                next,
+                ref,
+                'an orderBy or aggregate field does not resolve through the narrowed lens',
+              ),
             });
         }
 
@@ -213,8 +220,9 @@ const visit = (
 /**
  * Gate a condition whose `field` refs are relative to the visit (mapName, modelName, relPath)
  * of `policy` — the shape of a narrowing `where` anchored at a relation node or a model
- * default. The policy keeps its real anchor, so a bare `path` ref still resolves at the lens
- * root (check()'s root context) and a `$.` ref at the visit. Internal to the lens layer.
+ * default (a `grant` policy, which may cross undeclared relations). The policy keeps its real
+ * anchor, so a bare `path` ref still resolves at the lens root (the root row) and a
+ * `$.` ref at the visit. Internal to the lens layer.
  */
 export const checkConditionAtVisit = (
   cond: Condition,
@@ -228,24 +236,6 @@ export const checkConditionAtVisit = (
   return issues;
 };
 
-/** The gate as a compile rail reads the rule: a bare value ref is a context read there, not a
- *  column, so only fields and `$` refs resolve through the lens. Internal to `{ lens }`. */
-export const validateRuleForCompile = (
-  rule: Condition,
-  lensOrNarrowing: Lens | LensNarrowing,
-): ValidationResult => {
-  const policy = resolvePolicy(lensOrNarrowing);
-  const issues: ValidationIssue[] = [];
-  visit(
-    rule,
-    policy,
-    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [], open: false },
-    issues,
-    true,
-  );
-  return validationResult(issues);
-};
-
 /** Gate a rule against a lens: every field and value-side ref resolves through it, and every
  *  operator, value and amount fits the field it reaches. */
 export const validateRuleInLens = (
@@ -253,7 +243,15 @@ export const validateRuleInLens = (
   lensOrNarrowing: Lens | LensNarrowing,
 ): ValidationResult => {
   const policy = resolvePolicy(lensOrNarrowing);
-  return validationResult(
-    checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),
-  );
+  try {
+    const issues = checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []);
+    // What the gate admits, narrowRule must be able to narrow: a grant it can't re-root under a
+    // hop the rule crosses is refused here, with its message.
+    if (issues.length === 0) narrowRule(rule, lensOrNarrowing);
+    return validationResult(issues);
+  } catch (error) {
+    // A grant the lens refuses to apply on this rule's visits is the rule's refusal too.
+    if (!(error instanceof LensRefusal)) throw error;
+    return validationResult([{ path: '', code: error.code, message: error.message }]);
+  }
 };

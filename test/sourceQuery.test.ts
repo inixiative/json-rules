@@ -70,14 +70,14 @@ describe('toSourceQueries', () => {
     });
 
     // prisma: distinct + select + the toPrisma WHERE for the composed condition
-    expect(q.prisma.distinct).toEqual(['code']);
-    expect(q.prisma.select).toEqual({ code: true });
+    expect(q.prisma?.distinct).toEqual(['code']);
+    expect(q.prisma?.select).toEqual({ code: true });
     const expectedWhere = toPrisma(q.composedWhere, {
       map: base,
       mapName: 'app',
       model: 'Region',
     }).steps.at(-1);
-    expect(q.prisma.where).toEqual((expectedWhere as { where: PrismaWhere }).where);
+    expect(q.prisma?.where).toEqual((expectedWhere as { where: PrismaWhere }).where);
 
     // sql: a real DISTINCT statement
     expect(q.sql.sql).toBe(
@@ -125,8 +125,8 @@ describe('toSourceQueries', () => {
     const q = toSourceQueries(n)[0];
 
     // Prisma expresses it via `some`
-    expect(q.prisma.distinct).toEqual(['code']);
-    expect(q.prisma.where).toEqual({ cities: { some: { active: { equals: true } } } });
+    expect(q.prisma?.distinct).toEqual(['code']);
+    expect(q.prisma?.where).toEqual({ cities: { some: { active: { equals: true } } } });
 
     // SQL cannot — it degrades to null with a captured error rather than throwing
     expect(q.sql.sql).toBeNull();
@@ -142,8 +142,8 @@ describe('toSourceQueries', () => {
     expect(q.field).toBe('code');
     expect(q.label).toBe('name');
     expect(q.composedWhere).toEqual(activeWhere);
-    expect(q.prisma.distinct).toEqual(['code']);
-    expect(q.prisma.select).toEqual({ code: true, name: true });
+    expect(q.prisma?.distinct).toEqual(['code', 'name']);
+    expect(q.prisma?.select).toEqual({ code: true, name: true });
     expect(q.sql.sql).toBe(
       'SELECT DISTINCT "t0"."code", "t0"."name" FROM "Region" AS "t0" WHERE ("t0"."active" = $1)',
     );
@@ -192,9 +192,9 @@ describe('toSourceQueries', () => {
       label: 'name',
     });
     // query target + columns are the referenced model's
-    expect(q.prisma.model).toBe('Country');
-    expect(q.prisma.distinct).toEqual(['id']);
-    expect(q.prisma.select).toEqual({ id: true, name: true });
+    expect(q.prisma?.model).toBe('Country');
+    expect(q.prisma?.distinct).toEqual(['id', 'name']);
+    expect(q.prisma?.select).toEqual({ id: true, name: true });
     // scoped by the target's own narrowing (country.where)
     expect(q.composedWhere).toEqual(countryActive);
     expect(q.sql.sql).toBe(
@@ -218,8 +218,8 @@ describe('toSourceQueries', () => {
       root: { sources: { code: { where: arrayWhere, label: 'name' } } },
     });
     const q = toSourceQueries(n)[0];
-    expect(q.prisma.select).toEqual({ code: true, name: true });
-    expect(q.prisma.where).toEqual({ cities: { some: { active: { equals: true } } } });
+    expect(q.prisma?.select).toEqual({ code: true, name: true });
+    expect(q.prisma?.where).toEqual({ cities: { some: { active: { equals: true } } } });
     expect(q.sql.sql).toBeNull();
     expect(q.sql.error).toContain('not supported in SQL');
   });
@@ -238,8 +238,8 @@ describe('toSourceQueries', () => {
     const n = withParent(base, { root: { sources: { code: countWhere } } });
     const q = toSourceQueries(n)[0];
 
-    expect(q.prisma.steps).toBeDefined();
-    expect((q.prisma.steps ?? []).some((s) => s.operation === 'groupBy')).toBe(true);
+    expect(q.prisma?.steps).toBeDefined();
+    expect((q.prisma?.steps ?? []).some((s) => s.operation === 'groupBy')).toBe(true);
     expect(q.sql.sql).toBeNull();
     expect(q.sql.error).toContain('not supported in SQL');
   });

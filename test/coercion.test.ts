@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition, Rule } from '../index';
-import { ArrayOperator, check, coerceRule, createLens, Operator, validateRule } from '../index';
+import {
+  ArrayOperator,
+  check,
+  coerceRule,
+  createLens,
+  type LensNarrowing,
+  Operator,
+  validateRule,
+} from '../index';
 
 describe('coerceType — check()', () => {
   describe('DateTime', () => {
@@ -203,7 +211,7 @@ describe('coerceType — validateRule', () => {
 });
 
 describe('coerceRule', () => {
-  const lens = createLens({
+  const base = createLens({
     mapName: 'sdk',
     model: 'Reward',
     maps: {
@@ -227,6 +235,7 @@ describe('coerceRule', () => {
       },
     },
   });
+  const lens: LensNarrowing = { parent: base, root: { relations: { brand: {}, tags: {} } } };
 
   test('stamps scalar kinds on field rules', () => {
     const stamped = coerceRule(
@@ -280,6 +289,11 @@ describe('coerceRule', () => {
     );
     // biome-ignore lint/suspicious/noExplicitAny: test traversal
     expect((stamped as any).condition.coerceType).toBe('String');
+  });
+
+  test('a path through a relation that is off is left unstamped', () => {
+    const rule: Condition = { field: 'brand.tier', operator: Operator.greaterThan, value: '2' };
+    expect((coerceRule(rule, base) as Rule).coerceType).toBeUndefined();
   });
 
   test('preserves an existing coerceType and unknown fields', () => {

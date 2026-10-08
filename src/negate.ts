@@ -7,6 +7,7 @@ import {
   OPPOSITE_OPERATORS,
 } from './operatorCatalog';
 import { own } from './own';
+import { parseScopeRef } from './scope';
 import { allOf, anyOf, conditionShape } from './traverse';
 import type { Condition, Rule } from './types';
 
@@ -74,9 +75,15 @@ const negateLeaf = (node: Node, settle: Settle): Condition => {
   }
   const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
   if (flip) return { ...leaf, operator: flip } as Condition;
+  // Against a column of the same row, the comparison is false where either side is NULL.
+  const column =
+    typeof leaf.path === 'string' && leaf.path !== ''
+      ? (parseScopeRef(leaf.path) ?? { depth: 1, path: leaf.path })
+      : null;
   return anyOf([
     { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) } as Condition,
     absent(leaf.field),
+    ...(column && column.depth === 1 ? [absent(column.path)] : []),
   ]);
 };
 

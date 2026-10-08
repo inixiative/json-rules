@@ -53,12 +53,12 @@ const base: Lens = { maps, mapName: 'app', model: 'User' };
 const projection: LensNarrowing = {
   parent: base,
   root: {
-    picks: ['id', 'name', 'tagAttachments'],
+    picks: ['id', 'name'],
     relations: {
       tagAttachments: {
-        picks: ['tag'],
+        picks: [],
         where: { field: 'deletedAt', operator: Operator.notExists },
-        relations: { tag: { picks: ['id', 'name'] } },
+        relations: { tag: { picks: ['id', 'name', 'ownerModel', 'organizationId'] } },
       },
     },
   },
@@ -70,7 +70,9 @@ const scoped: LensNarrowing = {
   mapDefaults: {
     app: {
       models: {
+        // It scopes by the owner columns its parent shows, then hides them from viewers.
         Tag: {
+          omits: ['ownerModel', 'organizationId'],
           where: {
             any: [
               { field: 'ownerModel', operator: Operator.equals, value: 'platform' },

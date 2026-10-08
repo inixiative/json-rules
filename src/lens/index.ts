@@ -19,11 +19,12 @@ export { materializeSources } from './materializeSources';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';
 export { narrowRule } from './narrowRule';
 export { projectLens } from './projectLens';
-export type {
-  PathProjection,
-  ProjectedVisit,
-  ProjectLensOptions,
-  SourceValues,
+export {
+  lensVisit,
+  type PathProjection,
+  type ProjectedVisit,
+  type ProjectLensOptions,
+  type SourceValues,
 } from './projectPaths';
 export { type LensValue, readLensValue } from './readLensValue.ts';
 export type { StoredLens } from './storedLens';

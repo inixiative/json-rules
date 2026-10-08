@@ -151,6 +151,15 @@ describe('validateRuleInLens', () => {
     expect(result.ok).toBe(true);
   });
 
+  test('rule traversing a relation that is off fails', () => {
+    for (const field of ['fanMissions.missionUuid', 'salesforce:Contact.industry']) {
+      const result = validateRuleInLens({ field, operator: Operator.equals, value: 'x' }, lens);
+      expect(result.errors.map((v) => [v.path, v.code])).toEqual([[field, 'not_in_lens']]);
+    }
+  });
+
+  const missions = withParent(lens, { root: { relations: { fanMissions: {} } } });
+
   test('arrayRule inner condition resolves against relation target (not anchor)', () => {
     const result = validateRuleInLens(
       {
@@ -158,7 +167,7 @@ describe('validateRuleInLens', () => {
         arrayOperator: 'any',
         condition: { field: 'missionUuid', operator: Operator.equals, value: 'x' },
       } as never,
-      lens,
+      missions,
     );
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
@@ -171,7 +180,7 @@ describe('validateRuleInLens', () => {
         arrayOperator: 'any',
         condition: { field: 'ghostField', operator: Operator.equals, value: 'x' },
       } as never,
-      lens,
+      missions,
     );
     expect(result.ok).toBe(false);
     expect(result.errors[0].path).toBe('ghostField');

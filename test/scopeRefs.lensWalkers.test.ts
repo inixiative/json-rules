@@ -44,6 +44,11 @@ const map: FieldMap = {
 };
 
 const lens = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' });
+// The relations the gating walkers may cross.
+const declared: LensNarrowing = {
+  parent: lens,
+  root: { relations: { orders: { relations: { lineItems: {}, customer: {} } } } },
+};
 
 const atLineItems = (leaf: Condition): Condition => ({
   field: 'orders',
@@ -134,24 +139,24 @@ describe('describeRule — scope refs', () => {
   test('a prefixed field and path describe cleanly and are check-only', () => {
     const result = describeRule(
       atLineItems({ field: '$$.maxQty', operator: Operator.lessThan, path: '$$$.limit' }),
-      lens,
+      declared,
     );
     expect(result.errors).toEqual([]);
     expect(result.supportedTargets).toEqual(['check']);
   });
 
-  test('$. path alone keeps toSql and drops toPrisma', () => {
+  test('a $. path to a column of the same model and type keeps every rail', () => {
     const result = describeRule(
       { field: 'limit', operator: Operator.greaterThan, path: '$.limit' },
-      lens,
+      declared,
     );
-    expect(result.supportedTargets).toEqual(['check', 'toSql']);
+    expect([...result.supportedTargets].sort()).toEqual(['check', 'toPrisma', 'toSql']);
   });
 
   test('an out-of-bounds ref is a violation', () => {
     const result = describeRule(
       atLineItems({ field: 'qty', operator: Operator.lessThan, path: '$$$$.limit' }),
-      lens,
+      declared,
     );
     expect(result.errors.map((e) => [e.path, e.code])).toEqual([
       ['$$$$.limit', 'scope_out_of_bounds'],
@@ -162,7 +167,7 @@ describe('describeRule — scope refs', () => {
 describe('coerceRule — scope refs', () => {
   test('a prefixed field is stamped from the ancestor model', () => {
     const rule = atLineItems({ field: '$$.maxQty', operator: Operator.equals, value: '5' });
-    const stamped = coerceRule(rule, lens) as {
+    const stamped = coerceRule(rule, declared) as {
       condition: { condition: { coerceType?: string } };
     };
     expect(stamped.condition.condition.coerceType).toBe('Int');
@@ -170,14 +175,14 @@ describe('coerceRule — scope refs', () => {
 
   test('an out-of-bounds field is left unstamped', () => {
     const rule: Condition = { field: '$$.limit', operator: Operator.equals, value: '5' };
-    expect(coerceRule(rule, lens)).toEqual(rule);
+    expect(coerceRule(rule, declared)).toEqual(rule);
   });
 });
 
 describe('describeRuleSources — scope refs', () => {
   const narrowing: LensNarrowing = {
     parent: lens,
-    root: { relations: { orders: { sources: { maxQty: true } } } },
+    root: { relations: { orders: { sources: { maxQty: true }, relations: { lineItems: {} } } } },
   };
 
   test('a $$. field records its values at the ancestor source', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { LensNarrowing } from '../index';
-import { createLens, materializeSources } from '../index';
+import { createLens, materializeSources, toSourceQueries } from '../index';
 
 const lens = createLens({
   mapName: 'sdk',
@@ -111,7 +111,7 @@ describe('materializeSources', () => {
     expect(sv.options).toEqual([{ value: 'digital' }, { value: 'physical' }]);
   });
 
-  test("ignores the visit's data-narrowing where — rows are lens-scoped by contract", () => {
+  test("re-applies the visit's where, as the option query does: a hidden row offers nothing", () => {
     const narrowing: LensNarrowing = {
       parent: lens,
       root: {
@@ -120,7 +120,12 @@ describe('materializeSources', () => {
       },
     };
     const [sv] = materializeSources(narrowing, rows);
-    expect(sv.options).toEqual([{ value: 'digital' }, { value: 'physical' }]);
+    const [query] = toSourceQueries(narrowing);
+    // Only the inactive row is in the lens.
+    expect(sv.options).toEqual([{ value: 'physical' }]);
+    expect(query.composedWhere).toEqual({
+      all: [{ field: 'isActive', operator: 'equals', value: false }, true],
+    });
   });
 
   test('resolves a bind-parameterized eligibility where via CheckOptions', () => {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import type { GroupByStep, ToPrismaResult, WhereStep } from '../index';
-import { ArrayOperator, DateOperator, executePrismaPlan, Operator, toPrisma } from '../index';
+import {
+  ArrayOperator,
+  bindRule,
+  DateOperator,
+  executePrismaPlan,
+  Operator,
+  toPrisma,
+} from '../index';
 import { blogMap } from './fixtures/blogMap';
 import { compositeFkMap } from './fixtures/compositeFkMap';
 import { getWhere } from './fixtures/helpers';
@@ -213,47 +220,61 @@ describe('toPrisma scalar operators', () => {
 
 // ─── path ref ─────────────────────────────────────────────────────────────────
 describe('toPrisma path ref', () => {
-  it('context.path → resolves value from context', () => {
+  it("a caller's value is a bind, resolved before compiling", () => {
     const result = toPrisma(
-      { field: 'userId', operator: Operator.equals, path: 'currentUser.id' },
-      { context: { currentUser: { id: '123' } } },
+      bindRule(
+        { field: 'userId', operator: Operator.equals, bind: 'currentUserId' },
+        {
+          currentUserId: '123',
+        },
+      ),
     );
     expect(getWhere(result)).toEqual({ userId: { equals: '123' } });
   });
 
-  it('nested context.path', () => {
+  it('a bare path is a column of the root row: a field reference between same-type columns', () => {
     const result = toPrisma(
-      { field: 'orgId', operator: Operator.equals, path: 'session.org.id' },
-      { context: { session: { org: { id: 'org-abc' } } } },
+      { field: 'name', operator: Operator.equals, path: 'email' },
+      { map: blogMap, model: 'User' },
     );
-    expect(getWhere(result)).toEqual({ orgId: { equals: 'org-abc' } });
+    expect(getWhere(result)).toEqual({
+      name: { equals: { __field: { model: 'User', field: 'email' } } },
+    });
   });
 
-  it('$.field → throws (no column-to-column in Prisma WHERE)', () => {
-    expect(() =>
-      toPrisma({ field: 'endDate', operator: Operator.greaterThan, path: '$.startDate' }),
-    ).toThrow('column-to-column');
-  });
-
-  it('context.path without context option → throws', () => {
+  it('a column comparison without the map and model → throws', () => {
     expect(() =>
       toPrisma({ field: 'userId', operator: Operator.equals, path: 'currentUser.id' }),
-    ).toThrow('context');
+    ).toThrow('needs the map and model');
+    expect(() =>
+      toPrisma({ field: 'endDate', operator: Operator.greaterThan, path: '$.startDate' }),
+    ).toThrow('Prisma rail');
   });
 
-  it('date rule: context.path resolves date value', () => {
+  it('a column comparison across types → throws', () => {
+    expect(() =>
+      toPrisma(
+        { field: 'createdAt', operator: Operator.greaterThan, path: 'name' },
+        { map: blogMap, model: 'User' },
+      ),
+    ).toThrow('not the same type');
+  });
+
+  it('date rule: a bound date resolves', () => {
     const since = new Date('2024-01-01');
     const result = toPrisma(
-      { field: 'createdAt', dateOperator: DateOperator.after, path: 'filters.since' },
-      { context: { filters: { since } } },
+      bindRule({ field: 'createdAt', dateOperator: DateOperator.after, bind: 'since' }, { since }),
     );
     expect(getWhere(result)).toEqual({ createdAt: { gt: since } });
   });
 
-  it('date rule: $.field → throws', () => {
+  it('date rule: a path → throws (a date column compare has no Prisma form)', () => {
     expect(() =>
       toPrisma({ field: 'endDate', dateOperator: DateOperator.after, path: '$.startDate' }),
-    ).toThrow('column-to-column');
+    ).toThrow('Prisma rail');
+    expect(() =>
+      toPrisma({ field: 'endDate', dateOperator: DateOperator.after, path: 'startDate' }),
+    ).toThrow('Prisma rail');
   });
 });
 
@@ -476,6 +497,7 @@ describe('executePrismaPlan', () => {
         {
           operation: 'where',
           where: { AND: [{ id: { in: { __step: 0 } } }, { status: { equals: 'active' } }] },
+          refs: [{ path: ['AND', 0, 'id', 'in'] }],
         },
       ],
     };
@@ -486,6 +508,23 @@ describe('executePrismaPlan', () => {
 
     const resolved = await executePrismaPlan(plan, mockDelegate);
     expect(resolved).toEqual({ AND: [{ id: { in: ['u1'] } }, { status: { equals: 'active' } }] });
+  });
+
+  it('resolves only the locations the step records: an unrecorded sentinel is data', async () => {
+    const where = { AND: [{ id: { in: { __step: 0 } } }] };
+    const plan: ToPrismaResult = {
+      steps: [
+        {
+          operation: 'groupBy',
+          model: 'Post',
+          args: { by: ['authorId'], where: {}, having: {} },
+          extract: 'authorId',
+        },
+        { operation: 'where', where },
+      ],
+    };
+    const mockDelegate = { post: { groupBy: async () => [{ authorId: 'u1' }] } };
+    expect(await executePrismaPlan(plan, mockDelegate)).toEqual(where);
   });
 
   it('drops rows with a null join FK from the membership set (nullable FK relation)', async () => {
@@ -545,7 +584,13 @@ describe('executePrismaPlan', () => {
 
   it('throws when __step index out of range', async () => {
     const plan: ToPrismaResult = {
-      steps: [{ operation: 'where', where: { id: { in: { __step: 5 } } } }],
+      steps: [
+        {
+          operation: 'where',
+          where: { id: { in: { __step: 5 } } },
+          refs: [{ path: ['id', 'in'] }],
+        },
+      ],
     };
     await expect(executePrismaPlan(plan, {})).rejects.toThrow('out of range');
   });

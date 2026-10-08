@@ -1,5 +1,144 @@
 # Changelog
 
+## 3.4.0 — relations are fields, off by default; `context` removed
+
+Breaking, with no compatibility path (no users).
+
+### Relations
+
+Before, the gate resolved visibility per model: with `root: { picks: ['id', 'org'] }` a rule on
+`org.parent.name` passed because Org's fields were visible — a lens that showed one relation handed
+a rule the whole map, back and forth. The fetch opened such a relation "shallow", and 3.2's `rules`
+option opened whatever re-checked rules read. Now relations are fields, off by default, and every
+posture — the gate, `walkLensPath`, `readLensValue`, the projections, the sources, the fetch —
+reads one exposure from `src/lens/policy.ts`.
+
+- **Off until turned on.** A bare lens reads its anchor's columns only. The first narrowing over
+  the base lens turns a relation on through the relation object — along the path
+  (`root.relations.org`) or at the model default (`mapDefaults…models.Org.relations.users`, which
+  `ModelDefaultNarrowing` now takes, nested relation objects included). A relation that is off is
+  `hidden`: `walkLensPath` / `readLensValue` say so, the gate refuses with `not_in_lens`, `{ lens }`
+  compiles throw, and `projectLens` / `toLensSelect` / `projectRows` leave it out.
+- **Later layers narrow.** exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ =
+  exposedₖ₋₁ ∧ ¬ layer k hides it. A later layer hides a relation with `omits`, or restates one its
+  parent shows to narrow that hop (a restatement hides nothing else); naming one its parent doesn't
+  show is `not_visible`.
+- **`picks` names columns only.** A relation in `picks` is `wrong_kind`; `omits` may name a
+  relation beside `picks`.
+- **The model defaults grow a tree.** From the anchor and every path spelled under
+  `root.relations`, model-default turn-ons are followed breadth-first, each model at most once — at
+  its nearest reach, ties to the earlier parent and then field order — never one already on the
+  spelled path. Anything else is spelled. Every posture walks the same tree (exact agreement, at
+  most spelled nodes × models visits).
+- **Grants.** The first narrowing's `where`s and source eligibility `where`s may read any relation
+  on the schema; a later layer's only what its parent shows (a delegate can't probe what it can't
+  see) — `validateNarrowing` reports it and every runtime posture throws rather than apply it. A
+  bare value `path` reads the root row, so only `root.where` may hold one; in a relation grant, a
+  model default or a source's eligibility `where` it is `invalid_value_source` and a runtime throw.
+  A grant reads its own row: a scope ref that climbs out of it (`$$.` at its top) is
+  `scope_out_of_bounds` and a runtime throw.
+  One check decides a later layer's grant — the gate over its parent's surface, relations and
+  columns — and `validateNarrowing` and every posture make it at the same visits: the ones the
+  grant applies at, including those a layer-1 grant or source crosses off the shown tree. A grant
+  narrowRule can't re-root under a to-one hop is refused by `validateNarrowing` and by
+  `validateRuleInLens` (with narrowRule's message), as the compile would.
+  `validateNarrowing` runs the postures the runtime runs — the projection by path and by model,
+  `lensVisit` at every shown path, the source plans, the fetch select, and a rule reaching each
+  shown visit narrowed — and reports each refusal they raise as an issue, so `ok` holds exactly
+  when no posture refuses. Nothing compiles there, so an unbound lens validates as its bound
+  runtime runs. Every refusal a posture raises is a `LensRefusal` — narrowRule's, the source
+  planner's (a label or axis hop it can't guard, an empty `sources: {}`), the fetch select's — and
+  the validators report it as an issue and never throw on a well-formed lens or rule; the runtime
+  postures throw it.
+- **The fetch's root.** A root that shows no column is selected by its `id`, hidden or not (a
+  viewer's projection drops it), since Prisma can't select nothing.
+- **`lensVisit(lens, relationPath)`** (new; first consumer: rules-builder 0.30): one visit as
+  `projectLens` by path gives it, resolved on demand without enumerating; `null` when the path
+  isn't shown. `projectLens` by path keeps a map's declared option labels and groups.
+- **Sources.** A dotted `label` / `groupBy` crosses only relations shown at each visit it is
+  projected (else `invalid_source`, and the projection drops it); a source keyed on a relation, or
+  a bare `label` naming one, is `wrong_kind`. A source `where` is narrowed under the whole lens as
+  `narrowRule` narrows a rule — each relation it crosses carries its grants, inside an array
+  condition and on every hop and terminal relation of a dotted path — so an option never comes
+  through a row the lens hides (before, a grant on a relation read inside the source's array
+  condition, or on the relation a path ends on, was not applied). A source's label and axes read
+  what every layer but the one declaring them shows, the chain kept whole (before, dropping the
+  declaring layer from the chain lost the first narrowing's turn-ons when it was the one).
+  `toSourceQueries`' SQL selects from the model's `dbName`, as its joins do. A source whose query
+  holds a window toPrisma can't compile — its own `where`'s or a grant carried into it — is refused
+  by its shape (a `LensRefusal`, which `validateNarrowing` reports), by both materializers.
+  The source pipeline is one set on every rail: `toLensSelect` fetches what each projected source
+  reads (value, label, axes, and its condition's columns and relations — the inverse relations
+  that carry the grants above included), `projectRows(…, { keepGrantColumns: true })` keeps them,
+  and `materializeSources` checks the condition the option query compiles (the visit's own grants
+  included), so fetched rows offer what the database does. A path source is linked down its path
+  through each declared inverse even where no grant sits above, so its query offers only rows
+  reached down the path. `toSourceQueries(lens, options?)` takes the clock. A source where across
+  a bridge has no query (`prisma: null`, `sql.error`) rather than one folded to `TRUE`. Every rail
+  labels a value by its least label and orders ties by value. What toPrisma can't compile in a
+  to-many relation's grant (the fetch select) or a source's condition is read by `validateRule`
+  (toPrisma, with the map) — which now also reports a case-insensitive list comparison and a
+  count or aggregate over a relation that can't carry a group step — and refused as a
+  `LensRefusal`. A relation node re-roots under a to-one hop by its field (`users any …` on an Org
+  is `org.users any …` on its User), so a path going to-one then to-many ("users in my org")
+  carries its link and grants; one whose inner ref climbs to the re-rooted row is refused, never
+  an empty list. The fetch reads a source below its visit only — the fetched tree is the path's
+  link, so `materializeSources` walks it, each level's grants met, and checks the source's
+  condition at its visit. `materializeSources` throws on rows missing a key its sources or the
+  grants on their paths read (a viewer's projection), and materializes a source across a bridge
+  (a bridged pointer included) from caller-supplied rows holding the far side; `toSourceQueries`
+  routes a bridged where, label or axis to it (`prisma: null`). A compile of a lens's own grant or
+  source that fails on a literal is a `LensRefusal`; a missing clock or unbound bind stays the caller's
+  usage error. `validateRule` (toPrisma) also reports a case-insensitive comparison on
+  Json, a list literal holding null, and an element condition over an array column, and accepts a
+  case-insensitive set of members on a list column. Errors say whose input went wrong:
+  `UsageError` (a missing or invalid `now`, an invalid time zone, a bind never bound) and
+  `LensRefusal` (with a `code`) are exported, each with its `name`. A rail that can't hold the
+  lens's grants on a rule refuses it (`LensRefusal`, code `unsupported_target`) rather than throw a
+  plain Error. `materializeSources` requires every key a read walks — through relations and list
+  elements to the column — and each relation as one row or a list, as the map declares it. A
+  grant a source's path can't carry down (no inverse declared) is a `LensRefusal`; a path across a
+  bridge is routed to caller rows. A to-one row that is null while its key is set (a viewer's projection hid
+  it), or a relation missing or misshapen on a source's own path, is a `UsageError` too, as are a
+  row path given as the time zone, a lens passed with `map` / `mapName` / `model`, and a model
+  source handed to `materializeSources`.
+- **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
+  read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
+  can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has
+  no form for — is refused before anything compiles. A relation that shows no column is
+  selected by its key alone (the join key, else `id`, hidden or not), never another column; a model
+  with no key is not fetched, and presence on it can't be re-checked from fetched rows.
+
+### `context` removed
+
+`check(rule, data, { context })` (since the first commit) read a bare `path` from a second object, and 3.0 made
+the compilers read it from `options.context` — a second caller-value channel beside binds, which
+`narrowRule` read as a column. It is gone from `CheckOptions`, `ToPrismaOptions` and
+`ToSqlOptions`.
+
+- **Caller values are binds:** `{ bind }`, `check(…, { bindings })`, `bindRule` before compiling.
+  `timeZone` is a string or a `{ bind }`.
+- **A bare `path` is a root-row column on every rail,** gated and narrowed like a field:
+  `check()` reads the root row; `toSql` compiles a column (equality, ordered); `toPrisma` compiles a
+  Prisma field reference (`{ __field }`, resolved by `executePrismaPlan` to
+  `prisma.<model>.fields.<column>`) between two columns of the same model at the same visit (a bare
+  path at the root, `$.` in a relation filter), of exactly the same type, with `equals` /
+  `notEquals` / `lessThan(Equals)` / `greaterThan(Equals)` and no offset — NULL rows as
+  `IS [NOT] DISTINCT FROM`. Anything else throws, and `validateRule(rule, { target: 'toPrisma',
+  map, model })` / `describeRule` report it first. A substring, pattern or set operator against a
+  column throws on both compilers (save a list column's membership on SQL), and `validateRule` /
+  `describeRule` say so. A negated comparison (`if`, `all`) compiles to its
+  complement with NULL arms. An enum column compares only with an enum column of its own type, by
+  equality (natively on SQL); ordered and enum-to-text comparisons are refused, and a list column compares with no column. Inside a counting step (a count or relation aggregate condition) a
+  column comparison has no Prisma form and throws.
+- **The plan's references are unforgeable.** Each step records where its own `{ __step }` /
+  `{ __field }` references sit (`refs`), and `executePrismaPlan` resolves only those locations; a
+  rule value holding a `__step` / `__field` key is refused at compile.
+
+Migration: turn on every relation you cross with `relations` (path or mapDefaults) on the first
+narrowing; remove relation names from `picks`; drop `rules` from `toLensSelect` / `projectRows`;
+pass caller values as binds, not `context`.
+
 ## 3.3.1 — browser bundles, own-property reads, CJS types
 
 - **No top-level `node:module` import.** `toPrisma`'s Prisma `AnyNull` lookup imported

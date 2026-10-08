@@ -53,8 +53,10 @@ export const readField = (ref: string, scopes: Scopes): unknown => {
   return readOwnPath(target.scope, target.path);
 };
 
-export const readPath = (ref: string, scopes: Scopes, context: unknown): unknown =>
-  parseScopeRef(ref) ? readField(ref, scopes) : readOwnPath(context, ref);
+/** A value ref: `$.` reads the current element, each further `$` one scope out; a bare ref reads
+ *  the root row. */
+export const readPath = (ref: string, scopes: Scopes): unknown =>
+  parseScopeRef(ref) ? readField(ref, scopes) : readOwnPath(scopes[0], ref);
 
 export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): string =>
   `Scope ref '${ref}' is not supported by ${rail}(); evaluate with check()`;
@@ -62,18 +64,4 @@ export const checkOnlyScopeRef = (ref: string, rail: 'toSql' | 'toPrisma'): stri
 export const rejectScopedField = (condition: object, rail: 'toSql' | 'toPrisma'): void => {
   if (!('field' in condition) || typeof condition.field !== 'string') return;
   if (parseScopeRef(condition.field)) throw new Error(checkOnlyScopeRef(condition.field, rail));
-};
-
-/** A compiler's bare (context) ref: the context it was given, which must be there. A path that
- *  reads nothing reads null. */
-export const readContextRef = (
-  ref: string,
-  context: unknown,
-  rail: 'toSql' | 'toPrisma',
-): unknown => {
-  if (!context)
-    throw new Error(
-      `context is required to resolve path '${ref}'. Pass context when calling ${rail}().`,
-    );
-  return readOwnPath(context, ref) ?? null;
 };

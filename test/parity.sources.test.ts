@@ -26,9 +26,13 @@ afterAll(async () => {
   await db.close();
 });
 
-const both = async (condition: Condition, expected: number[], context = {}) => {
-  const inMemory = rows.filter((r) => check(condition, r, { context }) === true).map((r) => r.id);
-  const { sql, params } = toSql(condition, { context });
+const both = async (
+  condition: Condition,
+  expected: number[],
+  bindings: Parameters<typeof bindRule>[1] = {},
+) => {
+  const inMemory = rows.filter((r) => check(condition, r, { bindings }) === true).map((r) => r.id);
+  const { sql, params } = toSql(bindRule(condition, bindings));
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
   ).rows.map((r) => r.id);
@@ -37,20 +41,22 @@ const both = async (condition: Condition, expected: number[], context = {}) => {
 };
 
 describe('an ordered comparison that reads nothing matches nothing', () => {
-  test('missing and null context paths', async () => {
-    const r = rule({ field: 'a', operator: 'lessThan', path: 'x' });
-    await both(r, [], {});
+  test('a missing optional bind and a null bound value', async () => {
+    await both(rule({ field: 'a', operator: 'lessThan', bind: 'x', bindOptional: true }), []);
+    const r = rule({ field: 'a', operator: 'lessThan', bind: 'x' });
     await both(r, [], { x: null });
-    expect(getWhere(toPrisma(r, { context: {} }))).toEqual({ OR: [] });
+    expect(getWhere(toPrisma(bindRule(r, { x: null })))).toEqual({ OR: [] });
   });
 });
 
-describe('a missing context path reads as null, the is-null sentinel', () => {
+describe('a null bound value is the is-null sentinel', () => {
   test('equals and notEquals', async () => {
-    await both(rule({ field: 'a', operator: 'equals', path: 'x' }), [2], {});
-    await both(rule({ field: 'a', operator: 'notEquals', path: 'x' }), [1, 3], {});
+    await both(rule({ field: 'a', operator: 'equals', bind: 'x' }), [2], { x: null });
+    await both(rule({ field: 'a', operator: 'notEquals', bind: 'x' }), [1, 3], { x: null });
     expect(
-      getWhere(toPrisma(rule({ field: 'a', operator: 'equals', path: 'x' }), { context: {} })),
+      getWhere(
+        toPrisma(bindRule(rule({ field: 'a', operator: 'equals', bind: 'x' }), { x: null })),
+      ),
     ).toEqual({
       a: { equals: null },
     });
@@ -129,7 +135,11 @@ describe('validateRule refuses a row-read range for toSql', () => {
     expect(codes({ field: 'ts', dateOperator: 'within', path: '$.w' })).toEqual([
       'unsupported_sql_path',
     ]);
-    expect(codes({ field: 'a', operator: 'between', path: 'range' })).toEqual([]);
+    // A bare path reads the root row too: a range read from it has no SQL form either.
+    expect(codes({ field: 'a', operator: 'between', path: 'range' })).toEqual([
+      'unsupported_sql_path',
+    ]);
+    expect(codes({ field: 'a', operator: 'between', bind: 'range' })).toEqual([]);
   });
 });
 

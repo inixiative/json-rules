@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
-import { check, toPrisma, toSql } from '../index';
+import { bindRule, check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // A date `path` is read the same way on every rail, a null one fails closed, and a relative
-// window's magnitude can itself be a path — from the row (`$.`) or from context.
+// window's magnitude can itself be a path — from the row (`$.`, or bare for the root row) — or a
+// caller's value through a bind.
 
 const NOW = new Date('2026-10-06T12:00:00Z');
 
@@ -54,16 +55,16 @@ afterAll(async () => {
   await db.close();
 });
 
-const viaCheck = (condition: Condition, context?: Record<string, unknown>): number[] =>
+type Bindings = Parameters<typeof bindRule>[1];
+
+const viaCheck = (condition: Condition, bindings?: Bindings): number[] =>
   rows
-    .filter((r) => check(condition, r, { now: NOW, ...(context ? { context } : {}) }) === true)
+    .filter((r) => check(condition, r, { now: NOW, ...(bindings ? { bindings } : {}) }) === true)
     .map((r) => r.id);
 
-const viaSql = async (
-  condition: Condition,
-  context?: Record<string, unknown>,
-): Promise<number[]> => {
-  const { sql, params } = toSql(condition, { now: NOW, context });
+const viaSql = async (condition: Condition, bindings?: Bindings): Promise<number[]> => {
+  const bound = bindings ? bindRule(condition, bindings) : condition;
+  const { sql, params } = toSql(bound, { now: NOW });
   const result = await db.query<{ id: number }>(
     `SELECT id FROM t WHERE ${sql} ORDER BY id`,
     params,
@@ -71,13 +72,9 @@ const viaSql = async (
   return result.rows.map((r) => r.id);
 };
 
-const bothRails = async (
-  condition: Condition,
-  expected: number[],
-  context?: Record<string, unknown>,
-) => {
-  expect(viaCheck(condition, context)).toEqual(expected);
-  expect(await viaSql(condition, context)).toEqual(expected);
+const bothRails = async (condition: Condition, expected: number[], bindings?: Bindings) => {
+  expect(viaCheck(condition, bindings)).toEqual(expected);
+  expect(await viaSql(condition, bindings)).toEqual(expected);
 };
 
 describe('a row path ($.) on a date rule', () => {
@@ -94,9 +91,16 @@ describe('a row path ($.) on a date rule', () => {
   });
 });
 
-describe('a context path on a date rule', () => {
-  test('a null context value fails closed', async () => {
-    await bothRails(rule({ field: 'ts', dateOperator: 'before', path: 'cutoff' }), [], {
+describe('a bare path on a date rule reads the root row', () => {
+  test('it compares column to column, as `$.` does at the root', async () => {
+    await bothRails(rule({ field: 'ts', dateOperator: 'before', path: 'cutoff' }), [1]);
+    await bothRails(rule({ field: 'ts', dateOperator: 'notBefore', path: 'cutoff' }), [2, 4]);
+  });
+});
+
+describe('a bound value on a date rule', () => {
+  test('a null bound value fails closed', async () => {
+    await bothRails(rule({ field: 'ts', dateOperator: 'before', bind: 'cutoff' }), [], {
       cutoff: null,
     });
   });
@@ -129,12 +133,23 @@ describe('a path-valued magnitude in a relative window', () => {
     );
   });
 
-  test('a context magnitude resolves to a value', async () => {
+  test('a bare magnitude reads the root row', async () => {
     await bothRails(
       rule({
         field: 'ts',
         dateOperator: 'before',
-        value: { ago: { hours: { path: 'quietHours' } } },
+        value: { ago: { seconds: { path: 'windowSeconds' } } },
+      }),
+      [1],
+    );
+  });
+
+  test('a bound magnitude resolves to a value', async () => {
+    await bothRails(
+      rule({
+        field: 'ts',
+        dateOperator: 'before',
+        value: { ago: { hours: { bind: 'quietHours' } } },
       }),
       [1, 3],
       { quietHours: 2 },
@@ -147,17 +162,17 @@ describe('a path-valued magnitude in a relative window', () => {
         rule({
           field: 'ts',
           dateOperator: 'before',
-          value: { ago: { hours: { path: 'quietHours' } } },
+          value: { ago: { hours: { bind: 'quietHours' } } },
         }),
         rows[0],
-        { now: NOW, context: { quietHours: 'two' } },
+        { now: NOW, bindings: { quietHours: 'two' } },
       ),
-    ).toThrow('quietHours');
+    ).toThrow('hours reads a number (got two)');
   });
 
   test('a window on within reads its magnitude too', async () => {
     await bothRails(
-      rule({ field: 'ts', dateOperator: 'within', value: { ago: { hours: { path: 'span' } } } }),
+      rule({ field: 'ts', dateOperator: 'within', value: { ago: { hours: { bind: 'span' } } } }),
       [2],
       { span: 2 },
     );
@@ -165,15 +180,18 @@ describe('a path-valued magnitude in a relative window', () => {
 });
 
 describe('toPrisma and path magnitudes', () => {
-  test('a context magnitude compiles to the resolved instant', () => {
+  test('a bound magnitude compiles to the resolved instant', () => {
     const where = getWhere(
       toPrisma(
-        rule({
-          field: 'ts',
-          dateOperator: 'before',
-          value: { ago: { hours: { path: 'quietHours' } } },
-        }),
-        { now: NOW, context: { quietHours: 2 } },
+        bindRule(
+          rule({
+            field: 'ts',
+            dateOperator: 'before',
+            value: { ago: { hours: { bind: 'quietHours' } } },
+          }),
+          { quietHours: 2 },
+        ),
+        { now: NOW },
       ),
     );
     expect(where).toEqual({ ts: { lt: new Date('2026-10-06T10:00:00Z') } });
@@ -185,10 +203,20 @@ describe('toPrisma and path magnitudes', () => {
         rule({
           field: 'ts',
           dateOperator: 'before',
+          value: { ago: { seconds: { path: 'windowSeconds' } } },
+        }),
+        { now: NOW },
+      ),
+    ).toThrow('Prisma rail');
+    expect(() =>
+      toPrisma(
+        rule({
+          field: 'ts',
+          dateOperator: 'before',
           value: { ago: { seconds: { path: '$.windowSeconds' } } },
         }),
         { now: NOW },
       ),
-    ).toThrow('toPrisma');
+    ).toThrow('Prisma rail');
   });
 });

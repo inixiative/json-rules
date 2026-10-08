@@ -94,6 +94,7 @@ const composite = (): LensNarrowing =>
         enrichments: {
           picks: ['value'],
           sources: { value: { groupBy: AXES } },
+          relations: { map: { relations: { source: {}, definition: {} } } },
         },
       },
     },
@@ -129,6 +130,7 @@ describe('validateNarrowing — composite groupBy', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
           },
         },
       },
@@ -139,8 +141,9 @@ describe('validateNarrowing — composite groupBy', () => {
   test('each axis is validated — a to-many hop in ANY axis is an error', () => {
     const n = withParent(base, {
       root: {
-        picks: ['id', 'enrichments'],
+        picks: ['id'],
         sources: { id: { groupBy: ['enrichments.value'] } },
+        relations: { enrichments: {} },
       },
     });
     expect(() => assertValidNarrowing(n)).toThrow(/to-many/i);
@@ -153,6 +156,7 @@ describe('validateNarrowing — composite groupBy', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
           },
         },
       },
@@ -160,7 +164,10 @@ describe('validateNarrowing — composite groupBy', () => {
     const child = withParent(parent, {
       root: {
         relations: {
-          enrichments: { sources: { value: { groupBy: ['map.definition.label'] } } },
+          enrichments: {
+            sources: { value: { groupBy: ['map.definition.label'] } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
+          },
         },
       },
     });
@@ -171,14 +178,21 @@ describe('validateNarrowing — composite groupBy', () => {
     const parent = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['value'], sources: { value: { groupBy: AXES } } },
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: AXES } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
+          },
         },
       },
     });
     const child = withParent(parent, {
       root: {
         relations: {
-          enrichments: { sources: { value: { groupBy: ['map.definition.label'] } } },
+          enrichments: {
+            sources: { value: { groupBy: ['map.definition.label'] } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
+          },
         },
       },
     });
@@ -225,6 +239,7 @@ describe('toSourceQueries — composite compile', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
           },
         },
       },
@@ -235,8 +250,8 @@ describe('toSourceQueries — composite compile', () => {
 
   test('prisma select nests every axis; distinct stays absent', () => {
     const [q] = toSourceQueries(composite());
-    expect(q.prisma.distinct).toBeUndefined();
-    expect(q.prisma.select).toEqual({
+    expect(q.prisma?.distinct).toBeUndefined();
+    expect(q.prisma?.select).toEqual({
       value: true,
       map: {
         select: {
@@ -281,6 +296,7 @@ describe('toSourceQueries — source-where hop guards (hardening)', () => {
                 groupBy: 'map.definition.label',
               },
             },
+            relations: { map: { relations: { source: {}, definition: {} } } },
           },
         },
       },
@@ -296,11 +312,17 @@ describe('toSourceQueries — source-where hop guards (hardening)', () => {
       },
     });
     const [q] = toSourceQueries(n);
+    // The where narrows as a rule does: each hop's grant AND-ed around it; the axis guards its own.
     expect(q.composedWhere).toEqual({
       all: [
-        { field: 'map.source.active', operator: Operator.equals, value: true },
+        {
+          all: [
+            { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
+            { field: 'map.source.active', operator: Operator.equals, value: true },
+            { field: 'map.source.active', operator: Operator.equals, value: true },
+          ],
+        },
         { field: 'map.brandId', operator: Operator.equals, value: 'b1' },
-        { field: 'map.source.active', operator: Operator.equals, value: true },
       ],
     });
   });
@@ -429,8 +451,13 @@ describe('projectModels — axes on the surface, groups in the union', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
           },
-          archived: { picks: ['value'], sources: { value: { groupBy: 'map.source.label' } } },
+          archived: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.source.label' } },
+            relations: { map: { relations: { source: {}, definition: {} } } },
+          },
         },
       },
     });

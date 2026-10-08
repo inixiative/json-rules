@@ -14,6 +14,7 @@ import { ArrayOperator } from '../operator';
 import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
 import type { AggregateRule, ArrayRule, Condition } from '../types';
 import { hasWindow, windowRewrite } from '../window';
+import { nestedScope } from './columnRef';
 import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, emptinessWhere, hopArms } from './field';
 import { orWhere, overFetch } from './logical';
@@ -129,9 +130,10 @@ const childOptionsFor = (
   rule: ArrayRule,
   options?: ToPrismaOptions,
 ): ToPrismaOptions | undefined => {
-  if (!options?.map || !options?.model || !rule.field) return options;
+  if (!options?.map || !options?.model || !rule.field)
+    return options && nestedScope({ ...options });
   const target = relationTarget(rule.field, options.map as FieldMap, options.model);
-  return target ? { ...options, model: target } : options;
+  return nestedScope(target ? { ...options, model: target } : { ...options });
 };
 
 const buildArrayLeafFilter = (

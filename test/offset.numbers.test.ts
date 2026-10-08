@@ -33,12 +33,12 @@ afterAll(async () => {
   await db.close();
 });
 
-type Opts = { context?: Record<string, unknown>; bindings?: Record<string, unknown> };
+type Opts = { bindings?: Record<string, unknown> };
 
 const bothRails = async (condition: Condition, expected: number[], opts: Opts = {}) => {
   const inMemory = rows.filter((r) => check(condition, r, opts as never) === true).map((r) => r.id);
   const compiled = opts.bindings ? bindRule(condition, opts.bindings as never) : condition;
-  const { sql, params } = toSql(compiled, { context: opts.context });
+  const { sql, params } = toSql(compiled);
   const viaSql = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
   ).rows.map((r) => r.id);
@@ -52,6 +52,22 @@ describe('offset on a row path', () => {
     await bothRails(
       rule({ field: 'score', operator: 'greaterThanEquals', path: '$.avg', offset: { value: 5 } }),
       [1],
+    );
+  });
+
+  test('a bare path is the root row: the same column as $.', async () => {
+    await bothRails(
+      rule({ field: 'score', operator: 'greaterThanEquals', path: 'avg', offset: { value: 5 } }),
+      [1],
+    );
+    await bothRails(
+      rule({
+        field: 'score',
+        operator: 'greaterThanEquals',
+        path: 'avg',
+        offset: { path: 'delta' },
+      }),
+      [1, 2],
     );
   });
 
@@ -90,46 +106,6 @@ describe('offset on a row path', () => {
   });
 });
 
-describe('offset on a context path', () => {
-  test('a literal offset', async () => {
-    await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: { value: 3 } }),
-      [1, 3],
-      { context: { target: 10 } },
-    );
-  });
-
-  test('a row-path offset on a context value', async () => {
-    // score >= 10 + delta: rows 1 and 3 (15 >= 15), row 2 (12 >= 11); null delta fails closed.
-    await bothRails(
-      rule({
-        field: 'score',
-        operator: 'greaterThanEquals',
-        path: 'target',
-        offset: { path: '$.delta' },
-      }),
-      [1, 2, 3],
-      { context: { target: 10 } },
-    );
-  });
-
-  test('between shifts both endpoints', async () => {
-    await bothRails(
-      rule({ field: 'score', operator: 'between', path: 'range', offset: { value: 2 } }),
-      [1, 2, 3, 5],
-      { context: { range: [10, 13] } },
-    );
-  });
-
-  test('a null context value fails closed', async () => {
-    await bothRails(
-      rule({ field: 'score', operator: 'greaterThanEquals', path: 'target', offset: { value: 3 } }),
-      [],
-      { context: { target: null } },
-    );
-  });
-});
-
 describe('offset on a bind', () => {
   test('a literal offset', async () => {
     await bothRails(
@@ -139,16 +115,46 @@ describe('offset on a bind', () => {
     );
   });
 
-  test('a context-path offset', async () => {
+  test('a row-path offset on a bound value', async () => {
+    // score >= 10 + delta: rows 1 and 3 (15 >= 15), row 2 (12 >= 11); null delta fails closed.
     await bothRails(
       rule({
         field: 'score',
         operator: 'greaterThanEquals',
         bind: 'target',
-        offset: { path: 'margin' },
+        offset: { path: '$.delta' },
+      }),
+      [1, 2, 3],
+      { bindings: { target: 10 } },
+    );
+  });
+
+  test('between shifts both endpoints', async () => {
+    await bothRails(
+      rule({ field: 'score', operator: 'between', bind: 'range', offset: { value: 2 } }),
+      [1, 2, 3, 5],
+      { bindings: { range: [10, 13] } },
+    );
+  });
+
+  test('a null bound value fails closed', async () => {
+    await bothRails(
+      rule({ field: 'score', operator: 'greaterThanEquals', bind: 'target', offset: { value: 3 } }),
+      [],
+      { bindings: { target: null } },
+    );
+  });
+
+  test('a bound offset', async () => {
+    await bothRails(
+      rule({
+        field: 'score',
+        operator: 'greaterThanEquals',
+        bind: 'target',
+        offset: { bind: 'margin' },
       }),
       [1, 3],
-      { bindings: { target: 10 }, context: { margin: 3 } },
+      { bindings: { target: 10, margin: 3 } },
     );
   });
 });
@@ -160,71 +166,90 @@ describe('check() rejects an offset it cannot apply', () => {
         rule({
           field: 'score',
           operator: 'greaterThanEquals',
-          path: 'target',
+          bind: 'target',
           offset: { value: 3 },
         }),
         rows[0],
-        { context: { target: 'ten' } },
+        { bindings: { target: 'ten' } },
       ),
     ).toThrow('offset');
   });
 
-  test('a non-numeric offset path', () => {
+  test('a non-numeric offset', () => {
     expect(() =>
       check(
         rule({
           field: 'score',
           operator: 'greaterThanEquals',
-          path: 'target',
-          offset: { path: 'margin' },
+          bind: 'target',
+          offset: { bind: 'margin' },
         }),
         rows[0],
-        { context: { target: 10, margin: 'three' } },
+        { bindings: { target: 10, margin: 'three' } },
+      ),
+    ).toThrow('an offset reads a number');
+  });
+
+  test('a non-numeric offset read from the row', () => {
+    expect(() =>
+      check(
+        rule({
+          field: 'score',
+          operator: 'greaterThanEquals',
+          bind: 'target',
+          offset: { path: 'margin' },
+        }),
+        { ...rows[0], margin: 'three' },
+        { bindings: { target: 10 } },
       ),
     ).toThrow('an offset reads a number');
   });
 });
 
 describe('toPrisma and numeric offsets', () => {
-  test('a context path plus a literal offset compiles to the shifted value', () => {
-    const where = getWhere(
-      toPrisma(
-        rule({
-          field: 'score',
-          operator: 'greaterThanEquals',
-          path: 'target',
-          offset: { value: 3 },
-        }),
-        {
-          context: { target: 10 },
-        },
-      ),
-    );
-    expect(where).toEqual({ score: { gte: 13 } });
-  });
-
-  test('a resolved bind plus a context-path offset compiles', () => {
+  test('a resolved bind plus a literal offset compiles to the shifted value', () => {
     const r = rule({
       field: 'score',
       operator: 'greaterThanEquals',
       bind: 'target',
-      offset: { path: 'margin' },
+      offset: { value: 3 },
     });
-    const where = getWhere(toPrisma(bindRule(r, { target: 10 }), { context: { margin: 3 } }));
+    expect(getWhere(toPrisma(bindRule(r, { target: 10 })))).toEqual({ score: { gte: 13 } });
+  });
+
+  test('a resolved bind plus a resolved bound offset compiles', () => {
+    const r = rule({
+      field: 'score',
+      operator: 'greaterThanEquals',
+      bind: 'target',
+      offset: { bind: 'margin' },
+    });
+    const where = getWhere(toPrisma(bindRule(r, { target: 10, margin: 3 })));
     expect(where).toEqual({ score: { gte: 13 } });
   });
 
-  test('a row-path offset is rejected', () => {
+  test('a row-path offset is rejected: Prisma has no arithmetic', () => {
+    for (const path of ['$.delta', 'delta'])
+      expect(() =>
+        toPrisma(
+          bindRule(
+            rule({
+              field: 'score',
+              operator: 'greaterThanEquals',
+              bind: 'target',
+              offset: { path },
+            }),
+            { target: 10 },
+          ),
+        ),
+      ).toThrow('Prisma rail');
+  });
+
+  test('a column compared with an offset is rejected', () => {
     expect(() =>
       toPrisma(
-        rule({
-          field: 'score',
-          operator: 'greaterThanEquals',
-          path: 'target',
-          offset: { path: '$.delta' },
-        }),
-        { context: { target: 10 } },
+        rule({ field: 'score', operator: 'greaterThanEquals', path: 'avg', offset: { value: 3 } }),
       ),
-    ).toThrow('toPrisma');
+    ).toThrow('Prisma rail');
   });
 });

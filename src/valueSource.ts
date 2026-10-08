@@ -1,4 +1,5 @@
 import { isPlainObject } from 'lodash-es';
+import { UsageError } from './errors';
 import { parseScopeRef, readPath, type ScopeRef, type Scopes } from './scope';
 import type { RuleValue, ValueSourceFields, ValueSourceOf } from './types';
 
@@ -15,9 +16,10 @@ export const SOURCE_FORMS = ['value', 'bind', 'path'] as const;
 export const hasPath = (source: Source): source is Source & { path: string } =>
   typeof source.path === 'string' && source.path !== '';
 
-/** The scope a source's path reads when it reads the row (`$.`, `$$.`, …), else null. */
+/** The scope a source's path reads — every path reads the row: `$.`, `$$.`, … by depth, and a
+ *  bare path the root row (depth 0). Null when the source reads no path. */
 export const rowRef = (source: Source): ScopeRef | null =>
-  hasPath(source) ? parseScopeRef(source.path) : null;
+  hasPath(source) ? (parseScopeRef(source.path) ?? { depth: 0, path: source.path }) : null;
 
 type SourceReaders<R> = {
   value: (value: unknown) => R;
@@ -51,7 +53,7 @@ export const readBinding = (
 ): RuleValue => {
   if (!bindings || !Object.hasOwn(bindings, name)) {
     if (optional === true) return null;
-    throw new Error(`Missing binding for "${name}"`);
+    throw new UsageError(`Missing binding for "${name}"`);
   }
   const bound = bindings[name];
   return bound === undefined ? null : bound;
@@ -64,7 +66,7 @@ export const compileBinding = (
   rail: 'toSql' | 'toPrisma',
 ): null => {
   if (optional === true) return null;
-  throw new Error(
+  throw new UsageError(
     `Unresolved binding '${name}' — resolve bindings (bindRule / bindLens) before compiling with ${rail}().`,
   );
 };
@@ -73,13 +75,12 @@ export const compileBinding = (
 export const readValueSource = (
   source: Source,
   scopes: Scopes,
-  context: unknown,
   bindings?: Record<string, RuleValue>,
 ): unknown =>
   matchSource<unknown>(source, {
     value: (value) => value,
     bind: (name, optional) => readBinding(name, optional, bindings),
-    path: (ref) => readPath(ref, scopes, context) ?? null,
+    path: (ref) => readPath(ref, scopes) ?? null,
   });
 
 /** How a rail reads a source whose value it needs now (an amount, a zone). */

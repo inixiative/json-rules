@@ -10,7 +10,7 @@ modules allowed to implement it, and every exported function must appear in this
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
-| compile | `toLensSelect` | Compile what a lens shows to Prisma `findMany` select args, to-many grants as relation `where`s. |
+| compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its grants read — to Prisma `findMany` select args, to-many grants as relation `where`s. |
 | compile | `toSourceQueries` | Compile a lens's sources to option queries (Prisma and SQL). |
 | execute | `executePrismaPlan` | Run a Prisma query plan's steps and return its final WHERE. |
 | validate | `validateRule`, `validateRuleInLens`, `validateNarrowing`, `validateFieldMaps` | Return `{ ok, errors: { path, message, code }[] }`. |
@@ -19,9 +19,10 @@ modules allowed to implement it, and every exported function must appear in this
 | bind | `listBindings`, `listLensBindings` | The bind names a rule or lens reads, sorted (`{ required }` drops `bindOptional`). |
 | narrow | `narrowRule` | Inject a lens's grants into a rule at their anchors. |
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
-| project | `projectLens` | What a lens exposes: by declared path (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
-| project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations and rows removed. |
-| walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop. |
+| project | `projectLens` | What a lens exposes: by path along the relations turned on (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
+| project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations that are off or omitted, and hidden rows removed. |
+| project | `lensVisit` | One visit as `projectLens` (by path) gives it, at a relation path from the anchor, resolved on demand (nothing enumerated); null when a relation on the path isn't shown. |
+| walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop; it crosses only relations turned on. |
 | read | `readLensValue` | One value off a row, as a lens shows it: gated path, grants checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |
 | describe | `describeRule` | A rule's sources, bridge crossings and compile targets under a lens. |
@@ -39,6 +40,17 @@ modules allowed to implement it, and every exported function must appear in this
 `ArrayOperator`, `FieldKind`, `RuleTarget`, `ValueShape`, `NUMERIC_KINDS` and `ALL_KINDS` are
 the catalog's constants.
 
+Two error classes say whose input is wrong (each sets `name`, so `instanceof` or `error.name`
+tells them apart):
+
+- `LensRefusal` — what the lens itself can't do: a grant a later layer may not read, a grant or
+  source a compile can't hold, a link a source's path can't carry. It carries a `code`;
+  `validateNarrowing` reports the same refusal as an issue before anything runs.
+- `UsageError` — the caller's input missing or malformed: no `now` for a relative date, an invalid
+  `now` or time zone, a bind that was never bound.
+
+Any other Error is a rule-shape problem the validators report (`validateRule`).
+
 ## Internal verbs and their owners
 
 | Verb | Owner | Rule (`test/verbs.test.ts`) |
@@ -48,6 +60,8 @@ the catalog's constants.
 | read a path, a row by key | `src/scope.ts` (`readOwnPath`, `readPath`) | No lodash `get` / `has` / `keyBy` / `groupBy` / `property` anywhere: they read `Object.prototype`. |
 | read a binding | `src/valueSource.ts`, `src/bindings.ts` | `Object.hasOwn(bindings` only there. |
 | walk a field path | `src/fieldMap/walk.ts` (`walkMaps`, under `walkFieldPath`, the lens's `resolvePolicyPath` and `relationHops`) | No hand-split path walked against a map elsewhere. |
+| cross a relation under a lens | `src/lens/policy.ts` (`resolveVisit`: the first narrowing turns relations on, every layer's `omits` hides, a model-default relation crosses each edge once per path; read by `resolvePolicyPath`, `hiddenHop` and `shownVisits`) | The exposure is computed in one place; a `grant` policy (the first narrowing's `where`) is the only reader that crosses a relation that is off. |
+| compare a column with a column on Prisma | `src/toPrisma/columnRef.ts` (`columnCompare`, `{ __field }` resolved by `executePrismaPlan`) | `toPrisma` and `validateRule` judge Prisma support through it. |
 | classify a field-map entry | `src/fieldMap/entry.ts` (`isJsonEntry`, `isRelationEntry`, `declaredEnumValues`) | No `kind === 'object' \|\| … 'bridge'` (or its negation) elsewhere. |
 | name a bridge endpoint | `src/fieldMap/endpointKey.ts` | `map:Model` built nowhere else. |
 | define an operator, kind or unit set | `src/operatorCatalog.ts` | No list of operators (enum or string) elsewhere; the catalog tables read nowhere else. |

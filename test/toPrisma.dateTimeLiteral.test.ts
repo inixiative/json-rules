@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { bindRule } from '../index';
 import type { FieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
@@ -87,12 +88,15 @@ describe('toPrisma — DateTime field-operator literals compile to Dates', () =>
     ).toEqual({ account: { syncedAt: { lt: at('2026-09-01T00:00:00Z') } } });
   });
 
-  test('a context path value converts', () => {
+  test('a bound value converts', () => {
     expect(
       getWhere(
         toPrisma(
-          { field: 'createdAt', operator: Operator.greaterThan, path: 'since' },
-          { ...opts, context: { since: '2026-09-01' } },
+          bindRule(
+            { field: 'createdAt', operator: Operator.greaterThan, bind: 'since' },
+            { since: '2026-09-01' },
+          ),
+          opts,
         ),
       ),
     ).toEqual({ createdAt: { gt: at('2026-09-01T00:00:00Z') } });

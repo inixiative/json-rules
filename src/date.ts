@@ -13,7 +13,7 @@ import {
   resolvePointForOperator,
   shiftByUnits,
 } from './dateExpr';
-import { rangeExprRequired, unknownOperator } from './errors';
+import { rangeExprRequired, UsageError, unknownOperator } from './errors';
 import { isOrderedValue, orderPair, readPair } from './number';
 import { offsetShift } from './offset';
 import { DateOperator } from './operator';
@@ -36,7 +36,6 @@ dayjs.extend(isSameOrAfter);
 export const checkDate = (
   condition: DateRule,
   scopes: Scopes,
-  context: unknown,
   config: DateConfig = {},
   bindings?: Record<string, RuleValue>,
 ): boolean | string => {
@@ -45,7 +44,7 @@ export const checkDate = (
   // Read the zone ONCE. Left unset when the caller set none, so expression `now` keeps its
   // prior behavior; anchoring and shifts default to UTC.
   const exprConfig = resolveDateConfig(config, (source) =>
-    readValueSource(source, scopes, context, bindings),
+    readValueSource(source, scopes, bindings),
   );
   const tz = exprConfig.timeZone;
 
@@ -67,7 +66,7 @@ export const checkDate = (
 
   // A weekday list reads no instant.
   if (DAY_LIST_OPERATORS.includes(condition.dateOperator)) {
-    const days = dayNumbers(readValueSource(condition, scopes, context, bindings));
+    const days = dayNumbers(readValueSource(condition, scopes, bindings));
     if (days === null) return condition.error || `${condition.field} has no comparison value`;
     const listed = days.includes(fieldDate.tz(tz).day());
     const names = days.map((day) => DAY_NAMES[day]).join(' or ');
@@ -76,7 +75,7 @@ export const checkDate = (
       : !listed || getError(`must not be on ${names}`);
   }
 
-  const dates = parseCompareDates(condition, scopes, context, exprConfig, tz, bindings);
+  const dates = parseCompareDates(condition, scopes, exprConfig, tz, bindings);
   // Nothing to compare against — a null path, bind or magnitude: no operator matches, as SQL's
   // comparison with NULL never does. A null field was already decided above.
   if (dates === null) return condition.error || `${condition.field} has no comparison value`;
@@ -152,15 +151,14 @@ export const checkDate = (
 const parseCompareDates = (
   condition: DateRule,
   scopes: Scopes,
-  context: unknown,
   config: ResolvedDateConfig,
   tz: string,
   bindings?: Record<string, RuleValue>,
 ): [dayjs.Dayjs] | [dayjs.Dayjs, dayjs.Dayjs] | null => {
   const operator = condition.dateOperator;
 
-  const read: ReadSource = (source) => readValueSource(source, scopes, context, bindings);
-  const raw = readValueSource(condition, scopes, context, bindings);
+  const read: ReadSource = (source) => readValueSource(source, scopes, bindings);
+  const raw = readValueSource(condition, scopes, bindings);
   if (raw === null || raw === undefined) return null;
   const move = condition.offset === undefined ? undefined : offsetShift(read(condition.offset));
   if (move === null) return null;
@@ -214,20 +212,35 @@ const parseCompareDates = (
 /**
  * The evaluation's date config with its zone read — the single seam that decides which zone
  * anchors a NAIVE (zoneless) value, frames dayIn/dayNotIn and runs shifts, for ONE evaluation.
- * A zone is a string or a value source read from context or bindings; one that reads nothing
- * is UTC. It is one zone per evaluation, so a row (`$.`) path has no meaning here. Absolute
+ * A zone is a string or a `{ bind }` read from the bindings; one that reads nothing is UTC. It is
+ * one zone per evaluation, so a path — which reads the row — has no meaning here. Absolute
  * instants never consult it.
  */
 export const resolveDateConfig = (config: DateConfig, read: ReadSource): ResolvedDateConfig => {
   const zone = config.timeZone;
   if (zone === undefined || typeof zone === 'string')
-    return { ...config, timeZone: zone ?? DEFAULT_ZONE };
+    return { ...config, timeZone: knownZone(zone ?? DEFAULT_ZONE) };
   if (rowRef(zone))
-    throw new Error(`timeZone is one per evaluation; read it from context, not '${zone.path}'`);
+    throw new UsageError(
+      `timeZone is one per evaluation; give it as a string or a { bind }, not the row path '${zone.path}'`,
+    );
   const read_ = read(zone);
   if (read_ !== null && read_ !== undefined && typeof read_ !== 'string')
-    throw new Error(`timeZone reads a zone name (got ${String(read_)})`);
-  return { ...config, timeZone: read_ ?? DEFAULT_ZONE };
+    throw new UsageError(`timeZone reads a zone name (got ${String(read_)})`);
+  return { ...config, timeZone: knownZone(read_ ?? DEFAULT_ZONE) };
+};
+
+// A zone the runtime knows, checked once per name: an unknown one is the caller's input.
+const KNOWN_ZONES = new Set<string>();
+const knownZone = (zone: string): string => {
+  if (KNOWN_ZONES.has(zone)) return zone;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new UsageError(`invalid time zone: ${zone}`);
+  }
+  KNOWN_ZONES.add(zone);
+  return zone;
 };
 
 // Whether a date STRING names its own zone (never String(Date), whose render is host-locale-
@@ -259,7 +272,7 @@ export const parseDateValue = (value: DateInputValue | undefined, tz: string): d
   return typeof value === 'string' ? dayjs(new Date(value.trim())) : dayjs(value);
 };
 
-// Literal and context date values compile to concrete Dates through the same parse-and-anchor
+// Literal and bound date values compile to concrete Dates through the same parse-and-anchor
 // seam check() uses (naive strings → midnight in the zone; instants as-is): a raw 'YYYY-MM-DD'
 // is rejected by Prisma and would carry different zone semantics than check().
 export const coerceDateLiteral = (value: unknown, zone: string): Date => {

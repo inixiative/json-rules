@@ -13,7 +13,14 @@ import {
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
-import { type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import {
+  grantRefs,
+  LensRefusal,
+  type RelationHop,
+  relationHops,
+  resolvePolicy,
+  resolveVisit,
+} from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 // Composes a user rule with the lens's narrowing where-clauses, injecting each
@@ -63,37 +70,43 @@ const underHopGrants = (node: Condition, hops: HopGrant[]): Condition => {
 
 // Re-roots a related-model `where` grant so its field refs resolve from the current
 // anchor through the relation path (e.g. a User grant `tenantId` reached via `author`
-// becomes `author.tenantId`). Fails closed on shapes that can't be re-rooted
-// unambiguously — a `path` ref (root/current-element semantics don't survive re-rooting)
-// or a nested array/aggregate condition (row-scoped to a different anchor) — rather than
-// silently emitting a wrong or unenforced grant.
+// becomes `author.tenantId`, and `users any …` on an Org becomes `org.users any …` — a relation
+// node's condition reads its elements, so only its field moves). Fails closed on shapes that
+// can't be re-rooted unambiguously — a `path` ref (root/current-element semantics don't survive
+// re-rooting), or a ref inside a relation node that climbs to the row being re-rooted — rather
+// than silently emitting a wrong or unenforced grant.
 export const prefixConditionFields = (cond: Condition, prefix: string): Condition =>
   mapCondition(cond, {
     rewrite: (node) => {
       if (isLogicalNode(node)) return node;
       if (typeof node.field !== 'string' || node.field === '')
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant of unknown shape under '${prefix}'`,
+          'unsupported_grant',
         );
       const refs = valueRefs(node);
       if (refs.length) {
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant with a path reference ('${refs[0]}') ` +
             `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
+          'unsupported_grant',
         );
       }
       if (parseScopeRef(node.field)) {
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant with a scope ref field ('${node.field}') ` +
             `under '${prefix}'. Author the grant against the model's own columns.`,
+          'unsupported_grant',
         );
       }
-      if (node.condition !== undefined) {
-        throw new Error(
-          `narrowRule: cannot re-root a relation grant with a nested array/aggregate condition on ` +
-            `'${node.field}' under '${prefix}'. Anchor such grants at the relation's own model.`,
-        );
-      }
+      if (isRelationNode(node))
+        for (const inner of [node.condition, node.filter] as (Condition | undefined)[])
+          if (inner !== undefined && grantRefs(inner).escaping !== null)
+            throw new LensRefusal(
+              `narrowRule: cannot re-root a relation grant on '${node.field}' under '${prefix}': ` +
+                `'${grantRefs(inner).escaping}' inside it reads the row being re-rooted. Anchor such grants at the relation's own model.`,
+              'unsupported_grant',
+            );
       return { ...node, field: `${prefix}.${node.field}` };
     },
     // A relation node's `filter` is relative to its elements, not to the anchor.
@@ -113,10 +126,11 @@ const hopGrants = (policy: Policy, hops: RelationHop[]): HopGrant[] =>
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
     if (effect.whereClauses.length === 0) return [];
     if (hop.isList) {
-      throw new Error(
+      throw new LensRefusal(
         `narrowRule: cannot enforce a to-many relation grant on '${hop.prefix}' without an ` +
           `arrayOperator condition to anchor it (row-scoped). Traverse '${hop.prefix}' via an ` +
           `array operator (any/all/none/...) so the grant can be injected safely.`,
+        'unsupported_grant',
       );
     }
     return [
@@ -141,23 +155,17 @@ const hopsAt = (
   scopes: readonly Scope[],
 ): { hops: RelationHop[]; end: Visit | null } => {
   const target = readScopeRef(ref, scopes);
-  if ('outOfBounds' in target) throw new Error(`narrowRule: ${target.outOfBounds}`);
+  if ('outOfBounds' in target)
+    throw new LensRefusal(`narrowRule: ${target.outOfBounds}`, 'scope_out_of_bounds');
   if (!target.scope) return { hops: [], end: null };
   const prefix = ref.slice(0, ref.length - target.path.length);
   return relationHops(policy.lens.maps, target.scope, target.path, prefix === '$.' ? '' : prefix);
 };
 
-// A value ref's hops. A bare one is a root-row path for check(), which reads it from the row when
-// no context is given, so its grants re-root at the root; on the compile rails it is the caller's
-// context and crosses nothing.
-const refHops = (
-  ref: string,
-  policy: Policy,
-  scopes: readonly Scope[],
-  bareRefsReadContext: boolean,
-): RelationHop[] => {
+// A value ref's hops. A bare one reads the root row on every rail, so its grants re-root at the
+// root.
+const refHops = (ref: string, policy: Policy, scopes: readonly Scope[]): RelationHop[] => {
   if (parseScopeRef(ref)) return hopsAt(ref, policy, scopes).hops;
-  if (bareRefsReadContext) return [];
   const prefix = scopes.length === 1 ? '' : `${'$'.repeat(scopes.length)}.`;
   return scopes[0] ? relationHops(policy.lens.maps, scopes[0], ref, prefix).hops : [];
 };
@@ -183,12 +191,7 @@ const anchorOf = (
 // on a value-side ref (`path`, an offset, an amount) — is re-rooted under the hop and AND-ed with
 // the node.
 /** A rule's grants injected at their anchors, the rule read from `root` under `policy`. */
-export const narrowAt = (
-  rule: Condition,
-  policy: Policy,
-  root: Visit,
-  bareRefsReadContext = false,
-): Condition =>
+export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Condition =>
   mapCondition<readonly Scope[]>(
     rule,
     {
@@ -203,7 +206,7 @@ export const narrowAt = (
         if (!anchor) return node as Condition;
         const valueWheres = collectHopWheres(
           policy,
-          valueRefs(node).flatMap((ref) => refHops(ref, policy, scopes, bareRefsReadContext)),
+          valueRefs(node).flatMap((ref) => refHops(ref, policy, scopes)),
         );
         const below = anchor.below;
         if (!below || !isRelationNode(node))
@@ -240,30 +243,16 @@ export const narrowAt = (
 
 /** A rule with the lens's grants (`where`s) injected at their anchors: the root's around it, each
  *  relation's where the rule descends into it — under an `all`, into its window `filter`. */
-export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition =>
-  narrowRuleFor(rule, lensOrNarrowing, false);
-
-/** `narrowRule` as a compile rail reads the rule: a bare value ref is context. Internal to `{ lens }`. */
-export const narrowRuleForCompile = (
-  rule: Condition,
-  lensOrNarrowing: Lens | LensNarrowing,
-): Condition => narrowRuleFor(rule, lensOrNarrowing, true);
-
-const narrowRuleFor = (
-  rule: Condition,
-  lensOrNarrowing: Lens | LensNarrowing,
-  bareRefsReadContext: boolean,
-): Condition => {
+export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
   const policy = resolvePolicy(lensOrNarrowing);
   const rootEffect = resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
 
   // First rewrite the rule, injecting where clauses at their anchors.
-  const rewritten = narrowAt(
-    rule,
-    policy,
-    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] },
-    bareRefsReadContext,
-  );
+  const rewritten = narrowAt(rule, policy, {
+    mapName: policy.lens.mapName,
+    modelName: policy.lens.model,
+    relPath: [],
+  });
 
   // Then wrap with root-anchored where clauses (root.where +
   // mapDefaults[lens.mapName].models[lens.model].where).

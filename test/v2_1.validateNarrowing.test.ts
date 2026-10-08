@@ -284,23 +284,14 @@ describe('validateNarrowing — enum cross-layer strictness (2.2.0)', () => {
   });
 });
 
-describe('validateNarrowing — ModelDefaultNarrowing rejects relations field', () => {
-  test('declaring `relations` inside mapDefaults.models[M] → error', () => {
+describe('validateNarrowing — a model default turns a relation on wherever the model is visited', () => {
+  test('`relations` inside mapDefaults.models[M] in the first narrowing is accepted', () => {
     // Type system rejects this at compile time, but runtime check is safety net.
-    const bad: LensNarrowing = {
+    const on: LensNarrowing = {
       parent: lens,
-      mapDefaults: {
-        prisma: {
-          models: {
-            // biome-ignore lint/suspicious/noExplicitAny: testing runtime safety net
-            User: { relations: { posts: { picks: ['id'] } } } as any,
-          },
-        },
-      },
+      mapDefaults: { prisma: { models: { User: { relations: { posts: { picks: ['id'] } } } } } },
     };
-    expect(() => assertValidNarrowing(bad)).toThrow(
-      /relations.*not.*allowed.*default|defaults.*cannot.*relations/i,
-    );
+    expect(validateNarrowing(on).ok).toBe(true);
   });
 });
 

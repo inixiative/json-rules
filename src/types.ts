@@ -17,8 +17,8 @@ export type OrderedRuleValue = string | number | Date;
 
 export type DateInputValue = string | number | Date;
 
-// Where a value comes from: a literal, a path read (`$.` from the row or an enclosing scope,
-// bare from context), or a bound value. Every slot that reads a value takes this one shape: a
+// Where a value comes from: a literal, a path read (`$.` from the current element, `$$.` and
+// up from enclosing scopes, bare from the root row), or a bound value — the caller's values. Every slot that reads a value takes this one shape: a
 // comparison value, an offset, a unit amount, the evaluation's time zone.
 type SourceSlots<TValue> = { value: TValue; path: string; bind: string; bindOptional: boolean };
 type Never<K extends PropertyKey> = { [P in K]?: never };
@@ -79,8 +79,8 @@ export type DateRuleValue =
   | string[];
 
 export type WeekStart = 'monday' | 'sunday';
-// The anchoring timezone for naive datetimes: an IANA zone, or a value source that reads one
-// from context or the evaluation's `bindings`. ONE zone per evaluation; absolute instants
+// The anchoring timezone for naive datetimes: an IANA zone, or a `{ bind }` that reads one from
+// the evaluation's `bindings`. ONE zone per evaluation; absolute instants
 // never consult it.
 export type TimeZoneConfig = string | ValueSourceOf<string>;
 export type DateConfig = {
@@ -357,7 +357,7 @@ export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
 export type Row = Record<string, unknown>;
 
 /** What both compilers take: the schema (a FieldMap, or a FieldMapSet with `mapName`), the
- *  model the rule reads, the context bare `path` refs read, and the clock. `lens` compiles the
+ *  model the rule reads, and the clock. `lens` compiles the
  *  rule under a lens instead — narrowed (`narrowRule`), against the base lens's maps, map and
  *  model — and can't be passed with `map` / `mapName` / `model`. */
 export type CompileOptions = {
@@ -365,7 +365,6 @@ export type CompileOptions = {
   mapName?: string;
   model?: string;
   lens?: Lens | LensNarrowing;
-  context?: Row;
 } & DateConfig;
 
 /** What check() evaluates: one row, or a root array of them. */

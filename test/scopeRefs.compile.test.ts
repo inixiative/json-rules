@@ -18,9 +18,9 @@ describe('toSql — scope refs are check-only beyond the same row', () => {
   });
 
   test('$$. path throws naming check()', () => {
-    expect(() =>
-      toSql({ field: 'a', operator: Operator.equals, path: '$$.b' }, { context: {} }),
-    ).toThrow(/'\$\$\.b'.*check\(\)/);
+    expect(() => toSql({ field: 'a', operator: Operator.equals, path: '$$.b' })).toThrow(
+      /'\$\$\.b'.*check\(\)/,
+    );
   });
 
   test('prefixed field throws on a field rule', () => {

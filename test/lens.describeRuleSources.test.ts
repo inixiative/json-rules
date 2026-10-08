@@ -168,13 +168,19 @@ describe('describeRuleSources — the values a rule names at each declared sourc
 });
 
 describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
-  test('a mapDefaults-declared source answers wherever its model appears, with no root.relations spelling', () => {
+  test('a mapDefaults-declared source answers wherever a relation turned on reaches its model', () => {
     const byDefaults: LensNarrowing = {
       parent: lens,
       mapDefaults: { app: { models: { Tag: { sources: { id: true } } } } },
     };
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'in', value: ['t1', 't2'] };
-    expect(describeRuleSources(rule, byDefaults)).toEqual([
+    // The path crosses relations that are off: no source answers there.
+    expect(describeRuleSources(rule, byDefaults)).toEqual([]);
+    const declared: LensNarrowing = {
+      ...byDefaults,
+      root: { relations: { tagAttachments: { relations: { tag: {} } } } },
+    };
+    expect(describeRuleSources(rule, declared)).toEqual([
       { ...tagSource, values: ['t1', 't2'], dynamic: false },
     ]);
   });

@@ -84,6 +84,7 @@ const grouped = (): LensNarrowing =>
               groupBy: 'map.definition.label',
             },
           },
+          relations: { map: { relations: { definition: {} } } },
         },
       },
     },
@@ -101,6 +102,7 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -123,7 +125,11 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
     const n = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['value'], sources: { value: { groupBy: 'map.nope.label' } } },
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.nope.label' } },
+            relations: { map: {} },
+          },
         },
       },
     });
@@ -141,7 +147,11 @@ describe('validateNarrowing — groupBy on a SourceSpec', () => {
     const n = withParent(base, {
       root: {
         relations: {
-          enrichments: { picks: ['value'], sources: { value: { groupBy: 'map.definition' } } },
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition' } },
+            relations: { map: { relations: { definition: {} } } },
+          },
         },
       },
     });
@@ -160,8 +170,8 @@ describe('toSourceQueries — grouped compile', () => {
   test('carries groupBy, drops distinct, nests the group path into the prisma select', () => {
     const [q] = toSourceQueries(grouped());
     expect(q.groupBy).toEqual(['map.definition.label']);
-    expect(q.prisma.distinct).toBeUndefined();
-    expect(q.prisma.select).toEqual({
+    expect(q.prisma?.distinct).toBeUndefined();
+    expect(q.prisma?.select).toEqual({
       value: true,
       map: { select: { definition: { select: { label: true } } } },
     });
@@ -184,8 +194,8 @@ describe('toSourceQueries — grouped compile', () => {
     });
     const [q] = toSourceQueries(n);
     expect(q.groupBy).toBeUndefined();
-    expect(q.prisma.distinct).toEqual(['value']);
-    expect(q.prisma.select).toEqual({ value: true });
+    expect(q.prisma?.distinct).toEqual(['value']);
+    expect(q.prisma?.select).toEqual({ value: true });
   });
 });
 
@@ -225,6 +235,7 @@ describe('materializeSources — grouped materialization', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -262,6 +273,7 @@ describe('grouped sources — traversed narrowing wheres fold into the compile',
               map: {
                 picks: [],
                 where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+                relations: { definition: {} },
               },
             },
           },
@@ -352,10 +364,10 @@ describe('materializeSourceQuery — materialize fetched query rows', () => {
   });
 });
 
-describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversarial findings)', () => {
-  // The natural production spelling: groupBy-only source, tenancy carried entirely
-  // by mapDefaults applies-everywhere wheres. No declared relation nodes — the
-  // guard must fold anyway, because the join always ships.
+describe('grouped sources — mapDefaults tenancy guards hold on every hop (adversarial findings)', () => {
+  // The natural production spelling: groupBy-only source, the hops declared bare, tenancy
+  // carried entirely by mapDefaults applies-everywhere wheres. No relation node carries a
+  // where — the guard must fold anyway, because the join always ships.
   const tenanted = (): LensNarrowing =>
     withParent(base, {
       root: {
@@ -364,6 +376,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -381,7 +394,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
       },
     });
 
-  test('mapDefaults wheres on traversed models fold into composedWhere with no declared hops', () => {
+  test('mapDefaults wheres on traversed models fold into composedWhere with no node wheres', () => {
     const [q] = toSourceQueries(tenanted());
     expect(q.composedWhere).toEqual({
       all: [
@@ -391,7 +404,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
     });
   });
 
-  test('in-memory executor excludes rows failing an undeclared-hop guard', () => {
+  test('in-memory executor excludes rows failing a mapDefaults hop guard', () => {
     const rows = [
       {
         id: 'u1',
@@ -412,7 +425,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
     expect(sv.options).toEqual([{ value: 'kept', groups: ['business unit'] }]);
   });
 
-  test('a declared first hop does not drop the guard on the undeclared deeper hop', () => {
+  test('a where on the first hop does not drop the mapDefaults guard on the deeper hop', () => {
     const partial = withParent(base, {
       root: {
         picks: ['id'],
@@ -424,6 +437,7 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
               map: {
                 picks: [],
                 where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+                relations: { definition: {} },
               },
             },
           },
@@ -446,6 +460,24 @@ describe('grouped sources — tenancy guards hold on UNDECLARED hops (adversaria
         { field: 'map.definition.id', operator: Operator.notEquals, value: 'hidden' },
       ],
     });
+  });
+
+  test('a groupBy through hops the lens does not turn on is refused, and never projected', () => {
+    const undeclared = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: {
+            picks: ['value'],
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
+        },
+      },
+    });
+    expect(() => assertValidNarrowing(undeclared)).toThrow(/does not show there/);
+    expect(projectLens(undeclared)['User.enrichments'].sourceGroupBys).toEqual({});
+    const [q] = toSourceQueries(undeclared);
+    expect(q.groupBy).toBeUndefined();
   });
 });
 
@@ -479,6 +511,7 @@ describe('validateNarrowing — conflicting groupBy across layers', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -499,7 +532,10 @@ describe('validateNarrowing — conflicting groupBy across layers', () => {
     const child = withParent(parentLayer(), {
       root: {
         relations: {
-          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+          enrichments: {
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
+          },
         },
       },
     });
@@ -516,6 +552,7 @@ describe('option sort — ungrouped is its own leading tier', () => {
           enrichments: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -596,6 +633,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
           enrichments: {
             picks: ['value'],
             sources: { value: { label: 'mapId', groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -603,9 +641,9 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
     expect(() => assertValidNarrowing(n)).not.toThrow();
   });
 
-  test("a hop excluded by an ancestor node's picks is an error", () => {
-    // Parent narrows the enrichments node to picks: ['value'] — the `map`
-    // relation is removed there, so a child groupBy may not traverse it.
+  test('a hop the ancestor does not turn on is an error', () => {
+    // The parent turns enrichments on but not `map`, so a child groupBy may not cross it (nor may
+    // the child turn it on).
     const parent = withParent(base, {
       root: {
         picks: ['id'],
@@ -619,22 +657,42 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
         },
       },
     });
-    expect(() => assertValidNarrowing(child)).toThrow(/hidden by another layer/);
+    expect(() => assertValidNarrowing(child)).toThrow(/does not show there/);
   });
 
-  test('a hop the ancestor declares as a relation stays traversable', () => {
+  test('a hop an ancestor turns on but hides is an error', () => {
     const parent = withParent(base, {
       root: {
         picks: ['id'],
         relations: {
-          enrichments: { picks: ['value'], relations: { map: {} } },
+          enrichments: { omits: ['map'], relations: { map: { relations: { definition: {} } } } },
+        },
+      },
+    });
+    const child = withParent(parent, {
+      root: {
+        relations: { enrichments: { sources: { value: { groupBy: 'map.definition.label' } } } },
+      },
+    });
+    expect(() => assertValidNarrowing(child)).toThrow(/does not show there/);
+  });
+
+  test('a hop the ancestor turns on stays traversable', () => {
+    const parent = withParent(base, {
+      root: {
+        picks: ['id'],
+        relations: {
+          enrichments: { picks: ['value'], relations: { map: { relations: { definition: {} } } } },
         },
       },
     });
     const child = withParent(parent, {
       root: {
         relations: {
-          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+          enrichments: {
+            sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
+          },
         },
       },
     });
@@ -643,6 +701,9 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
 
   test('a terminal column omitted by an ancestor mapDefaults is an error', () => {
     const parent = withParent(base, {
+      root: {
+        relations: { enrichments: { relations: { map: { relations: { definition: {} } } } } },
+      },
       mapDefaults: { app: { models: { FieldDef: { omits: ['label'] } } } },
     });
     const child = withParent(parent, {
@@ -661,6 +722,7 @@ describe('groupBy/label — ancestor removals bind materialization targets', () 
 
   test('a label column omitted by an ancestor is an error', () => {
     const parent = withParent(base, {
+      root: { relations: { enrichments: {} } },
       mapDefaults: { app: { models: { Enrichment: { omits: ['mapId'] } } } },
     });
     const child = withParent(parent, {
@@ -707,14 +769,20 @@ describe('asymmetric traversal — the same model narrowed differently per path'
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
             relations: {
-              map: { where: { field: 'brandId', operator: Operator.equals, value: 'b1' } },
+              map: {
+                where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+                relations: { definition: {} },
+              },
             },
           },
           archived: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
             relations: {
-              map: { where: { field: 'brandId', operator: Operator.equals, value: 'b2' } },
+              map: {
+                where: { field: 'brandId', operator: Operator.equals, value: 'b2' },
+                relations: { definition: {} },
+              },
             },
           },
         },
@@ -744,12 +812,16 @@ describe('asymmetric traversal — the same model narrowed differently per path'
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
             relations: {
-              map: { where: { field: 'brandId', operator: Operator.equals, value: 'b1' } },
+              map: {
+                where: { field: 'brandId', operator: Operator.equals, value: 'b1' },
+                relations: { definition: {} },
+              },
             },
           },
           archived: {
             picks: ['value'],
             sources: { value: { groupBy: 'map.definition.label' } },
+            relations: { map: { relations: { definition: {} } } },
           },
         },
       },
@@ -793,15 +865,22 @@ describe('asymmetric traversal — the same model narrowed differently per path'
       root: {
         picks: ['id'],
         relations: {
-          enrichments: { picks: ['value'] }, // map removed on this visit only
-          archived: { picks: ['value'], relations: { map: {} } },
+          // map removed on this visit only
+          enrichments: {
+            picks: ['value'],
+            omits: ['map'],
+            relations: { map: { relations: { definition: {} } } },
+          },
+          archived: { picks: ['value'], relations: { map: { relations: { definition: {} } } } },
         },
       },
     });
     const throughKeptPath = withParent(parent, {
       root: {
         relations: {
-          archived: { sources: { value: { groupBy: 'map.definition.label' } } },
+          archived: {
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
         },
       },
     });
@@ -810,11 +889,13 @@ describe('asymmetric traversal — the same model narrowed differently per path'
     const throughRemovedPath = withParent(parent, {
       root: {
         relations: {
-          enrichments: { sources: { value: { groupBy: 'map.definition.label' } } },
+          enrichments: {
+            sources: { value: { groupBy: 'map.definition.label' } },
+          },
         },
       },
     });
-    expect(() => assertValidNarrowing(throughRemovedPath)).toThrow(/hidden by another layer/);
+    expect(() => assertValidNarrowing(throughRemovedPath)).toThrow(/does not show there/);
   });
 });
 

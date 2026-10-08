@@ -79,7 +79,8 @@ const clampFirstLayer = (layer: LensNarrowing, clamps: LensClamps): LensNarrowin
  * The lens with `clamps` ANDed into its first narrowing over the base lens (one is added over a
  * bare lens). A clamp that reads what a later layer hides belongs there: only the first layer's
  * clamps read the whole schema. A `where` ANDs with the one in place; a source's `where` ANDs
- * and its `label` / `groupBy` win. Only clamps merge, so the lens gets no wider.
+ * and its `label` / `groupBy` win. Wheres only narrow; a source clamp can add an option set for
+ * a field, or relabel or regroup one, but never widens what rows or columns the lens shows.
  */
 export const clampLens = (lens: Lens | LensNarrowing, clamps: LensClamps): LensNarrowing => {
   if (isLens(lens)) return clampFirstLayer({ parent: lens }, clamps);

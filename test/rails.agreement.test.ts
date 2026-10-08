@@ -347,6 +347,26 @@ const MATRIX: Record<string, Case> = {
     ids: [1, 2, 3, 4, 5],
     options: { context: { ctx: { missing: null } } },
   },
+  'an aggregate threshold reading null matches nothing': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'sum', field: 'views' },
+      operator: 'greaterThan',
+      path: 'ctx.n',
+    },
+    ids: [],
+    options: { context: { ctx: { n: null } } },
+    refuses: { sql: 'relation' },
+  },
+  'a negated date range missing an end keeps every row': {
+    rule: {
+      if: { field: 'createdAt', dateOperator: 'between', path: 'ctx.range' },
+      then: false,
+      else: true,
+    },
+    ids: [1, 2, 3, 4, 5],
+    options: { context: { ctx: { range: [null, '2026-10-05'] } } },
+  },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
     ids: [1, 2, 3, 5],

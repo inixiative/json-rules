@@ -356,13 +356,17 @@ describe('toSql', () => {
     describe('jsonb (default)', () => {
       it('empty', () => {
         const { sql, params } = toSql({ field: 'tags', arrayOperator: ArrayOperator.empty });
-        expect(sql).toBe(`("tags" IS NULL OR "tags" IN ('null'::jsonb, '[]'::jsonb))`);
+        expect(sql).toBe(
+          `(CASE WHEN jsonb_typeof("tags") = 'array' THEN jsonb_array_length("tags") = 0 ELSE TRUE END)`,
+        );
         expect(params).toEqual([]);
       });
 
       it('notEmpty', () => {
         const { sql, params } = toSql({ field: 'items', arrayOperator: ArrayOperator.notEmpty });
-        expect(sql).toBe(`"items" NOT IN ('null'::jsonb, '[]'::jsonb)`);
+        expect(sql).toBe(
+          `(CASE WHEN jsonb_typeof("items") = 'array' THEN jsonb_array_length("items") > 0 ELSE FALSE END)`,
+        );
         expect(params).toEqual([]);
       });
     });

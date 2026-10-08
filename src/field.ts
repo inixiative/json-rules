@@ -175,7 +175,8 @@ export const checkField = (
   }
 
   const getError = (op: string) =>
-    condition.error || `${condition.field} ${op}${needsValue ? ` ${JSON.stringify(value)}` : ''}`;
+    condition.error ||
+    `${condition.field} ${op}${needsValue ? ` ${value instanceof RegExp ? String(value) : JSON.stringify(value)}` : ''}`;
 
   const ci = resolveCaseInsensitive(condition.caseInsensitive);
   const lower = (v: unknown): unknown => (ci ? lowerStrings(v) : v);

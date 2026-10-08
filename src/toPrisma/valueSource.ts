@@ -1,12 +1,13 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
 import { noCompiledForm } from '../errors';
+import { hasNoOperand } from '../field';
 import { ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
 import { type Settle, settleLiteral } from '../negate';
 import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef, readContextRef } from '../scope';
-import type { ValueSourceFields } from '../types';
+import type { Rule, ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
 import type { ToPrismaOptions } from './types';
 
@@ -84,7 +85,12 @@ export const settleLeaf =
       value,
       ...(leaf.offset !== undefined && { offset: { value: offset } }),
     };
+    // A date range with a missing end reads nothing, as a field range does.
     if (typeof leaf.dateOperator === 'string')
-      return value === null || value === undefined ? null : literal;
+      return value === null ||
+        value === undefined ||
+        hasNoOperand({ operator: leaf.dateOperator } as Rule, value)
+        ? null
+        : literal;
     return settleLiteral(literal);
   };

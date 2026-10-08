@@ -92,6 +92,7 @@ const fakePost = {
 const passing = async (rule: Record<string, unknown>): Promise<string[]> => {
   const plan = toPrisma(rule as never, { map, model: 'User' });
   const where = (await executePrismaPlan(plan, { post: fakePost as never })) as Filter;
+  if (Array.isArray(where.OR) && where.OR.length === 0) return []; // matches nothing
   const ids = (clause: Filter) => ((clause.id as Filter).in as string[]) ?? [];
   if (where.NOT)
     return USERS.filter((u) => !ids(where.NOT as Filter).includes(u.id)).map((u) => u.id);

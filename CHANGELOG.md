@@ -35,6 +35,13 @@ Additive. Each function replaces code template wrote around the lens.
   where the row it sits on is missing, so they now ask that (`{ is: {} }` on the path above, or
   always / never at the root).
 
+- **A null read from a source, on Prisma:** `equals` / `notEquals` against an unbound optional bind
+  or a path reading null on a required column, an aggregate threshold with no operand (it matches
+  nothing, as `check()` says), and a negated date range missing an end now agree with `check()`.
+- **SQL reads a non-array Json value as an empty array for `empty` / `notEmpty`**, as it already
+  did for an aggregate (it read it as non-empty).
+- `check()`'s failure text prints a RegExp pattern as written (it printed `{}`).
+
 ## 3.1.1 — a pointer never widens what a parent layer gave
 
 - **Security:** a child layer could turn a parent's path source into `from: 'mapDefaults'` and drop
@@ -335,8 +342,7 @@ Three differences remain, all outside the rules' control:
 - Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
   Postgres's `LOWER` under the database collation can differ on letters like `İ`.
 - An array or aggregate rule on a Json value that isn't an array is a data error: `check()`
-  throws on it, and SQL, which can't raise per row, reads it as empty for an aggregate and as a
-  value that isn't empty for `empty` / `notEmpty`.
+  throws on it, and SQL, which can't raise per row, reads it as an empty array.
 - Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
   `check()` compares UTF-16 code units, Postgres the column's collation.
 

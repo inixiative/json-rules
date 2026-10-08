@@ -1,5 +1,5 @@
 import { unknownAggregateMode, windowUnsupported } from '../errors';
-import { checkField } from '../field';
+import { checkField, hasNoOperand } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import type { FieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge } from '../fieldMap/walk';
@@ -70,7 +70,7 @@ const buildAggregateStep = (
   // The comparison as check() makes it, with its operand read; nothing to compare against
   // matches nothing.
   const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>);
-  if (leaf === null) return matchNothing();
+  if (leaf === null || hasNoOperand(leaf as unknown as Rule, leaf.value)) return matchNothing();
   // A parent with no matching children has the empty aggregate (0) and no group: when the
   // comparison holds for it, select the parents outside the groups where it fails.
   const holdsEmpty =

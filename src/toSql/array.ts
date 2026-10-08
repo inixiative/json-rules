@@ -5,7 +5,7 @@ import { ArrayOperator } from '../operator';
 import type { ArrayRule } from '../types';
 import { hasWindow } from '../window';
 import { emptinessSql } from './field';
-import { resolveField } from './join';
+import { resolveField, resolveFieldSql } from './join';
 import type { BuilderState } from './types';
 
 export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => {
@@ -25,16 +25,13 @@ export const buildArrayRule = (rule: ArrayRule, state: BuilderState): string => 
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
     case ArrayOperator.notEmpty: {
-      // A list column, or else a Json array — an array rule names one.
+      // A list column, or else a Json array — an array rule names one. A Json value that isn't an
+      // array reads as empty, as an aggregate reads it (check() refuses it as malformed data).
       const field = resolveField(rule.field, state);
-      const arrayShape = field.shape === 'list' ? field : { ...field, shape: 'json-path' as const };
-      return emptinessSql(
-        rule.field,
-        arrayShape,
-        rule.arrayOperator === ArrayOperator.empty,
-        state,
-        false,
-      );
+      const empty = rule.arrayOperator === ArrayOperator.empty;
+      if (field.shape === 'list') return emptinessSql(rule.field, field, empty, state, false);
+      const j = resolveFieldSql(rule.field, state, { jsonb: true });
+      return `(CASE WHEN jsonb_typeof(${j}) = 'array' THEN jsonb_array_length(${j}) ${empty ? '=' : '>'} 0 ELSE ${empty ? 'TRUE' : 'FALSE'} END)`;
     }
 
     case ArrayOperator.all:

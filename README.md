@@ -788,8 +788,8 @@ engines themselves differ:
 - Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
   `check()` compares UTF-16 code units, Postgres the column's collation.
 - An array or aggregate rule on a Json value that isn't an array is a data error. `check()`
-  throws on it; SQL can't raise per row, so an aggregate reads it as empty and `empty` /
-  `notEmpty` read it as a value that isn't empty.
+  throws on it; SQL can't raise per row, so it reads the value as an empty array — for an
+  aggregate and for `empty` / `notEmpty` alike.
 
 ## TypeScript Types
 

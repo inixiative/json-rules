@@ -14,7 +14,9 @@ import { collectChain, getRoot } from './chain.ts';
 import {
   allowedEnumValues,
   augmentPicksWithRelations,
+  declaresModelSource,
   intersectStringSet,
+  isSourceSpec,
   normalizeGroupBy,
   normalizeSource,
   OFF_PATH,
@@ -23,6 +25,7 @@ import {
   resolvePolicy,
   resolveVisit,
   sourceReadsVisible,
+  undeclaredModelSource,
 } from './policy.ts';
 import { projectPaths } from './projectPaths.ts';
 import type {
@@ -236,6 +239,27 @@ const validateModelNode = (
       continue;
     }
     const spec = normalizeSource(entry);
+    // Read as stored data: `from` may hold anything.
+    const from = (spec as { from?: unknown }).from;
+    if (from !== undefined) {
+      // A pointer offers the model's own source: it lives on a path, names mapDefaults, and
+      // takes that source's label and axes.
+      const problem =
+        from !== 'mapDefaults'
+          ? `from takes 'mapDefaults', not '${String(from)}'`
+          : isDefault
+            ? `a mapDefaults source is what a path source's from: 'mapDefaults' points at; it can't point itself`
+            : (spec as { label?: unknown }).label !== undefined ||
+                (spec as { groupBy?: unknown }).groupBy !== undefined
+              ? `a from: 'mapDefaults' source takes the model source's label and groupBy`
+              : null;
+      if (problem)
+        errors.push({
+          path: `${position}.sources.${field}`,
+          code: 'invalid_source',
+          message: problem,
+        });
+    }
     const dottedLabel = spec.label?.includes('.') ? spec.label : undefined;
     if (spec.label !== undefined) {
       if (dottedLabel) {
@@ -452,6 +476,18 @@ const validatePathNarrowing = (
     position,
     errors,
   );
+
+  // A path source that offers its model's own source needs one declared in some layer.
+  const composed: Policy = { lens: parentPolicy.lens, chain: [...parentPolicy.chain, current] };
+  for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
+    if (!isSourceSpec(entry) || entry.from !== 'mapDefaults') continue;
+    if (!declaresModelSource(composed, mapName, modelName, field))
+      errors.push({
+        path: `${position}.sources.${field}`,
+        code: 'invalid_source',
+        message: undeclaredModelSource(position, mapName, modelName, field).message,
+      });
+  }
 
   for (const [relField, sub] of Object.entries(narrowing.relations ?? {})) {
     const entry = own(model.fields, relField);

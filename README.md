@@ -1130,6 +1130,47 @@ const projection = projectLens(narrowing, { sourceValues: [values] });
 Options never offer a value the lens disallows: `projectLens` drops fetched values outside a
 field's allowed set.
 
+#### Two kinds of source
+
+A source declared down a relation path offers the rows **reachable** from there: every grant above
+it is carried down, so a Tag source under `User.tagAttachments.tag` offers the tags a live
+attachment of an in-tenant user points at. When a field should offer every row the lens lets its
+model show — linked or not, what a rule may *name* — point the path source at the model's own
+source:
+
+```ts
+root: {
+  where: { field: 'orgId', operator: Operator.equals, bind: 'orgId' },
+  relations: {
+    tagAttachments: {
+      where: { field: 'deletedAt', operator: Operator.isEmpty },
+      relations: { tag: { sources: { id: { from: 'mapDefaults' } } } },   // the model's own source
+    },
+  },
+},
+mapDefaults: {
+  app: {
+    models: {
+      Tag: {
+        where: { field: 'deletedAt', operator: Operator.isEmpty },
+        sources: {
+          id: { where: { field: 'ownerId', operator: Operator.equals, bind: 'orgId' }, label: 'name' },
+        },
+      },
+    },
+  },
+},
+```
+
+`from: 'mapDefaults'` resolves where it sits — `mapDefaults[<this path's map>].models[<this path's
+model>].sources[<field>]` — and takes that source's eligibility (tenancy included), label and
+axes; its own `where`, and child layers, only narrow it. Nothing is carried from the path above.
+A pointer whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws
+from `projectLens` / `toSourceQueries`. Across a bridge it is how a picker gets options at all: the
+model source compiles against the far map alone, with that map's own tenancy, where a path source
+offers nothing. `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
+rows; query it with `toSourceQueries` and `materializeSourceQuery`.
+
 ### Evaluating Across Bridges
 
 `path:` refs (used for value comparisons) walk via the same dotted-path mechanism as `field:`. Bridge keys (`'salesforce:Contact'`) are just plain object properties, so `path: 'salesforce:Contact.industry'` works in both `field:` (left side) and `path:` (right side) positions.

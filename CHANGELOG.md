@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.0 — a path source can offer its model's own source
+
+A source declared down a relation path offers the rows reachable from there (3.0 carries every
+grant above it). `{ from: 'mapDefaults' }` on a path source offers the model's own source instead:
+`mapDefaults[map].models[model].sources[field]` for the map and model the path reaches — every row
+the lens lets the model show, linked or not, under that source's tenancy, label and axes, its own
+`where` and child layers only narrowing it. It resolves where it sits, so it names nothing; one
+whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws when
+projected or compiled. Across a bridge it compiles against the far map alone. `ProjectedVisit`
+gains `sourceFrom`; `materializeSources` refuses a pointer (query it instead). First consumer:
+template's Tag and Segment references, which a rule names before anything links them.
+
 ## 3.0.1
 
 - **`exists` / `notExists` on a required to-one relation compile on Prisma.** A required relation

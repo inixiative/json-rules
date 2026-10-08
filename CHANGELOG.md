@@ -27,6 +27,11 @@ Fail-closed and doc findings from the 3.5.0 adversarial review.
 - **A count operator across a bridge says so**: "'crm:Event' crosses a bridge: count operators
   aren't supported across a bridge", not "is not a relation … Count operators require a relation
   field".
+- **`validateRule` requires a count operator's `condition` and `count` on every target.** It
+  required them only for `check`, so `{ field: 'posts', arrayOperator: 'atLeast', count: 2 }`
+  validated for `toPrisma` (and a lens source holding it passed `validateNarrowing`) while the
+  compile, like `check`, refuses it. Now `missing_condition` / `missing_count` on every target, so
+  `validateNarrowing` and `toSourceQueries` agree.
 - README: both source-query snippets destructure `query.prisma` and run `steps` through
   `executePrismaPlan` (the bridge snippet called `prisma[query.model].findMany(query.prisma)`,
   which Prisma rejects); a test runs that shape against the rails harness. `orderRecords` notes

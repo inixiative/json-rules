@@ -73,7 +73,7 @@ describe('validateRule', () => {
     expect(result.errors.map((error) => error.code)).toContain('missing_count');
   });
 
-  test('allows missing count for toPrisma count operators', () => {
+  test('rejects a missing count and condition for toPrisma count operators too', () => {
     const result = validateRule(
       {
         field: 'posts',
@@ -82,7 +82,10 @@ describe('validateRule', () => {
       { target: 'toPrisma' },
     );
 
-    expect(result).toEqual({ ok: true, errors: [] });
+    expect(result.errors.map((error) => error.code).sort()).toEqual([
+      'missing_condition',
+      'missing_count',
+    ]);
   });
 
   test('rejects prisma-incompatible operators', () => {

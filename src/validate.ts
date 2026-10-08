@@ -789,7 +789,8 @@ const validateArrayRule = (
       );
     refuseCount();
   } else if (shape === 'count') {
-    if (context.target !== 'toPrisma' && typeof rule.count !== 'number')
+    // Every rail requires both (check, and toPrisma's count step; toSql refuses the operator).
+    if (typeof rule.count !== 'number')
       pushIssue(context, `${path}.count`, 'missing_count', countRequired(operator).message);
     else if (
       rule.count !== undefined &&
@@ -804,7 +805,7 @@ const validateArrayRule = (
     if (hasCondition) {
       enterScope(context, depth, rule.field, true);
       validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
-    } else if (context.target === 'check')
+    } else
       pushIssue(
         context,
         `${path}.condition`,

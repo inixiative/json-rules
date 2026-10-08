@@ -66,6 +66,28 @@ const app: FieldMap = {
           fromFields: [],
           toFields: [],
         },
+        org: {
+          kind: 'object',
+          type: 'Org',
+          relationName: 'TagOrg',
+          fromFields: ['orgId'],
+          toFields: ['id'],
+        },
+      },
+    },
+    Org: {
+      fields: {
+        id: { kind: 'scalar', type: 'String' },
+        name: { kind: 'scalar', type: 'String' },
+        secret: { kind: 'scalar', type: 'Boolean' },
+        tags: {
+          kind: 'object',
+          type: 'Tag',
+          isList: true,
+          relationName: 'TagOrg',
+          fromFields: [],
+          toFields: [],
+        },
       },
     },
   },
@@ -283,4 +305,82 @@ describe('across a bridge', () => {
     const q = query(bridged(true));
     expect(accounts.filter((a) => check(q?.composedWhere ?? false, a) === true)).toEqual([]);
   });
+});
+
+describe('a pointer never widens what a parent layer gave', () => {
+  // The parent's path source is linked-only and carries its tenancy down; its model source has
+  // no tenancy of its own.
+  const parent: LensNarrowing = {
+    parent: base,
+    root: {
+      where: { field: 'orgId', operator: 'equals', bind: 'orgId' },
+      relations: {
+        tagAttachments: { where: live, relations: { tag: { sources: { id: true } } } },
+      },
+    },
+    mapDefaults: { app: { models: { Tag: { sources: { id: true } } } } },
+  };
+  const child: LensNarrowing = {
+    parent,
+    root: {
+      relations: {
+        tagAttachments: { relations: { tag: { sources: { id: { from: 'mapDefaults' } } } } },
+      },
+    },
+  };
+
+  test("a child's pointer still carries the grants of every layer above it", () => {
+    const given = offered(parent);
+    expect(given).toEqual(['T1', 'T4']);
+    expect(offered(child)).toEqual(given);
+    expect(offered(child)).not.toContain('T9');
+  });
+});
+
+test('a hidden pointer with no model source still throws when projected', () => {
+  const hidden: LensNarrowing = {
+    parent: base,
+    root: {
+      relations: {
+        tagAttachments: {
+          relations: { tag: { omits: ['name'], sources: { name: { from: 'mapDefaults' } } } },
+        },
+      },
+    },
+  };
+  expect(() => projectLens(hidden)).toThrow('mapDefaults.app.models.Tag.sources.name');
+});
+
+test("a child's narrowing of a relation below a pointer still guards the label it reads", () => {
+  const labelled: LensNarrowing = {
+    parent: base,
+    root: {
+      relations: {
+        tagAttachments: { relations: { tag: { sources: { id: { from: 'mapDefaults' } } } } },
+      },
+    },
+    mapDefaults: { app: { models: { Tag: { sources: { id: { label: 'org.name' } } } } } },
+  };
+  const child: LensNarrowing = {
+    parent: labelled,
+    root: {
+      relations: {
+        tagAttachments: {
+          relations: {
+            tag: {
+              relations: { org: { where: { field: 'secret', operator: 'equals', value: false } } },
+            },
+          },
+        },
+      },
+    },
+  };
+  const query = toSourceQueries(child).find((q) => q.path === PATH);
+  const rows: Row[] = [
+    { id: 'open', org: { name: 'o', secret: false } },
+    { id: 'hidden', org: { name: 'h', secret: true } },
+  ];
+  expect(
+    rows.filter((r) => check(query?.composedWhere ?? false, r) === true).map((r) => r.id),
+  ).toEqual(['open']);
 });

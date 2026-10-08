@@ -29,8 +29,9 @@ export type VisitEffect = {
   /** The chain index of the earliest layer that declared each source's label / axes (keyed by
    *  `declaredKey`): every layer after it that hides one of those columns drops it. */
   sourceDeclaredAt: Map<string, number>;
-  /** Fields whose path source points at the model's own source (`from: 'mapDefaults'`). */
-  sourcesFromMapDefaults: Set<string>;
+  /** Fields whose path source points at the model's own source (`from: 'mapDefaults'`), with
+   *  the chain index of the earliest layer that points: the layers above it still carry. */
+  sourcesFromMapDefaults: Map<string, number>;
   relations: Map<string, ModelNarrowing>;
 };
 
@@ -159,7 +160,8 @@ const accumulateInto = (
       }
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);
-      if (spec.from === 'mapDefaults') out.sourcesFromMapDefaults.add(field);
+      if (spec.from === 'mapDefaults' && !out.sourcesFromMapDefaults.has(field))
+        out.sourcesFromMapDefaults.set(field, layer);
     }
   }
 };
@@ -179,7 +181,7 @@ export const resolveVisit = (
     sourceLabels: new Map(),
     sourceGroupBys: new Map(),
     sourceDeclaredAt: new Map(),
-    sourcesFromMapDefaults: new Set(),
+    sourcesFromMapDefaults: new Map(),
     relations: new Map(),
   };
 

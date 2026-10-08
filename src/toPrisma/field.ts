@@ -33,7 +33,7 @@ import {
 import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
 import { prismaAnyNull } from './anyNull';
-import { andWhere, matchAll, notLeaf, orWhere, overFetch } from './logical';
+import { andWhere, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
 import { buildCondition } from './recurse';
 import type { PrismaWhere, ToPrismaOptions } from './types';
@@ -171,17 +171,13 @@ export const emptinessWhere = (
 const buildRelationRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere => {
   if (!isExistenceTest(rule)) throw relationNotValue(rule.field);
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
-  // check() answers which way it asks: for a missing relation, or a present one.
-  const asksMissing =
-    check({ ...rule, field: 'relation' } as Condition, { relation: null }) === true;
-  const hops = hopArms(rule.field, options);
-  // A required relation is there whenever its row is: missing only through an optional hop above
-  // it, and Prisma takes no `null` on its filter.
-  if (fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)?.isRequired) {
-    if (asksMissing) return orWhere(hops);
-    return hops.length ? notLeaf(orWhere(hops)) : matchAll();
-  }
-  return asksMissing ? orWhere([at({ is: null }), ...hops]) : at({ isNot: null });
+  // check() answers which way it asks: for a missing relation, or a present one. `is: {}` holds
+  // where the relation (and every hop above it) is there, required or not; Prisma takes no
+  // `null` on a required relation's filter.
+  const present = at({ is: {} });
+  return check({ ...rule, field: 'relation' } as Condition, { relation: null }) === true
+    ? notLeaf(present)
+    : present;
 };
 
 export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere => {

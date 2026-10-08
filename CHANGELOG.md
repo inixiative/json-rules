@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.1.1 — a pointer never widens what a parent layer gave
+
+- **Security:** a child layer could turn a parent's path source into `from: 'mapDefaults'` and drop
+  the grants the parent carried down the path — its tenancy included, so another tenant's rows
+  showed. A pointer now drops the path's carried grants only from the layer that points on; the
+  layers before it still carry theirs, so a child's pointer can only narrow what it was given.
+- A pointer folds a child's narrowing of the relations below its path (a dotted label through a
+  narrowed `org` is guarded, as a path source's is).
+- An undeclared pointer throws when projected even where a layer hides its field, as
+  `validateNarrowing` reports it.
+- A relation's existence compiles to `{ is: {} }` (present) / `NOT { is: {} }` (missing), required
+  or not: no `null` filter for Prisma to reject on a required relation, and no requiredness to know
+  — a hand-written map without `isRequired` gets it right too. Replaces 3.0.1's shortcut.
+
 ## 3.1.0 — a path source can offer its model's own source
 
 A source declared down a relation path offers the rows reachable from there (3.0 carries every

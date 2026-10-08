@@ -3,8 +3,8 @@ import type { Condition } from '../index';
 import { check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
-// The path reader reads what a caller's data holds — bracket indices, class getters, a string's
-// length — and never Object.prototype; and every zoned date string reads as its instant.
+// The path reader reads a caller's data by own property — bracket indices, a string's length —
+// and never anything inherited (a class getter, Object.prototype); and every zoned date string reads as its instant.
 
 const rule = (r: object): Condition => r as never;
 
@@ -17,15 +17,15 @@ describe('path reads', () => {
     expect(getWhere(toPrisma(r, { context }))).toEqual({ n: { equals: 2 } });
   });
 
-  test('a getter on a class instance in context', () => {
+  test('a getter on a class instance in context reads nothing', () => {
     class User {
       get userId() {
         return 'u1';
       }
     }
     const r = rule({ field: 'owner', operator: 'equals', path: 'user.userId' });
-    expect(check(r, { owner: 'u1' }, { context: { user: new User() } })).toBe(true);
-    expect(toSql(r, { context: { user: new User() } }).params).toEqual(['u1']);
+    expect(check(r, { owner: 'u1' }, { context: { user: new User() } })).not.toBe(true);
+    expect(toSql(r, { context: { user: new User() } }).params).toEqual([]);
   });
 
   test('a bracket index and a string length as fields', () => {

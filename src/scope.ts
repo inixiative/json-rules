@@ -35,20 +35,15 @@ const SEGMENT = /\[(\d+)\]|\[(["'])(.*?)\2\]|([^.[\]]+)/g;
 const segments = (path: string): string[] =>
   path === '' ? [''] : [...path.matchAll(SEGMENT)].map((m) => m[1] ?? m[3] ?? m[4]);
 
-// One step of a path read: an own property, or an inherited one (a class getter, a string's
-// `length`) unless Object.prototype names it — `constructor`, `toString`, `__proto__` never
-// resolve — and never a method.
+// One step of a path read: an own property only (an array's index or `length`, a string's
+// `length`) — never an inherited one (a class getter, a method, `constructor`, `toString`).
 const step = (at: unknown, key: string): unknown => {
   if (at === null || at === undefined) return undefined;
   const boxed = Object(at) as Record<string, unknown>;
-  if (Object.hasOwn(boxed, key)) return boxed[key];
-  if (key in Object.prototype || !(key in boxed)) return undefined;
-  const value = boxed[key];
-  return typeof value === 'function' ? undefined : value;
+  return Object.hasOwn(boxed, key) ? boxed[key] : undefined;
 };
 
-/** A path read that never reaches Object.prototype: own properties, inherited getters and data,
- *  bracket indices. */
+/** A path read of own properties only, bracket indices included: nothing inherited resolves. */
 export const readOwnPath = (root: unknown, path: string): unknown =>
   segments(path).reduce<unknown>(step, root);
 

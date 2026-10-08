@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/json-rules",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -20,7 +20,7 @@
     "check:catalog": "bun test test/operatorCatalog.integrity.test.ts",
     "generate:rails": "cd test/rails && prisma generate && prisma migrate diff --from-empty --to-schema schema.prisma --script -o generated/schema.sql",
     "check": "bun run generate:rails && bun run typecheck && bun run lint && bun run test",
-    "prepare": "lefthook install && bun run generate:rails",
+    "prepare": "if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi && bun run generate:rails",
     "prepublishOnly": "bun run check && bun run build"
   },
   "keywords": [
@@ -76,9 +76,14 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "packageManager": "bun@1.4.2"

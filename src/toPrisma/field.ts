@@ -176,8 +176,11 @@ const buildRelationRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere =
     check({ ...rule, field: 'relation' } as Condition, { relation: null }) === true;
   const hops = hopArms(rule.field, options);
   // A required relation is there whenever its row is: missing only through an optional hop above
-  // it, and Prisma takes no `null` on its filter.
-  if (fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)?.isRequired) {
+  // it, and Prisma takes no `null` on its filter. Every hop above must say whether it's required,
+  // or a hop of unknown requiredness could be the missing one.
+  const walk = walkWith(rule.field, options?.map as FieldMap | undefined, options?.model);
+  const known = walk?.hops.every((hop) => hop.entry.isList || hop.entry.isRequired !== undefined);
+  if (known && walk?.kind === 'direct' && walk.entry.isRequired) {
     if (asksMissing) return orWhere(hops);
     return hops.length ? notLeaf(orWhere(hops)) : matchAll();
   }

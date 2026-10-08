@@ -1222,17 +1222,17 @@ rows; query it with `toSourceQueries` and `materializeSourceQuery`.
 import { check, executePrismaPlan, narrowRule, projectRows, toLensSelect, toPrisma } from '@inixiative/json-rules';
 
 const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
-const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now }) });
+const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now, rules: [rule] }) });
 const shown = projectRows(narrowing, rows, { now });   // what a viewer may see
 // To re-test the grants in memory later — never to return to a viewer:
-const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, now });
+const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, rules: [rule], now });
 const holds = forRecheck.filter((row) => check(narrowRule(rule, narrowing), row, { now }) === true);
 ```
 
 | Function | Purpose |
 | --- | --- |
-| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each projected path's visible columns, the relations its declared paths open (a visible relation off them brings its visible columns only), and every column a `where` on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so related rows come pre-narrowed. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its grant hides. A relation that shows no column is fetched whole (Prisma can't select nothing). Bridges are skipped. A relation grant that needs a counting step throws. `options` is the clock and context for compiling the grants. The root's own grants are the query's `where`: `toPrisma(rule, { lens })`. |
-| `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns and relations are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepGrantColumns: true` keeps the columns those `where`s read, even hidden ones, and a hidden to-one row as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the grants as the database does; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
+| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each projected path's visible columns, the relations its declared paths open (a visible relation off them brings its visible columns only), and every column a `where` on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so related rows come pre-narrowed — unless a grant reads that list: a grant reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its grant hides. A relation that shows no column is fetched whole (Prisma can't select nothing). Bridges are skipped. A relation grant that needs a counting step throws. `rules` are the rules the rows will be re-checked with: each relation they read past the declared paths opens as a declared one (its grants applied, its visible columns kept). The rest of `options` is the clock and context for compiling the grants. The root's own grants are the query's `where`: `toPrisma(rule, { lens })`. |
+| `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns and relations are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepGrantColumns: true` keeps the columns those `where`s read, even hidden ones, and a hidden to-one row as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the grants as the database does — for a rule passed in `rules` to both calls, or one that reads only the declared paths; that output carries hidden values, so never return it to a viewer. `rules` is as `toLensSelect`'s. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
 
 ### Evaluating Across Bridges
 

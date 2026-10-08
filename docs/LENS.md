@@ -679,18 +679,21 @@ const plan = toPrisma(anyPublishedRule, { lens: narrowing });
 
 `toLensSelect(narrowing, options?)` gives the `findMany` `select` for the rows a lens shows: each
 projected path's visible columns, the relations its declared paths open, and every column a
-`where` on the way reads. A to-many relation carries its grants as its `where`. `projectRows(
+`where` on the way reads. A to-many relation carries its grants as its `where`, unless a grant
+reads that list — a grant reads a list whole, as the database does. `rules` (on both calls) opens
+each relation the rules you'll re-check read past the declared paths, grants applied. `projectRows(
 narrowing, rows, options?)` cuts fetched rows to what the lens shows: hidden columns and relations
 removed, a row a `where` hides dropped (a to-one row becomes `null`). With
 `keepGrantColumns: true` it keeps the columns those `where`s read, and a hidden to-one row as
 those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the grants as the
-database does; that output carries hidden values and is never for a viewer. See the README,
+database does, for a rule passed in `rules` (or one reading only the declared paths); that output carries hidden values and is never for a viewer. See the README,
 "Fetching Under a Lens".
 
 ```ts
 const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
-const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now }) });
+const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now, rules: [rule] }) });
 const shown = projectRows(narrowing, rows, { now });
+const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, rules: [rule], now });
 ```
 
 ### `projectLens(lens)` — path-keyed projection

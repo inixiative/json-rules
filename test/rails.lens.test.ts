@@ -3,6 +3,7 @@ import {
   type Condition,
   check,
   createLens,
+  executePrismaPlan,
   type LensNarrowing,
   narrowRule,
   projectRows,
@@ -120,5 +121,85 @@ describe("toLensSelect: a to-many relation's grants as its where agree with chec
   test('without keepGrantColumns a hidden to-one row is null', async () => {
     const [, second] = projectRows(lens, await fetchUnderLens());
     expect(second.org).toBeNull();
+  });
+});
+
+describe('fetch, project, re-check: the documented pipeline answers as the database does', () => {
+  const fetchUnder = async (lens: LensNarrowing, rules: Condition[] = []) => {
+    const where = await executePrismaPlan(toPrisma(true, { lens }), rails.prisma as never);
+    const rows = (await rails.prisma.user.findMany({
+      where: where as never,
+      select: toLensSelect(lens, { rules }).select as never,
+      orderBy: { id: 'asc' },
+    })) as Record<string, unknown>[];
+    return projectRows(lens, rows, { keepGrantColumns: true, rules });
+  };
+  const recheck = async (lens: LensNarrowing, rule: Condition) =>
+    (await fetchUnder(lens, [rule]))
+      .filter((row) => check(narrowRule(rule, lens), row) === true)
+      .map((row) => row.id);
+  const database = async (lens: LensNarrowing, rule: Condition) =>
+    (await rails.run(rule, { lens })).prisma as unknown[];
+
+  test("a to-one grant reading a narrowed list reads it whole: org 10's hidden user hides it", async () => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: {
+        picks: ['id', 'org'],
+        relations: {
+          org: {
+            picks: ['id', 'name', 'users'],
+            where: {
+              field: 'users',
+              arrayOperator: 'none',
+              condition: { field: 'age', operator: 'greaterThan', value: 20 },
+            },
+            relations: {
+              users: { picks: ['id'], where: { field: 'age', operator: 'lessThan', value: 20 } },
+            },
+          },
+        },
+      },
+    };
+    const shown = projectRows(lens, (await fetchUnder(lens)) as never);
+    expect(shown.find((row) => row.id === 1)?.org).toBeNull();
+    expect(await fetchUnder(lens)).toEqual(
+      projectRows(lens, rails.rows as unknown as Record<string, unknown>[], {
+        keepGrantColumns: true,
+      }),
+    );
+  });
+
+  test('a root grant reading a narrowed list keeps the row the database keeps', async () => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: {
+        picks: ['id', 'posts'],
+        where: {
+          field: 'posts',
+          arrayOperator: 'any',
+          condition: { field: 'title', operator: 'equals', value: 'later' },
+        },
+        relations: {
+          posts: { picks: ['id'], where: { field: 'views', operator: 'greaterThan', value: 5 } },
+        },
+      },
+    };
+    expect((await fetchUnder(lens)).map((row) => row.id)).toEqual([1]);
+  });
+
+  test.each<[string, Condition]>([
+    ['equals', { field: 'org.parent.name', operator: 'equals', value: 'Acme' }],
+    ['notEquals', { field: 'org.parent.name', operator: 'notEquals', value: 'Acme' }],
+    ['notExists', { field: 'org.parent', operator: 'notExists' }],
+  ])('a rule reading past the declared paths (%s) re-checks as the database does', async (_, rule) => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: { picks: ['id', 'org'] },
+      mapDefaults: {
+        prisma: { models: { Org: { where: { field: 'seats', operator: 'exists' } } } },
+      },
+    };
+    expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
   });
 });

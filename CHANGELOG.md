@@ -17,7 +17,9 @@ Additive. Each function replaces code template wrote around the lens.
   shows. It selects each projected path's visible columns, the relations its declared paths open
   (a visible relation off them brings its visible columns), and every column a `where` on the way
   reads. A to-many relation carries its visit's grants, compiled, as its `where`, so related rows
-  come pre-narrowed. A to-one relation can't take a `where` in Prisma; `projectRows` drops the
+  come pre-narrowed, unless a grant reads that list (a grant reads it whole, as the database does).
+  `rules` opens each relation the given rules read past the declared paths as a declared one, so a
+  re-check of those rules has every row and column it reads, grants applied. A to-one relation can't take a `where` in Prisma; `projectRows` drops the
   rows its grant hides. A relation that shows no column is fetched whole; bridges are skipped. A
   relation grant that needs a counting step throws. `options` carries the clock (and context) for
   the grants' compile. Replaces template's `includeFromLens`.
@@ -27,7 +29,8 @@ Additive. Each function replaces code template wrote around the lens.
   `keepGrantColumns` keeps the exact columns those `where`s read, and a hidden to-one row as those
   columns alone instead of `null`, so a later `check(narrowRule(rule, lens), row)` re-tests the
   grants as the database does (a negation or `notExists` through it doesn't admit it). That output
-  carries hidden values — for re-checks, never for a viewer. Replaces template's `prune`; with
+  carries hidden values — for re-checks, never for a viewer. It takes `toLensSelect`'s `rules`, for
+  the rules it will be re-checked with. Replaces template's `prune`; with
   `toLensSelect` and `toPrisma(true, { lens })`, `fetchLens` becomes three calls.
 
 - **`exists` / `notExists` on a required column compile on Prisma.** They read `{ not: null }` /

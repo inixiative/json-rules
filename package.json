@@ -45,7 +45,7 @@
     "@biomejs/biome": "2.5.2",
     "@electric-sql/pglite": "^0.4.1",
     "@electric-sql/pglite-socket": "0.1.1",
-    "@inixiative/config": "^0.5.63",
+    "@inixiative/config": "^0.5.64",
     "@inixiative/prisma-map": "^0.3.0",
     "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "7.8.0",

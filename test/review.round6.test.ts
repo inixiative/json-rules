@@ -17,6 +17,7 @@ import {
   validateRuleInLens,
   walkLensPath,
 } from '../index';
+import { mulberry32 } from './fuzz/mulberry32';
 import { map } from './rails/harness';
 
 // The adversarial review of 3.4 (round 6): each finding's repro, failing first.
@@ -228,11 +229,7 @@ describe('R6-1/R6-3: one check decides a later grant, at the visits it applies t
       schema.models[n] = { fields };
     }
     const base = createLens({ maps: { app: schema }, mapName: 'app', model: 'A' });
-    let seed = 11;
-    const rnd = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
+    const rnd = mulberry32(11);
     const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
     type Node = {
       picks?: string[];
@@ -412,7 +409,8 @@ describe('R6-6: the gate refuses what narrowRule cannot re-root', () => {
             where: rule({
               field: 'users',
               arrayOperator: 'all',
-              condition: { field: 'age', operator: 'exists' },
+              // `$$.seats` reads the Org row: re-rooted under `org`, it would read the User.
+              condition: { field: 'age', operator: 'greaterThan', path: '$$.seats' },
             }),
           },
         },

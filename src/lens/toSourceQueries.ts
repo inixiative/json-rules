@@ -1,5 +1,3 @@
-import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import { conditionTouchesBridge } from '../fieldMap/walk';
 import { modelOf, own } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere, WhereStep } from '../toPrisma/types.ts';
@@ -9,6 +7,7 @@ import { builderState } from '../toSql/index.ts';
 import { resolveFieldSql } from '../toSql/join.ts';
 import type { Condition, DateConfig } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
+import { compileOrRefuse } from './prismaRefusal.ts';
 import { sourcePlans } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -85,18 +84,22 @@ const compileOne = (
   groupBy: string[] | undefined,
   where: Condition,
   options: SourceQueryOptions,
+  bridged: string | undefined,
 ): { prisma: SourcePrismaQuery | null; sql: SourceSqlQuery } => {
-  // A bridge predicate compiles to an over-fetch (`{}` / TRUE), which an option list can't take.
-  if (conditionTouchesBridge(where, resolveFieldMap(lens, mapName, 'toPrisma'), model))
+  // A bridge predicate compiles to an over-fetch (`{}` / TRUE), which an option list can't take,
+  // and the fetch selects no bridge: the caller supplies the rows.
+  if (bridged !== undefined)
     return {
       prisma: null,
       sql: {
         sql: null,
         params: [],
-        error: `source '${field}' at '${path}' crosses a bridge, so no database query offers its options; materialize it with materializeSources over fetched rows`,
+        error: `source '${field}' at '${path}' reads '${bridged}' across a bridge: no database query holds both sides, and toLensSelect fetches no bridge — pass materializeSources the ${model} rows at '${path}', each holding the bridged side inline under its bridge field`,
       },
     };
-  const plan = toPrisma(where, { ...options, map: lens, mapName, model });
+  const plan = compileOrRefuse(`source '${field}' at '${path}'`, () =>
+    toPrisma(where, { ...options, map: lens, mapName, model }),
+  );
   // A plan ends on its where step.
   const prismaWhere = (plan.steps.at(-1) as WhereStep).where;
   const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
@@ -166,29 +169,32 @@ export const toSourceQueries = (
   options: SourceQueryOptions = {},
 ): SourceQuery[] => {
   const { lens } = resolvePolicy(lensOrNarrowing);
-  return sourcePlans(lensOrNarrowing).map(({ path, visit, field, label, groupBy, where }) => {
-    const composedWhere = where;
-    const { prisma, sql } = compileOne(
-      lens,
-      path,
-      visit.mapName,
-      visit.model,
-      field,
-      label,
-      groupBy,
-      composedWhere,
-      options,
-    );
-    return {
-      path,
-      mapName: visit.mapName,
-      model: visit.model,
-      field,
-      ...(label !== undefined ? { label } : {}),
-      ...(groupBy !== undefined ? { groupBy } : {}),
-      composedWhere,
-      prisma,
-      sql,
-    };
-  });
+  return sourcePlans(lensOrNarrowing).map(
+    ({ path, visit, field, label, groupBy, where, bridged }) => {
+      const composedWhere = where;
+      const { prisma, sql } = compileOne(
+        lens,
+        path,
+        visit.mapName,
+        visit.model,
+        field,
+        label,
+        groupBy,
+        composedWhere,
+        options,
+        bridged,
+      );
+      return {
+        path,
+        mapName: visit.mapName,
+        model: visit.model,
+        field,
+        ...(label !== undefined ? { label } : {}),
+        ...(groupBy !== undefined ? { groupBy } : {}),
+        composedWhere,
+        prisma,
+        sql,
+      };
+    },
+  );
 };

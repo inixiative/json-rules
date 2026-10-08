@@ -1,4 +1,6 @@
+import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { SourceOption } from '../fieldMap/types';
+import { hitsBridge } from '../fieldMap/walk';
 import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
@@ -9,6 +11,7 @@ import { LensRefusal, type Policy, relationHops, resolvePolicy, resolveVisit } f
 import { prismaRefusal } from './prismaRefusal.ts';
 import type { PathProjection, ProjectedVisit } from './projectPaths.ts';
 import { projectPathsWith } from './projectPaths.ts';
+import { readPaths } from './readPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
@@ -174,9 +177,15 @@ export type SourcePlan = {
   from?: 'mapDefaults';
   label?: string;
   groupBy?: string[];
-  /** What a row must meet to offer its value: the visit's own grants and the eligibility — every
-   *  materializer, in memory or in the database, evaluates this one condition. */
+  /** What a row of the source's model must meet to offer its value: the visit's own grants and
+   *  the eligibility, the path above carried down — what the option query compiles. */
   where: Condition;
+  /** The same at the visit itself, for a row reached down the path: a fetched tree supplies the
+   *  path and the grants above, so this leaves them out — what materializeSources checks. */
+  rowWhere: Condition;
+  /** The first path the source reads across a bridge (its where, label or an axis), if any: no
+   *  database holds both sides, so only rows holding them both can answer it. */
+  bridged?: string;
 };
 
 /**
@@ -248,9 +257,12 @@ const ancestorGrants = (
             : present,
       );
     } catch (error) {
+      // A link or grant the path can't carry is refused, never an empty list.
       if (!(error instanceof LensRefusal)) throw error;
-      done(false);
-      return [false];
+      throw new LensRefusal(
+        `source at '${relPath.join('.')}': the grants above can't be carried down to it — ${error.message}`,
+        error.code,
+      );
     }
   }
   return carried === null ? [] : [carried];
@@ -318,6 +330,21 @@ export const sourcePlansWith = (
         ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
       ];
       const where = allOf([...visit.whereClauses, ...eligibility]);
+      const rowWhere = allOf([
+        ...visit.whereClauses,
+        ...wheres,
+        ...guards,
+        ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
+      ]);
+      // Only a lens with bridges can read across one.
+      const fieldMap = policy.lens.bridges?.length
+        ? resolveFieldMap(policy.lens, at.mapName, 'toPrisma')
+        : undefined;
+      const bridged = fieldMap
+        ? [...readPaths(where), ...(label === undefined ? [] : [label]), ...(groupBy ?? [])].find(
+            (read) => hitsBridge(read, fieldMap, at.modelName),
+          )
+        : undefined;
       // The option query compiles it: a shape it has no form for is refused here, so validation
       // and every materializer refuse it alike.
       const refusal = prismaRefusal(
@@ -336,6 +363,8 @@ export const sourcePlansWith = (
         ...(label !== undefined && { label }),
         ...(groupBy !== undefined && { groupBy }),
         where,
+        rowWhere,
+        ...(bridged !== undefined && { bridged }),
       };
     }),
   );

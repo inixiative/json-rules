@@ -14,6 +14,7 @@ import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import {
+  grantRefs,
   LensRefusal,
   type RelationHop,
   relationHops,
@@ -69,10 +70,11 @@ const underHopGrants = (node: Condition, hops: HopGrant[]): Condition => {
 
 // Re-roots a related-model `where` grant so its field refs resolve from the current
 // anchor through the relation path (e.g. a User grant `tenantId` reached via `author`
-// becomes `author.tenantId`). Fails closed on shapes that can't be re-rooted
-// unambiguously — a `path` ref (root/current-element semantics don't survive re-rooting)
-// or a nested array/aggregate condition (row-scoped to a different anchor) — rather than
-// silently emitting a wrong or unenforced grant.
+// becomes `author.tenantId`, and `users any …` on an Org becomes `org.users any …` — a relation
+// node's condition reads its elements, so only its field moves). Fails closed on shapes that
+// can't be re-rooted unambiguously — a `path` ref (root/current-element semantics don't survive
+// re-rooting), or a ref inside a relation node that climbs to the row being re-rooted — rather
+// than silently emitting a wrong or unenforced grant.
 export const prefixConditionFields = (cond: Condition, prefix: string): Condition =>
   mapCondition(cond, {
     rewrite: (node) => {
@@ -97,13 +99,14 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
           'unsupported_grant',
         );
       }
-      if (node.condition !== undefined) {
-        throw new LensRefusal(
-          `narrowRule: cannot re-root a relation grant with a nested array/aggregate condition on ` +
-            `'${node.field}' under '${prefix}'. Anchor such grants at the relation's own model.`,
-          'unsupported_grant',
-        );
-      }
+      if (isRelationNode(node))
+        for (const inner of [node.condition, node.filter] as (Condition | undefined)[])
+          if (inner !== undefined && grantRefs(inner).escaping !== null)
+            throw new LensRefusal(
+              `narrowRule: cannot re-root a relation grant on '${node.field}' under '${prefix}': ` +
+                `'${grantRefs(inner).escaping}' inside it reads the row being re-rooted. Anchor such grants at the relation's own model.`,
+              'unsupported_grant',
+            );
       return { ...node, field: `${prefix}.${node.field}` };
     },
     // A relation node's `filter` is relative to its elements, not to the anchor.

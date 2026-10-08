@@ -21,6 +21,7 @@ import {
   unknownOperator,
   windowUnsupported,
 } from './errors';
+import { isJsonEntry, isRelationEntry } from './fieldMap/entry';
 import { resolveFieldMap } from './fieldMap/resolveFieldMap';
 import { comparesText } from './fieldMap/shape';
 import type { FieldMap, FieldMapSet } from './fieldMap/types';
@@ -44,6 +45,7 @@ import {
   PERIOD_UNITS,
   RANGE_OPERATORS,
   type RuleTarget,
+  SET_OPERATORS,
   type ValueShape,
   WINDOW_OPERATORS,
 } from './operatorCatalog';
@@ -481,23 +483,40 @@ const validateFieldRule = (
       );
   }
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
-  // Prisma's list filters have no case-insensitive mode.
-  if (
-    context.target === 'toPrisma' &&
-    context.map &&
-    fieldEntry(rule.field as string, context.map, context.scopeModels[depth - 1])?.isList &&
-    resolveCaseInsensitive(rule.caseInsensitive as boolean | undefined) &&
-    comparesText('text', rule.value)
-  )
-    pushIssue(
-      context,
-      `${path}.caseInsensitive`,
-      'unsupported_prisma_operator',
-      noCompiledForm('toPrisma', `A case-insensitive comparison on the list '${rule.field}'`)
-        .message,
-    );
+  validatePrismaLiteral(rule, operator, path, context, depth);
 
   validateValueShape(shape, rule.value, operator, `${path}.value`, context);
+};
+
+// What toPrisma reads off a literal against the column it names, as its compile does: a list
+// column's filters take no null element and no case-insensitive mode (a set of members excepted,
+// which compiles to membership), and a case-insensitive comparison against Json has no exact form.
+const validatePrismaLiteral = (
+  rule: Record<string, unknown>,
+  operator: Operator,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  if (context.target !== 'toPrisma' || !context.map || typeof rule.field !== 'string') return;
+  const entry = fieldEntry(rule.field, context.map, context.scopeModels[depth - 1]);
+  if (!entry) return;
+  const value = rule.value;
+  const insensitive = resolveCaseInsensitive(rule.caseInsensitive as boolean | undefined);
+  const members = SET_OPERATORS.includes(operator) && Array.isArray(value);
+  const refuse = (what: string) =>
+    pushIssue(
+      context,
+      `${path}.value`,
+      'unsupported_prisma_operator',
+      noCompiledForm('toPrisma', what).message,
+    );
+  if (entry.isList && !members && Array.isArray(value) && value.includes(null))
+    refuse(`A list holding null in '${rule.field}'`);
+  else if (entry.isList && !members && insensitive && comparesText('text', value))
+    refuse(`A case-insensitive comparison on the list '${rule.field}'`);
+  else if (isJsonEntry(entry) && insensitive)
+    refuse(`A case-insensitive comparison on the Json column '${rule.field}'`);
 };
 
 const validateValueShape = (
@@ -712,6 +731,19 @@ const validateArrayRule = (
   const operator = rule.arrayOperator as ArrayOperator;
   if (ARRAY_COUNT_OPERATORS.includes(operator))
     validateGroupStep(rule, path, context, depth, 'Count operators');
+  // An array a column holds (a scalar list, a Json array) has no Prisma filter over its elements:
+  // only its emptiness compiles.
+  const held =
+    context.target === 'toPrisma' && context.map && typeof rule.field === 'string'
+      ? fieldEntry(rule.field, context.map, context.scopeModels[depth - 1])
+      : undefined;
+  if (held && !isRelationEntry(held) && operator !== 'empty' && operator !== 'notEmpty')
+    pushIssue(
+      context,
+      `${path}.arrayOperator`,
+      'unsupported_prisma_array_operator',
+      noCompiledForm('toPrisma', `'${operator}' over the array column '${rule.field}'`).message,
+    );
 
   if (!isOperatorSupportedForTarget(operator, 'array', context.target)) {
     pushIssue(

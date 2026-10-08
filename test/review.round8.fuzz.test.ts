@@ -402,6 +402,7 @@ test.each(
       mismatches.push(`${tag} refused by validation alone: ${errors[0].message}`);
     return ok;
   };
+  const distinct = new Set<string>();
   while (later < 100) {
     const { schema, maps } = genSchema();
     const base = createLens({ maps, mapName: 'app', model: 'M0' });
@@ -419,6 +420,7 @@ test.each(
     }
     const row = synthRow(schema, 'app', 'M0', 4);
     first++;
+    distinct.add(JSON.stringify([maps, l1.root, l1.mapDefaults]));
     if (!agree(schema, l1, row, `L1#${first}`)) continue;
     for (let k = 0; k < 6; k++) {
       const l2 = laterLayer(schema, l1);
@@ -432,4 +434,6 @@ test.each(
   expect(mismatches).toEqual([]);
   expect(leaks).toEqual([]);
   expect(later).toBeGreaterThanOrEqual(100);
+  // Every seed walks its own stream: the first narrowings are all different.
+  expect(distinct.size).toBeGreaterThan(0.95 * first);
 }, 120_000);

@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import {
   type Condition,
+  check,
   createLens,
   executePrismaPlan,
   type LensNarrowing,
+  lensVisit,
   materializeSourceQuery,
   materializeSources,
   projectRows,
@@ -13,13 +15,16 @@ import {
   toSourceQueries,
   validateNarrowing,
 } from '../index';
+import { mulberry32 } from './fuzz/mulberry32';
 import { map, openRails } from './rails/harness';
 
 // Round 9: a lens's source options are one set on every rail — the Prisma and SQL option queries,
 // and materializeSources over what the library itself fetches (toLensSelect → findMany, as
 // fetched and as projectRows keeps it for a re-check) — over random lenses with grants on hidden
 // to-one and list rows, NULL columns, roots that show few columns, nested sources, labels, axes
-// and pointers.
+// and pointers. An independent oracle — the seeded rows walked down each path by hand, each
+// level's grant checked on its own row — guards the plan itself (its path link, the grants it
+// carries down) for every source whose where reads only its own row's columns.
 
 const SEED = `
 INSERT INTO orgs (id, name, plan, seats, "parentId") VALUES (13, 'Zed', 'pro', NULL, 10), (14, 'Q', NULL, 3, NULL), (15, 'R', 'free', 9, 14), (16, 'Acme', 'pro', 2, 15);
@@ -28,8 +33,19 @@ INSERT INTO posts (id, "authorId", views, title) VALUES (104, 6, NULL, NULL), (1
 `;
 
 let rails: Awaited<ReturnType<typeof openRails>>;
+// Every user, with every relation loaded six levels down: what the oracle walks.
+let deep: Record<string, unknown>[];
+const userTree = (d: number): object | boolean =>
+  d === 0 ? true : { include: { org: orgTree(d - 1), posts: postTree(d - 1) } };
+const orgTree = (d: number): object | boolean =>
+  d === 0
+    ? true
+    : { include: { parent: orgTree(d - 1), children: orgTree(d - 1), users: userTree(d - 1) } };
+const postTree = (d: number): object | boolean =>
+  d === 0 ? true : { include: { author: userTree(d - 1) } };
 beforeAll(async () => {
   rails = await openRails(SEED);
+  deep = (await rails.prisma.user.findMany(userTree(6) as never)) as Record<string, unknown>[];
 });
 afterAll(async () => {
   await rails.close();
@@ -37,11 +53,7 @@ afterAll(async () => {
 
 const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
 
-let seed = 1;
-const rnd = (): number => {
-  seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-  return seed / 0x7fffffff;
-};
+let rnd = mulberry32(1);
 const pick = <T>(items: readonly T[]): T => items[Math.floor(rnd() * items.length)];
 
 const REL: Record<string, [string, string, boolean][]> = {
@@ -192,16 +204,58 @@ const onSql = async (query: SourceQuery) =>
         { rowShape: 'sql' },
       ).options;
 
+// The oracle: the rows a path reaches, each level's grant met on its own row, then the source's
+// own where — never the plan's condition. Null where it doesn't apply: a pointer, a dotted label or
+// an axis (their joins carry guards), or a where that reads past its own row.
+const oracle = (lens: LensNarrowing, query: SourceQuery): string | null => {
+  const relPath = query.path.split('.').slice(1);
+  const visit = lensVisit(lens, relPath.join('.'));
+  const clauses = visit?.sources[query.field];
+  if (!visit || !clauses || Object.hasOwn(visit.sourceFrom, query.field)) return null;
+  if (query.label?.includes('.') || query.groupBy) return null;
+  const relations = new Set(Object.values(REL).flatMap((rels) => rels.map(([field]) => field)));
+  const reads = clauses.flatMap((c) =>
+    [...JSON.stringify(c).matchAll(/"field":"([^"]*)"/g)].map((m) => m[1]),
+  );
+  if (reads.some((read) => read.includes('.') || relations.has(read))) return null;
+  const grantsAt = (depth: number): Condition =>
+    ({
+      all: lensVisit(lens, relPath.slice(0, depth).join('.'))?.whereClauses ?? [false],
+    }) as Condition;
+  let rows = deep.filter((row) => check(grantsAt(0), row) === true);
+  for (const [depth, segment] of relPath.entries())
+    rows = rows
+      .flatMap((row) => {
+        const next = row[segment];
+        return Array.isArray(next) ? next : next ? [next] : [];
+      })
+      .filter((row) => check(grantsAt(depth + 1), row) === true) as Record<string, unknown>[];
+  const own = { all: [...visit.whereClauses, ...clauses] } as Condition;
+  const found = rows
+    .filter((row) => check(own, row) === true)
+    .map((row) => row[query.field])
+    .filter((value) => value !== null && value !== undefined)
+    .map(String);
+  return JSON.stringify([...new Set(found)].sort());
+};
+
 let total = 0;
+let oracled = 0;
+const lenses = new Set<string>();
+let generated = 0;
 
 test.each(
   Array.from({ length: 24 }, (_, i) => i + 1),
 )('seed %i: every rail offers one set of options', async (start) => {
-  seed = start;
+  rnd = mulberry32(start);
   const mismatches: string[] = [];
   let compared = 0;
   for (let i = 0; i < 150; i++) {
     const lens = randLens();
+    generated++;
+    lenses.add(
+      JSON.stringify(lens, (key, value) => (key === 'parent' && value === base ? 'base' : value)),
+    );
     if (!validateNarrowing(lens).ok) continue;
     const queries = toSourceQueries(lens);
     // The library's own fetch, as the documented pipeline runs it.
@@ -233,6 +287,12 @@ test.each(
       const tag = `#${i} ${query.path}.${query.field} ${JSON.stringify(query.composedWhere)}`;
       if (sql !== null && JSON.stringify(sql) !== want)
         mismatches.push(`sql ${tag}: ${JSON.stringify(sql)} vs ${want}`);
+      const truth = oracle(lens, query);
+      const offered = JSON.stringify(prisma.map((o) => o.value).sort());
+      if (truth !== null) {
+        oracled++;
+        if (truth !== offered) mismatches.push(`oracle ${tag}: ${offered} vs truth ${truth}`);
+      }
       if (!fromFetched || !fromKept) continue;
       const at = (all: typeof fromFetched) =>
         JSON.stringify(all.find((v) => v.path === query.path && v.field === query.field)?.options);
@@ -245,6 +305,8 @@ test.each(
   total += compared;
 }, 60_000);
 
-test('the seeds compared enough option queries', () => {
+test('the seeds compared enough option queries, over distinct lenses', () => {
   expect(total).toBeGreaterThan(400);
+  expect(oracled).toBeGreaterThan(200);
+  expect(lenses.size).toBeGreaterThan(0.95 * generated);
 });

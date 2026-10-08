@@ -179,6 +179,11 @@ Later layers:
   reasons over, so each one is narrowed under the whole lens as `narrowRule` narrows a rule: an
   option never comes through a row any layer hides. A later layer's grant on a relation a source
   reads thereby applies there — and is checked there, like any other.
+- **Sources across a bridge.** A source whose `where`, `label` or an axis reads across a bridge
+  has no database form and no fetch form (`toLensSelect` selects no bridge): `toSourceQueries`
+  returns it with `prisma: null` and an `sql.error` naming the path, and `materializeSources`
+  materializes it from rows the caller supplies with the far side inline under its bridge field
+  (a bridged pointer too). Rows without that side throw.
 - **One posture code path.** `validateNarrowing` runs the postures the runtime runs — the
   projection by path and by model, `lensVisit` at every shown path, the source plans, the fetch
   select, and a rule reaching each shown visit narrowed — and reports each `LensRefusal` they

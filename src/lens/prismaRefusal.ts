@@ -1,3 +1,4 @@
+import { UsageError } from '../errors';
 import { ARRAY_COUNT_OPERATORS } from '../operatorCatalog';
 import { visitCondition } from '../traverse';
 import type { Condition } from '../types';
@@ -46,4 +47,16 @@ export const prismaRefusal = (
         'unsupported_grant',
       )
     : null;
+};
+
+/** A compile of a lens's own condition: what it can't compile — on a literal the validator can't
+ *  read — is a refusal from the lens (`on` names it), never a plain Error; a caller's missing
+ *  input (the clock, a bind's value) stays the caller's usage error. */
+export const compileOrRefuse = <T>(on: string, compile: () => T): T => {
+  try {
+    return compile();
+  } catch (error) {
+    if (error instanceof LensRefusal || error instanceof UsageError) throw error;
+    throw new LensRefusal(`${on}: ${(error as Error).message}`, 'unsupported_grant');
+  }
 };

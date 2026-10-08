@@ -1,4 +1,5 @@
 import { isPlainObject } from 'lodash-es';
+import { UsageError } from './errors';
 import { parseScopeRef, readPath, type ScopeRef, type Scopes } from './scope';
 import type { RuleValue, ValueSourceFields, ValueSourceOf } from './types';
 
@@ -65,7 +66,7 @@ export const compileBinding = (
   rail: 'toSql' | 'toPrisma',
 ): null => {
   if (optional === true) return null;
-  throw new Error(
+  throw new UsageError(
     `Unresolved binding '${name}' — resolve bindings (bindRule / bindLens) before compiling with ${rail}().`,
   );
 };

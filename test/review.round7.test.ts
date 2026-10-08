@@ -16,6 +16,7 @@ import {
   validateRule,
   validateRuleInLens,
 } from '../index';
+import { mulberry32 } from './fuzz/mulberry32';
 import { map, openRails } from './rails/harness';
 
 // The adversarial review of 3.4 (round 7): each finding's repro, failing first.
@@ -72,11 +73,7 @@ describe('R7-1: the validators return a result, never throw', () => {
   });
 
   test('fuzz: random lenses and rules never make a validator throw', () => {
-    let seed = 5;
-    const rnd = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
+    const rnd = mulberry32(5);
     const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
     const conditions = (): Condition =>
       pick([

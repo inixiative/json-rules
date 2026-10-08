@@ -79,7 +79,19 @@ reads one exposure from `src/lens/policy.ts`.
   to-many relation's grant (the fetch select) or a source's condition is read by `validateRule`
   (toPrisma, with the map) — which now also reports a case-insensitive list comparison and a
   count or aggregate over a relation that can't carry a group step — and refused as a
-  `LensRefusal`.
+  `LensRefusal`. A relation node re-roots under a to-one hop by its field (`users any …` on an Org
+  is `org.users any …` on its User), so a path going to-one then to-many ("users in my org")
+  carries its link and grants; one whose inner ref climbs to the re-rooted row is refused, never
+  an empty list. The fetch reads a source below its visit only — the fetched tree is the path's
+  link, so `materializeSources` walks it, each level's grants met, and checks the source's
+  condition at its visit. `materializeSources` throws on rows missing a key its sources or the
+  grants on their paths read (a viewer's projection), and materializes a source across a bridge
+  (a bridged pointer included) from caller-supplied rows holding the far side; `toSourceQueries`
+  routes a bridged where, label or axis to it (`prisma: null`). A compile of a lens's own grant or
+  source that fails on a literal is a `LensRefusal`; a missing clock or unbound bind stays the caller's
+  usage error. `validateRule` (toPrisma) also reports a case-insensitive comparison on
+  Json, a list literal holding null, and an element condition over an array column, and accepts a
+  case-insensitive set of members on a list column.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
   can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has

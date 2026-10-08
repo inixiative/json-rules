@@ -15,7 +15,7 @@ import {
   resolveVisit,
   type VisitEffect,
 } from './policy.ts';
-import { prismaRefusal } from './prismaRefusal.ts';
+import { compileOrRefuse, prismaRefusal } from './prismaRefusal.ts';
 import { readPaths } from './readPaths.ts';
 import { type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -54,23 +54,23 @@ const mergeTrees = (into: PathTree, from: PathTree): PathTree => {
 // The columns a visit's grants read, relative to its model.
 const grantPaths = (effect: VisitEffect): string[] => effect.whereClauses.flatMap(readPaths);
 
-// What each visit's sources read, by relation path: the value, its label and axes, and the
-// condition their option query compiles (through the inverse relations that carry the grants
-// above). The fetch and a re-check keep it as they keep grant columns — hidden or not, never for
-// a viewer — so materializeSources over fetched rows offers what the database does. A model
-// source's rows aren't the fetched ones: it reads nothing here.
+// What each visit's sources read, by relation path: the value, its label and axes, and their
+// condition at the visit — below it only: the fetched tree is the path above. The fetch and a
+// re-check keep it as they keep grant columns — hidden or not, never for a viewer — so
+// materializeSources over fetched rows offers what the database does.
 type SourceReads = ReadonlyMap<string, readonly string[]>;
 const sourceReads = (plans: readonly SourcePlan[]): SourceReads => {
   const out = new Map<string, string[]>();
   for (const plan of plans) {
-    if (plan.from) continue;
+    // A model source's rows aren't the fetched ones, and a bridged one's aren't fetched at all.
+    if (plan.from || plan.bridged !== undefined) continue;
     const key = plan.path.split('.').slice(1).join('.');
     out.set(key, [
       ...(out.get(key) ?? []),
       plan.field,
       ...(plan.label === undefined ? [] : [plan.label]),
       ...(plan.groupBy ?? []),
-      ...readPaths(plan.where),
+      ...readPaths(plan.rowWhere),
     ]);
   }
   return out;
@@ -121,12 +121,9 @@ const grantWhere = (
   );
   if (refusal) throw refusal;
   if (policy.inspect) return undefined;
-  const plan = toPrisma(grant, {
-    ...options,
-    map: policy.lens,
-    mapName: at.mapName,
-    model: at.modelName,
-  });
+  const plan = compileOrRefuse(`toLensSelect: the grant on '${at.relPath.join('.')}'`, () =>
+    toPrisma(grant, { ...options, map: policy.lens, mapName: at.mapName, model: at.modelName }),
+  );
   const { where } = plan.steps[0] as WhereStep;
   return Object.keys(where).length ? where : undefined;
 };

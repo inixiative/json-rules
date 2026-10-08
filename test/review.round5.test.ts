@@ -21,6 +21,7 @@ import {
   validateRuleInLens,
   walkLensPath,
 } from '../index';
+import { mulberry32 } from './fuzz/mulberry32';
 import { agree, map, NOW, openRails } from './rails/harness';
 
 // The adversarial review of 3.4 (round 5): each finding's repro, failing first.
@@ -216,11 +217,7 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
 
   // A schema whose models relate at random, every relation turned on at the defaults.
   const randomSchema = (models: number, perModel: number, seed: number): LensNarrowing => {
-    let state = seed;
-    const rnd = () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff;
-      return state / 0x7fffffff;
-    };
+    const rnd = mulberry32(seed);
     const schema: FieldMap = { models: {} };
     const defaults: Record<string, { relations: Record<string, object> }> = {};
     for (let i = 0; i < models; i++) {
@@ -290,11 +287,7 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
       schema.models[n] = { fields };
     }
     const fuzzBase = createLens({ maps: { app: schema }, mapName: 'app', model: 'A' });
-    let seed = 1;
-    const rnd = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
+    const rnd = mulberry32(1);
     const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
     type Node = { picks?: string[]; omits?: string[]; relations?: Record<string, Node> };
     const randNode = (model: string, depth: number): Node => {
@@ -349,11 +342,10 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
           let at: { select?: Record<string, unknown> } | undefined = { select };
           for (const seg of p ? p.split('.') : [])
             at = at?.select?.[seg] as { select?: Record<string, unknown> } | undefined;
-          // A relation that shows no column is fetched by its key alone (Prisma can't select nothing).
+          // A visit that shows no column is fetched by its key alone (Prisma can't select nothing):
+          // a relation by its join key or `id`, the root by its `id` (R7-4).
           const keyOnly =
-            p !== '' &&
-            !Object.values(visit.fields).some((entry) => entry.kind === 'scalar') &&
-            col === 'id';
+            !Object.values(visit.fields).some((entry) => entry.kind === 'scalar') && col === 'id';
           if (!!at?.select?.[col] !== gate && !keyOnly)
             problems.push(`${iter} select ≠ gate at ${p}.${col}`);
         }

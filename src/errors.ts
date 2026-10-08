@@ -98,3 +98,6 @@ export const toManyHopError = (field: string, hop: MapHop): Error =>
 /** The error for a path that continues past a non-Json column. */
 export const pastScalarError = (field: string, column: string): Error =>
   new Error(`'${field}' continues past '${column}', which is not a Json column`);
+
+/** A caller's input missing for a compile — the clock, a bind's value — not the rule's shape. */
+export class UsageError extends Error {}

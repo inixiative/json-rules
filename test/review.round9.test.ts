@@ -236,7 +236,7 @@ describe('R9-P1: a source where across a bridge has no database form', () => {
     const [query] = toSourceQueries(lens);
     expect(query.prisma).toBeNull();
     expect(query.sql.sql).toBeNull();
-    expect(query.sql.error).toMatch(/crosses a bridge/);
+    expect(query.sql.error).toMatch(/across a bridge/);
     expect(values(materializeSources(lens, rows)[0].options)).toEqual(expected);
   });
 });

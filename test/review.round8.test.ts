@@ -122,6 +122,8 @@ describe('R8-1: validateNarrowing runs the postures the runtime runs', () => {
     expect(() => lensVisit(l2, 'posts')).toThrow(/does not show: 'author.id'/);
   });
 
+  // A list grant re-roots under a to-one hop (round 10); one whose inner ref reads the row being
+  // re-rooted (`$$.` inside `users any`) can't.
   test('d: a source path crossing a to-one relation whose grant narrowRule cannot re-root', () => {
     const l1: LensNarrowing = {
       parent: base,
@@ -133,7 +135,7 @@ describe('R8-1: validateNarrowing runs the postures the runtime runs', () => {
               where: rule({
                 field: 'users',
                 arrayOperator: 'any',
-                condition: { field: 'id', operator: 'exists' },
+                condition: { field: 'id', operator: 'equals', path: '$$.id' },
               }),
             },
           },

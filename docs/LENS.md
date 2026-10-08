@@ -48,6 +48,15 @@ What one layer may do, given the layers above it (layer 1 is the first narrowing
 | `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a clamp (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
 | `from: 'mapDefaults'` pointers | — | escape only their own layer's path clamps; every other layer's still apply |
 
+`clampLens(lens, clamps)` puts clamps where they may read the whole schema: it ANDs a
+`root` where, and per-map model-default wheres and source wheres, into the first narrowing over
+the base lens (adding one over a bare lens) and keeps every later layer as it was.
+
+```ts
+// A delivery clamp on columns the caller's viewer layer hides
+const deliverable = clampLens(lens, { root: { where: { field: 'deletedAt', operator: 'notExists' } } });
+```
+
 ## 2. Two kinds of narrowing
 
 The most important thing to internalize: a `LensNarrowing` contains two distinct

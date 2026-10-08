@@ -1,8 +1,19 @@
 # Changelog
 
-## 3.5.1 — review fixes: bridged fetches, to-many paths, JSON re-checks
+## 3.5.1 — review fixes: bridged fetches, to-many paths, JSON re-checks; clampLens
 
-Fail-closed and doc findings from the 3.5.0 adversarial review.
+Fail-closed and doc findings from the 3.5.0 adversarial review, and one lens-layer op the
+consumers each kept a copy of.
+
+- **`clampLens(lens, clamps)`** (and `LensClamps`): the lens with clamps ANDed into
+  its first narrowing over the base lens (one is added over a bare lens) — a `root` where, and
+  per-map model-default wheres and source wheres (a source's `where` ANDs; its `label` /
+  `groupBy` win and a source clamp on a field with none adds it; a bare `Condition` entry reads as
+  its `where`, as the engine reads it). Only the
+  first layer's clamps read the whole schema, so a clamp on something a later layer hides goes
+  there. Later layers are returned as they were. Replaces the `intoFirstLayer` copies in template
+  (`@template/db/lens`: email registry slot clamps, `scopeEmailLens`), Kingdom and Tribe (their
+  ports), and Zealot (`@zealot/db`: notification delivery `resolveAudience`).
 
 - **`toLensSelect` selects a bridged source's local reads.** It skipped every column a source across
   a bridge reads, so `materializeSources` over its rows plus the far side threw `UsageError: lacks

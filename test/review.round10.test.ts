@@ -241,7 +241,7 @@ describe('R10-5: materializeSources refuses rows a viewer projection cut', () =>
   });
 });
 
-describe('R10-6/7/8: a source across a bridge has no database or fetch form, and says what to supply', () => {
+describe('R10-6/7/8: a source across a bridge over-fetches its local side, and says what to supply', () => {
   const maps = {
     prisma: {
       models: { FanUser: { fields: { id: s('String'), email: s('String'), crmId: s('String') } } },
@@ -322,13 +322,20 @@ describe('R10-6/7/8: a source across a bridge has no database or fetch form, and
   ])('%s', (_, lens, expected) => {
     expect(validateNarrowing(lens).ok).toBe(true);
     const [query] = toSourceQueries(lens);
-    expect(query.prisma).toBeNull();
-    expect(query.sql.sql).toBeNull();
-    expect(query.sql.error).toMatch(/salesforce:Contact/);
+    expect(query.recheck).toBeDefined();
+    expect(query.prisma.where).toEqual({});
+    expect(query.prisma.select).toEqual({ email: true, crmId: true });
+    expect(query.sql.sql).not.toContain('salesforce');
     expect(JSON.stringify(toLensSelect(lens).select)).not.toContain('salesforce');
-    expect(values(materializeSources(lens, rows)[0].options)).toEqual(expected);
+    expect(values(materializeSourceQuery(query, rows, { lens }).options)).toEqual(expected);
     // Rows without the bridged side can't answer it.
     const fetched = rows.map(({ 'salesforce:Contact': _side, ...row }) => row);
+    expect(() => materializeSourceQuery(query, fetched, { lens })).toThrow(/salesforce:Contact/);
+    if ('from' in (lens.root?.sources?.email as object)) {
+      expect(() => materializeSources(lens, rows)).toThrow(/toSourceQueries/);
+      return;
+    }
+    expect(values(materializeSources(lens, rows)[0].options)).toEqual(expected);
     expect(() => materializeSources(lens, fetched)).toThrow(/salesforce:Contact/);
   });
 });

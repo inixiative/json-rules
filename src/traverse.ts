@@ -235,6 +235,12 @@ export const allOf = (conditions: readonly Condition[]): Condition =>
       ? conditions[0]
       : { all: [...conditions] };
 
+/** allOf's inverse: a condition's top-level conjuncts, nested `all` nodes flattened. */
+export const conjuncts = (condition: Condition): Condition[] =>
+  typeof condition === 'object' && 'all' in condition && Array.isArray(condition.all)
+    ? condition.all.flatMap(conjuncts)
+    : [condition];
+
 /** Conditions OR-ed together: `false` for none, the condition itself for one. */
 export const anyOf = (conditions: readonly Condition[]): Condition =>
   conditions.length === 0

@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.4.1 — sources across a bridge over-fetch and re-check
+
+"When you're doing an in-memory check, you have to overfetch. You shouldn't be pre-filtering
+because that way the rules break." (Aron, 2026-10-08)
+
+- **`toSourceQueries` returns a real query for a source across a bridge** (its where, a grant
+  carried across one, its label or an axis). What reads across the bridge compiles to TRUE, so the
+  query's rows are a superset of the options, and the query carries **`recheck`**: the conjuncts of
+  `composedWhere` that read across a bridge (`true` when only the label or an axis does). If
+  `recheck` is present the rows are candidates, not options; a source that reads no bridge has no
+  `recheck` and is unchanged. The query selects local columns only — the value, local label and
+  axes, the local columns `recheck` reads and each bridge's local `on` key — and drops `distinct`.
+- **`SourceQuery.prisma` is non-null again** (3.4.0 made it `SourcePrismaQuery | null`): `prisma`
+  and `sql` are always present. A type change back, no compatibility path.
+- **`materializeSourceQuery(query, rows, { lens, … })` applies `recheck`.** It takes the lens and
+  the clock/bindings (`CheckOptions`); for a query with `recheck` it requires the far side on each
+  candidate under its bridge field (missing, partial, or a list where the bridge names one row →
+  `UsageError`, as `materializeSources` reports it), keeps the candidates the re-check holds, and
+  reads a bridged label or axis from the far side in either row shape. No `lens` → `UsageError`.
+- **A source past a bridge** is queried against its own model; the grants above it are carried
+  back across the bridge through the far model's bridge field and land in its `recheck`.
+- **`materializeSources` refuses every pointer** (`from: 'mapDefaults'`), a bridged one included —
+  it has a query now. Path sources across a bridge still materialize from root rows holding the
+  far side.
+
 ## 3.4.0 — relations are fields, off by default; `context` removed
 
 Breaking, with no compatibility path (no users).

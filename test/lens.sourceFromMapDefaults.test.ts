@@ -258,6 +258,11 @@ describe('a pointer escapes only the layer that points: every other layer still 
   test("a tenant layer after it narrows its options to the tenant's reach", () => {
     expect(offered(tenant)).toEqual(['T1', 'T2']);
   });
+
+  test('a layer after the tenant still sees the pointer tenanted', () => {
+    const later: LensNarrowing = { parent: tenant, root: { omits: ['orgId'] } };
+    expect(offered(later)).toEqual(['T1', 'T2']);
+  });
 });
 
 describe('a pointer must find its model source', () => {

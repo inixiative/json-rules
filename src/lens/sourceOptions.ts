@@ -1,10 +1,11 @@
+import { endpointKey } from '../fieldMap/endpointKey';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { SourceOption } from '../fieldMap/types';
-import { hitsBridge } from '../fieldMap/walk';
+import { conditionTouchesBridge, hitsBridge } from '../fieldMap/walk';
 import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
-import { allOf } from '../traverse';
+import { allOf, conjuncts } from '../traverse';
 import type { Condition, Row } from '../types';
 import { narrowAt, prefixConditionFields } from './narrowRule.ts';
 import { LensRefusal, type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
@@ -183,16 +184,20 @@ export type SourcePlan = {
   /** The same at the visit itself, for a row reached down the path: a fetched tree supplies the
    *  path and the grants above, so this leaves them out — what materializeSources checks. */
   rowWhere: Condition;
-  /** The first path the source reads across a bridge (its where, label or an axis), if any: no
-   *  database holds both sides, so only rows holding them both can answer it. */
+  /** The first path the source reads across a bridge (its where — the grants carried across one
+   *  included —, label or an axis), if any: no database holds both sides. */
   bridged?: string;
+  /** Present exactly when `bridged` is: the conjuncts of `where` that read across a bridge (`true`
+   *  when only the label or an axis does). The option query folds them to an over-fetch; a
+   *  candidate row holding the far side inline meets them or offers nothing. */
+  recheck?: Condition;
 };
 
 /**
  * The grants of every visit above a source's own, as conditions on the source's rows: each
  * ancestor's `where` carried down through the inverse of the hop below it — a to-one inverse by
- * prefixing its fields, a to-many one through `any`. A grant no inverse can carry is refused; past
- * a bridge the source is routed to caller rows (`bridged`), save a pointer with nothing to carry.
+ * prefixing its fields, a to-many one through `any`; across a bridge the inverse is the far
+ * model's bridge field back. A grant no inverse can carry is refused.
  * `linked`: the rows must also be reached down the path — the inverse carried
  * where no grant sits too — as a path source's are; a pointer's rows needn't be. A relation whose
  * map declares no inverse links nothing where no grant sits: the query offers the rows the grants
@@ -203,7 +208,7 @@ const ancestorGrants = (
   relPath: readonly string[],
   carriedTo: Map<string, Condition | null>,
   linked: boolean,
-): Condition[] | { bridged: string } => {
+): Condition[] => {
   if (relPath.length === 0) return [];
   const root = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
   const { hops, end } = relationHops(policy.lens.maps, root, relPath.join('.'));
@@ -237,16 +242,25 @@ const ancestorGrants = (
     }
     const map = own(policy.lens.maps, at.mapName);
     const entry = map && fieldOf(map, at.modelName, relPath[level]);
-    // Past a bridge no database holds both sides: the link and the grants can't be carried, and
-    // the source is materialized from rows holding both — save a pointer with nothing to carry.
-    if (!entry || entry.kind === 'bridge' || visits[level + 1].mapName !== at.mapName) {
-      if (grants.length === 0 && !linked) {
-        done(null);
-        continue;
-      }
-      return { bridged: relPath.slice(0, level + 1).join('.') };
-    }
-    const inverse = map ? inverseRelation(map, at.modelName, relPath[level], entry) : null;
+    if (!entry)
+      throw new LensRefusal(
+        `source at '${relPath.join('.')}': '${relPath[level]}' isn't declared on ${at.modelName}`,
+        'not_in_lens',
+      );
+    // Across a bridge the far model's bridge field names the near one: that is the way back. A
+    // database holds one side only, so the query over-fetches it and the caller re-checks it.
+    const far = visits[level + 1];
+    const back = endpointKey({ fieldMap: at.mapName, model: at.modelName });
+    const backEntry =
+      entry.kind === 'bridge'
+        ? fieldOf(own(policy.lens.maps, far.mapName), far.modelName, back)
+        : undefined;
+    const inverse =
+      entry.kind === 'bridge'
+        ? backEntry && { field: back, entry: backEntry }
+        : map
+          ? inverseRelation(map, at.modelName, relPath[level], entry)
+          : null;
     // A map that declares no inverse links nothing (see the doc above); a grant it can't carry is
     // refused, never an empty list.
     if (!inverse && grants.length === 0) {
@@ -329,14 +343,12 @@ export const sourcePlansWith = (
       // the pointing layer (the chain keeps its indices), so no layer's narrowing is lost.
       const pointsFrom = fromModel ? effect.sourcesFromMapDefaults.get(field) : undefined;
       const skip = pointsFrom === undefined ? undefined : policy.chain[pointsFrom];
-      const carried = ancestorGrants(
+      const above = ancestorGrants(
         skip === undefined ? policy : { ...policy, skipGrantsOf: skip },
         at.relPath,
         carriedFor(skip),
         skip === undefined && !fromModel,
       );
-      const above = Array.isArray(carried) ? carried : [];
-      const pathBridged = Array.isArray(carried) ? undefined : carried.bridged;
       const eligibility = [
         ...above,
         ...wheres,
@@ -354,13 +366,17 @@ export const sourcePlansWith = (
       const fieldMap = policy.lens.bridges?.length
         ? resolveFieldMap(policy.lens, at.mapName, 'toPrisma')
         : undefined;
-      const bridged =
-        pathBridged ??
-        (fieldMap
-          ? [...readPaths(where), ...(label === undefined ? [] : [label]), ...(groupBy ?? [])].find(
-              (read) => hitsBridge(read, fieldMap, at.modelName),
-            )
-          : undefined);
+      const bridged = fieldMap
+        ? [...readPaths(where), ...(label === undefined ? [] : [label]), ...(groupBy ?? [])].find(
+            (read) => hitsBridge(read, fieldMap, at.modelName),
+          )
+        : undefined;
+      // What the database can't decide: the conjuncts that read across a bridge (each compiles to
+      // an over-fetch), or `true` when only the label or an axis does.
+      const recheck =
+        bridged !== undefined && fieldMap
+          ? allOf(conjuncts(where).filter((c) => conditionTouchesBridge(c, fieldMap, at.modelName)))
+          : undefined;
       // The option query compiles it: a shape it has no form for is refused here, so validation
       // and every materializer refuse it alike.
       const refusal = prismaRefusal(
@@ -381,6 +397,7 @@ export const sourcePlansWith = (
         where,
         rowWhere,
         ...(bridged !== undefined && { bridged }),
+        ...(recheck !== undefined && { recheck }),
       };
     }),
   );

@@ -179,11 +179,18 @@ Later layers:
   reasons over, so each one is narrowed under the whole lens as `narrowRule` narrows a rule: an
   option never comes through a row any layer hides. A later layer's grant on a relation a source
   reads thereby applies there — and is checked there, like any other.
-- **Sources across a bridge.** A source whose `where`, `label` or an axis reads across a bridge
-  has no database form and no fetch form (`toLensSelect` selects no bridge): `toSourceQueries`
-  returns it with `prisma: null` and an `sql.error` naming the path, and `materializeSources`
-  materializes it from rows the caller supplies with the far side inline under its bridge field
-  (a bridged pointer too). Rows without that side throw.
+- **Sources across a bridge over-fetch and re-check.** An in-memory check must over-fetch, never
+  pre-filter, or the rules break. A source whose path, `where`, `label` or an axis reads across a
+  bridge gets a real query for the local side, with what reads across the bridge folded to TRUE —
+  its rows are a superset, candidates rather than options — and a `recheck`: the conjuncts the
+  database couldn't decide (`true` when only the label or an axis crosses). Every bridged query
+  carries one; no other query does. The query selects local columns and each bridge's local `on`
+  key; the caller loads the far side onto each candidate under its bridge field, and
+  `materializeSourceQuery(query, rows, { lens })` re-checks them and reads a bridged label or axis
+  from the far side. A source past a bridge carries the grants above it back across through the
+  far model's bridge field. Candidates without the far side throw a `UsageError`.
+  `materializeSources` still materializes a path source across a bridge from root rows holding
+  the far side; a pointer goes through the query.
 - **One posture code path.** `validateNarrowing` runs the postures the runtime runs — the
   projection by path and by model, `lensVisit` at every shown path, the source plans, the fetch
   select, and a rule reaching each shown visit narrowed — and reports each `LensRefusal` they

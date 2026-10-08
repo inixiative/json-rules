@@ -49,7 +49,6 @@ const onRails = async (query: SourceQuery) => {
     string,
     { findMany: (args: object) => Promise<object[]> }
   >;
-  if (query.prisma === null) return { prisma: null, sql: null };
   const { model, steps, ...args } = query.prisma;
   const where = steps
     ? await executePrismaPlan({ steps } as never, rails.prisma as never)
@@ -154,7 +153,7 @@ describe('R9-N2: toSourceQueries takes the compilers’ options', () => {
   });
 });
 
-describe('R9-P1: a source where across a bridge has no database form', () => {
+describe('R9-P1: a source where across a bridge over-fetches, and its recheck decides', () => {
   const maps = {
     prisma: {
       models: { FanUser: { fields: { id: s('String'), email: s('String'), crmId: s('String') } } },
@@ -231,12 +230,13 @@ describe('R9-P1: a source where across a bridge has no database form', () => {
       },
       ['a@x', 'c@x'],
     ],
-  ])('%s: neither rail compiles it, and materializeSources offers the right set', (_, lens, expected) => {
+  ])('%s: both rails fold it to TRUE, and the recheck offers the right set', (_, lens, expected) => {
     expect(validateNarrowing(lens).ok).toBe(true);
     const [query] = toSourceQueries(lens);
-    expect(query.prisma).toBeNull();
-    expect(query.sql.sql).toBeNull();
-    expect(query.sql.error).toMatch(/across a bridge/);
+    expect(query.prisma.where).toEqual({});
+    expect(query.sql.sql).toMatch(/WHERE \(?TRUE( AND TRUE\))?$/);
+    expect(query.recheck).toBeDefined();
+    expect(values(materializeSourceQuery(query, rows, { lens }).options)).toEqual(expected);
     expect(values(materializeSources(lens, rows)[0].options)).toEqual(expected);
   });
 });

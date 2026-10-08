@@ -5,6 +5,7 @@ import {
   type FieldMap,
   type LensNarrowing,
   LensRefusal,
+  materializeSourceQuery,
   materializeSources,
   projectRows,
   toPrisma,
@@ -206,10 +207,25 @@ describe('R11-F1: materializeSources requires every key a read walks, not only t
       };
       expect(validateNarrowing(lens).ok).toBe(true);
       const [query] = toSourceQueries(lens);
-      expect(query.prisma).toBeNull();
-      expect(query.sql.error).toMatch(/across a bridge/);
+      // The query reads Contact alone; the link to a FanUser (and its grant) is the recheck.
+      expect(query.model).toBe('Contact');
+      expect(query.prisma.where).toEqual({});
+      expect(query.recheck).toEqual({
+        field: 'prisma:FanUser',
+        arrayOperator: 'any',
+        condition: where ?? true,
+      });
       const supplied = [rows[0], { ...rows[1], email: where ? null : 'b@x' }];
       expect(values(() => materializeSources(lens, supplied))).toEqual([...expected]);
+      // The same set from the query's candidates, each holding its FanUsers inline.
+      const contacts = [
+        { id: 'c1', industry: 'tech', 'prisma:FanUser': [supplied[0]] },
+        { id: 'c2', industry: 'retail', 'prisma:FanUser': [supplied[1]] },
+        { id: 'c9', industry: 'unlinked', 'prisma:FanUser': [] },
+      ];
+      expect(values(() => [materializeSourceQuery(query, contacts, { lens })])).toEqual([
+        ...expected,
+      ]);
     }
   });
 });

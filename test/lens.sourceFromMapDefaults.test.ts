@@ -7,6 +7,7 @@ import {
   type FieldMap,
   type Lens,
   type LensNarrowing,
+  materializeSourceQuery,
   materializeSources,
   projectLens,
   type Row,
@@ -330,10 +331,27 @@ describe('across a bridge', () => {
     ]);
   });
 
-  test('a path source across a bridge has no query: it is routed to rows holding both sides', () => {
-    const q = query(bridged(true));
-    expect(q?.prisma).toBeNull();
-    expect(q?.sql.error).toMatch(/across a bridge/);
+  test('a path source across a bridge over-fetches; the grants above come back as its recheck', () => {
+    const lens = bridged(true);
+    const q = query(lens);
+    if (!q) throw new Error('no query');
+    // The far map's own tenancy is the database's to decide; the root grant reads across the bridge.
+    expect(q.prisma).toEqual({
+      model: 'Account',
+      select: { tier: true, kingdomOrgId: true },
+      where: { kingdomOrgId: { equals: 'acme' } },
+    });
+    expect(q.recheck).toEqual({
+      all: [
+        { field: 'app:User', operator: 'exists' },
+        { field: 'app:User.orgId', operator: 'equals', value: 'acme' },
+      ],
+    });
+    const candidates: Row[] = [
+      { tier: 'gold', kingdomOrgId: 'acme', 'app:User': { orgId: 'acme' } },
+      { tier: 'bronze', kingdomOrgId: 'acme', 'app:User': null },
+    ];
+    expect(materializeSourceQuery(q, candidates, { lens }).options).toEqual([{ value: 'gold' }]);
   });
 });
 

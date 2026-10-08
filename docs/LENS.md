@@ -684,7 +684,7 @@ reads that list — a grant reads a list whole, as the database does. `rules` (o
 each relation the rules you'll re-check read past the declared paths, grants applied. `projectRows(
 narrowing, rows, options?)` cuts fetched rows to what the lens shows: hidden columns and relations
 removed, a row a `where` hides dropped (a to-one row becomes `null`). With
-`keepGrantColumns: true` it keeps the columns those `where`s read, and a hidden to-one row as
+`keepGrantColumns: true` it keeps the columns those `where`s read, and a hidden to-one row, or a hidden row of a list a grant reads, as
 those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the grants as the
 database does, for a rule passed in `rules` (or one reading only the declared paths); that output carries hidden values and is never for a viewer. See the README,
 "Fetching Under a Lens".
@@ -805,7 +805,7 @@ caller may say. The flow is:
 2. **Apply** the lens with `narrowRule` to inject the where clauses at their
    proper anchors.
 3. **Execute** the composed rule with `toPrisma` / `toSql` / `check`. `toPrisma(rule, { lens })`
-   and `toSql(rule, { lens })` do steps 2 and 3 in one call.
+   and `toSql(rule, { lens })` do all three in one call: a rule the gate refuses throws.
 
 To *classify* a rule before executing — which sources it touches, whether it
 crosses a bridge, and which targets can run it — use `describeRule(rule, lens)`.
@@ -838,10 +838,9 @@ return prisma.user.findMany({ where });
 
 `toPrisma` / `toSql` / `check` are *not* the security boundary. Given a `map`,
 they run against the base FieldMap and see only the rule they're given: skip
-`narrowRule` and the executor runs an unnarrowed rule. `{ lens }` narrows for
-you, but nothing in the executors gates: a rule naming a hidden field still
-compiles. Treat the two-step (validate → apply) as the bottleneck for every
-rule entering execution.
+`narrowRule` and the executor runs an unnarrowed rule. `{ lens }` gates and
+narrows for you; with a bare `map`, nothing does. Treat validate → apply (or
+`{ lens }`) as the bottleneck for every rule entering execution.
 
 ## 12. Migration
 

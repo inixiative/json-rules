@@ -52,6 +52,13 @@ describe('toPrisma / toSql with { lens }', () => {
     expect(toSql(rule, { lens })).toEqual(toSql(narrowRule(rule, lens), by));
   });
 
+  test('a rule the lens refuses throws instead of compiling', () => {
+    const hidden: LensNarrowing = { parent: base, root: { picks: ['id'] } };
+    const rule: Condition = { field: 'name', operator: 'equals', value: 'Ann' };
+    expect(() => toPrisma(rule, { lens: hidden })).toThrow(/leaves the lens/);
+    expect(() => toSql(rule, { lens: hidden })).toThrow(/leaves the lens/);
+  });
+
   test('a lens with map / mapName / model is refused', () => {
     expect(() => toPrisma(true, { lens, map })).toThrow(/not both/);
     expect(() => toSql(true, { lens, model: 'User' })).toThrow(/not both/);
@@ -186,6 +193,12 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
       },
     };
     expect((await fetchUnder(lens)).map((row) => row.id)).toEqual([1]);
+    for (const rule of [
+      true,
+      { field: 'id', operator: 'exists' },
+      { field: 'posts', arrayOperator: 'any', condition: { field: 'id', operator: 'exists' } },
+    ] as Condition[])
+      expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
   });
 
   test.each<[string, Condition]>([

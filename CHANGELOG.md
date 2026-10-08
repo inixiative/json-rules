@@ -7,8 +7,9 @@ Additive. Each function replaces code template wrote around the lens.
 - **`getLensRoot(lensOrNarrowing): Lens`**: the base lens of a narrowing chain (a lens is its own),
   throwing on a cyclic chain. It is the internal `getRoot`, now public. Replaces template's
   `rootLens` and its repeated `'parent' in lens ? rootLens(lens) : lens`.
-- **`toPrisma` / `toSql` take `{ lens }`**: the rule compiles narrowed by the lens (`narrowRule`),
-  against the base lens's maps, `mapName` and `model`. Passing `lens` with `map` / `mapName` /
+- **`toPrisma` / `toSql` take `{ lens }`**: the rule is gated by the lens (`validateRuleInLens`; a
+  rule it refuses throws, so `{ lens }` can't compile a read of a hidden column) and compiles
+  narrowed by it (`narrowRule`), against the base lens's maps, `mapName` and `model`. Passing `lens` with `map` / `mapName` /
   `model` throws. Replaces the `toPrisma(narrowRule(rule, lens), { map: root, mapName, model })`
   call sites in template (`compileSegmentWhere`, `resolveUsers`, `validateRuleForLens`).
 - **`bindLens` keeps its input's type**: `bindLens<T extends Lens | LensNarrowing>(lens: T, …): T`,
@@ -23,10 +24,10 @@ Additive. Each function replaces code template wrote around the lens.
   rows its grant hides. A relation that shows no column is fetched whole; bridges are skipped. A
   relation grant that needs a counting step throws. `options` carries the clock (and context) for
   the grants' compile. Replaces template's `includeFromLens`.
-- **`projectRows(lensOrNarrowing, rows, { keepGrantColumns?, ...checkOptions })`**: rows cut to
+- **`projectRows(lensOrNarrowing, rows, { keepGrantColumns?, rules?, ...checkOptions })`**: rows cut to
   what a lens shows, recursively. Hidden columns and relations are removed, and every row a
   visit's `where` hides is gone: a root or list row is dropped, a to-one row is null.
-  `keepGrantColumns` keeps the exact columns those `where`s read, and a hidden to-one row as those
+  `keepGrantColumns` keeps the exact columns those `where`s read, and a hidden to-one row, or a hidden row of a list a grant reads, as those
   columns alone instead of `null`, so a later `check(narrowRule(rule, lens), row)` re-tests the
   grants as the database does (a negation or `notExists` through it doesn't admit it). That output
   carries hidden values — for re-checks, never for a viewer. It takes `toLensSelect`'s `rules`, for

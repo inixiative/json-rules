@@ -236,14 +236,15 @@ const cutRow = (
     const child = childVisit(at, field, target);
     if (visible && (mode === 'declared' || read !== undefined)) {
       const childMode = openedMode(mode, effect, field, read);
-      // A to-one row its grant hides is still there for a re-check: as its grant columns alone,
-      // so the narrowed rule's grant fails on it, as in the database — never as a missing row.
-      const single = !Array.isArray(row[field]);
+      // A row its grant hides is still there for a re-check when the database would read it — a
+      // to-one row, or a list row a grant reads — as its grant columns alone, so the narrowed
+      // rule's grant fails on it while an unnarrowed grant still counts it.
+      const readWhole = !Array.isArray(row[field]) || below !== undefined;
       out[field] = mapRelation(
         row[field],
         (r) =>
           cutRow(policy, child, childMode, r, below ?? {}, read ?? {}, keepGrants, options) ??
-          (keepGrants && single
+          (keepGrants && readWhole
             ? pickPaths(policy, child, r, grantTree(policy, child, below))
             : null),
       );
@@ -257,8 +258,8 @@ const cutRow = (
 /**
  * Rows cut to what a lens shows, recursively from its base model: hidden columns and relations
  * removed, and every row a visit's `where` hides gone — a root or list row dropped, a to-one row
- * null. `keepGrantColumns` also keeps the columns those `where`s read (hidden or not), and a hidden
- * to-one row as those columns alone, so a later `check(narrowRule(rule, lens), row)` re-tests the
+ * null. `keepGrantColumns` also keeps the columns those `where`s read (hidden or not), and a hidden to-one row, or a hidden row of a list a grant
+ * reads, as those columns alone, so a later `check(narrowRule(rule, lens), row)` re-tests the
  * grants as the database does — for the rules passed in `rules`, or ones reading only the declared
  * paths. Its output carries hidden values: it's for that re-check, never for
  * a viewer. The rest of `options` is what each

@@ -6,6 +6,13 @@ export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
 export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
+export type {
+  LensRelationSelect,
+  LensSelect,
+  LensSelectOptions,
+  ProjectRowsOptions,
+} from './lensRows';
+export { projectRows, toLensSelect } from './lensRows';
 export type { MaterializeSourceQueryOptions, SourceRowShape } from './materializeSourceQuery';
 export { materializeSourceQuery } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';

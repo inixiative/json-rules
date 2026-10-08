@@ -43,7 +43,7 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - `if` / `then` / `else`
 - array validation against nested object elements
 - array aggregates — `sum` and `avg` across numeric arrays or relation lists
-- ordered windowing — first/last `N` with `orderBy` / `take` / `skip` (check-only)
+- ordered windowing — first/last `N` with `orderBy` / `take` / `skip` (`check()`; `toPrisma()` compiles the extremal case and a `filter` alone)
 - date comparisons with timezone-aware runtime evaluation
 - relative & calendar date expressions — "last 30 days", "this month" — via `within` and `ago`/`ahead`/`this`/`last`/`next`
 - relative value references via `path`, and `$$.` scope refs up through nested arrays
@@ -73,7 +73,9 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - `exists`
 - `notExists`
 - `startsWith`
+- `notStartsWith`
 - `endsWith`
+- `notEndsWith`
 
 ### Array Operators
 
@@ -221,8 +223,9 @@ NULL items are skipped, as SQL's `SUM` / `AVG` skip them.
 
 A date rule's `value` can be a structured, serializable expression instead of an
 absolute date. Magnitudes are always **positive** — direction lives in the keyword.
-Units are dayjs words: `day`, `week`, `isoWeek`, `month`, `quarter`, `year`,
-`hour`, `minute`, `second`.
+A period (`this` / `last` / `next`) names a dayjs unit: `day`, `week`, `isoWeek`, `month`,
+`quarter`, `year`, `hour`, `minute`, `second`. A rolling amount (`ago` / `ahead`) counts
+`years`, `quarters`, `months`, `weeks`, `days`, `hours`, `minutes`, `seconds`.
 
 **Point expressions** — pair with `before` / `after` / `onOrBefore` / `onOrAfter` /
 `notBefore` / `notAfter`,
@@ -313,11 +316,15 @@ grant there under `all`). `orderBy` is a non-empty array of `{ field, dir: 'asc'
 > **Compilation.** `toPrisma()` compiles the **extremal** case — `take: 1`, a single
 > `orderBy`, and a monotonic condition on that same field, with the direction aligned so
 > the extremal element is binding (`all` + desc + `before`, `any` + desc + `after`, etc.).
-> It rewrites to `every` / `some` (e.g. the rule above → `{ fanMissions: { every: { completedAt:
-> { lt: <now-30d> } } } }`). Any other windowed rule — `take > 1`, `skip`, multi-key
-> `orderBy`, a different/non-monotonic condition, or a misaligned direction — throws a clear
-> "unsupported" error, and so does any `filter`. `toSql()` does not compile windowing at all (no relation subqueries in
-> a `WHERE` fragment). Evaluate the unsupported cases in memory with `check()`.
+> It rewrites to relation filters: the rule above, with `completedAt` required, is "no missions,
+> or some and none since the bound" — `{ OR: [{ fanMissions: { none: {} } }, { AND: [{ fanMissions:
+> { some: {} } }, { fanMissions: { none: { completedAt: { gte: <now-30d> } } } }] }] }`. A `filter`
+> alone (no `orderBy` / `take` / `skip`) folds into the rule: `all` through the exact complement
+> of its condition, the rest as `filter AND condition`. Any other windowed rule — `take > 1`,
+> `skip`, multi-key `orderBy`, a different/non-monotonic condition, a misaligned direction, or a
+> `filter` beside an ordered window — throws a clear "unsupported" error. `toSql()` does not
+> compile windowing at all (no relation subqueries in a `WHERE` fragment). Evaluate the
+> unsupported cases in memory with `check()`.
 
 ## Path Semantics
 
@@ -494,15 +501,18 @@ string literal against a number or Boolean field, stamp the rule's `coerceType` 
 does it from a lens). The compilers refuse a string literal on a number or Boolean column
 without one.
 
-An enum compares against its declared values. A case-insensitive comparison, a string operator,
-a pattern or an ordered comparison on an enum compiles to a membership test over the declared
+An enum compares exactly against its declared values. String, pattern and ordered operators
+don't apply to one, and the compilers refuse them. A case-insensitive equality or membership, or
+one naming a value the enum doesn't declare, compiles to a membership test over the declared
 values `check()` would match (plus the NULL arm for a negation). The field map must list the
 values (prisma-map does).
 
 ```ts
 // map: { models: { U: { fields: { role: { kind: 'enum', type: 'Role' } } } }, enums: { Role: ['admin', 'member'] } }
-toSql({ field: 'role', operator: Operator.startsWith, value: 'adm' }, { map, model: 'U' });
+toSql({ field: 'role', operator: Operator.equals, value: 'ADMIN', caseInsensitive: true }, { map, model: 'U' });
 // { sql: '"t0"."role"::text = ANY($1)', params: [['admin']], joins: [] }
+toSql({ field: 'role', operator: Operator.startsWith, value: 'adm' }, { map, model: 'U' });
+// throws: 'startsWith' does not apply to the enum 'role'; compare its values with equals / in.
 ```
 
 ### Custom Errors
@@ -689,7 +699,7 @@ Not every backend supports every rule shape.
 | Date comparisons | Yes | Most | Yes |
 | Date expressions (`ago`/`ahead`/`this`/`last`/`next`/`start`/`end`) + `within` | Yes | Yes | Yes |
 | `dayIn` / `dayNotIn` | Yes | No | Yes |
-| Windowing (`filter` / `orderBy` / `take` / `skip`) | Yes | Extremal (`take:1`, aligned, no `filter`) | No |
+| Windowing (`filter` / `orderBy` / `take` / `skip`) | Yes | Extremal (`take: 1`, aligned, no `filter`), or a `filter` alone | No |
 | `path: '$.field'` current-element / same-row refs | Yes | No | Yes |
 | `offset` and unit amounts — value, bind or context | Yes | Yes | Yes |
 | `offset` and unit amounts — `$.` row refs | Yes | No | Yes (not a date offset's) |
@@ -704,12 +714,12 @@ compilers carry NULL rows explicitly:
 
 | Rule | `check()` on `{ col: null }` | `toSql()` | `toPrisma()` (nullable column) |
 | --- | --- | --- | --- |
-| `notEquals 'x'` / `notContains` / `notMatches` / `notBetween` | matches | `(col <> $1 OR col IS NULL)` | `{ OR: [{ col: { not: 'x' } }, { col: { equals: null } }] }` |
+| `notEquals 'x'` / `notContains` / `notMatches` / `notBetween` | matches | `(col <> $1 OR col IS NULL)` | `{ OR: [{ col: { not: 'x' } }, { col: { equals: null } }] }` (`notMatches` has no Prisma form) |
 | `notIn ['x']` | matches | `(col <> ALL($1) OR col IS NULL)` | `{ OR: [{ col: { notIn: ['x'] } }, { col: { equals: null } }] }` |
 | `in ['x', null]` | matches | `(col = ANY($1) OR col IS NULL)` | `{ OR: [{ col: { in: ['x'] } }, { col: { equals: null } }] }` |
 | `notIn ['x', null]` | no match | `(col <> ALL($1) AND col IS NOT NULL)` | `{ AND: [{ col: { notIn: ['x'] } }, { col: { not: null } }] }` |
 | `equals` / `notEquals` with `path: '$.other'` | `null === null` | `IS [NOT] DISTINCT FROM` | — |
-| `exists` / `notExists` | `!= null` / `== null` | `IS NOT NULL` / `IS NULL` | `{ not: null }` / `{ equals: null }` |
+| `exists` / `notExists` | `!= null` / `== null` | `IS NOT NULL` / `IS NULL` | `{ not: null }` / `{ equals: null }`; on a required column, whether its row is there (`{ rel: { is: {} } }` / `NOT`, always / never at the root) |
 
 The **absent set** of a path is wider than a NULL leaf: an optional to-one hop can be NULL too,
 and `{ rel: { col: { equals: null } } }` only matches when the relation exists. So every negation
@@ -768,6 +778,19 @@ positive operator, ask for them:
   - `exactly`
 - `toSql()` generates `WHERE` fragments and `LEFT JOIN`s, not complete queries
 
+### Where the Rails Differ
+
+`check()`, `toSql()` and `toPrisma()` agree on every rule they all compile, except where the
+engines themselves differ:
+
+- Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
+  Postgres's `LOWER` under the database collation can differ on letters like `İ`.
+- Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
+  `check()` compares UTF-16 code units, Postgres the column's collation.
+- An array or aggregate rule on a Json value that isn't an array is a data error. `check()`
+  throws on it; SQL can't raise per row, so an aggregate reads it as empty and `empty` /
+  `notEmpty` read it as a value that isn't empty.
+
 ## TypeScript Types
 
 The public rule types are generic over comparison payloads:
@@ -775,7 +798,7 @@ The public rule types are generic over comparison payloads:
 ```ts
 type Condition<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | Rule<TRuleValue>
-  | AggregateRule
+  | AggregateRule<TRuleValue, TDateValue>
   | ArrayRule<TRuleValue, TDateValue>
   | DateRule<TDateValue>
   | All<TRuleValue, TDateValue>
@@ -795,7 +818,9 @@ Rules:
 - `Condition`, `StrictCondition`, `Rule`, `AggregateRule`, `AggregateMode`, `ArrayRule`, `DateRule`, `Row`, `CheckData`
 - `GroupByStep`, `WhereStep`, `PrismaStep`, `PrismaWhere`, `StepRef` (a Prisma plan's steps); `ScopeRef`, `ScopedRef`, `ScopeOutOfBounds` (scope refs)
 - `CheckOptions`, `CompileOptions`, `ToPrismaOptions`, `ToSqlOptions`, `ToSqlResult`, `ToPrismaResult`, `ValidateRuleOptions`, `ListBindingsOptions`, `ValidationIssue`, `ValidationResult`
-- every rule-shape type in `src/types.ts` (`StrictRule`, `DateExpr`, `RelativeUnits`, …), listed in `index.ts`
+- rule parts: `All`, `Any`, `IfThenElse`, `RuleValue`, `RuleScalar`, `OrderedRuleValue`, `ValueSourceOf`, `ValueSourceFields`, `NumberOffset`, `Magnitude`, `WindowFields`, `OrderBy`, `SortDir`
+- dates: `DateRuleValue`, `DateInputValue`, `DateInputOrExpr`, `DateExpr`, `RollingExpr`, `PeriodExpr`, `EdgeExpr`, `PeriodUnit`, `RelativeUnits`, `DateOffset`, `DateConfig`, `TimeZoneConfig`, `WeekStart`
+- the strict shapes, which pair each operator with its operand's type: `StrictCondition`, `StrictAll`, `StrictAny`, `StrictIfThenElse`, `StrictRule`, `StrictEqualityRule`, `StrictMembershipRule`, `StrictOrderedComparisonRule`, `StrictRangeRule`, `StrictContainsRule`, `StrictStringBoundaryRule`, `StrictPatternRule`, `StrictPresenceRule`, `StrictDateRule`, `StrictDateComparisonRule`, `StrictDateRangeRule`, `StrictDateDayRule`, `StrictArrayRule`, `StrictArrayPredicateRule`, `StrictArrayCountRule`, `StrictArrayPresenceRule`, `StrictAggregateRule`
 - `engineGlobals`, `EngineGlobalsState`, `PrismaProvider`, `FuzzyConfig`
 
 Lens & bridges:
@@ -935,7 +960,7 @@ check(
 );
 ```
 
-`check()` throws if `data` is an array but the rule contains any field-based leaf, or if the rule is a fieldless `ArrayRule` and `data` is not an array. Root-array compilation to Prisma/SQL is not yet implemented — these are `check()`-only.
+`check()` throws if `data` is an array but the rule contains any field-based leaf, or if the rule is a fieldless `ArrayRule` and `data` is not an array. Root-array rules are `check()`-only: both compilers throw on a fieldless `ArrayRule`.
 
 ## Lens & Multi-Source Data
 
@@ -1138,7 +1163,7 @@ const projection = projectLens(narrowing, { sourceValues: [values] });
 | --- | --- |
 | `toSourceQueries(lensOrNarrowing)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql }`. `prisma.steps` is present when the where needs `executePrismaPlan`. `sql.sql` is `null` with an `error` when SQL can't express the where. A grouped source drops `distinct`. |
 | `materializeSourceQuery(query, rows, { rowShape? })` | One query's fetched rows as `SourceValues`. `rowShape` is `'prisma'` (default: a dotted `label` and each `groupBy` axis come nested) or `'sql'` (they come flat as `__label` / `__group_i`). Options are deduplicated and sorted. |
-| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from rows fetched under the lens. Rows are taken as already lens-scoped, so only each source's own eligibility is applied, through `check()` with `options`. A scalar-list field gives one option per element. |
+| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from rows fetched under the lens (relations inline). Each row at the source's path must pass, through `check()` with `options`, its source `where`, the grants of the visits above it, the guards of the relations it crosses and the values the lens allows; its own visit's `where` is not re-applied, since the rows were fetched under it. A scalar-list field gives one option per element. A `from: 'mapDefaults'` source throws (see below). |
 
 Options never offer a value the lens disallows: `projectLens` drops fetched values outside a
 field's allowed set.
@@ -1177,12 +1202,14 @@ mapDefaults: {
 
 `from: 'mapDefaults'` resolves where it sits — `mapDefaults[<this path's map>].models[<this path's
 model>].sources[<field>]` — and takes that source's eligibility (tenancy included), label and
-axes; its own `where`, and child layers, only narrow it. Nothing is carried from the path above.
+axes; its own `where`, and child layers, only narrow it. A pointer drops the grants the path
+carries down only from the layer that declares it on: the layers before it still carry theirs, so
+a child's pointer can only narrow what its parent gave. A tenant layer added *after* a pointer
+scopes it through `mapDefaults` (the model's own grant or source), not a root `where`.
 A pointer whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws
-from `projectLens` (by path) / `toSourceQueries` / `materializeSources`; `projectLens(…, { by:
-'model' })` and `describeRuleSources` read the lens without validating it. A pointer drops the
-path's carried grants from the layer that declares it on, so a tenant layer added *after* a pointer
-scopes it through `mapDefaults` (the model's own grant or source), not a root `where`. Across a bridge it is how a picker gets options at all: the
+from `projectLens` (by path) / `toSourceQueries` / `materializeSources`, even where a layer hides
+its field; `projectLens(…, { by: 'model' })` and `describeRuleSources` read the lens without
+validating it. Across a bridge it is how a picker gets options at all: the
 model source compiles against the far map alone, with that map's own tenancy, where a path source
 offers nothing. `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
 rows; query it with `toSourceQueries` and `materializeSourceQuery`.

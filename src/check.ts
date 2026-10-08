@@ -48,6 +48,9 @@ const validateRootArrayShape = (rule: Condition): void =>
     );
   });
 
+/** Evaluate a rule against one row, or a root array of rows (fieldless array rules under
+ *  `all` / `any` only): `true` when it holds, else the failing rule's error text. Throws on a
+ *  structurally invalid rule or malformed data. */
 export const check = <TData extends CheckData>(
   conditions: Condition,
   data: TData,

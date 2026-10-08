@@ -18,23 +18,22 @@ Additive. Each function replaces code template wrote around the lens.
   (a visible relation off them brings its visible columns), and every column a `where` on the way
   reads. A to-many relation carries its visit's grants, compiled, as its `where`, so related rows
   come pre-narrowed. A to-one relation can't take a `where` in Prisma; `projectRows` drops the
-  rows its grant hides. A relation grant that needs a counting step throws. `options` carries the
-  clock (and context) for the grants' compile. Replaces template's `includeFromLens`.
+  rows its grant hides. A relation that shows no column is fetched whole; bridges are skipped. A
+  relation grant that needs a counting step throws. `options` carries the clock (and context) for
+  the grants' compile. Replaces template's `includeFromLens`.
 - **`projectRows(lensOrNarrowing, rows, { keepGrantColumns?, ...checkOptions })`**: rows cut to
   what a lens shows, recursively. Hidden columns and relations are removed, and every row a
   visit's `where` hides is gone: a root or list row is dropped, a to-one row is null.
-  `keepGrantColumns` keeps the exact columns those `where`s read, so a later
-  `check(narrowRule(rule, lens), row)` can re-test the grants. Replaces template's `prune`;
-  with `toLensSelect` and `toPrisma(true, { lens })`, `fetchLens` becomes three calls.
+  `keepGrantColumns` keeps the exact columns those `where`s read, and a hidden to-one row as those
+  columns alone instead of `null`, so a later `check(narrowRule(rule, lens), row)` re-tests the
+  grants as the database does (a negation or `notExists` through it doesn't admit it). That output
+  carries hidden values — for re-checks, never for a viewer. Replaces template's `prune`; with
+  `toLensSelect` and `toPrisma(true, { lens })`, `fetchLens` becomes three calls.
 
 - **`exists` / `notExists` on a required column compile on Prisma.** They read `{ not: null }` /
   `{ equals: null }`, which Prisma rejects on a required column; a required column is null only
   where the row it sits on is missing, so they now ask that (`{ is: {} }` on the path above, or
   always / never at the root).
-- **`projectRows(…, { keepGrantColumns: true })` keeps a hidden to-one row as its grant columns**
-  instead of `null`, so a narrowed re-check fails it as the database does (a negation or
-  `notExists` through it no longer admits it). That output carries hidden values — for re-checks,
-  never for a viewer.
 
 ## 3.1.1 — a pointer never widens what a parent layer gave
 
@@ -336,7 +335,8 @@ Three differences remain, all outside the rules' control:
 - Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
   Postgres's `LOWER` under the database collation can differ on letters like `İ`.
 - An array or aggregate rule on a Json value that isn't an array is a data error: `check()`
-  reports it, and SQL, which can't raise per row, reads it as empty.
+  throws on it, and SQL, which can't raise per row, reads it as empty for an aggregate and as a
+  value that isn't empty for `empty` / `notEmpty`.
 - Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
   `check()` compares UTF-16 code units, Postgres the column's collation.
 

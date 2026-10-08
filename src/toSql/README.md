@@ -16,6 +16,11 @@ const { sql, params } = toSql(rule);
 await db.query(`SELECT * FROM users WHERE ${sql}`, params);
 ```
 
+With `{ map, model }` (a FieldMap, or a FieldMapSet with `mapName`), columns are qualified by the
+root alias (`t0`, or `alias`) and relation paths emit `LEFT JOIN`s, returned in `joins`. With
+`{ lens }`, the rule compiles narrowed by the lens against its base lens; passing `lens` with
+`map` / `mapName` / `model` throws.
+
 ## Supported Features
 
 `toSql` agrees with `check()`: where it can't express a rule as `check()` reads it, it throws

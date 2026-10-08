@@ -536,6 +536,10 @@ const validatePathNarrowing = (
   }
 };
 
+/** A narrowing layer checked against the layers above it: it names only what they still show and
+ *  only narrows. Each problem is an issue with a code (`not_in_lens`, `not_visible`,
+ *  `conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`,
+ *  `invalid_binding`, or the lens gate's for a `where`). */
 export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult => {
   const errors: ValidationIssue[] = [];
   const set = getLensRoot(narrowing);
@@ -656,5 +660,6 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
   return validationResult(errors);
 };
 
+/** `validateNarrowing`, throwing its issues. */
 export const assertValidNarrowing = (narrowing: LensNarrowing): void =>
   throwIfInvalid(validateNarrowing(narrowing), 'validateNarrowing');

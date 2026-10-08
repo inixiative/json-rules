@@ -129,9 +129,11 @@ const compileOne = (
 /**
  * Compile a DISTINCT(value) query — Prisma and SQL — per sourced field across
  * the projected lens. The WHERE is the field's composed eligibility: the model's
- * own narrowing at that path AND its source where(s). The app runs these (with
- * its own client) to materialize each field's option set — feed the fetched rows
- * to `materializeSourceQuery`.
+ * own narrowing at that path, the grants above it carried down the path, its source
+ * where(s), the guards of the relations they cross and any allowed values. A
+ * `from: 'mapDefaults'` source reads the model's own source and carries no grant from
+ * its layer on. The app runs these (with its own client) to materialize each field's
+ * option set — feed the fetched rows to `materializeSourceQuery`.
  */
 export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
   const { lens } = resolvePolicy(lensOrNarrowing);

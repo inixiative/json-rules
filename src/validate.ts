@@ -76,6 +76,8 @@ type ValidationContext = {
 /** Which engine a rule must compile for; `check` (the default) accepts every rule. */
 export type ValidateRuleOptions = { target?: RuleTarget };
 
+/** A rule's shape checked without data: every node well formed, and runnable on `target`
+ *  (operators, windows, scope refs, patterns). */
 export const validateRule = (
   condition: unknown,
   options: ValidateRuleOptions = {},
@@ -89,6 +91,7 @@ export const validateRule = (
   return validationResult(context.errors);
 };
 
+/** `validateRule`, throwing its issues; narrows the input to a `Condition`. */
 export const assertValidRule = (
   condition: unknown,
   options: ValidateRuleOptions = {},

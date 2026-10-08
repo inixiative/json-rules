@@ -141,11 +141,10 @@ export const projectPaths = (
     }
 
     const sourceFrom: Record<string, 'mapDefaults'> = {};
-    for (const fieldName of effect.sourcesFromMapDefaults) {
-      if (!Object.hasOwn(sources, fieldName)) continue;
+    for (const fieldName of effect.sourcesFromMapDefaults.keys()) {
       if (!declaresModelSource(policy, mapName, modelName, fieldName))
         throw undeclaredModelSource(dottedPath, mapName, modelName, fieldName);
-      sourceFrom[fieldName] = 'mapDefaults';
+      if (Object.hasOwn(sources, fieldName)) sourceFrom[fieldName] = 'mapDefaults';
     }
 
     out[dottedPath] = {

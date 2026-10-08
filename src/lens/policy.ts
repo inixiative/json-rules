@@ -4,7 +4,7 @@ import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { Condition } from '../types.ts';
-import { collectChain, getLensRoot } from './chain.ts';
+import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
   Lens,
@@ -65,10 +65,7 @@ export const OFF_PATH: readonly string[] = ['__offpath__'];
 
 export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => {
   const lens = getLensRoot(lensOrNarrowing);
-  const chain =
-    (lensOrNarrowing as Lens).maps === lens.maps
-      ? []
-      : collectChain(lensOrNarrowing as LensNarrowing);
+  const chain = isLens(lensOrNarrowing) ? [] : collectChain(lensOrNarrowing);
   return { lens, chain };
 };
 

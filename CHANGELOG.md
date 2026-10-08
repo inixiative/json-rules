@@ -51,7 +51,13 @@ Additive. Each function replaces code template wrote around the lens.
   throws.
 - **A pointer escapes only the layer that declares it.** Layers after it carried nothing into its
   options, so a tenant layer added after a platform pointer (scoping by a root `where`) left other
-  tenants' rows in the picker. Every layer but the pointing one now carries its grants.
+  tenants' rows in the picker. Every layer but the pointing one now carries its grants. A later
+  layer scoping by a root `where` reaches the pointer only down the path: it then offers linked
+  rows only, and nothing across a bridge. Scope tenancy through `mapDefaults` to keep unlinked rows.
+- **`{ lens }` reads a bare value `path` as context in the narrowing too.** `narrowRule` read it as
+  a row path and wrapped a relation's grant around it, so a context key named like a relation
+  (`org.id`) changed what a rule matched under the lens.
+- **`resolvePolicy` tells a base lens from a narrowing as `isLens` does** (by its own `parent`).
 - **`composeLens` refuses a stored record carrying its own `parent`.** The record's `parent`
   replaced the composed chain, so a forged layer dropped every layer above it (a tenancy grant
   with it); a layer composes only through `parents`.

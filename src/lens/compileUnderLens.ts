@@ -1,6 +1,6 @@
 import type { CompileOptions, Condition } from '../types.ts';
 import { getLensRoot } from './chain.ts';
-import { narrowRule } from './narrowRule.ts';
+import { narrowRuleForCompile } from './narrowRule.ts';
 import { validateRuleForCompile } from './validateRuleInLens.ts';
 
 /**
@@ -27,7 +27,7 @@ export const compileUnderLens = <O extends CompileOptions>(
     );
   const root = getLensRoot(lens);
   return {
-    condition: narrowRule(condition, lens),
+    condition: narrowRuleForCompile(condition, lens),
     options: { ...options, lens: undefined, map: root, mapName: root.mapName, model: root.model },
   };
 };

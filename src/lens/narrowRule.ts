@@ -147,11 +147,17 @@ const hopsAt = (
   return relationHops(policy.lens.maps, target.scope, target.path, prefix === '$.' ? '' : prefix);
 };
 
-// A value ref's hops. A bare one is a root-row path — the lens gate resolves it at the lens
-// model, and check() reads it from the row when no context is given — so its grants re-root at
-// the root.
-const refHops = (ref: string, policy: Policy, scopes: readonly Scope[]): RelationHop[] => {
+// A value ref's hops. A bare one is a root-row path for check(), which reads it from the row when
+// no context is given, so its grants re-root at the root; on the compile rails it is the caller's
+// context and crosses nothing.
+const refHops = (
+  ref: string,
+  policy: Policy,
+  scopes: readonly Scope[],
+  bareRefsReadContext: boolean,
+): RelationHop[] => {
   if (parseScopeRef(ref)) return hopsAt(ref, policy, scopes).hops;
+  if (bareRefsReadContext) return [];
   const prefix = scopes.length === 1 ? '' : `${'$'.repeat(scopes.length)}.`;
   return scopes[0] ? relationHops(policy.lens.maps, scopes[0], ref, prefix).hops : [];
 };
@@ -177,7 +183,12 @@ const anchorOf = (
 // on a value-side ref (`path`, an offset, an amount) — is re-rooted under the hop and AND-ed with
 // the node.
 /** A rule's grants injected at their anchors, the rule read from `root` under `policy`. */
-export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Condition =>
+export const narrowAt = (
+  rule: Condition,
+  policy: Policy,
+  root: Visit,
+  bareRefsReadContext = false,
+): Condition =>
   mapCondition<readonly Scope[]>(
     rule,
     {
@@ -192,7 +203,7 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
         if (!anchor) return node as Condition;
         const valueWheres = collectHopWheres(
           policy,
-          valueRefs(node).flatMap((ref) => refHops(ref, policy, scopes)),
+          valueRefs(node).flatMap((ref) => refHops(ref, policy, scopes, bareRefsReadContext)),
         );
         const below = anchor.below;
         if (!below || !isRelationNode(node))
@@ -229,16 +240,30 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
 
 /** A rule with the lens's grants (`where`s) injected at their anchors: the root's around it, each
  *  relation's where the rule descends into it — under an `all`, into its window `filter`. */
-export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
+export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition =>
+  narrowRuleFor(rule, lensOrNarrowing, false);
+
+/** `narrowRule` as a compile rail reads the rule: a bare value ref is context. Internal to `{ lens }`. */
+export const narrowRuleForCompile = (
+  rule: Condition,
+  lensOrNarrowing: Lens | LensNarrowing,
+): Condition => narrowRuleFor(rule, lensOrNarrowing, true);
+
+const narrowRuleFor = (
+  rule: Condition,
+  lensOrNarrowing: Lens | LensNarrowing,
+  bareRefsReadContext: boolean,
+): Condition => {
   const policy = resolvePolicy(lensOrNarrowing);
   const rootEffect = resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);
 
   // First rewrite the rule, injecting where clauses at their anchors.
-  const rewritten = narrowAt(rule, policy, {
-    mapName: policy.lens.mapName,
-    modelName: policy.lens.model,
-    relPath: [],
-  });
+  const rewritten = narrowAt(
+    rule,
+    policy,
+    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] },
+    bareRefsReadContext,
+  );
 
   // Then wrap with root-anchored where clauses (root.where +
   // mapDefaults[lens.mapName].models[lens.model].where).

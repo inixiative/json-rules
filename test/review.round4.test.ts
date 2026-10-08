@@ -46,8 +46,8 @@ const ann = {
   posts: [{ id: 100, views: 5 }],
 };
 
-describe('H1: a bare path reads the root row, so only a root grant may use one', () => {
-  const orgGrant: LensNarrowing = {
+describe('H1: a bare path reads the root row, so only a root clamp may use one', () => {
+  const orgClamp: LensNarrowing = {
     parent: base,
     root: {
       relations: { org: { where: rule({ field: 'id', operator: 'equals', path: 'id' }) } },
@@ -63,8 +63,8 @@ describe('H1: a bare path reads the root row, so only a root grant may use one',
     },
   };
 
-  test('validateNarrowing refuses a bare path in a relation grant or a model default', () => {
-    for (const n of [orgGrant, postDefault]) {
+  test('validateNarrowing refuses a bare path in a relation clamp or a model default', () => {
+    for (const n of [orgClamp, postDefault]) {
       const result = validateNarrowing(n);
       expect(result.errors.map((e) => e.code)).toContain('invalid_value_source');
       expect(result.errors.map((e) => e.message).join()).toMatch(/a bind, or a `\$` scope ref/);
@@ -73,7 +73,7 @@ describe('H1: a bare path reads the root row, so only a root grant may use one',
 
   test('every posture throws rather than reading the related row', () => {
     const reads: [LensNarrowing, Condition][] = [
-      [orgGrant, rule({ field: 'org', operator: 'exists' })],
+      [orgClamp, rule({ field: 'org', operator: 'exists' })],
       [postDefault, rule({ field: 'posts', arrayOperator: 'any', condition: true })],
     ];
     for (const [n, crossing] of reads) {
@@ -82,7 +82,7 @@ describe('H1: a bare path reads the root row, so only a root grant may use one',
       expect(() => narrowRule(crossing, n)).toThrow(/root row/);
       expect(() => toPrisma(crossing, { lens: n })).toThrow(/root row/);
     }
-    expect(() => readLensValue(orgGrant, ann, 'org.name')).toThrow(/root row/);
+    expect(() => readLensValue(orgClamp, ann, 'org.name')).toThrow(/root row/);
   });
 
   test("a source's eligibility where stands on option rows: a bare path is refused there too", () => {
@@ -98,17 +98,17 @@ describe('H1: a bare path reads the root row, so only a root grant may use one',
     expect(() => toSourceQueries(sourced)).toThrow(/root row/);
   });
 
-  test('a root grant may compare root columns', async () => {
-    const rootGrant: LensNarrowing = {
+  test('a root clamp may compare root columns', async () => {
+    const rootClamp: LensNarrowing = {
       parent: base,
       root: { where: rule({ field: 'age', operator: 'greaterThan', path: 'orgId' }) },
     };
-    expect(validateNarrowing(rootGrant).ok).toBe(true);
-    expect(await rails.run(true, { lens: rootGrant })).toEqual(agree([1]));
+    expect(validateNarrowing(rootClamp).ok).toBe(true);
+    expect(await rails.run(true, { lens: rootClamp })).toEqual(agree([1]));
   });
 
-  test('a `$.` ref in a to-many relation grant reads the related row: fine', () => {
-    // A to-many hop's grant is row-scoped, never re-rooted: its `$.` reads the post.
+  test('a `$.` ref in a to-many relation clamp reads the related row: fine', () => {
+    // A to-many hop's clamp is row-scoped, never re-rooted: its `$.` reads the post.
     const scoped: LensNarrowing = {
       parent: base,
       root: {
@@ -118,7 +118,7 @@ describe('H1: a bare path reads the root row, so only a root grant may use one',
       },
     };
     expect(validateNarrowing(scoped).ok).toBe(true);
-    // Under a to-one hop narrowRule re-roots the grant, which a `$.` ref can't follow: refused.
+    // Under a to-one hop narrowRule re-roots the clamp, which a `$.` ref can't follow: refused.
     const toOne: LensNarrowing = {
       parent: base,
       root: {
@@ -257,7 +257,7 @@ describe('H3: a model-default relation never re-enters a model already on the pa
   });
 });
 
-describe('M1: a later grant crossing a relation its parent never shows fails closed', () => {
+describe('M1: a later clamp crossing a relation its parent never shows fails closed', () => {
   const tenancy: LensNarrowing = {
     parent: base,
     root: { where: rule({ field: 'id', operator: 'exists' }) },

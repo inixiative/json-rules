@@ -22,7 +22,7 @@ import type { Lens, LensNarrowing } from './types.ts';
  * `resolveVisit` — re-rooted onto the sourced model, the same hop-where fold `narrowRule`
  * performs for rule paths. The compile always joins every hop the path names, so every hop must
  * carry its guard whether or not the narrowing declares it; an unresolvable hop, or a to-many one
- * carrying a grant, is refused. `seen` dedups hops shared across paths: one guard fold per
+ * carrying a clamp, is refused. `seen` dedups hops shared across paths: one guard fold per
  * traversed node.
  */
 const foldPathGuards = (
@@ -56,11 +56,11 @@ const foldPathGuards = (
     if (seen.has(hopKey)) continue;
     seen.add(hopKey);
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
-    // A to-many hop has no single row to AND its grant against: fail closed, as narrowRule does.
+    // A to-many hop has no single row to AND its clamp against: fail closed, as narrowRule does.
     if (hop.isList && effect.whereClauses.length)
       throw new LensRefusal(
-        `${kind} '${dotted}': cannot enforce the grant on to-many relation '${hop.prefix}' in a dotted path`,
-        'unsupported_grant',
+        `${kind} '${dotted}': cannot enforce the clamp on to-many relation '${hop.prefix}' in a dotted path`,
+        'unsupported_clamp',
       );
     for (const where of effect.whereClauses) out.push(prefixConditionFields(where, hop.prefix));
   }
@@ -178,13 +178,13 @@ export type SourcePlan = {
   from?: 'mapDefaults';
   label?: string;
   groupBy?: string[];
-  /** What a row of the source's model must meet to offer its value: the visit's own grants and
+  /** What a row of the source's model must meet to offer its value: the visit's own clamps and
    *  the eligibility, the path above carried down — what the option query compiles. */
   where: Condition;
   /** The same at the visit itself, for a row reached down the path: a fetched tree supplies the
-   *  path and the grants above, so this leaves them out — what materializeSources checks. */
+   *  path and the clamps above, so this leaves them out — what materializeSources checks. */
   rowWhere: Condition;
-  /** The first path the source reads across a bridge (its where — the grants carried across one
+  /** The first path the source reads across a bridge (its where — the clamps carried across one
    *  included —, label or an axis), if any: no database holds both sides. */
   bridged?: string;
   /** Present exactly when `bridged` is: the conjuncts of `where` that read across a bridge (`true`
@@ -194,16 +194,16 @@ export type SourcePlan = {
 };
 
 /**
- * The grants of every visit above a source's own, as conditions on the source's rows: each
+ * The clamps of every visit above a source's own, as conditions on the source's rows: each
  * ancestor's `where` carried down through the inverse of the hop below it — a to-one inverse by
  * prefixing its fields, a to-many one through `any`; across a bridge the inverse is the far
- * model's bridge field back. A grant no inverse can carry is refused.
+ * model's bridge field back. A clamp no inverse can carry is refused.
  * `linked`: the rows must also be reached down the path — the inverse carried
- * where no grant sits too — as a path source's are; a pointer's rows needn't be. A relation whose
- * map declares no inverse links nothing where no grant sits: the query offers the rows the grants
+ * where no clamp sits too — as a path source's are; a pointer's rows needn't be. A relation whose
+ * map declares no inverse links nothing where no clamp sits: the query offers the rows the clamps
  * admit, reached or not.
  */
-const ancestorGrants = (
+const ancestorClamps = (
   policy: Policy,
   relPath: readonly string[],
   carriedTo: Map<string, Condition | null>,
@@ -235,8 +235,8 @@ const ancestorGrants = (
       at.modelName,
       relPath.slice(0, level),
     ).whereClauses;
-    const grants = carried === null ? declared : [...declared, carried];
-    if (grants.length === 0 && !linked) {
+    const clamps = carried === null ? declared : [...declared, carried];
+    if (clamps.length === 0 && !linked) {
       done(null);
       continue;
     }
@@ -261,32 +261,32 @@ const ancestorGrants = (
         : map
           ? inverseRelation(map, at.modelName, relPath[level], entry)
           : null;
-    // A map that declares no inverse links nothing (see the doc above); a grant it can't carry is
+    // A map that declares no inverse links nothing (see the doc above); a clamp it can't carry is
     // refused, never an empty list.
-    if (!inverse && grants.length === 0) {
+    if (!inverse && clamps.length === 0) {
       done(null);
       continue;
     }
     if (!inverse)
       throw new LensRefusal(
-        `source at '${relPath.join('.')}': '${relPath[level]}' on ${at.modelName} declares no inverse, so the grants above can't be carried down to it`,
-        'unsupported_grant',
+        `source at '${relPath.join('.')}': '${relPath[level]}' on ${at.modelName} declares no inverse, so the clamps above can't be carried down to it`,
+        'unsupported_clamp',
       );
-    const here = allOf(grants);
+    const here = allOf(clamps);
     try {
       const present = { field: inverse.field, operator: 'exists' } as Condition;
       done(
         inverse.entry.isList
           ? ({ field: inverse.field, arrayOperator: 'any', condition: here } as Condition)
-          : grants.length
+          : clamps.length
             ? allOf([present, prefixConditionFields(here, inverse.field)])
             : present,
       );
     } catch (error) {
-      // A link or grant the path can't carry is refused, never an empty list.
+      // A link or clamp the path can't carry is refused, never an empty list.
       if (!(error instanceof LensRefusal)) throw error;
       throw new LensRefusal(
-        `source at '${relPath.join('.')}': the grants above can't be carried down to it — ${error.message}`,
+        `source at '${relPath.join('.')}': the clamps above can't be carried down to it — ${error.message}`,
         error.code,
       );
     }
@@ -295,9 +295,9 @@ const ancestorGrants = (
 };
 
 /** Every sourced field the lens projects, planned once for both materializers. Each source where
- *  is narrowed as a rule is under the whole lens — every relation it crosses carries its grants,
+ *  is narrowed as a rule is under the whole lens — every relation it crosses carries its clamps,
  *  inside an array condition too — so an option never comes through a row the lens hides. A path
- *  source carries the grants above it; one that offers its model's own source (`from:
+ *  source carries the clamps above it; one that offers its model's own source (`from:
  *  'mapDefaults'`) reads that model as the lens narrows it — nothing carried from the path above
  *  by the layer that points; every other layer still carries its own. */
 export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] =>
@@ -307,7 +307,7 @@ export const sourcePlansWith = (
   policy: Policy,
   projection: PathProjection = projectPathsWith(policy),
 ): SourcePlan[] => {
-  // What the grants above carry down each path, per layer a pointer drops (or none).
+  // What the clamps above carry down each path, per layer a pointer drops (or none).
   const carried = new Map<LensNarrowing | undefined, Map<string, Condition | null>>();
   const carriedFor = (layer: LensNarrowing | undefined): Map<string, Condition | null> => {
     const kept = carried.get(layer) ?? new Map<string, Condition | null>();
@@ -339,12 +339,12 @@ export const sourcePlansWith = (
       );
       const allowed = own(visit.fields, field)?.values;
       // A pointer drops what the path above carries in the layer that points, and only there:
-      // every layer before or after it still carries, and later layers' grants still read through
+      // every layer before or after it still carries, and later layers' clamps still read through
       // the pointing layer (the chain keeps its indices), so no layer's narrowing is lost.
       const pointsFrom = fromModel ? effect.sourcesFromMapDefaults.get(field) : undefined;
       const skip = pointsFrom === undefined ? undefined : policy.chain[pointsFrom];
-      const above = ancestorGrants(
-        skip === undefined ? policy : { ...policy, skipGrantsOf: skip },
+      const above = ancestorClamps(
+        skip === undefined ? policy : { ...policy, skipClampsOf: skip },
         at.relPath,
         carriedFor(skip),
         skip === undefined && !fromModel,

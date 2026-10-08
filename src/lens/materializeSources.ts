@@ -18,7 +18,7 @@ import {
 import type { Lens, LensNarrowing } from './types.ts';
 
 /** Who reads the rows, and what rows it needs — said in a misuse's message. */
-const FETCHED_ROWS = 'materializeSources needs fetched or keepGrantColumns rows, not viewer rows';
+const FETCHED_ROWS = 'materializeSources needs fetched or keepClampColumns rows, not viewer rows';
 
 /** A row a viewer's projection cut (or rows that don't hold a bridge's far side): absence is not
  *  NULL — a fetch returns every key it selects — so materializing it would offer the wrong set. */
@@ -92,9 +92,9 @@ export const visitsOnPath = (policy: Policy, path: string): MapVisit[] => {
   ];
 };
 
-// The rows a source's path reaches in a fetched tree, each level's grants met on the way down —
+// The rows a source's path reaches in a fetched tree, each level's clamps met on the way down —
 // the tree is the path's link, so a hidden row (a to-one one Prisma can't filter, a list one a
-// grant reads whole) and everything under it drops out here.
+// clamp reads whole) and everything under it drops out here.
 const rowsAtPath = (
   policy: Policy,
   rows: readonly Row[],
@@ -105,9 +105,9 @@ const rowsAtPath = (
   const levels = visitsOnPath(policy, path);
   const admitted = (level: number, candidates: readonly Row[]): Row[] => {
     const visit = levels[level];
-    const grants = resolveVisit(policy, visit.mapName, visit.modelName, visit.relPath).whereClauses;
-    const where = allOf(grants);
-    const reads = grants.flatMap(readPaths);
+    const clamps = resolveVisit(policy, visit.mapName, visit.modelName, visit.relPath).whereClauses;
+    const where = allOf(clamps);
+    const reads = clamps.flatMap(readPaths);
     const at = [policy.lens.model, ...relPath.slice(0, level)].join('.');
     return candidates.filter((row) => {
       requireReads(policy, visit, row, at, reads);
@@ -135,10 +135,10 @@ const rowsAtPath = (
  * the in-memory executor of `sources` declarations, alongside `toSourceQueries`
  * (which compiles the same declarations to DISTINCT queries for a DB). Rows are
  * the collection the lens fetches — `toLensSelect`'s rows as fetched, or as
- * `projectRows(…, { keepGrantColumns: true })` keeps them; a viewer's projection drops what
- * the sources read, and a row lacking a key a source or a grant on its path reads throws. The
- * path is walked down the rows, each level's grants met, and each row it reaches must meet its
- * visit's grants, its source `where` narrowed as a rule, the guards of the relations its label
+ * `projectRows(…, { keepClampColumns: true })` keeps them; a viewer's projection drops what
+ * the sources read, and a row lacking a key a source or a clamp on its path reads throws. The
+ * path is walked down the rows, each level's clamps met, and each row it reaches must meet its
+ * visit's clamps, its source `where` narrowed as a rule, the guards of the relations its label
  * and axes cross and any allowed values — evaluated with `check()` (`options`: `now`,
  * `bindings`), so it offers what the database does. Scalar-list fields contribute one option per
  * element, a value takes its least label (a sibling column, or a dotted to-one path read through

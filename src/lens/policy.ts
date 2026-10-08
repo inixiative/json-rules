@@ -78,14 +78,14 @@ export type Policy = {
    *  whose chain a caller filters keeps it, so a dropped layer never makes another one first. */
   origin?: LensNarrowing;
   /** A read off the menu: any relation not omitted, turned on or not. The first narrowing's
-   *  grants read the schema this way; column visibility still applies. */
-  grant?: boolean;
+   *  clamps read the schema this way; column visibility still applies. */
+  clamp?: boolean;
   /** What this call has worked out, shared by the policies it derives. */
   memo?: CallMemo;
-  /** A layer whose own grants are dropped (a source pointer's), keeping the chain's indices — so
-   *  later layers' grants still read through it. */
-  skipGrantsOf?: LensNarrowing;
-  /** Skip the runtime vetting of later layers' grants: validateNarrowing enumerating the visits
+  /** A layer whose own clamps are dropped (a source pointer's), keeping the chain's indices — so
+   *  later layers' clamps still read through it. */
+  skipClampsOf?: LensNarrowing;
+  /** Skip the runtime vetting of later layers' clamps: validateNarrowing enumerating the visits
    *  they apply at before it checks them. */
   unvetted?: boolean;
   /** A layer whose own picks and omits are not applied, keeping the chain's indices: a source's
@@ -101,7 +101,7 @@ export type Policy = {
 type CallMemo = {
   /** The model-default trees, by spelled node. */
   trees: Map<string, DefaultTree>;
-  /** The later grants already checked at a visit, keyed by grant, visit and the layers it reads
+  /** The later clamps already checked at a visit, keyed by clamp, visit and the layers it reads
    *  through. */
   vetted: Set<string>;
   /** The visits resolved, keyed by visit and the policy's layers. */
@@ -111,7 +111,7 @@ type CallMemo = {
   places: Map<string, Place>;
   /** Each model's fields as read. */
   models: Map<ModelEntry, ModelFields>;
-  /** Each grant's first bare value ref and first ref climbing out of it. */
+  /** Each clamp's first bare value ref and first ref climbing out of it. */
   refs: Map<Condition, { bare: string | null; escaping: string | null }>;
   /** Why toPrisma can't compile a condition at a model (null: it can), by map and model. */
   compiles: Map<Condition, Map<string, string | null>>;
@@ -120,11 +120,11 @@ type CallMemo = {
 type Place = { trail: MapVisit[] | null; turnedOn: string[] };
 type ModelFields = { relations: Set<string>; gated: [string, FieldMapEntry][] };
 
-/** A resolved visit, and — resolved unvetted — the checks of its later grants not yet made. */
+/** A resolved visit, and — resolved unvetted — the checks of its later clamps not yet made. */
 type ResolvedVisit = { effect: VisitEffect; unchecked: (() => void)[] | null };
 
 /** A relPath reached from no anchor — `resolveVisit` then applies the model's own defaults only:
- * the model-intrinsic visit a model default's grant and source are checked at. */
+ * the model-intrinsic visit a model default's clamp and source are checked at. */
 export const OFF_PATH: readonly string[] = ['__offpath__'];
 
 // Trees are kept on the first narrowing under a fingerprint of the base lens it stands on and its
@@ -254,11 +254,11 @@ const accumulateInto = (
   narrow: (condition: Condition) => Condition,
   layer: number,
   vet: (condition: Condition, source?: boolean) => void,
-  grants: boolean,
+  clamps: boolean,
   hiding: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
-  if (n.where !== undefined && grants) {
+  if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
   }
@@ -267,7 +267,7 @@ const accumulateInto = (
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
       const wheres = out.sourceWheres.get(field) ?? [];
-      if (spec.where !== undefined && grants) {
+      if (spec.where !== undefined && clamps) {
         vet(spec.where, true);
         clauses.push(narrow(spec.where));
         wheres.push(spec.where);
@@ -295,7 +295,7 @@ const accumulateInto = (
   }
 };
 
-/** A narrowing the lens refuses to apply: a grant validateNarrowing reports, met at runtime. */
+/** A narrowing the lens refuses to apply: a clamp validateNarrowing reports, met at runtime. */
 export class LensRefusal extends Error {
   override name = 'LensRefusal';
   constructor(
@@ -306,43 +306,43 @@ export class LensRefusal extends Error {
   }
 }
 
-/** A bare value `path` reads the root row: only a root grant may compare with one. */
+/** A bare value `path` reads the root row: only a root clamp may compare with one. */
 export const misanchoredPath = (ref: string): LensRefusal =>
   new LensRefusal(
-    `a bare path ('${ref}') reads the root row, which a grant at a relation visit or a model default doesn't stand on: use a literal, a bind, or a \`$\` scope ref`,
+    `a bare path ('${ref}') reads the root row, which a clamp at a relation visit or a model default doesn't stand on: use a literal, a bind, or a \`$\` scope ref`,
     'invalid_value_source',
   );
 
 /**
- * What a later layer's grant reads that its parent doesn't show, at the visit it applies to: the
+ * What a later layer's clamp reads that its parent doesn't show, at the visit it applies to: the
  * one check validateNarrowing and every runtime posture make — the gate itself, over the parent's
  * surface (every hop and the column at its end).
  */
-export const laterGrantIssues = (
+export const laterClampIssues = (
   condition: Condition,
   parent: Policy,
   at: MapVisit,
 ): ValidationIssue[] =>
   checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
 
-/** A later layer's grant reading what its parent doesn't show. */
-export const unshownGrant = (issue: ValidationIssue): LensRefusal =>
+/** A later layer's clamp reading what its parent doesn't show. */
+export const unshownClamp = (issue: ValidationIssue): LensRefusal =>
   new LensRefusal(
-    `a later layer's grant reads what its parent does not show: '${issue.path}' ${issue.message}`,
+    `a later layer's clamp reads what its parent does not show: '${issue.path}' ${issue.message}`,
     issue.code,
   );
 
-/** A scope ref in a grant that climbs above the grant's own row. */
-export const escapingGrantRef = (ref: string): LensRefusal =>
+/** A scope ref in a clamp that climbs above the clamp's own row. */
+export const escapingClampRef = (ref: string): LensRefusal =>
   new LensRefusal(
-    `the scope ref '${ref}' climbs out of the grant: a grant reads its own row ('$.'), literals and binds`,
+    `the scope ref '${ref}' climbs out of the clamp: a clamp reads its own row ('$.'), literals and binds`,
     'scope_out_of_bounds',
   );
 
-/** What a grant reads past its own row: its first bare value ref (a root-row read), and its first
+/** What a clamp reads past its own row: its first bare value ref (a root-row read), and its first
  *  scope ref — a field or a value ref — that climbs above its own row (`$$.` at its top, `$$$.`
  *  one array down, …); each null when there is none. */
-export const grantRefs = (
+export const clampRefs = (
   condition: Condition,
 ): { bare: string | null; escaping: string | null } => {
   let bare: string | null = null;
@@ -521,7 +521,7 @@ export const resolveVisit = (
   const key = policy.memo ? visitKey(policy, mapName, modelName, relPath) : null;
   const kept = key === null ? undefined : policy.memo?.effects.get(key);
   if (kept) {
-    // Resolved unvetted earlier: vetted, its later grants are checked now, as a fresh resolve would.
+    // Resolved unvetted earlier: vetted, its later clamps are checked now, as a fresh resolve would.
     if (!policy.unvetted && kept.unchecked) {
       for (const check of kept.unchecked) check();
       kept.unchecked = null;
@@ -570,28 +570,28 @@ export const resolveVisit = (
   const typeEnumOmits = new Map<string, Set<string>>();
 
   // A layer's own conditions read through its parent: the relations they reach carry the
-  // grants of every layer above, as a user rule's do — a child can't see what its parent hides.
+  // clamps of every layer above, as a user rule's do — a child can't see what its parent hides.
   let narrow = (condition: Condition): Condition => condition;
   let current = 0;
   let vet: (condition: Condition, source?: boolean) => void = () => {};
-  let grants = true;
+  let clamps = true;
   let hiding = true;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow, current, vet, grants, hiding);
+    accumulateInto(out, n, narrow, current, vet, clamps, hiding);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
   for (const [layer, narrowing] of policy.chain.entries()) {
     current = layer;
-    // A later layer's grants read through every layer above it, a pointer's included.
+    // A later layer's clamps read through every layer above it, a pointer's included.
     const parent: Policy = {
       ...policy,
-      grant: false,
-      skipGrantsOf: undefined,
+      clamp: false,
+      skipClampsOf: undefined,
       skipHidingOf: undefined,
       chain: policy.chain.slice(0, layer),
     };
-    grants = narrowing !== policy.skipGrantsOf;
+    clamps = narrowing !== policy.skipClampsOf;
     hiding = narrowing !== policy.skipHidingOf;
     narrow = (condition) =>
       layer === 0 ? condition : narrowAt(condition, parent, { mapName, modelName, relPath });
@@ -602,37 +602,37 @@ export const resolveVisit = (
       if (enumN.omits) unionIntoMap(typeEnumOmits, enumName, enumN.omits);
     }
     const { defaults, path } = layerNodes(narrowing, at, trail);
-    // A grant refused at construction (validateNarrowing) is refused here too, never applied.
-    const grantParent: Policy | null = layer === 0 ? null : parent;
-    const vetGrant =
-      (rootGrant: boolean) =>
+    // A clamp refused at construction (validateNarrowing) is refused here too, never applied.
+    const clampParent: Policy | null = layer === 0 ? null : parent;
+    const vetClamp =
+      (rootClamp: boolean) =>
       (condition: Condition, source = false): void => {
         let refs = policy.memo?.refs.get(condition);
         if (!refs) {
-          refs = grantRefs(condition);
+          refs = clampRefs(condition);
           policy.memo?.refs.set(condition, refs);
         }
         // Only the root `where` stands on the root row; a source's eligibility reads option rows.
-        if (refs.bare !== null && !(rootGrant && !source)) throw misanchoredPath(refs.bare);
-        if (refs.escaping !== null) throw escapingGrantRef(refs.escaping);
-        if (!grantParent) return;
+        if (refs.bare !== null && !(rootClamp && !source)) throw misanchoredPath(refs.bare);
+        if (refs.escaping !== null) throw escapingClampRef(refs.escaping);
+        if (!clampParent) return;
         const check = (): void => {
           const key =
             typeof condition === 'object' && condition !== null
-              ? `${idOf(condition)}${SEP}${visitKey(grantParent, mapName, modelName, relPath)}`
+              ? `${idOf(condition)}${SEP}${visitKey(clampParent, mapName, modelName, relPath)}`
               : null;
-          if (key !== null && grantParent.memo?.vetted.has(key)) return;
-          const [issue] = laterGrantIssues(condition, grantParent, at);
-          if (issue) throw unshownGrant(issue);
-          if (key !== null) grantParent.memo?.vetted.add(key);
+          if (key !== null && clampParent.memo?.vetted.has(key)) return;
+          const [issue] = laterClampIssues(condition, clampParent, at);
+          if (issue) throw unshownClamp(issue);
+          if (key !== null) clampParent.memo?.vetted.add(key);
         };
         if (policy.unvetted) unchecked.push(check);
         else check();
       };
-    vet = vetGrant(false);
+    vet = vetClamp(false);
     for (const node of defaults) applyNode(node);
     if (path) {
-      vet = vetGrant(relPath.length === 0 && trail !== null);
+      vet = vetClamp(relPath.length === 0 && trail !== null);
       applyNode(path);
     }
   }
@@ -683,7 +683,7 @@ const visitKey = (
 ): string => {
   let layers = LAYERS_KEY.get(policy);
   if (layers === undefined) {
-    layers = `${idOrNone(policy.origin)}${SEP}${idOrNone(policy.skipGrantsOf)}${SEP}${idOrNone(policy.skipHidingOf)}${SEP}`;
+    layers = `${idOrNone(policy.origin)}${SEP}${idOrNone(policy.skipClampsOf)}${SEP}${idOrNone(policy.skipHidingOf)}${SEP}`;
     for (const layer of policy.chain) layers += `${idOf(layer)},`;
     LAYERS_KEY.set(policy, layers);
   }
@@ -789,9 +789,9 @@ export const resolvePolicyPath = (
   )) {
     if (!entry) return { resolution: { outcome: 'missing', index: i, hops }, effects };
     const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
-    // A grant may cross any relation not omitted, turned on or not.
+    // A clamp may cross any relation not omitted, turned on or not.
     const visible =
-      policy.grant && isRelationEntry(entry)
+      policy.clamp && isRelationEntry(entry)
         ? !effect.omits.has(fieldName)
         : isFieldVisible(effect, fieldName);
     if (!visible) return { resolution: { outcome: 'hidden', index: i, hops }, effects };
@@ -844,7 +844,7 @@ export const sourceReadsVisible = (
   const shown = (reader: Policy, path: string): boolean =>
     resolvePolicyPath(reader, at, path).resolution.outcome !== 'hidden';
   // Skipping a layer's hiding only shows more: what every layer shows needs no second read.
-  const all: Policy = { ...policy, grant: true };
+  const all: Policy = { ...policy, clamp: true };
   const others: Policy = {
     ...all,
     skipHidingOf: from === undefined ? undefined : policy.chain[from],
@@ -970,7 +970,7 @@ export type RelationHop = {
 };
 
 /**
- * The relations a path crosses from a visit, read from the field maps — grants apply to a relation
+ * The relations a path crosses from a visit, read from the field maps — clamps apply to a relation
  * whether or not it is visible, so this walk does not gate. It stops at the first segment that
  * isn't a relation; `end` is the visit the last segment reaches when every segment is one.
  * `prefix` is prepended to each hop's dotted prefix (a `$`-scope ref).

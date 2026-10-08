@@ -308,7 +308,7 @@ predicate. Pipeline: filter → order → skip → take. Direction comes from `o
 ```
 
 `filter` is a condition each element must pass to enter the window (`narrowRule` puts a lens
-grant there under `all`). `orderBy` is a non-empty array of `{ field, dir: 'asc' | 'desc' }` (multi-key);
+clamp there under `all`). `orderBy` is a non-empty array of `{ field, dir: 'asc' | 'desc' }` (multi-key);
 `take`/`skip` are non-negative integers. **Empty-window semantics are author-driven**:
 `all` is vacuously true on an empty window, `atLeast: 1` (or `any`) is false. To require
 "the windowed element matches **and** one exists," combine `all` with `notEmpty` / `atLeast: 1`.
@@ -867,9 +867,9 @@ A lens has three forms, each with its own job:
     narrowing it came from.
 
 ```ts
-const records = storeLens(grantLens, ['user', 'org-acme', 'grant-7']); // persist each record
-// later: fetch 'grant-7', then the ids in its `parents`
-const lens = composeLens('grant-7', { user, 'org-acme': orgAcme, 'grant-7': grant7 });
+const records = storeLens(delegateLens, ['user', 'org-acme', 'delegate-7']); // persist each record
+// later: fetch 'delegate-7', then the ids in its `parents`
+const lens = composeLens('delegate-7', { user, 'org-acme': orgAcme, 'delegate-7': delegate7 });
 ```
 
 ### Operator Catalog
@@ -957,7 +957,7 @@ Two error classes say whose input went wrong; each sets `name`, so check with `i
 | Class | Thrown when | Fix |
 | --- | --- | --- |
 | `UsageError` | The caller's input is missing or malformed: no `now` for a relative date, an invalid `now` or time zone, a bind never bound (`bindRule` / `bindLens` before compiling; `bindings` for `check`). | Supply the input. |
-| `LensRefusal` (`code`) | The lens itself can't do it: a later layer's grant reads what its parent hides, a grant or source a compile has no form for, a source path that can't carry its link. | Fix the lens — `validateNarrowing` reports the same refusal as an issue. |
+| `LensRefusal` (`code`) | The lens itself can't do it: a later layer's clamp reads what its parent hides, a clamp or source a compile has no form for, a source path that can't carry its link. | Fix the lens — `validateNarrowing` reports the same refusal as an issue. |
 
 ```ts
 import { LensRefusal, UsageError } from '@inixiative/json-rules';
@@ -1014,7 +1014,7 @@ boundary is **enforced, not documented**:
 
 - a rule authored against a lens provably can't reference outside it —
   `validateRuleInLens`, at author time;
-- the row-scope **`where` is the grant, applied server-side at execution** via
+- the row-scope **`where` is the clamp, applied server-side at execution** via
   `narrowRule` — the authored rule never sees it and can't escape it;
 - what reaches an untrusted party reveals nothing hidden — `projectLens(…, { by: 'model' })`.
 
@@ -1022,7 +1022,7 @@ A lens defines a **surface area**, reused for distinct, separately-enforced
 constraints that may **diverge**: the *data-flow* surface (what you receive / pass
 into an interpolated template / expose to a client) vs the *reasoning* surface
 (what you may author predicates against — which can be narrower than what you
-actually get back). One predicate DSL (`Condition`) expresses both the **grant**
+actually get back). One predicate DSL (`Condition`) expresses both the **clamp**
 (`where`) and the **use** (rules), compiling to `check` / `toPrisma` / `toSql`.
 That's why the same primitive backs permissions, email targeting/conditions,
 feature flags, and state-transition guards — it's the authority/visibility spine
@@ -1117,11 +1117,11 @@ validateRuleInLens({ field: 'posts', arrayOperator: ArrayOperator.any, condition
   `root.relations`; a spelled node grows its own tree. Every posture walks the same tree, so they
   agree and stay small. `lensVisit(lens, 'org.users')` resolves one visit on demand, as
   `projectLens` would give it, or `null`.
-- **Grants.** The first narrowing's `where`s (and source eligibility `where`s) may read any
+- **Clamps.** The first narrowing's `where`s (and source eligibility `where`s) may read any
   relation on the schema; a later layer's may read only what its parent shows — a delegate can't
   probe a relation it can't see (`validateNarrowing` reports it; every posture throws). A bare
-  value `path` reads the root row, so only `root.where` may hold one. `toLensSelect` fetches exactly the columns grants read, and
-  `projectRows({ keepGrantColumns: true })` keeps them for a re-check.
+  value `path` reads the root row, so only `root.where` may hold one. `toLensSelect` fetches exactly the columns clamps read, and
+  `projectRows({ keepClampColumns: true })` keeps them for a re-check.
 
 ### LensNarrowing & `where`
 
@@ -1146,7 +1146,7 @@ const narrowing: LensNarrowing = {
 };
 ```
 
-Composition across chained narrowings is pure intersection: relations are turned on by the first narrowing and only hidden after it. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. Under the `all` array operator the grant goes into the rule's window `filter`, so out-of-scope rows are dropped before the user's "every row matches" check; `check()` and `toPrisma` run it. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
+Composition across chained narrowings is pure intersection: relations are turned on by the first narrowing and only hidden after it. `where` clauses are anchored to the model they describe — `root.where` ANDs at the lens anchor, `mapDefaults[X].models[Y].where` injects at every visit of Y in map X, and `root.relations[R]...where` injects when the rule descends through R. Under the `all` array operator the clamp goes into the rule's window `filter`, so out-of-scope rows are dropped before the user's "every row matches" check; `check()` and `toPrisma` run it. See [docs/LENS.md](./docs/LENS.md) for the full anchor semantics.
 
 ### Lens Utilities
 
@@ -1161,9 +1161,9 @@ Composition across chained narrowings is pure intersection: relations are turned
 | `getLensRoot(lensOrNarrowing)` | The base lens a narrowing chain is rooted at; a lens is its own. Throws on a cyclic chain. |
 | `lensVisit(lens, relationPath, options?)` | One visit as `projectLens` (by path) gives it — its shown fields with values and options, sources, labels and axes — at a dotted relation path from the anchor (`''` for the anchor), resolved on demand: nothing is enumerated, so it is cheap on any schema. `null` when a relation on the path isn't shown there (off, omitted, or outside the model-default tree). A builder walks a lens with it instead of re-deriving the lens's rules. |
 | `walkLensPath(lens, path)` | Resolves one dotted path through the lens hop by hop: `{ outcome: 'resolved', hops, terminal, jsonSubPath }`, or `hidden` (a column it doesn't keep, or a relation it doesn't turn on there) / `missing` / `pastScalar` with the failing `index`. |
-| `readLensValue(lens, row, path, options?)` | One value off a row, as the lens shows it: `{ ok: true, value }`, or `{ ok: false, reason }` — `hidden` / `missing` / `pastScalar` (the walk `validateRuleInLens` gates a field with), `relation` (the path ends on rows, not a value) or `list` (it crosses a to-many). Each row on the way, the root included, is checked against its visit's grants: one a grant hides, or a missing one, reads `null`. Only own properties are read, into a Json column too. `options` is what each grant is checked with (`now`, `bindings`). For values a template interpolates. |
+| `readLensValue(lens, row, path, options?)` | One value off a row, as the lens shows it: `{ ok: true, value }`, or `{ ok: false, reason }` — `hidden` / `missing` / `pastScalar` (the walk `validateRuleInLens` gates a field with), `relation` (the path ends on rows, not a value) or `list` (it crosses a to-many). Each row on the way, the root included, is checked against its visit's clamps: one a clamp hides, or a missing one, reads `null`. Only own properties are read, into a Json column too. `options` is what each clamp is checked with (`now`, `bindings`). For values a template interpolates. |
 | `orderRecords(items, orderBy)` | Records sorted by an `OrderBy` exactly as a window orders them on every rail: each key in turn, own-property path reads, `dir` order, NULL or absent last in either direction, ties in input order. Returns a new array. |
-| `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the grant goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
+| `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the clamp goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
 
 ```ts
@@ -1245,13 +1245,13 @@ const projection = projectLens(narrowing, { sourceValues: [values] });
 | --- | --- |
 | `toSourceQueries(lensOrNarrowing, options?)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql, recheck? }`. `options` is the clock (`now`, `timeZone`, `weekStart`) a relative date in the where compiles with — required for one, a plain usage error without it; bind a lens's binds with `bindLens` first. `prisma.steps` is present when the where needs `executePrismaPlan`. `sql.sql` is `null` with an `error` when SQL can't express the where. A source that reads across a bridge gets an over-fetching query and a `recheck`: its rows are candidates, not options (see "Sources across a bridge"). `distinct` is the value and a sibling label column; a grouped source or a dotted label drops it, so every label comes back and the least one is picked. |
 | `materializeSourceQuery(query, rows, { rowShape?, lens?, now?, … })` | One query's fetched rows as `SourceValues`. `rowShape` is `'prisma'` (default: a dotted `label` and each `groupBy` axis come nested) or `'sql'` (they come flat as `__label` / `__group_i`). Options are deduplicated and sorted. A query with `recheck` needs `lens` and rows holding the far side: it re-checks each candidate (`check`, with the clock and bindings given) and reads a bridged label or axis from the far side; a missing far side is a `UsageError`. |
-| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from the rows the lens fetches — `toLensSelect`'s rows as fetched, or as `projectRows(…, { keepGrantColumns: true })` keeps them. A viewer's projection drops what sources read: a row lacking any key a read walks — through each relation and list element to the column — that a source or a grant on its path reads throws a `UsageError` (a fetch returns every key it selects, NULL as `null`). The path is walked down the rows — the tree is its link — each level's grants met, and each row it reaches must meet, through `check()` with `options`, its visit's grants, its source `where` narrowed as a rule is, the guards of the relations its label and axes cross and the values the lens allows — so it offers what `toSourceQueries` does. A scalar-list field gives one option per element; a value takes its least label. A `from: 'mapDefaults'` source throws (see below). |
+| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from the rows the lens fetches — `toLensSelect`'s rows as fetched, or as `projectRows(…, { keepClampColumns: true })` keeps them. A viewer's projection drops what sources read: a row lacking any key a read walks — through each relation and list element to the column — that a source or a clamp on its path reads throws a `UsageError` (a fetch returns every key it selects, NULL as `null`). The path is walked down the rows — the tree is its link — each level's clamps met, and each row it reaches must meet, through `check()` with `options`, its visit's clamps, its source `where` narrowed as a rule is, the guards of the relations its label and axes cross and the values the lens allows — so it offers what `toSourceQueries` does. A scalar-list field gives one option per element; a value takes its least label. A `from: 'mapDefaults'` source throws (see below). |
 
 Options never offer a value the lens disallows: `projectLens` drops fetched values outside a
 field's allowed set. Nor do they come through a row the lens hides: each source `where` is
 narrowed under the whole lens as `narrowRule` narrows a rule — every relation it crosses carries
-that visit's grants, inside an array condition (into its `condition`, or its `filter` under `all`,
-a window or no condition) and on each hop and terminal relation of a dotted path. A grant a rule
+that visit's clamps, inside an array condition (into its `condition`, or its `filter` under `all`,
+a window or no condition) and on each hop and terminal relation of a dotted path. A clamp a rule
 couldn't carry there (one narrowRule can't re-root, a to-many relation read flat) is refused, as
 it is for a rule; so is a source whose query has a window toPrisma can't compile (by its shape,
 before anything compiles — `materializeSources` refuses it too, so the two never disagree).
@@ -1259,7 +1259,7 @@ before anything compiles — `materializeSources` refuses it too, so the two nev
 #### Two kinds of source
 
 A source declared down a relation path offers the rows **reachable** from there: the path is
-carried down through each relation's inverse (where the map declares one), and every grant above
+carried down through each relation's inverse (where the map declares one), and every clamp above
 it with it, so a Tag source under `User.tagAttachments.tag` offers the tags a live
 attachment of an in-tenant user points at. When a field should offer every row the lens lets its
 model show — linked or not, what a rule may *name* — point the path source at the model's own
@@ -1291,19 +1291,19 @@ mapDefaults: {
 
 `from: 'mapDefaults'` resolves where it sits — `mapDefaults[<this path's map>].models[<this path's
 model>].sources[<field>]` — and takes that source's eligibility (tenancy included), label and
-axes; its own `where`, and child layers, only narrow it. A pointer drops the grants the path
+axes; its own `where`, and child layers, only narrow it. A pointer drops the clamps the path
 carries down only in the layer that declares it: every layer before or after it still carries
 theirs, so a child's pointer can only narrow what its parent gave, and a tenant layer added after a
 pointer always narrows it. How depends on how it scopes: through `mapDefaults` (the model's own
-grant or source) the pointer still offers unlinked rows; through a root `where` the grant can only
+clamp or source) the pointer still offers unlinked rows; through a root `where` the clamp can only
 reach the pointer down the path, so it offers just the linked rows — and across a bridge the
-grant comes back as the query's `recheck` (below). Scope tenancy through `mapDefaults` to keep a pointer's unlinked rows.
+clamp comes back as the query's `recheck` (below). Scope tenancy through `mapDefaults` to keep a pointer's unlinked rows.
 A pointer whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws
 from `projectLens` (by path) / `toSourceQueries` / `materializeSources`, even where a layer hides
 its field; `projectLens(…, { by: 'model' })` and `describeRuleSources` read the lens without
 validating it. Across a bridge it is how a picker gets options at all: the
 model source compiles against the far map alone, with that map's own tenancy, where a path source
-over-fetches and re-checks (see "Sources across a bridge"). A grant a path can't carry down — a relation whose
+over-fetches and re-checks (see "Sources across a bridge"). A clamp a path can't carry down — a relation whose
 map declares no inverse — is a `LensRefusal`, never an empty list. `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
 rows; query it with `toSourceQueries` and `materializeSourceQuery`.
 
@@ -1331,7 +1331,7 @@ see, and marks it with `recheck`:
   `UsageError` — keeps the candidates `check(recheck, row)` holds, and reads the label and axes
   across the bridge from the far side, in either row shape. Without `lens` it throws.
 - **A source past a bridge** (its path crosses one) is queried against its own model's map; the
-  grants above it are carried back across the bridge through the far model's bridge field, and
+  clamps above it are carried back across the bridge through the far model's bridge field, and
   come back as its `recheck` — so each candidate holds the near rows inline
   (`{ id, industry, 'prisma:FanUser': [{ email, … }] }`).
 - **SQL rows are flat**, so a bridged query whose re-check reads through a local relation has
@@ -1358,15 +1358,15 @@ import { check, executePrismaPlan, narrowRule, projectRows, toLensSelect, toPris
 const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
 const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now }) });
 const shown = projectRows(narrowing, rows, { now });   // what a viewer may see
-// To re-test the grants in memory later — never to return to a viewer:
-const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, now });
+// To re-test the clamps in memory later — never to return to a viewer:
+const forRecheck = projectRows(narrowing, rows, { keepClampColumns: true, now });
 const holds = forRecheck.filter((row) => check(narrowRule(rule, narrowing), row, { now }) === true);
 ```
 
 | Function | Purpose |
 | --- | --- |
-| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so related rows come pre-narrowed — unless a grant reads that list: a grant reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its grant hides. A relation that shows no column — one turned on with all its columns hidden, or one a grant reads only for presence or a count — is fetched by its key alone — the join key, else `id` — even a hidden one, as a grant's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads — the value, its label and axes, and every column and relation its option query's condition reads — as it does a grant's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. A to-many relation's grant that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the grants. The root's own grants are the query's `where`: `toPrisma(rule, { lens })`. |
-| `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns, and relations that are off or omitted, are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepGrantColumns: true` keeps the columns those `where`s and the projected sources read, even hidden ones, and a hidden to-one row, or a hidden row of a list a grant reads, as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the grants as the database does, for any rule the lens admits; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
+| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's clamps compiled as its `where`, so related rows come pre-narrowed — unless a clamp reads that list: a clamp reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its clamp hides. A relation that shows no column — one turned on with all its columns hidden, or one a clamp reads only for presence or a count — is fetched by its key alone — the join key, else `id` — even a hidden one, as a clamp's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads — the value, its label and axes, and every column and relation its option query's condition reads — as it does a clamp's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. A to-many relation's clamp that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the clamps. The root's own clamps are the query's `where`: `toPrisma(rule, { lens })`. |
+| `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns, and relations that are off or omitted, are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepClampColumns: true` keeps the columns those `where`s and the projected sources read, even hidden ones, and a hidden to-one row, or a hidden row of a list a clamp reads, as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the clamps as the database does, for any rule the lens admits; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
 
 ### Evaluating Across Bridges
 

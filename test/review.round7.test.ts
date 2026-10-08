@@ -54,7 +54,7 @@ describe('R7-1: the validators return a result, never throw', () => {
   const live = rule({ field: 'deleted', operator: 'equals', value: false });
   const flat = rule({ field: 'posts.title', operator: 'equals', value: 'x' });
 
-  test('f1: a rule reading a to-many relation flat through a grant: an issue, not a throw', () => {
+  test('f1: a rule reading a to-many relation flat through a clamp: an issue, not a throw', () => {
     const lens: LensNarrowing = { parent: upBase, root: { relations: { posts: { where: live } } } };
     const result = validateRuleInLens(flat, lens);
     expect(result.ok).toBe(false);
@@ -62,7 +62,7 @@ describe('R7-1: the validators return a result, never throw', () => {
     expect(() => toPrisma(flat, { lens })).toThrow();
   });
 
-  test('f9: a later grant reading a to-many relation flat: an issue, not a throw', () => {
+  test('f9: a later clamp reading a to-many relation flat: an issue, not a throw', () => {
     const l1: LensNarrowing = { parent: upBase, root: { relations: { posts: { where: live } } } };
     for (const l2 of [
       { parent: l1, root: { where: flat } },
@@ -120,7 +120,7 @@ describe('R7-1: the validators return a result, never throw', () => {
   });
 });
 
-describe('R7-2: off-tree visits are found from the grants themselves, bound or not', () => {
+describe('R7-2: off-tree visits are found from the clamps themselves, bound or not', () => {
   const schema: FieldMap = {
     models: {
       User: {
@@ -159,13 +159,13 @@ describe('R7-2: off-tree visits are found from the grants themselves, bound or n
   };
 
   test.each<[string, Condition | null]>([
-    ['no other grant', null],
+    ['no other clamp', null],
     [
-      'a relative-date grant',
+      'a relative-date clamp',
       rule({ field: 'createdAt', dateOperator: 'after', value: { ago: { days: 30 } } }),
     ],
-    ['a bind grant', rule({ field: 'ownerId', operator: 'equals', bind: 'viewer' })],
-  ])('%s: validateNarrowing refuses the later grant the bound runtime refuses', (_, postsWhere) => {
+    ['a bind clamp', rule({ field: 'ownerId', operator: 'equals', bind: 'viewer' })],
+  ])('%s: validateNarrowing refuses the later clamp the bound runtime refuses', (_, postsWhere) => {
     const { l1, l2 } = mk(postsWhere);
     expect(validateNarrowing(l1).ok).toBe(true);
     expect(validateNarrowing(l2).ok).toBe(false);
@@ -174,7 +174,7 @@ describe('R7-2: off-tree visits are found from the grants themselves, bound or n
   });
 });
 
-describe('R7-3: a later grant that never applies is not refused', () => {
+describe('R7-3: a later clamp that never applies is not refused', () => {
   const schema: FieldMap = {
     models: {
       User: { fields: { id: s('String'), name: s('String'), org: rel('Org', 'UO') } },
@@ -187,12 +187,12 @@ describe('R7-3: a later grant that never applies is not refused', () => {
     root: { relations: { org: {} } },
     mapDefaults: { app: { models: { Org: { picks: ['id'] } } } },
   };
-  const grant = rule({ field: 'plan', operator: 'equals', value: 'pro' });
+  const clamp = rule({ field: 'plan', operator: 'equals', value: 'pro' });
 
-  test('the same layer omits org and restates it with a grant on a hidden column', () => {
+  test('the same layer omits org and restates it with a clamp on a hidden column', () => {
     const l2: LensNarrowing = {
       parent: l1,
-      root: { omits: ['org'], relations: { org: { where: grant } } },
+      root: { omits: ['org'], relations: { org: { where: clamp } } },
     };
     expect(validateNarrowing(l2).ok).toBe(true);
     expect(() => toLensSelect(l2)).not.toThrow();

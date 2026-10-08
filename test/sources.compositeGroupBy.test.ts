@@ -312,7 +312,7 @@ describe('toSourceQueries — source-where hop guards (hardening)', () => {
       },
     });
     const [q] = toSourceQueries(n);
-    // The where narrows as a rule does: each hop's grant AND-ed around it; the axis guards its own.
+    // The where narrows as a rule does: each hop's clamp AND-ed around it; the axis guards its own.
     expect(q.composedWhere).toEqual({
       all: [
         {

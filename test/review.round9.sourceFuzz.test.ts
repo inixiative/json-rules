@@ -20,10 +20,10 @@ import { map, openRails } from './rails/harness';
 
 // Round 9: a lens's source options are one set on every rail — the Prisma and SQL option queries,
 // and materializeSources over what the library itself fetches (toLensSelect → findMany, as
-// fetched and as projectRows keeps it for a re-check) — over random lenses with grants on hidden
+// fetched and as projectRows keeps it for a re-check) — over random lenses with clamps on hidden
 // to-one and list rows, NULL columns, roots that show few columns, nested sources, labels, axes
 // and pointers. An independent oracle — the seeded rows walked down each path by hand, each
-// level's grant checked on its own row — guards the plan itself (its path link, the grants it
+// level's clamp checked on its own row — guards the plan itself (its path link, the clamps it
 // carries down) for every source whose where reads only its own row's columns.
 
 const SEED = `
@@ -204,7 +204,7 @@ const onSql = async (query: SourceQuery) =>
         { rowShape: 'sql' },
       ).options;
 
-// The oracle: the rows a path reaches, each level's grant met on its own row, then the source's
+// The oracle: the rows a path reaches, each level's clamp met on its own row, then the source's
 // own where — never the plan's condition. Null where it doesn't apply: a pointer, a dotted label or
 // an axis (their joins carry guards), or a where that reads past its own row.
 const oracle = (lens: LensNarrowing, query: SourceQuery): string | null => {
@@ -218,18 +218,18 @@ const oracle = (lens: LensNarrowing, query: SourceQuery): string | null => {
     [...JSON.stringify(c).matchAll(/"field":"([^"]*)"/g)].map((m) => m[1]),
   );
   if (reads.some((read) => read.includes('.') || relations.has(read))) return null;
-  const grantsAt = (depth: number): Condition =>
+  const clampsAt = (depth: number): Condition =>
     ({
       all: lensVisit(lens, relPath.slice(0, depth).join('.'))?.whereClauses ?? [false],
     }) as Condition;
-  let rows = deep.filter((row) => check(grantsAt(0), row) === true);
+  let rows = deep.filter((row) => check(clampsAt(0), row) === true);
   for (const [depth, segment] of relPath.entries())
     rows = rows
       .flatMap((row) => {
         const next = row[segment];
         return Array.isArray(next) ? next : next ? [next] : [];
       })
-      .filter((row) => check(grantsAt(depth + 1), row) === true) as Record<string, unknown>[];
+      .filter((row) => check(clampsAt(depth + 1), row) === true) as Record<string, unknown>[];
   const own = { all: [...visit.whereClauses, ...clauses] } as Condition;
   const found = rows
     .filter((row) => check(own, row) === true)
@@ -265,7 +265,7 @@ test.each(
       select: toLensSelect(lens).select as never,
       orderBy: { id: 'asc' },
     })) as Record<string, unknown>[];
-    const kept = projectRows(lens, fetched, { keepGrantColumns: true });
+    const kept = projectRows(lens, fetched, { keepClampColumns: true });
     // A model source (a pointer) offers rows a fetched collection needn't hold:
     // materializeSources refuses it, and only the option queries serve it.
     const materialize = (rows: Record<string, unknown>[]) => {

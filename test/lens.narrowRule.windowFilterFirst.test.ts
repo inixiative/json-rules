@@ -43,8 +43,8 @@ const scoped: LensNarrowing = {
 const paid: Condition = { field: 'status', operator: Operator.equals, value: 'paid' };
 const prismaOpts = { map: lens, mapName: 'prisma', model: 'Customer' };
 
-describe('narrowRule — a windowed rule takes its grant as the window filter (filter-first)', () => {
-  test('windowed any: the grant is the filter, the user condition is untouched', () => {
+describe('narrowRule — a windowed rule takes its clamp as the window filter (filter-first)', () => {
+  test('windowed any: the clamp is the filter, the user condition is untouched', () => {
     const rule = {
       field: 'orders',
       arrayOperator: ArrayOperator.any,
@@ -101,7 +101,7 @@ describe('narrowRule — a windowed rule takes its grant as the window filter (f
     expect(check(composed as Condition, data)).not.toBe(true);
   });
 
-  test('windowed rule with a user filter: the grant is AND-ed into the filter', () => {
+  test('windowed rule with a user filter: the clamp is AND-ed into the filter', () => {
     const userFilter: Condition = { field: 'total', operator: Operator.greaterThan, value: 0 };
     const rule = {
       field: 'orders',

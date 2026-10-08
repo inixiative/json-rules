@@ -1,6 +1,6 @@
 # Lens deep-dive guide
 
-> The Lens primitive as of 3.4. For library basics (operators, `check()`,
+> The Lens primitive as of 3.5. For library basics (operators, `check()`,
 > `toPrisma()`, `toSql()`, bridges, multi-source data evaluation), see the
 > [README](../README.md).
 
@@ -20,7 +20,8 @@ so the resulting query/check operates only on rows the lens admits.
 
 A lens is a stack of filters. Each layer may only narrow what the layers above it show, never
 widen it, so layers compose and the result is monotonic: adding a layer can only take away.
-Stacking layers is the point.
+Stacking layers is the point. A layer's `where` is a **clamp**: a row is hidden unless it
+holds, so a clamp only ever narrows; it never grants access.
 
 One stack answers every posture, and every layer filters every posture:
 
@@ -30,10 +31,10 @@ One stack answers every posture, and every layer filters every posture:
 | fetch | `toPrisma(true, { lens })` + `toLensSelect` + `projectRows` |
 | read | `readLensValue` |
 
-Postures may differ in what they see: grants reason over columns a viewer never gets back, and
-`projectRows({ keepGrantColumns: true })` output is for an in-memory re-check only.
+Postures may differ in what they see: clamps reason over columns a viewer never gets back, and
+`projectRows({ keepClampColumns: true })` output is for an in-memory re-check only.
 
-Each layer works on its parent's projection: it may only mention — pick, omit, restate, grant
+Each layer works on its parent's projection: it may only mention — pick, omit, restate, clamp
 on — what its parent shows. The base lens is the menu: every column, no relation turned on.
 
 What one layer may do, given the layers above it (layer 1 is the first narrowing over the base):
@@ -43,9 +44,9 @@ What one layer may do, given the layers above it (layer 1 is the first narrowing
 | `picks` / `omits` / `enumPicks` / `enumOmits` | intersect (omits union) | only hide more; naming what an ancestor hid is an error. `picks` names columns only (a relation in it is `wrong_kind`); `omits` may name a relation, beside `picks` too |
 | `relations` (turning on) | exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ = exposedₖ₋₁ ∧ ¬ layer k hides it | layer 1: turn on any relation, along the path (`root.relations`) or at a model default (`mapDefaults…models.M.relations`). Later layers: hide it with `omits`, or restate one the parent shows to narrow that hop (else `not_visible`); a restatement hides nothing else |
 | model-default relations | a tree under each spelled node: each model once, at its nearest reach (ties: earlier parent, then field order) | spell under `root.relations` to reach a model another way; every posture walks the same tree |
-| `where` grants | AND at their anchor | only add. A later layer's grant is checked by one function — the gate over its parent's surface, every hop and the column at its end — at every visit it applies to (the shown visits, and the ones a layer-1 grant or source crosses), by `validateNarrowing` and by every runtime posture alike. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`, and at runtime every posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation grant or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
-| `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a grant (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
-| `from: 'mapDefaults'` pointers | — | escape only their own layer's path grants; every other layer's still apply |
+| `where` clamps | AND at their anchor | only add. A later layer's clamp is checked by one function — the gate over its parent's surface, every hop and the column at its end — at every visit it applies to (the shown visits, and the ones a layer-1 clamp or source crosses), by `validateNarrowing` and by every runtime posture alike. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`, and at runtime every posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation clamp or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
+| `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a clamp (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
+| `from: 'mapDefaults'` pointers | — | escape only their own layer's path clamps; every other layer's still apply |
 
 ## 2. Two kinds of narrowing
 
@@ -167,17 +168,17 @@ What turning on governs:
 Later layers:
 
 - **Narrow, never turn on.** A later layer may `omits: ['org']` (the next layer can't turn it back
-  on), or restate `relations.org = { where }` to add a grant on that hop — a restatement hides
+  on), or restate `relations.org = { where }` to add a clamp on that hop — a restatement hides
   nothing else. Naming a relation its parent doesn't show is `not_visible`, and does nothing at
   runtime.
-- **Grant on what the parent shows.** A later layer's `where` (and source eligibility `where`)
-  may cross only relations its parent shows; otherwise a delegate's grant would probe what it
-  can't see. Layer 1's grants read the schema. `validateNarrowing` reports a grant that crosses
+- **Clamp on what the parent shows.** A later layer's `where` (and source eligibility `where`)
+  may cross only relations its parent shows; otherwise a delegate's clamp would probe what it
+  can't see. Layer 1's clamps read the schema. `validateNarrowing` reports a clamp that crosses
   more, and every runtime posture (the gate, `narrowRule`, `{ lens }` compiles, `toLensSelect`,
   `projectRows`, `readLensValue`, the sources) throws instead of applying it.
-- **A source `where` narrows as a rule.** It is a grant on the options and a surface a viewer
+- **A source `where` narrows as a rule.** It is a clamp on the options and a surface a viewer
   reasons over, so each one is narrowed under the whole lens as `narrowRule` narrows a rule: an
-  option never comes through a row any layer hides. A later layer's grant on a relation a source
+  option never comes through a row any layer hides. A later layer's clamp on a relation a source
   reads thereby applies there — and is checked there, like any other.
 - **Sources across a bridge over-fetch and re-check.** An in-memory check must over-fetch, never
   pre-filter, or the rules break. A source whose path, `where`, `label` or an axis reads across a
@@ -187,7 +188,7 @@ Later layers:
   carries one; no other query does. The query selects local columns and each bridge's local `on`
   key; the caller loads the far side onto each candidate under its bridge field, and
   `materializeSourceQuery(query, rows, { lens })` re-checks them and reads a bridged label or axis
-  from the far side. A source past a bridge carries the grants above it back across through the
+  from the far side. A source past a bridge carries the clamps above it back across through the
   far model's bridge field. Candidates without the far side throw a `UsageError`.
   `materializeSources` still materializes a path source across a bridge from root rows holding
   the far side; a pointer goes through the query.
@@ -196,10 +197,10 @@ Later layers:
   select, and a rule reaching each shown visit narrowed — and reports each `LensRefusal` they
   raise as an issue. Nothing compiles there, so no binding, clock or literal is read: an unbound
   lens validates exactly as its bound runtime refuses (`ok` ⇔ no posture refuses).
-- **A grant reads its own row.** A scope ref that climbs out of the grant (`$$.` at its top,
+- **A clamp reads its own row.** A scope ref that climbs out of the clamp (`$$.` at its top,
   `$$$.` one array down) is `scope_out_of_bounds` in `validateNarrowing`, and every posture throws.
-- **A bare `path` in a grant reads the root row.** Only `root.where` stands on it; in a relation
-  grant, a model default or a source's eligibility `where`, use a literal, a bind, or a `$` scope
+- **A bare `path` in a clamp reads the root row.** Only `root.where` stands on it; in a relation
+  clamp, a model default or a source's eligibility `where`, use a literal, a bind, or a `$` scope
   ref — otherwise `validateNarrowing` reports `invalid_value_source` and every posture throws.
 
 ## 3. The three anchor layers for `where`
@@ -292,7 +293,7 @@ out of scope. The scope semantic is broken.
 
 ### Filter-first via the window `filter` — right
 
-`narrowRule` injects the `all` grant into the array rule's window `filter`, not its condition:
+`narrowRule` injects the `all` clamp into the array rule's window `filter`, not its condition:
 
 ```ts
 {
@@ -329,19 +330,19 @@ complement of the condition (NULL fields included); `any`, `none`, counts and ag
 
 ### Why not a per-row implication?
 
-A previous approach realized the grant as a per-row implication *inside the condition* —
+A previous approach realized the clamp as a per-row implication *inside the condition* —
 `all(¬scope ∨ user)`, via an internal `negate()`. It was unsound two ways:
 
 - **Under a window** (`orderBy`/`take`/`skip`): `check` applies the window to the *raw* array
   first, so an out-of-scope row could occupy the `take` slot and then be exempted by `¬scope` — a
-  **grant bypass** (the lens narrowing silently leaks).
+  **clamp bypass** (the lens narrowing silently leaks).
 - **Under partial comparison semantics**: `negate` of an ordered comparator (`score > 0` →
   `score <= 0`) is not a true complement when the field is missing — both return false — so an
   out-of-scope row is wrongly forced through the user condition.
 
 Injecting into the `filter` avoids both: there is no `negate`, so no operator needs an inverse (a
-`startsWith` grant just works), and the window can't reorder around the scope. The trade-off is
-that the grant rides a window `filter`: `toPrisma` folds a filter-only window into the rule (see
+`startsWith` clamp just works), and the window can't reorder around the scope. The trade-off is
+that the clamp rides a window `filter`: `toPrisma` folds a filter-only window into the rule (see
 above), and `toSql`, which compiles no relation arrays, refuses it — `describeRule` reports
 `['check', 'toPrisma']`.
 
@@ -802,7 +803,7 @@ import { check, narrowRule } from '@inixiative/json-rules';
 
 const composed = narrowRule(userRule, narrowing);
 // composed now contains the user rule + tenantId/deletedAt wheres anchored
-// at every User and Post visit. Under the `all`, the Post grant is the
+// at every User and Post visit. Under the `all`, the Post clamp is the
 // array rule's window `filter`, which toPrisma folds into the rule.
 
 check(composed, userWithPosts);
@@ -832,12 +833,12 @@ const plan = toPrisma(anyPublishedRule, { lens: narrowing });
 `toLensSelect(narrowing, options?)` gives the `findMany` `select` for the rows a lens shows: each
 shown visit's visible columns and the relations turned on, and every column a `where` on the way
 reads. A relation that is off is not fetched. A to-many
-relation carries its grants as its `where`, unless a grant reads that list — a grant reads a list
+relation carries its clamps as its `where`, unless a clamp reads that list — a clamp reads a list
 whole, as the database does. `projectRows(narrowing, rows, options?)` cuts fetched rows to what the
 lens shows: hidden columns, and relations that are off or omitted, removed, a row a `where` hides
 dropped (a to-one row becomes `null`). With
-`keepGrantColumns: true` it keeps the columns those `where`s read, and a hidden to-one row, or a hidden row of a list a grant reads, as
-those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the grants as the
+`keepClampColumns: true` it keeps the columns those `where`s read, and a hidden to-one row, or a hidden row of a list a clamp reads, as
+those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the clamps as the
 database does, for any rule the lens admits; that output carries hidden values and is never for a viewer. See the README,
 "Fetching Under a Lens".
 
@@ -845,7 +846,7 @@ database does, for any rule the lens admits; that output carries hidden values a
 const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
 const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now }) });
 const shown = projectRows(narrowing, rows, { now });
-const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, now });
+const forRecheck = projectRows(narrowing, rows, { keepClampColumns: true, now });
 ```
 
 ### `projectLens(lens)` — path-keyed projection
@@ -1021,7 +1022,7 @@ relation names from `picks` (`wrong_kind` now):
 { parent: lens, root: { picks: ['id'], relations: { org: { relations: { parent: {} } } } } }
 ```
 
-A later layer can't turn a relation on — move turn-ons to the first narrowing — and its grants
+A later layer can't turn a relation on — move turn-ons to the first narrowing — and its clamps
 read only what its parent shows. `toLensSelect` and `projectRows` no longer take `rules`, and no
 longer fetch or keep a relation that is off.
 
@@ -1302,14 +1303,14 @@ const where = await executePrismaPlan(plan, { post: prisma.post });
 const users = await prisma.user.findMany({ where });
 ```
 
-The Prisma `where` carries the tenant predicate at the root and the Post grant
+The Prisma `where` carries the tenant predicate at the root and the Post clamp
 inside `posts.some`, so the database returns only users with a published post
 that is in scope.
 
 ### The same rule with `all`
 
 "Every post is published" (`arrayOperator: 'all'`) narrows differently: the
-Post grant becomes the array rule's window `filter` (section 4), so deleted and
+Post clamp becomes the array rule's window `filter` (section 4), so deleted and
 cross-tenant posts are dropped before the `all` runs. `toPrisma` folds that
 filter into the rule — "no post in scope is unpublished" — and `toSql` compiles
 no relation arrays, so `describeRule(composedAll, narrowing).supportedTargets` is

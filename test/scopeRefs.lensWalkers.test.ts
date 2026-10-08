@@ -60,7 +60,7 @@ const wOrder: Condition = { field: 'status', operator: Operator.equals, value: '
 const wCustomer: Condition = { field: 'tenantId', operator: Operator.equals, value: 't1' };
 
 describe('narrowRule — narrowing follows a prefixed field to its scope', () => {
-  test('a $$$. array rule gets the ancestor relation grant injected', () => {
+  test('a $$$. array rule gets the ancestor relation clamp injected', () => {
     const narrowing: LensNarrowing = {
       parent: lens,
       mapDefaults: { prisma: { models: { Order: { where: wOrder } } } },
@@ -91,7 +91,7 @@ describe('narrowRule — narrowing follows a prefixed field to its scope', () =>
     });
   });
 
-  test('a to-one hop under a $$. field re-roots the grant under the same prefix', () => {
+  test('a to-one hop under a $$. field re-roots the clamp under the same prefix', () => {
     const narrowing: LensNarrowing = {
       parent: lens,
       mapDefaults: { prisma: { models: { Customer: { where: wCustomer } } } },
@@ -115,7 +115,7 @@ describe('narrowRule — narrowing follows a prefixed field to its scope', () =>
     expect(() => narrowRule(rule, lens)).toThrow(/depth 2.*only 1/);
   });
 
-  test('a relation grant authored with a scope ref cannot be re-rooted', () => {
+  test('a relation clamp authored with a scope ref cannot be re-rooted', () => {
     const narrowing: LensNarrowing = {
       parent: lens,
       mapDefaults: {

@@ -7,8 +7,8 @@ import { ArrayOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
 
 // A relation node with no `condition` — emptiness, an aggregate — still crosses its
-// relation. Its grants scope the rows it reads (via `filter`), and the relations its own
-// `filter` reaches keep their grants. Before, both were skipped.
+// relation. Its clamps scope the rows it reads (via `filter`), and the relations its own
+// `filter` reaches keep their clamps. Before, both were skipped.
 
 const map: FieldMap = {
   models: {
@@ -51,7 +51,7 @@ const data = {
 };
 
 describe('narrowRule — a relation node without a condition', () => {
-  test('emptiness reads only the rows its grant allows', () => {
+  test('emptiness reads only the rows its clamp allows', () => {
     const rule = { field: 'orders', arrayOperator: ArrayOperator.notEmpty } as Condition;
     const composed = narrowRule(rule, ordersScoped) as { filter?: Condition };
     expect(composed.filter).toEqual(live);
@@ -60,7 +60,7 @@ describe('narrowRule — a relation node without a condition', () => {
     expect(check(narrowRule(rule, ordersScoped), allDeleted)).not.toBe(true);
   });
 
-  test('an aggregate sums only the rows its grant allows', () => {
+  test('an aggregate sums only the rows its clamp allows', () => {
     const rule = {
       field: 'orders',
       aggregate: { mode: 'sum', field: 'total' },
@@ -71,7 +71,7 @@ describe('narrowRule — a relation node without a condition', () => {
     expect(check(narrowRule(rule, ordersScoped), data)).not.toBe(true);
   });
 
-  test('grants on relations the filter reaches are injected', () => {
+  test('clamps on relations the filter reaches are injected', () => {
     const customerScoped: LensNarrowing = {
       parent: lens,
       mapDefaults: {
@@ -90,7 +90,7 @@ describe('narrowRule — a relation node without a condition', () => {
       id: 'c2',
       orders: customers.map((id) => ({ customer: id === null ? null : { id } })),
     });
-    // A hidden customer fails the filter; a granted one and a missing one pass it.
+    // A hidden customer fails the filter; a visible one and a missing one pass it.
     expect(check(composed, orders('c3'))).not.toBe(true);
     expect(check(composed, orders('c2'))).toBe(true);
     expect(check(composed, orders(null))).toBe(true);

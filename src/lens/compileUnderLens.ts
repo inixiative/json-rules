@@ -8,7 +8,7 @@ import { validateRuleInLens } from './validateRuleInLens.ts';
 /**
  * A compile under `lens`, or without one: `compile` run on the rule and options with `lens`
  * applied (see below). A compile failure that the bare rule doesn't meet — compiled against the
- * same base lens without the lens's grants — is the lens's: a `LensRefusal`, never a plain Error.
+ * same base lens without the lens's clamps — is the lens's: a `LensRefusal`, never a plain Error.
  */
 export const compileWithLens = <O extends CompileOptions, R>(
   rule: Condition,
@@ -28,7 +28,7 @@ export const compileWithLens = <O extends CompileOptions, R>(
       throw error;
     }
     throw new LensRefusal(
-      `${rail}: the lens's grants on this rule have no ${rail} form — ${(error as Error).message}`,
+      `${rail}: the lens's clamps on this rule have no ${rail} form — ${(error as Error).message}`,
       // The rail the caller picked can't hold them; check() can, and the lens is valid.
       'unsupported_target',
     );

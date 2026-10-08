@@ -162,7 +162,7 @@ const leaf = (): Record<string, unknown> => {
   return { field: 'x', operator: 'equals', path: '$.y' };
 };
 
-const grantFor = (s: Schema, model: string): Condition => {
+const clampFor = (s: Schema, model: string): Condition => {
   const k = rnd();
   const lists = s.app[model].filter((r) => r.isList && !r.bridge);
   if (k < 0.35) {
@@ -210,15 +210,15 @@ const grantFor = (s: Schema, model: string): Condition => {
     const segs = toOnePath(s, model, 1 + Math.floor(rnd() * 2));
     return { ...leaf(), field: [...segs, pick(COLS)].join('.') } as Condition;
   }
-  if (k < 0.9) return { all: [grantFor(s, model), leaf()] } as Condition;
+  if (k < 0.9) return { all: [clampFor(s, model), leaf()] } as Condition;
   return leaf() as Condition;
 };
 
 const sourceFor = (s: Schema, model: string, onPath: boolean): unknown => {
   const k = rnd();
   if (onPath && k < 0.2)
-    return { from: 'mapDefaults', ...(rnd() < 0.5 ? { where: grantFor(s, model) } : {}) };
-  // An array condition over a list: the list's grants (windowed ones too) are carried into it.
+    return { from: 'mapDefaults', ...(rnd() < 0.5 ? { where: clampFor(s, model) } : {}) };
+  // An array condition over a list: the list's clamps (windowed ones too) are carried into it.
   const lists = s.app[model].filter((r) => r.isList && !r.bridge);
   if (k < 0.3 && lists.length)
     return {
@@ -227,14 +227,14 @@ const sourceFor = (s: Schema, model: string, onPath: boolean): unknown => {
       condition: leaf(),
       ...(rnd() < 0.5 ? { orderBy: [{ field: 'd', dir: 'desc' }], take: 1 } : {}),
     };
-  if (k < 0.5) return grantFor(s, model);
+  if (k < 0.5) return clampFor(s, model);
   const dotted = [...toOnePath(s, model, 1 + Math.floor(rnd() * 2)), pick(COLS)].join('.');
-  const where = rnd() < 0.5 ? { where: grantFor(s, model) } : {};
+  const where = rnd() < 0.5 ? { where: clampFor(s, model) } : {};
   if (k < 0.7) return { label: rnd() < 0.5 ? pick(COLS) : dotted, ...where };
   return { groupBy: rnd() < 0.5 ? dotted : [dotted], ...where };
 };
 
-const addGrants = (
+const addClamps = (
   s: Schema,
   node: Node,
   map: string,
@@ -243,16 +243,16 @@ const addGrants = (
   onPath: boolean,
 ) => {
   if (map !== 'app') return;
-  if (rnd() < p) node.where = grantFor(s, model);
+  if (rnd() < p) node.where = clampFor(s, model);
   if (rnd() < p / 1.5) node.sources = { [pick(['x', 'y'])]: sourceFor(s, model, onPath) };
   for (const [rel, sub] of Object.entries(node.relations ?? {})) {
     const r = s[map][model].find((q) => q.name === rel);
-    if (r) addGrants(s, sub, r.map, r.model, p, onPath);
+    if (r) addClamps(s, sub, r.map, r.model, p, onPath);
   }
 };
 
 // A later layer over what its parent shows: a spelled path narrowed, model defaults narrowed —
-// each maybe granted or sourced.
+// each maybe clamped or sourced.
 const laterLayer = (s: Schema, parent: LensNarrowing): LensNarrowing => {
   const shown = Object.entries(projectLens(parent));
   const layer: LensNarrowing = { parent };
@@ -272,7 +272,7 @@ const laterLayer = (s: Schema, parent: LensNarrowing): LensNarrowing => {
     if (narrowed < 0.5) at.omits = [pick(['x', 'y', ...rels])];
     else if (narrowed < 0.75) at.picks = cols.filter(() => rnd() < 0.6);
     layer.root = root as never;
-    addGrants(s, root, 'app', 'M0', 0.5, true);
+    addClamps(s, root, 'app', 'M0', 0.5, true);
   }
   if (rnd() < 0.6) {
     const models: Record<string, Node> = {};
@@ -284,7 +284,7 @@ const laterLayer = (s: Schema, parent: LensNarrowing): LensNarrowing => {
       if (rnd() < 0.5) node.omits = [pick(['x', 'y', ...s.app[visit.model].map((r) => r.name)])];
       if (rels.length && rnd() < 0.5)
         node.relations = { [pick(rels)]: rnd() < 0.5 ? { omits: [pick(['x', 'y'])] } : {} };
-      addGrants(s, node, 'app', visit.model, 0.6, false);
+      addClamps(s, node, 'app', visit.model, 0.6, false);
       models[visit.model] = node;
     }
     layer.mapDefaults = { app: { models: models as never } };
@@ -302,7 +302,7 @@ const synthRow = (s: Schema, map: string, model: string, depth: number): Row => 
   return row;
 };
 
-const REFUSAL = /later layer's grant|climbs out|root row|re-root|to-many relation grant/;
+const REFUSAL = /later layer's clamp|climbs out|root row|re-root|to-many relation clamp/;
 const REFUSED_ISSUE = new RegExp(
   `${REFUSAL.source}|does not resolve|is a relation the lens does not turn on|Windowing|counting step`,
 );
@@ -321,7 +321,7 @@ const refusedBy = (s: Schema, lens: LensNarrowing, row: Row, valid: boolean): st
     ['toLensSelect', () => toLensSelect(bound, { now: NOW })],
     ['toSourceQueries', () => toSourceQueries(bound, { now: NOW })],
     ['materializeSources', () => materializeSources(bound, [row], { now: NOW })],
-    ['projectRows', () => projectRows(bound, [row], { keepGrantColumns: true, now: NOW })],
+    ['projectRows', () => projectRows(bound, [row], { keepClampColumns: true, now: NOW })],
   ];
   const gate = (rule: Condition) => () => {
     const result = validateRuleInLens(rule, bound);
@@ -368,7 +368,7 @@ const refusedBy = (s: Schema, lens: LensNarrowing, row: Row, valid: boolean): st
     try {
       attempt();
     } catch (error) {
-      // A rail that can't hold the lens's grants on a rule is the caller's pick of rail, not a
+      // A rail that can't hold the lens's clamps on a rule is the caller's pick of rail, not a
       // refusal of the lens (check() runs it).
       const refused =
         ((error as Error).constructor.name === 'LensRefusal' &&
@@ -413,12 +413,12 @@ test.each(
     for (const m of Object.keys(schema.app))
       if (rnd() < 0.75) {
         defaults[m] = randNode(schema, 'app', m, 2);
-        addGrants(schema, defaults[m], 'app', m, 0.3, false);
+        addClamps(schema, defaults[m], 'app', m, 0.3, false);
       }
     const l1: LensNarrowing = { parent: base, mapDefaults: { app: { models: defaults as never } } };
     if (rnd() < 0.7) {
       const root = randNode(schema, 'app', 'M0', 3);
-      addGrants(schema, root, 'app', 'M0', 0.35, true);
+      addClamps(schema, root, 'app', 'M0', 0.35, true);
       l1.root = root as never;
     }
     const row = synthRow(schema, 'app', 'M0', 4);

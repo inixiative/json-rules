@@ -304,7 +304,7 @@ describe('narrowRule — Json sub-paths', () => {
     });
   });
 
-  test('no grant is injected into a nested condition below the boundary', () => {
+  test('no clamp is injected into a nested condition below the boundary', () => {
     const rule = {
       field: 'metadata.items',
       arrayOperator: 'any' as const,

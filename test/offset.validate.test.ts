@@ -316,7 +316,7 @@ describe('describeRule — offset and magnitude refs restrict targets like path'
   });
 });
 
-describe('narrowRule refuses to re-root a grant with an offset or magnitude ref', () => {
+describe('narrowRule refuses to re-root a clamp with an offset or magnitude ref', () => {
   test('a magnitude ref', () => {
     expect(() => prefixConditionFields(rule(autoResolve), 'incidents')).toThrow('path reference');
   });

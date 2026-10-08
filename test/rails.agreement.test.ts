@@ -658,7 +658,7 @@ describe('the rule matrix', () => {
 });
 
 describe('a narrowed array rule compiles on Prisma', () => {
-  // The grant reads only posts with views; narrowRule puts it in the rule's window filter.
+  // The clamp reads only posts with views; narrowRule puts it in the rule's window filter.
   const lens = { maps: { app: map }, mapName: 'app', model: 'User' };
   const narrowing = {
     parent: lens,
@@ -666,7 +666,7 @@ describe('a narrowed array rule compiles on Prisma', () => {
   };
   const narrowed = (r: object) => narrowRule(rule(r), narrowing as never);
 
-  test('all over the granted posts', async () => {
+  test('all over the visible posts', async () => {
     const result = await rails.run(
       narrowed({
         field: 'posts',
@@ -678,7 +678,7 @@ describe('a narrowed array rule compiles on Prisma', () => {
     expect(result.prisma).toEqual([2, 3, 4, 5]);
   });
 
-  test('any and atLeast over the granted posts', async () => {
+  test('any and atLeast over the visible posts', async () => {
     const any = await rails.run(
       narrowed({
         field: 'posts',

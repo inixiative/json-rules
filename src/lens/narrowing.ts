@@ -15,9 +15,9 @@ import { toLensSelectWith } from './lensRows.ts';
 import { narrowAt } from './narrowRule.ts';
 import {
   allowedEnumValues,
+  clampRefs,
   declaresModelSource,
-  escapingGrantRef,
-  grantRefs,
+  escapingClampRef,
   hiddenHop,
   intersectStringSet,
   isSourceSpec,
@@ -65,8 +65,8 @@ const validateWhere = (
   errors: ValidationIssue[],
 ): void => {
   if (condition === undefined) return;
-  // A bare value path reads the root row: only the root grant stands on it.
-  const refs = grantRefs(condition);
+  // A bare value path reads the root row: only the root clamp stands on it.
+  const refs = clampRefs(condition);
   const bare = position === 'root.where' ? null : refs.bare;
   if (bare !== null) {
     errors.push({
@@ -81,16 +81,16 @@ const validateWhere = (
     errors.push({
       path: position,
       code: 'scope_out_of_bounds',
-      message: escapingGrantRef(escaping).message,
+      message: escapingClampRef(escaping).message,
     });
     return;
   }
   const seen = new Set<string>();
-  // The first narrowing's grants read the menu — any relation; a later layer's read only what its
+  // The first narrowing's clamps read the menu — any relation; a later layer's read only what its
   // parent exposes, or a delegate's `where` would probe what it can't see.
-  const grant: Policy = { ...parentPolicy, grant: parentPolicy.chain.length === 0 };
+  const clamp: Policy = { ...parentPolicy, clamp: parentPolicy.chain.length === 0 };
   for (const { mapName, modelName, relPath } of visits) {
-    for (const v of checkConditionAtVisit(condition, grant, mapName, modelName, relPath)) {
+    for (const v of checkConditionAtVisit(condition, clamp, mapName, modelName, relPath)) {
       // The gate's own code carries through: what is wrong, not only that something is.
       const message = `'${v.path}' ${v.message}`;
       if (seen.has(message)) continue;
@@ -526,7 +526,7 @@ const validateNode = (
   const model = modelOf(fieldMap, modelName);
   if (!model) return;
   const isFirst = chain.length === 0;
-  // The lens this layer composes, its grants not yet vetted: where they apply.
+  // The lens this layer composes, its clamps not yet vetted: where they apply.
   const unvetted: Policy = {
     ...parentPolicy,
     chain: [...parentPolicy.chain, current],
@@ -554,7 +554,7 @@ const validateNode = (
     position,
     errors,
     parentPolicy,
-    // The first narrowing's grants read the menu, at every visit including the model's own; a
+    // The first narrowing's clamps read the menu, at every visit including the model's own; a
     // later layer's are checked where they apply — the visits the lens it composes shows.
     isFirst ? (visits.isDefault ? [intrinsic, ...visits.parent] : visits.parent) : visits.composed,
     visits.isDefault,
@@ -693,7 +693,7 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
   try {
     collectNarrowingIssues(narrowing, errors);
   } catch (error) {
-    // A grant the runtime refuses (reported above, or by an ancestor's layer) ends the check.
+    // A clamp the runtime refuses (reported above, or by an ancestor's layer) ends the check.
     if (!(error instanceof LensRefusal)) throw error;
     if (!errors.some((issue) => issue.code === error.code))
       errors.push({ path: '', code: error.code, message: error.message });
@@ -707,7 +707,7 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
   const parentPolicy = resolvePolicy(narrowing.parent);
   const parentVisits = shownVisits(parentPolicy);
   // The visits this layer's model defaults apply at on the lens it composes.
-  // A grant the runtime refuses stops only the part of the check that applies it; the rest runs.
+  // A clamp the runtime refuses stops only the part of the check that applies it; the rest runs.
   const refusals: LensRefusal[] = [];
   const guarded = (check: () => void): void => {
     try {
@@ -844,7 +844,7 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
     for (const { at } of composedVisits()) {
       shown.set(at.relPath.join('.'), at);
       guarded(() => lensVisitWith(inspect, at.relPath.join('.')));
-      // A rule reaching the visit from the one above: its grants injected as a rule's are — re-rooted
+      // A rule reaching the visit from the one above: its clamps injected as a rule's are — re-rooted
       // across a to-one relation, into the array condition across a to-many one.
       const relation = at.relPath.at(-1);
       const from = shown.get(at.relPath.slice(0, -1).join('.'));

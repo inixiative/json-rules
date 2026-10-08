@@ -1208,13 +1208,16 @@ model>].sources[<field>]` — and takes that source's eligibility (tenancy inclu
 axes; its own `where`, and child layers, only narrow it. A pointer drops the grants the path
 carries down only in the layer that declares it: every layer before or after it still carries
 theirs, so a child's pointer can only narrow what its parent gave, and a tenant layer added after a
-pointer narrows it whichever way it scopes (a root `where`, or `mapDefaults`).
+pointer always narrows it. How depends on how it scopes: through `mapDefaults` (the model's own
+grant or source) the pointer still offers unlinked rows; through a root `where` the grant can only
+reach the pointer down the path, so it offers just the linked rows — and across a bridge, where no
+grant crosses, nothing. Scope tenancy through `mapDefaults` to keep a pointer's unlinked rows.
 A pointer whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws
 from `projectLens` (by path) / `toSourceQueries` / `materializeSources`, even where a layer hides
 its field; `projectLens(…, { by: 'model' })` and `describeRuleSources` read the lens without
 validating it. Across a bridge it is how a picker gets options at all: the
 model source compiles against the far map alone, with that map's own tenancy, where a path source
-offers nothing. `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
+offers nothing (until a later layer scopes by a root `where`, as above). `materializeSources` refuses a pointer — a fetched collection can't hold unlinked
 rows; query it with `toSourceQueries` and `materializeSourceQuery`.
 
 ### Fetching Under a Lens

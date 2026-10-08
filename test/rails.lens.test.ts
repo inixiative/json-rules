@@ -67,6 +67,39 @@ describe('toPrisma / toSql with { lens }', () => {
     );
   });
 
+  test("a context key named like a relation gets no grant: it's the caller's value", async () => {
+    const proOrgs: LensNarrowing = {
+      parent: base,
+      mapDefaults: {
+        prisma: { models: { Org: { where: { field: 'plan', operator: 'equals', value: 'pro' } } } },
+      },
+    };
+    const deny: Condition = {
+      if: { field: 'id', operator: 'equals', path: 'org.id' },
+      then: false,
+      else: true,
+    };
+    const options = { context: { org: { id: 2 } } };
+    const unlensed = await rails.run(deny, options);
+    const lensed = await rails.run(deny, { ...options, lens: proOrgs });
+    expect(lensed.sql).toEqual(unlensed.sql);
+    expect(lensed.prisma).toEqual(unlensed.prisma);
+  });
+
+  test('a narrowing inheriting a base key from its prototype keeps its chain', () => {
+    const tenant: LensNarrowing = {
+      parent: base,
+      root: { where: { field: 'id', operator: 'equals', value: 1 } },
+    };
+    const inherited = Object.assign(Object.create(base), {
+      parent: tenant,
+      root: { where: { field: 'id', operator: 'equals', value: 2 } },
+    }) as LensNarrowing;
+    const where = JSON.stringify(toPrisma(true, { lens: inherited }));
+    expect(where).toContain('1');
+    expect(where).toContain('2');
+  });
+
   test('a narrowing carrying a base lens key is refused, never read as the base', () => {
     const tenant: LensNarrowing = {
       parent: base,

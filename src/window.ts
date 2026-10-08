@@ -2,7 +2,7 @@ import { ArrayOperator, Operator } from './operator';
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import { readOwnPath } from './scope';
 import { allOf, conditionShape } from './traverse';
-import type { AggregateRule, ArrayRule, Condition, WindowFields } from './types';
+import type { AggregateRule, ArrayRule, Condition, OrderBy, WindowFields } from './types';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
 export const hasWindow = (rule: WindowFields): boolean =>
@@ -90,20 +90,25 @@ export const applyWindow = <T>(
 ): T[] => {
   let out = items;
   if (rule.filter !== undefined && filterFn) out = out.filter(filterFn);
-  if (rule.orderBy?.length) {
-    const keys = rule.orderBy;
-    out = [...out].sort((a, b) => {
-      for (const { field, dir } of keys) {
-        const order = compareNullsLast(readOwnPath(a, field), readOwnPath(b, field), dir);
-        if (order !== 0) return order;
-      }
-      return 0;
-    });
-  }
+  if (rule.orderBy?.length) out = orderRecords(out, rule.orderBy);
   if (rule.skip !== undefined) out = out.slice(rule.skip);
   if (rule.take !== undefined) out = out.slice(0, rule.take);
   return out;
 };
+
+/**
+ * Records sorted by an `OrderBy`, the way every rail orders a window: each key in turn, read as an
+ * own-property path, `dir` order, a NULL (or absent) value last in either direction; ties keep their
+ * input order. A new array; the input is not mutated.
+ */
+export const orderRecords = <T>(items: readonly T[], orderBy: OrderBy): T[] =>
+  [...items].sort((a, b) => {
+    for (const { field, dir } of orderBy) {
+      const order = compareNullsLast(readOwnPath(a, field), readOwnPath(b, field), dir);
+      if (order !== 0) return order;
+    }
+    return 0;
+  });
 
 /** Two sort keys in `dir` order, a NULL (or absent) one last either way — the extreme element
  *  is the extreme value, as "latest" or "earliest" reads. */

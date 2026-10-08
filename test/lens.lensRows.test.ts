@@ -133,12 +133,12 @@ describe('toLensSelect', () => {
     expect(toLensSelect(lens).select).toEqual({ id: true, org: { select: { plan: true } } });
   });
 
-  test('a relation that shows no column is fetched by its key alone, never whole', () => {
+  test('a relation that shows no column is not fetched: presence never reads a hidden column', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: { picks: [], relations: { posts: { picks: [] } } },
     };
-    expect(toLensSelect(lens).select).toEqual({ posts: { select: { id: true } } });
+    expect(toLensSelect(lens).select).toEqual({});
   });
 
   test('a relation grant that needs a counting step throws', () => {
@@ -282,6 +282,8 @@ describe('projectRows', () => {
   });
 
   test('stacked layers: a projection, a model default scope and a target each decide', () => {
+    // The projection layer scopes Tag by a column it hides (a grant reads what a viewer can't); a
+    // later layer may scope only by what its parent shows.
     const projection: LensNarrowing = {
       parent: base,
       root: {
@@ -290,15 +292,18 @@ describe('projectRows', () => {
           posts: { picks: [], where: live, relations: { tag: { picks: ['id', 'name'] } } },
         },
       },
-    };
-    const scoped: LensNarrowing = {
-      parent: projection,
       mapDefaults: {
         prisma: {
           models: {
             Tag: { where: { field: 'ownerModel', operator: 'equals', value: 'platform' } },
           },
         },
+      },
+    };
+    const scoped: LensNarrowing = {
+      parent: projection,
+      mapDefaults: {
+        prisma: { models: { Tag: { where: { field: 'name', operator: 'equals', value: 'vip' } } } },
       },
     };
     const targeted: LensNarrowing = {

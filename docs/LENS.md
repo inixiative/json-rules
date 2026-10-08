@@ -43,7 +43,7 @@ What one layer may do, given the layers above it (layer 1 is the first narrowing
 | `picks` / `omits` / `enumPicks` / `enumOmits` | intersect (omits union) | only hide more; naming what an ancestor hid is an error. `picks` names columns only (a relation in it is `wrong_kind`); `omits` may name a relation, beside `picks` too |
 | `relations` (turning on) | exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ = exposedₖ₋₁ ∧ ¬ layer k hides it | layer 1: turn on any relation, along the path (`root.relations`) or at a model default (`mapDefaults…models.M.relations`). Later layers: hide it with `omits`, or restate one the parent shows to narrow that hop (else `not_visible`); a restatement hides nothing else |
 | model-default relations | a tree under each spelled node: each model once, at its nearest reach (ties: earlier parent, then field order) | spell under `root.relations` to reach a model another way; every posture walks the same tree |
-| `where` grants | AND at their anchor | only add. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`, and at runtime every posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation grant or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
+| `where` grants | AND at their anchor | only add. A later layer's grant is checked by one function — the gate over its parent's surface, every hop and the column at its end — at every visit it applies to (the shown visits, and the ones a layer-1 grant or source crosses), by `validateNarrowing` and by every runtime posture alike. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`, and at runtime every posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation grant or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
 | `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a grant (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
 | `from: 'mapDefaults'` pointers | — | escape only their own layer's path grants; every other layer's still apply |
 
@@ -130,7 +130,8 @@ and each model is included at most once: at its nearest reach (fewest hops), tie
 earlier parent and then to the relation declared first in the map. A model already on the
 spelled path, or earlier in that tree, is not entered again. Anything outside the tree is reached
 by spelling it under `root.relations`; a spelled node is always followed and grows its own tree.
-Nested relation objects under a model default apply along tree edges only.
+A model default's nested relation object (`A.relations.m.relations.r`) applies wherever the edge
+it hangs from is crossed — along a tree edge or a spelled one — and nowhere else.
 
 ```ts
 // A has p → P and q → Q; both P and Q have t → T. All turned on at the defaults:

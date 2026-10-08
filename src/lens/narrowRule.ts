@@ -13,7 +13,13 @@ import {
 import type { Condition, WindowFields } from '../types.ts';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
-import { type RelationHop, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import {
+  LensRefusal,
+  type RelationHop,
+  relationHops,
+  resolvePolicy,
+  resolveVisit,
+} from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 // Composes a user rule with the lens's narrowing where-clauses, injecting each
@@ -72,26 +78,30 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
     rewrite: (node) => {
       if (isLogicalNode(node)) return node;
       if (typeof node.field !== 'string' || node.field === '')
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant of unknown shape under '${prefix}'`,
+          'unsupported_grant',
         );
       const refs = valueRefs(node);
       if (refs.length) {
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant with a path reference ('${refs[0]}') ` +
             `under '${prefix}'. Author the grant without 'path', or anchor it at the relation itself.`,
+          'unsupported_grant',
         );
       }
       if (parseScopeRef(node.field)) {
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant with a scope ref field ('${node.field}') ` +
             `under '${prefix}'. Author the grant against the model's own columns.`,
+          'unsupported_grant',
         );
       }
       if (node.condition !== undefined) {
-        throw new Error(
+        throw new LensRefusal(
           `narrowRule: cannot re-root a relation grant with a nested array/aggregate condition on ` +
             `'${node.field}' under '${prefix}'. Anchor such grants at the relation's own model.`,
+          'unsupported_grant',
         );
       }
       return { ...node, field: `${prefix}.${node.field}` };

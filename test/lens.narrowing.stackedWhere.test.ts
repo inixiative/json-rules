@@ -58,7 +58,7 @@ const projection: LensNarrowing = {
       tagAttachments: {
         picks: [],
         where: { field: 'deletedAt', operator: Operator.notExists },
-        relations: { tag: { picks: ['id', 'name'] } },
+        relations: { tag: { picks: ['id', 'name', 'ownerModel', 'organizationId'] } },
       },
     },
   },
@@ -70,7 +70,9 @@ const scoped: LensNarrowing = {
   mapDefaults: {
     app: {
       models: {
+        // It scopes by the owner columns its parent shows, then hides them from viewers.
         Tag: {
+          omits: ['ownerModel', 'organizationId'],
           where: {
             any: [
               { field: 'ownerModel', operator: Operator.equals, value: 'platform' },

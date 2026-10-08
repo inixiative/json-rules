@@ -11,6 +11,8 @@ import {
 } from '../validate';
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
+import { toLensSelect } from './lensRows.ts';
+import { prefixConditionFields } from './narrowRule.ts';
 import {
   allowedEnumValues,
   bareValueRef,
@@ -34,6 +36,7 @@ import {
   sourceReadsVisible,
   undeclaredModelSource,
 } from './policy.ts';
+import { sourcePlans } from './sourceOptions.ts';
 import type {
   EnumNarrowing,
   LensNarrowing,
@@ -509,6 +512,12 @@ const validateNode = (
   const model = modelOf(fieldMap, modelName);
   if (!model) return;
   const isFirst = chain.length === 0;
+  // The lens this layer composes, its grants not yet vetted: where they apply.
+  const unvetted: Policy = {
+    ...parentPolicy,
+    chain: [...parentPolicy.chain, current],
+    unvetted: true,
+  };
 
   const sameLayerDefaultsForModel = visits.isDefault
     ? undefined
@@ -531,7 +540,9 @@ const validateNode = (
     position,
     errors,
     parentPolicy,
-    visits.isDefault ? [intrinsic, ...visits.parent] : visits.parent,
+    // The first narrowing's grants read the menu, at every visit including the model's own; a
+    // later layer's are checked where they apply — the visits the lens it composes shows.
+    isFirst ? (visits.isDefault ? [intrinsic, ...visits.parent] : visits.parent) : visits.composed,
     visits.isDefault,
   );
 
@@ -599,6 +610,8 @@ const validateNode = (
     // model's visits (where the tree doesn't cross it, restating it narrows nothing).
     const shown = (v: WhereVisit) =>
       resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField);
+    const shownComposed = (v: WhereVisit) =>
+      resolveVisit(unvetted, v.mapName, v.modelName, v.relPath).relations.has(relField);
     if (!isFirst && !(visits.isDefault ? visits.parent.some(shown) : visits.parent.every(shown))) {
       errors.push({
         path: `${position}.relations`,
@@ -632,8 +645,18 @@ const validateNode = (
       errors,
       parentPolicy,
       {
-        parent: across(visits.parent, relField, target.modelName, target.mapName),
-        composed: across(visits.composed, relField, target.modelName, target.mapName),
+        parent: across(
+          visits.isDefault ? visits.parent.filter(shown) : visits.parent,
+          relField,
+          target.modelName,
+          target.mapName,
+        ),
+        composed: across(
+          visits.isDefault ? visits.composed.filter(shownComposed) : visits.composed,
+          relField,
+          target.modelName,
+          target.mapName,
+        ),
         isDefault: visits.isDefault,
       },
     );
@@ -676,7 +699,11 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
   };
   let composed: ShownVisit[] | null = null;
   const composedVisits = (): ShownVisit[] => {
-    composed ??= shownVisits({ ...parentPolicy, chain: [...parentPolicy.chain, narrowing] });
+    composed ??= shownVisits({
+      ...parentPolicy,
+      chain: [...parentPolicy.chain, narrowing],
+      unvetted: true,
+    });
     return composed;
   };
 
@@ -777,8 +804,26 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
 
   for (const message of validateBindNames(narrowing))
     errors.push({ path: 'bindings', code: 'invalid_binding', message });
+  // A rule crossing a to-one hop carries that visit's grants re-rooted under it: one narrowRule
+  // can't re-root is refused here, as the gate refuses the rule.
+  guarded(() => {
+    const anchor = { mapName: set.mapName, modelName: set.model, relPath: [] };
+    for (const { at, effect } of composedVisits()) {
+      const hop = relationHops(set.maps, anchor, at.relPath.join('.')).hops.at(-1);
+      if (at.relPath.length === 0 || !hop || hop.isList) continue;
+      for (const where of effect.whereClauses) prefixConditionFields(where, hop.prefix);
+    }
+  });
+  // The fetch and the sources reach past the shown visits — they follow every grant's reads — so
+  // they run as they will: a grant they refuse is refused here.
+  for (const run of [() => toLensSelect(narrowing), () => sourcePlans(narrowing)])
+    try {
+      run();
+    } catch (error) {
+      if (error instanceof LensRefusal) refusals.push(error);
+    }
   for (const refusal of refusals)
-    if (!errors.some((issue) => issue.code === refusal.code))
+    if (!errors.some((issue) => refusal.message.includes(issue.message)))
       errors.push({ path: '', code: refusal.code, message: refusal.message });
 };
 

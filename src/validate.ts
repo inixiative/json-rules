@@ -1,6 +1,6 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { unitAmountProblem } from './amount';
-import { enumColumnProblem } from './columnEnum';
+import { columnCompareProblem } from './columnCompare';
 import { parseDateValue } from './date';
 import {
   DEFAULT_ZONE,
@@ -448,7 +448,7 @@ const validateFieldRule = (
   if (context.target === 'toSql' && typeof rule.path === 'string' && context.map) {
     const model = context.scopeModels[depth - 1];
     const column = (parseScopeRef(rule.path) ?? { path: rule.path }).path;
-    const problem = enumColumnProblem(
+    const problem = columnCompareProblem(
       fieldEntry(rule.field as string, context.map, model),
       fieldEntry(column, context.map, model),
       operator,

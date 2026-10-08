@@ -425,14 +425,14 @@ describe('fetch: exactly what is turned on, plus what grants read', () => {
     expect(toLensSelect(n).select.org).toEqual({ select: { plan: true } });
   });
 
-  test('a relation that shows no column is fetched by its key alone', () => {
+  test('a relation that shows no column is fetched by one it shows, or not at all', () => {
     const present: LensNarrowing = {
       parent: base,
       root: { where: { field: 'org', operator: 'exists' } },
     };
     expect(toLensSelect(present).select.org).toEqual({ select: { id: true } });
     const blind: LensNarrowing = { parent: base, root: { relations: { org: { picks: [] } } } };
-    expect(toLensSelect(blind).select.org).toEqual({ select: { id: true } });
+    expect(toLensSelect(blind).select.org).toBeUndefined();
   });
 
   test('projectRows keeps only relations turned on', () => {

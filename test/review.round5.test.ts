@@ -442,22 +442,27 @@ describe('F3: a grant reads only its own row: no scope ref climbs out of it', ()
   });
 
   test('a $$ that stays inside the grant (one array down) is its own row: fine', () => {
+    // The users hop is to-many: its grant is row-scoped, and `$$.age` inside it reads the user.
     const inside: LensNarrowing = {
       parent: base,
       root: {
         relations: {
           org: {
-            where: rule({
-              field: 'users',
-              arrayOperator: 'any',
-              condition: { field: 'age', operator: 'lessThan', path: '$$.seats' },
-            }),
+            relations: {
+              users: {
+                where: rule({
+                  field: 'posts',
+                  arrayOperator: 'any',
+                  condition: { field: 'views', operator: 'lessThan', path: '$$.age' },
+                }),
+              },
+            },
           },
         },
       },
     };
     expect(validateNarrowing(inside).ok).toBe(true);
-    expect(() => toLensSelect(inside)).not.toThrow();
+    expect(() => projectRows(inside, rails.rows as never)).not.toThrow();
   });
 });
 

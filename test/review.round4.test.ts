@@ -107,14 +107,29 @@ describe('H1: a bare path reads the root row, so only a root grant may use one',
     expect(await rails.run(true, { lens: rootGrant })).toEqual(agree([1]));
   });
 
-  test('a `$.` ref in a relation grant reads the related row: fine', () => {
+  test('a `$.` ref in a to-many relation grant reads the related row: fine', () => {
+    // A to-many hop's grant is row-scoped, never re-rooted: its `$.` reads the post.
     const scoped: LensNarrowing = {
+      parent: base,
+      root: {
+        relations: {
+          posts: { where: rule({ field: 'views', operator: 'lessThan', path: '$.id' }) },
+        },
+      },
+    };
+    expect(validateNarrowing(scoped).ok).toBe(true);
+    // Under a to-one hop narrowRule re-roots the grant, which a `$.` ref can't follow: refused.
+    const toOne: LensNarrowing = {
       parent: base,
       root: {
         relations: { org: { where: rule({ field: 'id', operator: 'equals', path: '$.id' }) } },
       },
     };
-    expect(validateNarrowing(scoped).ok).toBe(true);
+    expect(
+      validateNarrowing(toOne)
+        .errors.map((e) => e.message)
+        .join(),
+    ).toMatch(/cannot re-root/);
   });
 });
 

@@ -5,9 +5,9 @@ import { fieldOf, modelOf, own } from '../own';
 import { parseScopeRef, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition } from '../types.ts';
+import type { ValidationIssue } from '../validate';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
-import { readPaths } from './readPaths.ts';
 import type {
   Lens,
   LensNarrowing,
@@ -16,6 +16,7 @@ import type {
   SourceEntry,
   SourceSpec,
 } from './types.ts';
+import { checkConditionAtVisit } from './validateRuleInLens.ts';
 
 export type VisitEffect = {
   picks: Set<string> | null;
@@ -69,6 +70,15 @@ export type Policy = {
   /** A read off the menu: any relation not omitted, turned on or not. The first narrowing's
    *  grants read the schema this way; column visibility still applies. */
   grant?: boolean;
+  /** The model-default trees this call computes, shared by the policies it derives — never kept
+   *  past the call, so a narrowing edited in place reads fresh next time. */
+  trees?: Map<string, DefaultTree>;
+  /** A layer whose own grants are dropped (a source pointer's), keeping the chain's indices — so
+   *  later layers' grants still read through it. */
+  skipGrantsOf?: LensNarrowing;
+  /** Skip the runtime vetting of later layers' grants: validateNarrowing enumerating the visits
+   *  they apply at before it checks them. */
+  unvetted?: boolean;
 };
 
 /** A relPath reached from no anchor — `resolveVisit` then applies the model's own defaults only:
@@ -78,7 +88,7 @@ export const OFF_PATH: readonly string[] = ['__offpath__'];
 export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => {
   const lens = getLensRoot(lensOrNarrowing);
   const chain = isLens(lensOrNarrowing) ? [] : collectChain(lensOrNarrowing);
-  return { lens, chain, origin: chain[0] };
+  return { lens, chain, origin: chain[0], trees: new Map() };
 };
 
 export const intersectStringSet = (
@@ -137,9 +147,10 @@ const accumulateInto = (
   narrow: (condition: Condition) => Condition,
   layer: number,
   vet: (condition: Condition, source?: boolean) => void,
+  grants = true,
 ): void => {
   accumulatePicksOmitsInto(out, n);
-  if (n.where !== undefined) {
+  if (n.where !== undefined && grants) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
   }
@@ -147,7 +158,7 @@ const accumulateInto = (
     for (const [field, entry] of Object.entries(n.sources)) {
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
-      if (spec.where !== undefined) {
+      if (spec.where !== undefined && grants) {
         vet(spec.where, true);
         clauses.push(narrow(spec.where));
       }
@@ -176,7 +187,7 @@ const accumulateInto = (
 export class LensRefusal extends Error {
   constructor(
     message: string,
-    readonly code: 'invalid_value_source' | 'not_in_lens' | 'scope_out_of_bounds',
+    readonly code: string,
   ) {
     super(message);
   }
@@ -189,11 +200,23 @@ export const misanchoredPath = (ref: string): LensRefusal =>
     'invalid_value_source',
   );
 
-/** A later layer's grant crossing a relation its parent doesn't show. */
-export const unshownGrant = (hop: string): LensRefusal =>
+/**
+ * What a later layer's grant reads that its parent doesn't show, at the visit it applies to: the
+ * one check validateNarrowing and every runtime posture make — the gate itself, over the parent's
+ * surface (every hop and the column at its end).
+ */
+export const laterGrantIssues = (
+  condition: Condition,
+  parent: Policy,
+  at: MapVisit,
+): ValidationIssue[] =>
+  checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
+
+/** A later layer's grant reading what its parent doesn't show. */
+export const unshownGrant = (issue: ValidationIssue): LensRefusal =>
   new LensRefusal(
-    `a later layer's grant crosses '${hop}', a relation its parent does not show`,
-    'not_in_lens',
+    `a later layer's grant reads what its parent does not show: '${issue.path}' ${issue.message}`,
+    issue.code,
   );
 
 /** A scope ref in a grant that climbs above the grant's own row. */
@@ -286,21 +309,20 @@ const layerNodes = (
 // under `root`): for each node of the tree, keyed by its relation path below the spelled node,
 // the relations it crosses.
 type DefaultTree = Map<string, string[]>;
-const TREES = new WeakMap<LensNarrowing, Map<string, DefaultTree>>();
 
 /**
  * The tree the first narrowing's model defaults grow under a spelled node: breadth-first, each
  * model at most once — at its nearest reach, ties to the earlier parent and then the relation
  * declared first — never one already on the spelled path. Its own `omits` cut an edge; a relation
  * the spelled node spells is not a tree edge (the spelled path follows it). Computed once per
- * spelled node.
+ * spelled node and API call.
  */
-const defaultTree = (lens: Lens, origin: LensNarrowing, spelled: MapVisit): DefaultTree => {
-  let byNode = TREES.get(origin);
-  if (!byNode) {
-    byNode = new Map();
-    TREES.set(origin, byNode);
-  }
+const defaultTree = (
+  lens: Lens,
+  origin: LensNarrowing,
+  spelled: MapVisit,
+  byNode: Map<string, DefaultTree>,
+): DefaultTree => {
   const key = JSON.stringify(spelled.relPath);
   const cached = byNode.get(key);
   if (cached) return cached;
@@ -355,7 +377,7 @@ const turnedOnAt = (
   while (spelledDepth > 0 && follow(origin.root, at.relPath.slice(0, spelledDepth)) === undefined)
     spelledDepth--;
   const spelledAt = { ...trail[spelledDepth], relPath: at.relPath.slice(0, spelledDepth) };
-  const tree = defaultTree(policy.lens, origin, spelledAt);
+  const tree = defaultTree(policy.lens, origin, spelledAt, policy.trees ?? new Map());
   const below = tree.get(at.relPath.slice(spelledDepth).join('.')) ?? [];
   const spelled =
     spelledDepth === at.relPath.length
@@ -416,14 +438,22 @@ export const resolveVisit = (
   let narrow = (condition: Condition): Condition => condition;
   let current = 0;
   let vet: (condition: Condition, source?: boolean) => void = () => {};
+  let grants = true;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow, current, vet);
+    accumulateInto(out, n, narrow, current, vet, grants);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
   for (const [layer, narrowing] of policy.chain.entries()) {
     current = layer;
-    const parent: Policy = { ...policy, grant: false, chain: policy.chain.slice(0, layer) };
+    // A later layer's grants read through every layer above it, a pointer's included.
+    const parent: Policy = {
+      ...policy,
+      grant: false,
+      skipGrantsOf: undefined,
+      chain: policy.chain.slice(0, layer),
+    };
+    grants = narrowing !== policy.skipGrantsOf;
     narrow = (condition) =>
       layer === 0 ? condition : narrowAt(condition, parent, { mapName, modelName, relPath });
     for (const [enumName, enumN] of Object.entries(
@@ -434,8 +464,7 @@ export const resolveVisit = (
     }
     const { defaults, path } = layerNodes(narrowing, at, trail);
     // A grant refused at construction (validateNarrowing) is refused here too, never applied.
-    const grantParent: Policy | null =
-      layer === 0 ? null : { ...policy, grant: false, chain: policy.chain.slice(0, layer) };
+    const grantParent: Policy | null = layer === 0 || policy.unvetted ? null : parent;
     const vetGrant =
       (rootGrant: boolean) =>
       (condition: Condition, source = false): void => {
@@ -444,11 +473,10 @@ export const resolveVisit = (
         if (bare !== null) throw misanchoredPath(bare);
         const escaping = escapingRef(condition);
         if (escaping !== null) throw escapingGrantRef(escaping);
-        if (grantParent)
-          for (const read of readPaths(condition)) {
-            const hop = hiddenHop(grantParent, at, read);
-            if (hop !== null) throw unshownGrant(hop);
-          }
+        if (grantParent) {
+          const [issue] = laterGrantIssues(condition, grantParent, at);
+          if (issue) throw unshownGrant(issue);
+        }
       };
     vet = vetGrant(false);
     for (const node of defaults) applyNode(node);

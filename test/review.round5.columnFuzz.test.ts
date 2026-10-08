@@ -42,6 +42,9 @@ const leaves: [string, string][] = [
   ['age', '$.orgId'],
   ['age', 'org.id'],
   ['role', 'role'],
+  ['name', 'tags'],
+  ['tags', 'tags'],
+  ['tags', 'name'],
 ];
 const wraps: [string, (l: object) => object][] = [
   ['bare', (l) => l],

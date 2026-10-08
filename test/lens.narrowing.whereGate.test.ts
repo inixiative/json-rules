@@ -128,7 +128,9 @@ describe('validateNarrowing — every where position is gated against the parent
   });
 
   test('mapDefaults.models[M].where on a field the ancestor mapDefaults hid → error', () => {
+    // The platform shows orders, so a later grant on Order applies — at the orders visit.
     const platform = withParent(lens, {
+      root: { relations: { orders: {} } },
       mapDefaults: { prisma: { models: { Order: { omits: ['secretMargin'] } } } },
     });
     const org = withParent(platform, {
@@ -158,7 +160,9 @@ describe('validateNarrowing — every where position is gated against the parent
   });
 
   test('a sources where on a field the ancestor hid → error', () => {
+    // The platform shows orders, so a later grant on Order applies — at the orders visit.
     const platform = withParent(lens, {
+      root: { relations: { orders: {} } },
       mapDefaults: { prisma: { models: { Order: { omits: ['secretMargin'] } } } },
     });
     const org = withParent(platform, {

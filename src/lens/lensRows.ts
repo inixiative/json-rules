@@ -100,24 +100,29 @@ const grantWhere = (
 };
 
 // The one column a relation that shows none is fetched by: its join key on the related row, else
-// that row's `id`, else its first column — never the whole row, which would fetch what the lens hides.
+// that row's `id`, else its first column — of the columns the related visit shows; never the whole
+// row, which would fetch what the lens hides.
 const keyColumn = (
   map: FieldMap | undefined,
   model: string,
   field: string,
   entry: FieldMapEntry,
+  shown: VisitEffect,
 ): string | undefined => {
   const target = modelOf(map, entry.type)?.fields ?? {};
+  // Only a column the visit shows: presence never fetches what a layer hides.
   const column = (name: string | undefined): string | undefined => {
     const found = name === undefined ? undefined : own(target, name);
-    return found && !isRelationEntry(found) ? name : undefined;
+    return found && !isRelationEntry(found) && isFieldVisible(shown, name as string)
+      ? name
+      : undefined;
   };
   const inverse = map ? inverseRelation(map, model, field, entry) : null;
   return (
     column(entry.toFields?.[0]) ??
     column(inverse?.entry.fromFields?.[0]) ??
     column('id') ??
-    Object.entries(target).find(([, other]) => !isRelationEntry(other))?.[0]
+    column(Object.keys(target).find((name) => column(name) !== undefined))
   );
 };
 
@@ -158,15 +163,19 @@ const selectAt = (
           )
         : undefined;
     // Prisma can't select nothing: a relation that shows no column is fetched by its key alone.
+    // A relation that shows no column is fetched by a column it does show, or not at all.
     const key = Object.keys(childSelect).length
       ? undefined
-      : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
+      : keyColumn(
+          own(policy.lens.maps, at.mapName),
+          at.modelName,
+          field,
+          entry,
+          resolveVisit(policy, child.mapName, child.modelName, child.relPath),
+        );
     const shown = key === undefined ? childSelect : { [key]: true as const };
-    select[field] = Object.keys(shown).length
-      ? { select: shown, ...(where && { where }) }
-      : where
-        ? { where }
-        : true;
+    if (!Object.keys(shown).length) continue;
+    select[field] = { select: shown, ...(where && { where }) };
   }
   return select;
 };

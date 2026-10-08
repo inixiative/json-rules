@@ -15,9 +15,11 @@ import {
 import type { Condition, DateRule, Rule } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
+import { narrowRule } from './narrowRule.ts';
 import type { Policy } from './policy.ts';
 import {
   allowedEnumValues,
+  LensRefusal,
   type LensWalk,
   lensPathEnd,
   lensRootScope,
@@ -241,7 +243,15 @@ export const validateRuleInLens = (
   lensOrNarrowing: Lens | LensNarrowing,
 ): ValidationResult => {
   const policy = resolvePolicy(lensOrNarrowing);
-  return validationResult(
-    checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []),
-  );
+  try {
+    const issues = checkConditionAtVisit(rule, policy, policy.lens.mapName, policy.lens.model, []);
+    // What the gate admits, narrowRule must be able to narrow: a grant it can't re-root under a
+    // hop the rule crosses is refused here, with its message.
+    if (issues.length === 0) narrowRule(rule, lensOrNarrowing);
+    return validationResult(issues);
+  } catch (error) {
+    // A grant the lens refuses to apply on this rule's visits is the rule's refusal too.
+    if (!(error instanceof LensRefusal)) throw error;
+    return validationResult([{ path: '', code: error.code, message: error.message }]);
+  }
 };

@@ -37,6 +37,11 @@ reads one exposure from `src/lens/policy.ts`.
   model default or a source's eligibility `where` it is `invalid_value_source` and a runtime throw.
   A grant reads its own row: a scope ref that climbs out of it (`$$.` at its top) is
   `scope_out_of_bounds` and a runtime throw.
+  One check decides a later layer's grant — the gate over its parent's surface, relations and
+  columns — and `validateNarrowing` and every posture make it at the same visits: the ones the
+  grant applies at, including those a layer-1 grant or source crosses off the shown tree. A grant
+  narrowRule can't re-root under a to-one hop is refused by `validateNarrowing` and by
+  `validateRuleInLens` (with narrowRule's message), as the compile would.
 - **`lensVisit(lens, relationPath)`** (new; first consumer: rules-builder 0.30): one visit as
   `projectLens` by path gives it, resolved on demand without enumerating; `null` when the path
   isn't shown. `projectLens` by path keeps a map's declared option labels and groups.
@@ -45,7 +50,8 @@ reads one exposure from `src/lens/policy.ts`.
   a bare `label` naming one, is `wrong_kind`.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A relation that shows no column is
-  selected by its key column alone, never whole.
+  selected by one column the lens shows there (its key when shown), or not at all — never whole,
+  never a hidden column.
 
 ### `context` removed
 
@@ -66,7 +72,7 @@ the compilers read it from `options.context` — a second caller-value channel b
   map, model })` / `describeRule` report it first. A substring operator against a column throws on
   both compilers (it would be a LIKE pattern). A negated comparison (`if`, `all`) compiles to its
   complement with NULL arms. An enum column compares only with an enum column of its own type, by
-  equality (natively on SQL); ordered and enum-to-text comparisons are refused. Inside a counting step (a count or relation aggregate condition) a
+  equality (natively on SQL); ordered and enum-to-text comparisons are refused, and a list column compares with no column. Inside a counting step (a count or relation aggregate condition) a
   column comparison has no Prisma form and throws.
 - **The plan's references are unforgeable.** Each step records where its own `{ __step }` /
   `{ __field }` references sit (`refs`), and `executePrismaPlan` resolves only those locations; a

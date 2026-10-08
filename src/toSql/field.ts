@@ -1,4 +1,4 @@
-import { enumColumnProblem } from '../columnEnum';
+import { columnCompareProblem } from '../columnCompare';
 import { compileFieldLiteral } from '../compileLiteral';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { enumMatches } from '../enumMatch';
@@ -48,7 +48,7 @@ export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): s
       ? (parseScopeRef(rule.path) ?? { depth: 1, path: rule.path }).path
       : null;
   if (columnPath !== null) {
-    const problem = enumColumnProblem(
+    const problem = columnCompareProblem(
       fieldEntry(rule.field, state.map, state.currentModel),
       fieldEntry(columnPath, state.map, state.currentModel),
       rule.operator,

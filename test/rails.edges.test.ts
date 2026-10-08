@@ -192,7 +192,9 @@ test.each([
   { field: 'name', operator: 'in', path: '$.tags' },
   { field: 'name', operator: 'matches', path: '$.name' },
 ])('a set or pattern read per row has no SQL form: %j', async (rule) => {
-  expect((await rails.run(rule as Condition)).sql).toEqual(expect.stringContaining('read per row'));
+  expect((await rails.run(rule as Condition)).sql).toEqual(
+    expect.stringMatching(/read per row|list column/),
+  );
 });
 
 test.each([

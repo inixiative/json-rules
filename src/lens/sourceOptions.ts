@@ -269,16 +269,15 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
       );
       const allowed = own(visit.fields, field)?.values;
       // A pointer drops what the path above carries in the layer that points, and only there:
-      // every layer before or after it still carries, so no layer's narrowing is lost.
+      // every layer before or after it still carries, and later layers' grants still read through
+      // the pointing layer (the chain keeps its indices), so no layer's narrowing is lost.
       const pointsFrom = fromModel
         ? resolveVisit(policy, visit.mapName, visit.model, relPath).sourcesFromMapDefaults.get(
             field,
           )
         : undefined;
       const above = ancestorGrants(
-        pointsFrom === undefined
-          ? policy
-          : { ...policy, chain: policy.chain.filter((_, layer) => layer !== pointsFrom) },
+        pointsFrom === undefined ? policy : { ...policy, skipGrantsOf: policy.chain[pointsFrom] },
         relPath,
       );
       return {

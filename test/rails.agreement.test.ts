@@ -329,6 +329,24 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'org.id', operator: 'notIn', value: [null, 10] },
     ids: [2, 3],
   },
+  'a required column equals an unbound optional bind': {
+    rule: { field: 'org.id', operator: 'equals', bind: 'x', bindOptional: true },
+    ids: [4, 5],
+  },
+  'a required column notEquals an unbound optional bind': {
+    rule: { field: 'org.id', operator: 'notEquals', bind: 'x', bindOptional: true },
+    ids: [1, 2, 3],
+  },
+  'a required column equals a context path reading null': {
+    rule: { field: 'id', operator: 'equals', path: 'ctx.missing' },
+    ids: [],
+    options: { context: { ctx: { missing: null } } },
+  },
+  'a required column notEquals a context path reading null': {
+    rule: { field: 'id', operator: 'notEquals', path: 'ctx.missing' },
+    ids: [1, 2, 3, 4, 5],
+    options: { context: { ctx: { missing: null } } },
+  },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
     ids: [1, 2, 3, 5],

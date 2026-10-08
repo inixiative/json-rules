@@ -24,6 +24,7 @@ import { Operator } from '../operator';
 import {
   COMPLEMENT_OPERATORS,
   comparatorOf,
+  EQUALITY_OPERATORS,
   NEGATED_OPERATORS,
   NEGATED_RANGE_OPERATORS,
   NEGATED_STRING_OPERATORS,
@@ -211,13 +212,20 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
   // A required column (not Json, which can hold JSON null) is null only where the row it sits on
   // is missing, and Prisma takes no `null` on it: an existence test asks whether that row is there.
   const present = requiredPresence(rule, shape, options);
-  if (present && isExistenceTest(rule)) {
-    const missing = present === MATCH_ALL ? matchNothing() : notLeaf(present);
+  const missing = present && (present === MATCH_ALL ? matchNothing() : notLeaf(present));
+  // check() says which side a null-reading test holds on: the row missing, or there.
+  const byPresence = (operator: string): PrismaWhere | null =>
+    present && missing
+      ? check({ field: 'f', operator, value: null } as Condition, { f: null }) === true
+        ? missing
+        : present
+      : null;
+  if (present && missing && isExistenceTest(rule)) {
     const empties = emptyValues(shape, emptyString);
     if (rule.operator === Operator.isEmpty) return orWhere([missing, ...empties.map(at)]);
     if (rule.operator === Operator.notEmpty)
       return andWhere([present, ...empties.map((value) => at(notEmpty(value)))]);
-    return check({ ...rule, field: 'f' } as Condition, { f: null }) === true ? missing : present;
+    return byPresence(rule.operator) as PrismaWhere;
   }
 
   switch (rule.operator) {
@@ -248,6 +256,11 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
   const value = resolveRuleValue(rule, options);
   if (hasNoOperand(rule, value))
     return orWhere(NEGATED_OPERATORS.includes(rule.operator) ? arms() : []);
+  // A null read from a bind or a path is the same test as a literal one.
+  if (value === null && EQUALITY_OPERATORS.includes(rule.operator)) {
+    const where = byPresence(rule.operator);
+    if (where) return where;
+  }
 
   if (shape === 'list' && SET_OPERATORS.includes(rule.operator) && Array.isArray(value))
     return buildCondition(listMembership(rule, value), options);

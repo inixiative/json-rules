@@ -99,31 +99,23 @@ const grantWhere = (
   return Object.keys(where).length ? where : undefined;
 };
 
-// The one column a relation that shows none is fetched by: its join key on the related row, else
-// that row's `id`, else its first column — of the columns the related visit shows; never the whole
-// row, which would fetch what the lens hides.
+// The one column a relation that shows none is fetched by, for its presence: its key — the join
+// key on the related row, else that row's `id` — even a hidden one, as a grant's columns are; never
+// another column. The fetch carries it for the re-check; a viewer's projection drops it. A model
+// with no key is not fetched, and presence on it can't be re-checked from fetched rows.
 const keyColumn = (
   map: FieldMap | undefined,
   model: string,
   field: string,
   entry: FieldMapEntry,
-  shown: VisitEffect,
 ): string | undefined => {
   const target = modelOf(map, entry.type)?.fields ?? {};
-  // Only a column the visit shows: presence never fetches what a layer hides.
   const column = (name: string | undefined): string | undefined => {
     const found = name === undefined ? undefined : own(target, name);
-    return found && !isRelationEntry(found) && isFieldVisible(shown, name as string)
-      ? name
-      : undefined;
+    return found && !isRelationEntry(found) ? name : undefined;
   };
   const inverse = map ? inverseRelation(map, model, field, entry) : null;
-  return (
-    column(entry.toFields?.[0]) ??
-    column(inverse?.entry.fromFields?.[0]) ??
-    column('id') ??
-    column(Object.keys(target).find((name) => column(name) !== undefined))
-  );
+  return column(entry.toFields?.[0]) ?? column(inverse?.entry.fromFields?.[0]) ?? column('id');
 };
 
 const selectAt = (
@@ -163,16 +155,10 @@ const selectAt = (
           )
         : undefined;
     // Prisma can't select nothing: a relation that shows no column is fetched by its key alone.
-    // A relation that shows no column is fetched by a column it does show, or not at all.
+    // A relation that shows no column is fetched by its key alone, or — with no key — not at all.
     const key = Object.keys(childSelect).length
       ? undefined
-      : keyColumn(
-          own(policy.lens.maps, at.mapName),
-          at.modelName,
-          field,
-          entry,
-          resolveVisit(policy, child.mapName, child.modelName, child.relPath),
-        );
+      : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
     select[field] = { select: shown, ...(where && { where }) };

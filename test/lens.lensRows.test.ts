@@ -133,12 +133,12 @@ describe('toLensSelect', () => {
     expect(toLensSelect(lens).select).toEqual({ id: true, org: { select: { plan: true } } });
   });
 
-  test('a relation that shows no column is not fetched: presence never reads a hidden column', () => {
+  test('a relation that shows no column is fetched by its key alone, never another column', () => {
     const lens: LensNarrowing = {
       parent: base,
       root: { picks: [], relations: { posts: { picks: [] } } },
     };
-    expect(toLensSelect(lens).select).toEqual({});
+    expect(toLensSelect(lens).select).toEqual({ posts: { select: { id: true } } });
   });
 
   test('a relation grant that needs a counting step throws', () => {

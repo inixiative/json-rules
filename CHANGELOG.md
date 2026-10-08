@@ -50,8 +50,8 @@ reads one exposure from `src/lens/policy.ts`.
   a bare `label` naming one, is `wrong_kind`.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A relation that shows no column is
-  selected by one column the lens shows there (its key when shown), or not at all — never whole,
-  never a hidden column.
+  selected by its key alone (the join key, else `id`, hidden or not), never another column; a model
+  with no key is not fetched, and presence on it can't be re-checked from fetched rows.
 
 ### `context` removed
 

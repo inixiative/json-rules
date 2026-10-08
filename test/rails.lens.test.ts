@@ -322,7 +322,7 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
   });
 
-  test('a grant reading a relation that is off for presence fetches one column it shows', async () => {
+  test('a relation shown with no column is fetched by its key alone, and re-checks as the database does', async () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -331,9 +331,22 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
         relations: { posts: { picks: [] } },
       },
     };
-    // Posts show no column, so none is fetched for them: presence never reads a hidden column.
-    expect(toLensSelect(lens).select).toEqual({ id: true, org: { select: { id: true } } });
-    expect(await recheck(lens, true)).toEqual(await database(lens, true));
+    // Presence needs the rows: each is fetched by its key (the join key Post.authorId), hidden or
+    // not — never another column.
+    expect(toLensSelect(lens).select).toEqual({
+      id: true,
+      org: { select: { id: true } },
+      posts: { select: { authorId: true } },
+    });
+    for (const rule of [
+      { field: 'posts', arrayOperator: 'any', condition: true },
+      { field: 'posts', arrayOperator: 'none', condition: true },
+      { field: 'posts', arrayOperator: 'atLeast', count: 1, condition: true },
+    ] as Condition[])
+      expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
+    // A viewer's projection carries no key.
+    const shown = projectRows(lens, rails.rows as unknown as Record<string, unknown>[]);
+    expect(JSON.stringify(shown)).not.toContain('authorId');
   });
 
   test.each<[string, Condition]>([

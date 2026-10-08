@@ -380,7 +380,7 @@ describe('R6-4: no answer outlives the lens it came from', () => {
 });
 
 describe('R6-5: presence never fetches a hidden column', () => {
-  test('a relation whose every column is hidden is not fetched for presence', () => {
+  test('presence fetches a key, never another hidden column; a keyless model is not fetched', () => {
     const schema = {
       models: {
         User: { fields: { id: s('String'), profile: o('Profile') } },
@@ -394,6 +394,8 @@ describe('R6-5: presence never fetches a hidden column', () => {
     };
     const l2: LensNarrowing = { parent: l1, root: { relations: { profile: { omits: ['name'] } } } };
     expect(JSON.stringify(toLensSelect(l2).select)).not.toContain('ssn');
+    // Profile has no key: it is not fetched for presence, rather than by an arbitrary column.
+    expect(toLensSelect(l2).select.profile).toBeUndefined();
     expect(JSON.stringify(toLensSelect(l1).select)).toContain('"name"');
   });
 });

@@ -1,7 +1,8 @@
 import { endpointKey } from '../fieldMap/endpointKey';
+import { isRelationEntry } from '../fieldMap/entry';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { SourceOption } from '../fieldMap/types';
-import { conditionTouchesBridge, hitsBridge } from '../fieldMap/walk';
+import type { FieldMap, SourceOption } from '../fieldMap/types';
+import { conditionTouchesBridge, hitsBridge, walkFieldPath } from '../fieldMap/walk';
 import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
@@ -15,14 +16,38 @@ import { projectPathsWith } from './projectPaths.ts';
 import { readPaths } from './readPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
+/** A materialization path — a groupBy axis or a dotted label — descends to-one relations only
+ *  (local or across a bridge) and must land on a scalar/enum column; `kind` names it in the error.
+ *  The one check: validateNarrowing reports it, and every posture's source plan refuses on it. */
+export const toOnePathError = (
+  path: string,
+  maps: Record<string, FieldMap>,
+  mapName: string,
+  modelName: string,
+  kind: 'groupBy' | 'label',
+): string | null => {
+  const segments = path.split('.');
+  const { hops } = relationHops(maps, { mapName, modelName, relPath: [] }, path);
+  const toMany = hops.find((hop, i) => hop.isList && i < segments.length - 1);
+  if (toMany) return `${kind} cannot traverse to-many relation '${segments[hops.indexOf(toMany)]}'`;
+  if (hops.length === segments.length)
+    return `${kind} must end on a scalar column, '${segments.at(-1)}' is a relation`;
+  const at = hops.at(-1) ?? { map: mapName, model: modelName };
+  const seg = segments[hops.length];
+  const entry = fieldOf(own(maps, at.map), at.model, seg);
+  if (!entry) return `${kind} segment '${seg}' not on model '${at.model}'`;
+  if (isRelationEntry(entry)) return `${kind} relation '${seg}' has no resolvable target`;
+  return hops.length === segments.length - 1 ? null : `${kind} segment '${seg}' is not a relation`;
+};
+
 /**
  * Fold the traversal guards a materialization path — a groupBy axis or a dotted label (`kind`
  * names which) — picks up: every traversed model's effective narrowing `where` (tenancy/soft-
  * delete) — declared relation nodes AND mapDefaults, composed across all layers via
  * `resolveVisit` — re-rooted onto the sourced model, the same hop-where fold `narrowRule`
  * performs for rule paths. The compile always joins every hop the path names, so every hop must
- * carry its guard whether or not the narrowing declares it; an unresolvable hop, or a to-many one
- * carrying a clamp, is refused. `seen` dedups hops shared across paths: one guard fold per
+ * carry its guard whether or not the narrowing declares it; a path `toOnePathError` faults (a
+ * to-many or unresolvable hop) is refused `invalid_source`, as validateNarrowing reports it. `seen` dedups hops shared across paths: one guard fold per
  * traversed node.
  */
 const foldPathGuards = (
@@ -35,33 +60,20 @@ const foldPathGuards = (
   seen: Set<string>,
   out: Condition[],
 ): void => {
-  const segments = dotted.split('.');
+  const problem = toOnePathError(dotted, policy.lens.maps, mapName, modelName, kind);
+  if (problem) throw new LensRefusal(`${kind} '${dotted}': ${problem}`, 'invalid_source');
   // The last segment is the column; guards live on the traversed models.
   const { hops } = relationHops(
     policy.lens.maps,
     { mapName, modelName, relPath: baseRelPath },
     dotted,
   );
-  const crossed = hops.filter((_, i) => i < segments.length - 1);
-  if (crossed.length < segments.length - 1) {
-    const hop = segments[crossed.length];
-    const on = crossed.at(-1)?.model ?? modelName;
-    throw new LensRefusal(
-      `${kind} '${dotted}': hop '${hop}' is not a resolvable relation on '${on}' — cannot guard its join`,
-      'invalid_source',
-    );
-  }
+  const crossed = hops.slice(0, dotted.split('.').length - 1);
   for (const hop of crossed) {
     const hopKey = hop.relPath.join('.');
     if (seen.has(hopKey)) continue;
     seen.add(hopKey);
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
-    // A to-many hop has no single row to AND its clamp against: fail closed, as narrowRule does.
-    if (hop.isList && effect.whereClauses.length)
-      throw new LensRefusal(
-        `${kind} '${dotted}': cannot enforce the clamp on to-many relation '${hop.prefix}' in a dotted path`,
-        'unsupported_clamp',
-      );
     for (const where of effect.whereClauses) out.push(prefixConditionFields(where, hop.prefix));
   }
 };
@@ -167,6 +179,43 @@ export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
       a.value.localeCompare(b.value, 'en', { numeric: true })
     );
   });
+
+// The local column a read across a bridge needs: the near endpoint's `on` key, under the local
+// relations the read crosses before the bridge ('org.crm:Account.tier' → 'org.crmId').
+const bridgeKey = (lens: Lens, map: FieldMap, mapName: string, model: string, read: string) => {
+  const { hops } = walkFieldPath(read, map, model);
+  const parts = read.split('.');
+  const near = hops.at(-1)?.entry.type ?? model;
+  const farKey = parts[hops.length];
+  for (const { endpoints } of lens.bridges ?? []) {
+    const [a, b] = endpoints;
+    for (const [here, there] of [
+      [a, b],
+      [b, a],
+    ])
+      if (here.fieldMap === mapName && here.model === near && endpointKey(there) === farKey)
+        return [...parts.slice(0, hops.length), here.on].join('.');
+  }
+  throw new LensRefusal(`'${read}' crosses no bridge the lens declares on ${near}`, 'not_in_lens');
+};
+
+/** Reads on a source's model as the database holding its side sees them: a read across a bridge
+ *  becomes that bridge's local `on` key — what a re-check needs fetched to load the far side. */
+export const localReads = (
+  lens: Lens,
+  mapName: string,
+  model: string,
+  reads: readonly string[],
+): string[] => {
+  const map = resolveFieldMap(lens, mapName, 'toPrisma') as FieldMap;
+  return [
+    ...new Set(
+      reads.map((read) =>
+        hitsBridge(read, map, model) ? bridgeKey(lens, map, mapName, model, read) : read,
+      ),
+    ),
+  ];
+};
 
 /** One sourced field to materialize: where it sits, its label and axes, and its eligibility —
  *  its source where(s), the guards of every relation they or the label / axes cross, and, for a

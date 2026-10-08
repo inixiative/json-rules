@@ -1,5 +1,37 @@
 # Changelog
 
+## 3.5.1 — review fixes: bridged fetches, to-many paths, JSON re-checks
+
+Fail-closed and doc findings from the 3.5.0 adversarial review.
+
+- **`toLensSelect` selects a bridged source's local reads.** It skipped every column a source across
+  a bridge reads, so `materializeSources` over its rows plus the far side threw `UsageError: lacks
+  'age'` for `any: [age > 35, crm:Profile.tier = gold]` when the lens hides `age`. It now selects
+  what the source reads on this side, hidden or not, and each crossed bridge's local `on` key, as
+  fetch-only columns: `projectRows(…, { keepClampColumns: true })` keeps them and a viewer's
+  projection drops them.
+- **A `label` or `groupBy` across a to-many relation (local or bridged) is refused by every
+  posture.** `validateNarrowing` reported it (`invalid_source`), but `toSourceQueries` and
+  `materializeSources` still ran and returned unlabeled or ungrouped options. One check
+  (`toOnePathError`) now serves validation and the source plans, so the postures throw the same
+  `LensRefusal` (`invalid_source`) and `validateNarrowing` is ok exactly when none refuses. The
+  plans' separate unresolvable-hop and to-many-clamp refusals fold into it.
+- **A re-check reading into a Json column selects the column whole.** `toSourceQueries` emitted a
+  nested `select` into the Json column (`meta: { select: { a: … } }`), which the typed Prisma
+  client rejects. It selects `meta: true`; flat SQL rows hold that column, so the SQL query is no
+  longer refused for it. A read through a relation still is, and the message says why per read
+  (through a relation, or not a column of the model).
+- **`SourcePrismaQuery.steps` is present whenever the where needs `executePrismaPlan`**: a count
+  step, as before, or a column reference (`{ __field }`) to resolve. A column-reference source used to
+  ship an unresolved where that Prisma rejects.
+- **A count operator across a bridge says so**: "'crm:Event' crosses a bridge: count operators
+  aren't supported across a bridge", not "is not a relation … Count operators require a relation
+  field".
+- README: both source-query snippets destructure `query.prisma` and run `steps` through
+  `executePrismaPlan` (the bridge snippet called `prisma[query.model].findMany(query.prisma)`,
+  which Prisma rejects); a test runs that shape against the rails harness. `orderRecords` notes
+  that strings sort in JavaScript code-unit order, which can differ from a database collation.
+
 ## 3.5.0 — grant → clamp
 
 A lens `where` only ever narrows: a row is hidden unless it holds. "Grant" read as permission

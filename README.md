@@ -1162,7 +1162,7 @@ Composition across chained narrowings is pure intersection: relations are turned
 | `lensVisit(lens, relationPath, options?)` | One visit as `projectLens` (by path) gives it — its shown fields with values and options, sources, labels and axes — at a dotted relation path from the anchor (`''` for the anchor), resolved on demand: nothing is enumerated, so it is cheap on any schema. `null` when a relation on the path isn't shown there (off, omitted, or outside the model-default tree). A builder walks a lens with it instead of re-deriving the lens's rules. |
 | `walkLensPath(lens, path)` | Resolves one dotted path through the lens hop by hop: `{ outcome: 'resolved', hops, terminal, jsonSubPath }`, or `hidden` (a column it doesn't keep, or a relation it doesn't turn on there) / `missing` / `pastScalar` with the failing `index`. |
 | `readLensValue(lens, row, path, options?)` | One value off a row, as the lens shows it: `{ ok: true, value }`, or `{ ok: false, reason }` — `hidden` / `missing` / `pastScalar` (the walk `validateRuleInLens` gates a field with), `relation` (the path ends on rows, not a value) or `list` (it crosses a to-many). Each row on the way, the root included, is checked against its visit's clamps: one a clamp hides, or a missing one, reads `null`. Only own properties are read, into a Json column too. `options` is what each clamp is checked with (`now`, `bindings`). For values a template interpolates. |
-| `orderRecords(items, orderBy)` | Records sorted by an `OrderBy` exactly as a window orders them on every rail: each key in turn, own-property path reads, `dir` order, NULL or absent last in either direction, ties in input order. Returns a new array. |
+| `orderRecords(items, orderBy)` | Records sorted by an `OrderBy` exactly as a window orders them on every rail: each key in turn, own-property path reads, `dir` order, NULL or absent last in either direction, ties in input order. Returns a new array. Strings sort in JavaScript code-unit order, which can differ from a database's collation (see [Where the Rails Differ](#where-the-rails-differ)). |
 | `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the clamp goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
 
@@ -1209,6 +1209,7 @@ to each field as `options`.
 
 ```ts
 import {
+  executePrismaPlan,
   materializeSourceQuery,
   materializeSources,
   projectLens,
@@ -1230,8 +1231,13 @@ const [query] = toSourceQueries(narrowing);
 // query.prisma => { model: 'User', distinct: ['region'], select: { region: true }, where: { AND: [...] } }
 // query.sql => { sql: 'SELECT DISTINCT "t0"."region" FROM "User" AS "t0" WHERE (...)', params: ['t-42', true] }
 // A query with `recheck` (a source across a bridge) returns candidates; see "Sources across a bridge".
-const { distinct, select, where } = query.prisma;
-const rows = await prisma.user.findMany({ distinct, select, where });
+// `steps` (a count step, a column reference) resolve through executePrismaPlan first.
+const { distinct, select, where, steps } = query.prisma; // query.model === 'User'
+const rows = await prisma.user.findMany({
+  distinct,
+  select,
+  where: steps ? await executePrismaPlan({ steps }, prisma) : where,
+});
 const values = materializeSourceQuery(query, rows); // { path, mapName, model, field, options: [{ value }] }
 
 // Or from rows already fetched under the lens (relations inline):
@@ -1243,7 +1249,7 @@ const projection = projectLens(narrowing, { sourceValues: [values] });
 
 | Function | Purpose |
 | --- | --- |
-| `toSourceQueries(lensOrNarrowing, options?)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql, recheck? }`. `options` is the clock (`now`, `timeZone`, `weekStart`) a relative date in the where compiles with — required for one, a plain usage error without it; bind a lens's binds with `bindLens` first. `prisma.steps` is present when the where needs `executePrismaPlan`. `sql.sql` is `null` with an `error` when SQL can't express the where. A source that reads across a bridge gets an over-fetching query and a `recheck`: its rows are candidates, not options (see "Sources across a bridge"). `distinct` is the value and a sibling label column; a grouped source or a dotted label drops it, so every label comes back and the least one is picked. |
+| `toSourceQueries(lensOrNarrowing, options?)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql, recheck? }`. `options` is the clock (`now`, `timeZone`, `weekStart`) a relative date in the where compiles with — required for one, a plain usage error without it; bind a lens's binds with `bindLens` first. `prisma.steps` is present when the where needs `executePrismaPlan` (a count step, or a column reference to resolve): query with the where it returns. `sql.sql` is `null` with an `error` when SQL can't express the where. A source that reads across a bridge gets an over-fetching query and a `recheck`: its rows are candidates, not options (see "Sources across a bridge"). `distinct` is the value and a sibling label column; a grouped source or a dotted label drops it, so every label comes back and the least one is picked. |
 | `materializeSourceQuery(query, rows, { rowShape?, lens?, now?, … })` | One query's fetched rows as `SourceValues`. `rowShape` is `'prisma'` (default: a dotted `label` and each `groupBy` axis come nested) or `'sql'` (they come flat as `__label` / `__group_i`). Options are deduplicated and sorted. A query with `recheck` needs `lens` and rows holding the far side: it re-checks each candidate (`check`, with the clock and bindings given) and reads a bridged label or axis from the far side; a missing far side is a `UsageError`. |
 | `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from the rows the lens fetches — `toLensSelect`'s rows as fetched, or as `projectRows(…, { keepClampColumns: true })` keeps them. A viewer's projection drops what sources read: a row lacking any key a read walks — through each relation and list element to the column — that a source or a clamp on its path reads throws a `UsageError` (a fetch returns every key it selects, NULL as `null`). The path is walked down the rows — the tree is its link — each level's clamps met, and each row it reaches must meet, through `check()` with `options`, its visit's clamps, its source `where` narrowed as a rule is, the guards of the relations its label and axes cross and the values the lens allows — so it offers what `toSourceQueries` does. A scalar-list field gives one option per element; a value takes its least label. A `from: 'mapDefaults'` source throws (see below). |
 
@@ -1334,12 +1340,19 @@ see, and marks it with `recheck`:
   clamps above it are carried back across the bridge through the far model's bridge field, and
   come back as its `recheck` — so each candidate holds the near rows inline
   (`{ id, industry, 'prisma:FanUser': [{ email, … }] }`).
+- **A re-check reading into a Json column selects the column whole** (`meta: true`, never a nested
+  select into it); the re-check reads inside it in memory.
 - **SQL rows are flat**, so a bridged query whose re-check reads through a local relation has
   `sql.sql: null` (with `sql.error`); run the Prisma form.
 
 ```ts
 const [query] = toSourceQueries(lens, { now });
-const candidates = await prisma[query.model].findMany(query.prisma); // superset
+const { distinct, select, where, steps } = query.prisma; // query.model === 'User'
+const candidates = await prisma.user.findMany({
+  distinct,
+  select,
+  where: steps ? await executePrismaPlan({ steps }, prisma) : where,
+}); // a superset when `recheck` is present
 const rows = query.recheck === undefined ? candidates : await loadFarSide(candidates); // your join
 const values = materializeSourceQuery(query, rows, { lens, now });
 ```
@@ -1365,7 +1378,7 @@ const holds = forRecheck.filter((row) => check(narrowRule(rule, narrowing), row,
 
 | Function | Purpose |
 | --- | --- |
-| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's clamps compiled as its `where`, so related rows come pre-narrowed — unless a clamp reads that list: a clamp reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its clamp hides. A relation that shows no column — one turned on with all its columns hidden, or one a clamp reads only for presence or a count — is fetched by its key alone — the join key, else `id` — even a hidden one, as a clamp's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads — the value, its label and axes, and every column and relation its option query's condition reads — as it does a clamp's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. A to-many relation's clamp that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the clamps. The root's own clamps are the query's `where`: `toPrisma(rule, { lens })`. |
+| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's clamps compiled as its `where`, so related rows come pre-narrowed — unless a clamp reads that list: a clamp reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its clamp hides. A relation that shows no column — one turned on with all its columns hidden, or one a clamp reads only for presence or a count — is fetched by its key alone — the join key, else `id` — even a hidden one, as a clamp's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads — the value, its label and axes, and every column and relation its option query's condition reads — as it does a clamp's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. For a source across a bridge that is its local reads: what it reads on this side, hidden or not, and each crossed bridge's local `on` key, so the rows plus the far side loaded under its bridge field answer it. A to-many relation's clamp that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the clamps. The root's own clamps are the query's `where`: `toPrisma(rule, { lens })`. |
 | `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns, and relations that are off or omitted, are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepClampColumns: true` keeps the columns those `where`s and the projected sources read, even hidden ones, and a hidden to-one row, or a hidden row of a list a clamp reads, as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the clamps as the database does, for any rule the lens admits; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
 
 ### Evaluating Across Bridges

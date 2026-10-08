@@ -29,6 +29,11 @@ export const groupPath = (
 ): GroupPath => {
   const segments = field.split('.');
   const walk = walkFieldPath(field, map, model);
+  // A count or aggregate groups the related rows in one database; across a bridge none holds them.
+  if (walk.kind === 'bridge')
+    throw new Error(
+      `'${field}' crosses a bridge: ${rule.toLowerCase()} aren't supported across a bridge — no one database holds both sides.`,
+    );
   if (walk.kind !== 'direct' || walk.entry.kind !== 'object') {
     const on = walk.hops.at(-1)?.entry.type ?? model;
     throw new Error(

@@ -9,6 +9,7 @@ import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
 import type { Rule, ValueSourceFields } from '../types';
 import { compileBinding, matchSource, type ReadSource } from '../valueSource';
+import { holdsReservedKey } from './sentinels';
 import type { ToPrismaOptions } from './types';
 
 /** A path reads a column, bare (the root row) or `$.`: Prisma WHERE has no general
@@ -24,7 +25,13 @@ const readPathValue = (ref: string): never => {
 /** A value source on the Prisma rail: its value, or an unresolved bind. */
 export const readSource = (source: ValueSourceFields<unknown>): unknown =>
   matchSource<unknown>(source, {
-    value: (value) => value,
+    value: (value) => {
+      if (holdsReservedKey(value))
+        throw new Error(
+          `toPrisma: a value holding a '__step' or '__field' key is reserved for the plan's own references`,
+        );
+      return value;
+    },
     path: (ref) => readPathValue(ref),
     bind: (name, optional) => compileBinding(name, optional, 'toPrisma'),
   });
@@ -48,6 +55,9 @@ export const settleLeaf =
       (typeof leaf.path === 'string' && leaf.path !== '') ||
       typeof leaf.bind === 'string';
     if (!comparison || 'aggregate' in leaf || !sourced) return leaf;
+    // A column compared with a column stays one: its complement compiles to a field reference.
+    if (typeof leaf.operator === 'string' && typeof leaf.path === 'string' && leaf.path !== '')
+      return leaf;
     // The complement of an ordered comparison keeps the values of other types, which Prisma's
     // Json filters can't test for.
     const shape = ruleShape(

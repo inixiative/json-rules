@@ -3,6 +3,7 @@ import { walkFieldPath } from '../fieldMap/walk';
 import { modelOf } from '../own';
 import { notLeaf } from './logical';
 import { relationKeys } from './relationUtils';
+import { emit } from './sentinels';
 import type { GroupByStep, PrismaBuildState, PrismaWhere } from './types';
 import { buildNestedFilter } from './utils';
 
@@ -88,7 +89,7 @@ export const groupMembership = (
     args: { by: [path.targetKey], where, having },
     extract: path.targetKey,
   };
-  const ref = { __step: state.steps.length };
+  const ref = emit({ __step: state.steps.length });
   state.steps.push(step);
   const membership = { [path.parentKey]: { in: ref } };
   const selected = complement ? notLeaf(membership) : membership;

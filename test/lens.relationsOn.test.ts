@@ -180,116 +180,78 @@ describe('only the first narrowing over the base turns relations on', () => {
   });
 });
 
-describe('mapDefaults relations: on wherever the model is visited', () => {
+describe('mapDefaults relations: on wherever the model is visited, each model once per path', () => {
+  // Anchored at User: User.org is spelled; the defaults turn on Org.users, Org.parent, User.posts
+  // and Post.author.
   const recursive: LensNarrowing = {
     parent: base,
     root: { relations: { org: {} } },
     mapDefaults: {
       prisma: {
-        models: { User: { relations: { org: {} } }, Org: { relations: { users: {} } } },
+        models: {
+          User: { relations: { org: {}, posts: {} } },
+          Org: { relations: { users: {}, parent: {} } },
+          Post: { relations: { author: {} } },
+        },
       },
     },
   };
 
-  test('a model-default relation crosses each edge once per path; spelling goes deeper', () => {
+  test('a model-default relation never re-enters a model on the path; spelling goes deeper', () => {
     expect(validateNarrowing(recursive).ok).toBe(true);
-    const once: Condition = {
-      field: 'org.users',
-      arrayOperator: 'any',
-      condition: { field: 'name', operator: 'equals', value: 'Ann' },
-    };
-    expect(codes(once, recursive)).toEqual([]);
-    expect(walkLensPath(recursive, 'org.users').outcome).toBe('resolved');
-    // User.org is already on the path: crossing it again needs spelling.
-    expect(walkLensPath(recursive, 'org.users.org.name')).toMatchObject({
-      outcome: 'hidden',
-      index: 2,
-    });
+    expect(walkLensPath(recursive, 'org.name').outcome).toBe('resolved');
+    expect(walkLensPath(recursive, 'posts.title').outcome).toBe('resolved');
+    // User (the root) and Org are already on these paths.
+    expect(walkLensPath(recursive, 'org.users')).toMatchObject({ outcome: 'hidden', index: 1 });
+    expect(walkLensPath(recursive, 'org.parent')).toMatchObject({ outcome: 'hidden', index: 1 });
+    expect(walkLensPath(recursive, 'posts.author')).toMatchObject({ outcome: 'hidden', index: 1 });
     const spelled: LensNarrowing = {
       ...recursive,
-      root: { relations: { org: { relations: { users: { relations: { org: {} } } } } } },
+      root: { relations: { org: { relations: { users: {}, parent: {} } } } },
     };
-    expect(walkLensPath(spelled, 'org.users.org.name').outcome).toBe('resolved');
-    // org.parent is not turned on anywhere.
-    expect(codes(parentName, recursive)).toEqual(['not_in_lens']);
+    expect(walkLensPath(spelled, 'org.users.name').outcome).toBe('resolved');
+    expect(walkLensPath(spelled, 'org.parent.name').outcome).toBe('resolved');
+    // Below a spelled path the defaults go on, still never re-entering: Post is new here, User is not.
+    expect(walkLensPath(spelled, 'org.users.posts.title').outcome).toBe('resolved');
+    expect(walkLensPath(spelled, 'org.users.posts.author')).toMatchObject({
+      outcome: 'hidden',
+      index: 3,
+    });
   });
 
-  test('each distinct edge once: a long path through the defaults, then a repeat refused', () => {
-    const chainOn: LensNarrowing = {
-      parent: base,
-      mapDefaults: {
-        prisma: {
-          models: {
-            User: { relations: { org: {}, posts: {} } },
-            Post: { relations: { author: {} } },
-            Org: { relations: { users: {} } },
-          },
-        },
-      },
-    };
-    expect(walkLensPath(chainOn, 'posts.author.org.users.name').outcome).toBe('resolved');
-    expect(walkLensPath(chainOn, 'posts.author.posts.title')).toMatchObject({
-      outcome: 'hidden',
-      index: 2,
-    });
-    const deeper: LensNarrowing = {
-      ...chainOn,
-      root: { relations: { posts: { relations: { author: { relations: { posts: {} } } } } } },
-    };
-    expect(walkLensPath(deeper, 'posts.author.posts.title').outcome).toBe('resolved');
-    // Every posture shares the cap.
-    expect(readLensValue(chainOn, ann, 'posts.author.posts')).toEqual({
-      ok: false,
-      reason: 'hidden',
-    });
-    expect(Object.keys(projectLens(chainOn))).not.toContain('User.posts.author.posts');
+  test('every posture shares the cap', () => {
+    expect(readLensValue(recursive, ann, 'org.users')).toEqual({ ok: false, reason: 'hidden' });
+    expect(Object.keys(projectLens(recursive)).sort()).toEqual(['User', 'User.org', 'User.posts']);
     expect(() =>
-      toPrisma({ field: 'posts.author.posts', arrayOperator: 'any', condition: true } as never, {
-        lens: chainOn,
+      toPrisma({ field: 'org.users', arrayOperator: 'any', condition: true } as never, {
+        lens: recursive,
       }),
     ).toThrow(/leaves the lens/);
+    const select = toLensSelect(recursive).select as Record<string, { select?: object }>;
+    expect(Object.keys(select.org.select ?? {})).not.toContain('users');
+    expect(Object.keys(select.posts.select ?? {})).not.toContain('author');
   });
 
-  test('a later layer may restate a recursive model-default relation to narrow it', () => {
-    const tree: LensNarrowing = {
-      parent: base,
-      root: { relations: { org: {} } },
-      mapDefaults: { prisma: { models: { Org: { relations: { parent: {} } } } } },
-    };
-    // Org.parent is on at org, and off at org.parent (the edge is already crossed).
-    expect(walkLensPath(tree, 'org.parent.name').outcome).toBe('resolved');
-    expect(walkLensPath(tree, 'org.parent.parent.name')).toMatchObject({ outcome: 'hidden' });
-    const restated: LensNarrowing = {
-      parent: tree,
-      mapDefaults: {
-        prisma: {
-          models: {
-            Org: { relations: { parent: { where: { field: 'plan', operator: 'exists' } } } },
-          },
-        },
-      },
-    };
-    expect(validateNarrowing(restated).ok).toBe(true);
-  });
+  // Anchored at Post: Post.author reaches User, and User.org Org — no model repeats.
+  const postBase = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Post' });
 
   test('a multi-hop model-default relation object turns its nested relation on below it only', () => {
     const nested: LensNarrowing = {
-      parent: base,
-      root: { relations: { org: {} } },
+      parent: postBase,
       mapDefaults: {
-        prisma: { models: { Org: { relations: { users: { relations: { posts: {} } } } } } },
+        prisma: { models: { Post: { relations: { author: { relations: { org: {} } } } } } },
       },
     };
     expect(validateNarrowing(nested).ok).toBe(true);
-    expect(walkLensPath(nested, 'org.users.posts.title').outcome).toBe('resolved');
-    expect(walkLensPath(nested, 'posts.title')).toMatchObject({ outcome: 'hidden', index: 0 });
+    expect(walkLensPath(nested, 'author.org.name').outcome).toBe('resolved');
+    expect(walkLensPath(nested, 'author.posts')).toMatchObject({ outcome: 'hidden', index: 1 });
   });
 
   test("a model default's relation entry carries that hop's narrowing wherever it applies", () => {
     const adults = { field: 'age', operator: 'greaterThan', value: 17 } as Condition;
     const scoped: LensNarrowing = {
       parent: base,
-      root: { relations: { org: {} } },
+      root: { relations: { org: { relations: { users: {} } } } },
       mapDefaults: { prisma: { models: { Org: { relations: { users: { where: adults } } } } } },
     };
     const rule: Condition = {
@@ -300,33 +262,33 @@ describe('mapDefaults relations: on wherever the model is visited', () => {
     expect(JSON.stringify(narrowRule(rule, scoped))).toContain('"greaterThan"');
   });
 
-  test('the fetch follows a model-default relation once per path, so it ends', () => {
-    const select = toLensSelect(recursive).select as Record<string, { select?: object }>;
-    const org = select.org.select as Record<string, { select?: Record<string, unknown> }>;
-    expect(Object.hasOwn(org, 'users')).toBe(true);
-    expect(Object.hasOwn(org.users.select ?? {}, 'org')).toBe(false);
-  });
-
-  test('a later layer may turn on at the model default only what its parent shows at every visit', () => {
+  test('a later layer may restate a model-default relation its parent shows, to narrow it', () => {
+    const shown: LensNarrowing = {
+      parent: postBase,
+      mapDefaults: {
+        prisma: {
+          models: { Post: { relations: { author: {} } }, User: { relations: { org: {} } } },
+        },
+      },
+    };
+    expect(walkLensPath(shown, 'author.org.name').outcome).toBe('resolved');
+    const restated: LensNarrowing = {
+      parent: shown,
+      mapDefaults: {
+        prisma: {
+          models: {
+            User: { relations: { org: { where: { field: 'plan', operator: 'exists' } } } },
+          },
+        },
+      },
+    };
+    expect(validateNarrowing(restated).ok).toBe(true);
     const refused: LensNarrowing = {
       parent: withOrg,
       mapDefaults: { prisma: { models: { Org: { relations: { parent: {} } } } } },
     };
     expect(narrowingCodes(refused)).toEqual(['not_visible']);
     expect(codes(parentName, refused)).toEqual(['not_in_lens']);
-    const allowed: LensNarrowing = {
-      parent: recursive,
-      mapDefaults: {
-        prisma: {
-          models: {
-            Org: {
-              relations: { users: { where: { field: 'age', operator: 'exists' } as Condition } },
-            },
-          },
-        },
-      },
-    };
-    expect(validateNarrowing(allowed).ok).toBe(true);
   });
 });
 

@@ -21,6 +21,7 @@ modules allowed to implement it, and every exported function must appear in this
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
 | project | `projectLens` | What a lens exposes: by path along the relations turned on (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
 | project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations that are off or omitted, and hidden rows removed. |
+| project | `lensVisit` | One visit as `projectLens` (by path) gives it, at a relation path from the anchor, resolved on demand (nothing enumerated); null when a relation on the path isn't shown. |
 | walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop; it crosses only relations turned on. |
 | read | `readLensValue` | One value off a row, as a lens shows it: gated path, grants checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |

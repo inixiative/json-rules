@@ -20,10 +20,10 @@ There is a single resolver seam (`resolveDateConfig` in `src/date.ts`). It reads
 **one evaluation**:
 
 1. **A zone name** — a plain IANA string `config.timeZone`.
-2. **A value source** — `{ value }`, `{ path }` (context) or `{ bind }` (with `bindOptional`),
-   the shape every value slot takes, read with the same contract: a missing required binding
-   throws, an optional one reads nothing. The compilers have no bindings, so an unresolved
-   zone bind throws there. A `$.` path throws: there is one zone per evaluation, not per row.
+2. **A value source** — `{ value }` or `{ bind }` (with `bindOptional`), read with the same
+   contract as every value slot: a missing required binding throws, an optional one reads
+   nothing. The compilers have no bindings, so an unresolved zone bind throws there. A
+   `{ path }` throws: a path reads the row, and there is one zone per evaluation, not per row.
 3. **`'UTC'`** — when nothing is set, or the source reads nothing.
 
 `config.timeZone` is typed `string | ValueSourceOf<string>` (`TimeZoneConfig`). The

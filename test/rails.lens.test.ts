@@ -302,21 +302,22 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     expect(refused.prisma).toMatch(/leaves the lens/);
   });
 
-  test('a model-default relation recurses for rules; the fetch follows it once per path', async () => {
+  test('a spelled path with model defaults below it re-checks as the database does', async () => {
+    // org.users re-enters User, so it is spelled; User.posts below it comes from the defaults.
     const lens: LensNarrowing = {
       parent: base,
-      root: { picks: ['id'], relations: { org: {} } },
-      mapDefaults: {
-        prisma: {
-          models: { User: { relations: { org: {} } }, Org: { relations: { users: {} } } },
-        },
-      },
+      root: { picks: ['id'], relations: { org: { relations: { users: {} } } } },
+      mapDefaults: { prisma: { models: { User: { relations: { posts: {} } } } } },
     };
     expect(validateNarrowing(lens).ok).toBe(true);
     const rule: Condition = {
       field: 'org.users',
       arrayOperator: 'any',
-      condition: { field: 'name', operator: 'equals', value: 'bob' },
+      condition: {
+        field: 'posts',
+        arrayOperator: 'any',
+        condition: { field: 'title', operator: 'equals', value: 'hello' },
+      },
     };
     expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
   });

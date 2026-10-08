@@ -2,10 +2,12 @@ import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/en
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
-import { readScopeRef } from '../scope';
+import { parseScopeRef, readScopeRef } from '../scope';
+import { isLogicalNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition } from '../types.ts';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
+import { readPaths } from './readPaths.ts';
 import type {
   Lens,
   LensNarrowing,
@@ -134,14 +136,21 @@ const accumulateInto = (
   n: ModelDefaultNarrowing | ModelNarrowing,
   narrow: (condition: Condition) => Condition,
   layer: number,
+  vet: (condition: Condition, source?: boolean) => void,
 ): void => {
   accumulatePicksOmitsInto(out, n);
-  if (n.where !== undefined) out.whereClauses.push(narrow(n.where));
+  if (n.where !== undefined) {
+    vet(n.where);
+    out.whereClauses.push(narrow(n.where));
+  }
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
       const spec = normalizeSource(entry);
       const clauses = out.sources.get(field) ?? [];
-      if (spec.where !== undefined) clauses.push(narrow(spec.where));
+      if (spec.where !== undefined) {
+        vet(spec.where, true);
+        clauses.push(narrow(spec.where));
+      }
       out.sources.set(field, clauses); // register the field even when only a label is set
       const axes = normalizeGroupBy(spec.groupBy);
       // The layer that set the value in force is the one its reads are exempt for: restating it
@@ -161,6 +170,40 @@ const accumulateInto = (
         out.sourcesFromMapDefaults.set(field, layer);
     }
   }
+};
+
+/** A narrowing the lens refuses to apply: a grant validateNarrowing reports, met at runtime. */
+export class LensRefusal extends Error {
+  constructor(
+    message: string,
+    readonly code: 'invalid_value_source' | 'not_in_lens',
+  ) {
+    super(message);
+  }
+}
+
+/** A bare value `path` reads the root row: only a root grant may compare with one. */
+export const misanchoredPath = (ref: string): LensRefusal =>
+  new LensRefusal(
+    `a bare path ('${ref}') reads the root row, which a grant at a relation visit or a model default doesn't stand on: use a literal, a bind, or a \`$\` scope ref`,
+    'invalid_value_source',
+  );
+
+/** A later layer's grant crossing a relation its parent doesn't show. */
+export const unshownGrant = (hop: string): LensRefusal =>
+  new LensRefusal(
+    `a later layer's grant crosses '${hop}', a relation its parent does not show`,
+    'not_in_lens',
+  );
+
+/** The first bare value ref (a root-row read) anywhere in a condition, or null. */
+export const bareValueRef = (condition: Condition): string | null => {
+  let found: string | null = null;
+  visitCondition(condition, (node) => {
+    if (isLogicalNode(node)) return;
+    for (const ref of valueRefs(node)) if (found === null && !parseScopeRef(ref)) found = ref;
+  });
+  return found;
 };
 
 /** The models a visit's relation path passes through from the lens anchor, the visit's own last;
@@ -188,19 +231,26 @@ const follow = (
   return at;
 };
 
-const edgeCrossed = (trail: readonly MapVisit[] | null, at: MapVisit, relation: string) =>
-  trail?.some(
-    (visit, k) =>
-      k < at.relPath.length &&
-      visit.mapName === at.mapName &&
-      visit.modelName === at.modelName &&
-      at.relPath[k] === relation,
-  ) ?? false;
+// Whether `relation` at a visit leads to a model already on the path to it — the visit's own
+// included. A model-default relation never re-enters one.
+const reentry = (
+  maps: Lens['maps'],
+  trail: readonly MapVisit[] | null,
+  at: MapVisit,
+  relation: string,
+): boolean => {
+  if (!trail) return false;
+  const entry = fieldOf(own(maps, at.mapName), at.modelName, relation);
+  const target = entry && relationTargetOf(entry, at.mapName);
+  return (
+    !!target &&
+    trail.some((visit) => visit.mapName === target.mapName && visit.modelName === target.modelName)
+  );
+};
 
-/** Whether the path to a visit already crossed `relation` from the visit's model — the edge a
- *  model-default relation may cross only once per path. */
-export const crossedBefore = (policy: Policy, at: MapVisit, relation: string): boolean =>
-  edgeCrossed(visitTrail(policy, at), at, relation);
+/** Whether a model-default `relation` at a visit would re-enter a model already on its path. */
+export const reenters = (policy: Policy, at: MapVisit, relation: string): boolean =>
+  reentry(policy.lens.maps, visitTrail(policy, at), at, relation);
 
 /**
  * The narrowing nodes one layer applies at a visit: each model default that reaches it — the
@@ -279,8 +329,9 @@ export const resolveVisit = (
   // grants of every layer above, as a user rule's do — a child can't see what its parent hides.
   let narrow = (condition: Condition): Condition => condition;
   let current = 0;
+  let vet: (condition: Condition, source?: boolean) => void = () => {};
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow, current);
+    accumulateInto(out, n, narrow, current, vet);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
@@ -296,7 +347,27 @@ export const resolveVisit = (
       if (enumN.omits) unionIntoMap(typeEnumOmits, enumName, enumN.omits);
     }
     const { defaults, path } = layerNodes(narrowing, at, trail);
-    for (const node of path ? [...defaults, path] : defaults) applyNode(node);
+    // A grant refused at construction (validateNarrowing) is refused here too, never applied.
+    const grantParent: Policy | null =
+      layer === 0 ? null : { ...policy, grant: false, chain: policy.chain.slice(0, layer) };
+    const vetGrant =
+      (rootGrant: boolean) =>
+      (condition: Condition, source = false): void => {
+        // Only the root `where` stands on the root row; a source's eligibility reads option rows.
+        const bare = rootGrant && !source ? null : bareValueRef(condition);
+        if (bare !== null) throw misanchoredPath(bare);
+        if (grantParent)
+          for (const read of readPaths(condition)) {
+            const hop = hiddenHop(grantParent, at, read);
+            if (hop !== null) throw unshownGrant(hop);
+          }
+      };
+    vet = vetGrant(false);
+    for (const node of defaults) applyNode(node);
+    if (path) {
+      vet = vetGrant(relPath.length === 0 && trail !== null);
+      applyNode(path);
+    }
     // The first narrowing over the base lens turns relations on — the base is the menu. A later
     // layer only narrows what it inherits: it may omit a relation, never turn one on.
     if (narrowing !== origin) continue;
@@ -305,11 +376,11 @@ export const resolveVisit = (
       for (const relation of Object.keys(node.relations ?? {})) defaultOn.add(relation);
   }
   // exposedₖ = exposedₖ₋₁ ∧ ¬hideₖ, from the first narrowing's turn-on. A relation turned on at a
-  // model default crosses each edge (model.relation) once per path: one already crossed on the way
-  // here stays off unless the path spells it under `root`.
-  const crossed = (relation: string) => edgeCrossed(trail, at, relation);
+  // model default never re-enters a model already on the path (the root's included); a path
+  // spelled under `root` is followed as written.
   for (const relation of spelledOn) out.relations.add(relation);
-  for (const relation of defaultOn) if (!crossed(relation)) out.relations.add(relation);
+  for (const relation of defaultOn)
+    if (!reentry(policy.lens.maps, trail, at, relation)) out.relations.add(relation);
   for (const relation of out.relations)
     if (!out.relationFields.has(relation) || out.omits.has(relation))
       out.relations.delete(relation);
@@ -345,29 +416,51 @@ export const resolveVisit = (
 export type ShownVisit = { path: string; at: MapVisit; effect: VisitEffect };
 
 /**
- * Every visit the lens shows, from its anchor, along the relations turned on: the paths a
- * projection lists and a fetch opens. It ends: a model-default relation crosses each edge once per
- * path, and spelled paths are finite.
+ * Every class of visit the lens shows, from its anchor, along the relations turned on — the visits
+ * a projection lists and a narrowing is checked at. A class is the model, the spelled path when a
+ * layer spells it under `root` (else "a model default"), and the edge it was reached by; the first
+ * (shortest) path to a class represents it, so the walk is bounded by the schema's edges, not its
+ * paths.
  */
 export const shownVisits = (policy: Policy): ShownVisit[] => {
   const out: ShownVisit[] = [];
-  const visit = (at: MapVisit, path: string): void => {
+  const seen = new Set<string>();
+  const anchor = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
+  const queue: { at: MapVisit; path: string; edge: string }[] = [
+    { at: anchor, path: policy.lens.model, edge: '' },
+  ];
+  while (queue.length > 0) {
+    const { at, path, edge } = queue.shift() as (typeof queue)[number];
     const fieldMap = own(policy.lens.maps, at.mapName);
-    if (!modelOf(fieldMap, at.modelName)) return;
+    if (!modelOf(fieldMap, at.modelName)) continue;
+    const key = JSON.stringify([
+      at.mapName,
+      at.modelName,
+      spelled(policy, at.relPath) ? at.relPath : null,
+      edge,
+    ]);
+    if (seen.has(key)) continue;
+    seen.add(key);
     const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
     out.push({ path, at, effect });
     for (const relation of effect.relations) {
       const entry = fieldOf(fieldMap, at.modelName, relation);
       const target = entry && relationTargetOf(entry, at.mapName);
-      if (target) visit({ ...target, relPath: [...at.relPath, relation] }, `${path}.${relation}`);
+      if (target)
+        queue.push({
+          at: { ...target, relPath: [...at.relPath, relation] },
+          path: `${path}.${relation}`,
+          edge: `${at.mapName}:${at.modelName}.${relation}`,
+        });
     }
-  };
-  visit(
-    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] },
-    policy.lens.model,
-  );
+  }
   return out;
 };
+
+/** Whether some layer spells this relation path under `root`. */
+const spelled = (policy: Policy, relPath: readonly string[]): boolean =>
+  relPath.length === 0 ||
+  policy.chain.some((narrowing) => follow(narrowing.root, relPath) !== undefined);
 
 /** Whether some layer's mapDefaults declares the model's own source for `field` — what a
  *  `from: 'mapDefaults'` path source offers. */

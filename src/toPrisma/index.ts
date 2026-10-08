@@ -2,7 +2,8 @@ import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import { compileUnderLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
-import type { PrismaBuildState, ToPrismaOptions, ToPrismaResult } from './types';
+import { recordRefs } from './sentinels';
+import type { PrismaBuildState, PrismaStep, ToPrismaOptions, ToPrismaResult } from './types';
 
 const normalizeOptions = (options?: ToPrismaOptions): ToPrismaOptions | undefined =>
   options?.map
@@ -43,7 +44,15 @@ export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToP
   const { condition, options } = compileUnderLens(rule, compileOptions, 'toPrisma');
   const state: PrismaBuildState = { steps: [] };
   const where = buildCondition(condition, normalizeOptions(options), state);
+  // Each step records where its own references sit; nothing else is ever resolved.
+  const withRefs = <S extends PrismaStep>(step: S, root: unknown): S => {
+    const refs = recordRefs(root);
+    return refs.length ? { ...step, refs } : step;
+  };
   return {
-    steps: [...state.steps, { operation: 'where', where }],
+    steps: [
+      ...state.steps.map((step) => withRefs(step, step.args)),
+      withRefs({ operation: 'where' as const, where }, where),
+    ],
   };
 };

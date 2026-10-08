@@ -63,6 +63,8 @@ const lens: Lens = { maps: { app: map }, mapName: 'app', model: 'Article' };
 const rule = (r: object): Condition => r as never;
 const granted: LensNarrowing = {
   parent: lens,
+  // The layer shows comments, so a child may grant on them.
+  root: { relations: { comments: {} } },
   mapDefaults: {
     app: {
       models: {

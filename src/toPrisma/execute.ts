@@ -1,14 +1,17 @@
 import type { FieldRef } from './columnRef';
+import type { SentinelRef } from './sentinels';
 import type { GroupByStep, ToPrismaResult, WhereStep } from './types';
 
 /**
  * Execute a Prisma query plan produced by toPrisma().
  *
  * The plan is a flat list of steps where all but the last are `groupBy` steps
- * that feed results (via { __step: N } sentinels) into subsequent steps.
+ * that feed results (via { __step: N } references) into subsequent steps.
  * The final step is always a `where` step whose resolved WHERE clause is returned. A column
- * compared with a column is a `{ __field }` sentinel resolved to the delegate's field reference
- * (`prisma.user.fields.age`): read a plan's where only through here — Prisma rejects the sentinel.
+ * compared with a column is a `{ __field }` reference resolved to the delegate's field reference
+ * (`prisma.user.fields.age`). Each step's `refs` record where its references sit, and only those
+ * locations are resolved: a value shaped like a reference anywhere else stays data. Read a plan's
+ * where only through here — Prisma rejects an unresolved reference.
  *
  * @param result         - Result from toPrisma()
  * @param prismaDelegate - Map of camelCase model name → Prisma delegate (or the client)
@@ -38,7 +41,8 @@ export const executePrismaPlan = async (
       string,
       (...args: unknown[]) => unknown
     >;
-    const rows = await delegate[step.operation](step.args);
+    const args = resolveRefs(step.args, step.refs, stepResults, prismaDelegate);
+    const rows = await delegate[step.operation](args);
     // A related row whose join FK is null belongs to no root entity, so it can
     // never contribute a membership id. groupBy over a nullable FK still emits a
     // null group, and Prisma rejects a mixed null+string array in `in`/`notIn`,
@@ -51,7 +55,10 @@ export const executePrismaPlan = async (
     );
   }
 
-  return resolveStepRefs(whereStep.where, stepResults, prismaDelegate) as Record<string, unknown>;
+  return resolveRefs(whereStep.where, whereStep.refs, stepResults, prismaDelegate) as Record<
+    string,
+    unknown
+  >;
 };
 
 const delegateOf = (prismaDelegate: Record<string, object>, model: string): object => {
@@ -78,47 +85,55 @@ const fieldRef = (prismaDelegate: Record<string, object>, ref: FieldRef['__field
   return field;
 };
 
+const readAt = (root: unknown, path: readonly (string | number)[]): unknown =>
+  path.reduce<unknown>(
+    (at, key) =>
+      at !== null && typeof at === 'object' && Object.hasOwn(at, key)
+        ? (at as Record<string | number, unknown>)[key]
+        : undefined,
+    root,
+  );
+
+// A copy of `root` with `value` at `path`, copying each container on the way (the plan is not
+// mutated).
+const writeAt = (root: unknown, path: readonly (string | number)[], value: unknown): unknown => {
+  if (path.length === 0) return value;
+  const [key, ...rest] = path;
+  const container = root as Record<string | number, unknown>;
+  const copy = (Array.isArray(root) ? [...root] : { ...container }) as Record<
+    string | number,
+    unknown
+  >;
+  copy[key] = writeAt(container[key], rest, value);
+  return copy;
+};
+
 /**
- * Recursively replace { __step: N } sentinels with the corresponding step result array, and
- * { __field } sentinels with the delegate's field reference.
+ * Put each of the plan's own references in place — a `{ __step }` by that step's results, a
+ * `{ __field }` by the delegate's field reference — at the locations the step records, and
+ * nowhere else: a value shaped like a reference anywhere else is data.
  */
-const resolveStepRefs = (
-  obj: unknown,
+const resolveRefs = (
+  root: unknown,
+  refs: readonly SentinelRef[] | undefined,
   stepResults: unknown[][],
   prismaDelegate: Record<string, object>,
 ): unknown => {
-  if (obj === null || obj === undefined) return obj;
-
-  if (Array.isArray(obj)) {
-    return obj.map((item) => resolveStepRefs(item, stepResults, prismaDelegate));
-  }
-
-  if (typeof obj === 'object') {
-    // Only plain objects are walked — a compiled leaf like a Date (or Decimal/
-    // Buffer) must pass through untouched; entry-copying it would strip its
-    // prototype and hand Prisma an empty object.
-    const proto = Object.getPrototypeOf(obj);
-    if (proto !== Object.prototype && proto !== null) return obj;
-    const record = obj as Record<string, unknown>;
-
-    if ('__step' in record && typeof record.__step === 'number') {
-      const idx = record.__step;
-      if (idx >= stepResults.length) {
+  let out = root;
+  for (const { path } of refs ?? []) {
+    const sentinel = readAt(root, path) as Record<string, unknown> | undefined;
+    if (sentinel && typeof sentinel.__step === 'number') {
+      const idx = sentinel.__step;
+      if (idx >= stepResults.length)
         throw new Error(
           `Step ref __step: ${idx} out of range (${stepResults.length} steps executed)`,
         );
-      }
-      return stepResults[idx];
+      out = writeAt(out, path, stepResults[idx]);
+    } else if (sentinel && typeof sentinel.__field === 'object' && sentinel.__field !== null) {
+      out = writeAt(out, path, fieldRef(prismaDelegate, sentinel.__field as FieldRef['__field']));
+    } else {
+      throw new Error(`executePrismaPlan: no reference at the recorded location ${path.join('.')}`);
     }
-    if (Object.hasOwn(record, '__field'))
-      return fieldRef(prismaDelegate, record.__field as FieldRef['__field']);
-
-    const resolved: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(record)) {
-      resolved[key] = resolveStepRefs(value, stepResults, prismaDelegate);
-    }
-    return resolved;
   }
-
-  return obj;
+  return out;
 };

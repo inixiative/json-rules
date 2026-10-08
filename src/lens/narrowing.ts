@@ -13,15 +13,18 @@ import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
 import {
   allowedEnumValues,
-  crossedBefore,
+  bareValueRef,
   declaresModelSource,
   hiddenHop,
   intersectStringSet,
   isSourceSpec,
+  LensRefusal,
+  misanchoredPath,
   normalizeGroupBy,
   normalizeSource,
   OFF_PATH,
   type Policy,
+  reenters,
   relationHops,
   resolvePolicy,
   resolveVisit,
@@ -56,6 +59,16 @@ const validateWhere = (
   errors: ValidationIssue[],
 ): void => {
   if (condition === undefined) return;
+  // A bare value path reads the root row: only the root grant stands on it.
+  const bare = position === 'root.where' ? null : bareValueRef(condition);
+  if (bare !== null) {
+    errors.push({
+      path: position,
+      code: 'invalid_value_source',
+      message: misanchoredPath(bare).message,
+    });
+    return;
+  }
   const seen = new Set<string>();
   // The first narrowing's grants read the menu — any relation; a later layer's read only what its
   // parent exposes, or a delegate's `where` would probe what it can't see.
@@ -572,11 +585,11 @@ const validateNode = (
     }
     // The base lens is the menu: the first narrowing may turn any relation on. A later layer
     // narrows only what its parent shows — on a model default, wherever the parent visits it.
-    // A visit where the edge was already crossed on the way shows it to no one: restating it there
-    // narrows nothing, so it doesn't count against a model default.
+    // A visit where the relation would re-enter a model already on the path shows it to no one:
+    // restating it there narrows nothing, so it doesn't count against a model default.
     const shown = (v: WhereVisit) =>
       resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField) ||
-      (visits.isDefault && crossedBefore(parentPolicy, v, relField));
+      (visits.isDefault && reenters(parentPolicy, v, relField));
     if (
       !isFirst &&
       (!visits.parent.some((v) =>
@@ -631,15 +644,38 @@ const validateNode = (
  *  `invalid_source`, `invalid_binding`, or the lens gate's for a `where`). */
 export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult => {
   const errors: ValidationIssue[] = [];
+  try {
+    collectNarrowingIssues(narrowing, errors);
+  } catch (error) {
+    // A grant the runtime refuses (reported above, or by an ancestor's layer) ends the check.
+    if (!(error instanceof LensRefusal)) throw error;
+    if (!errors.some((issue) => issue.code === error.code))
+      errors.push({ path: '', code: error.code, message: error.message });
+  }
+  return validationResult(errors);
+};
+
+const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssue[]): void => {
   const set = getLensRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
   const parentPolicy = resolvePolicy(narrowing.parent);
   const parentVisits = shownVisits(parentPolicy);
   // The visits this layer's model defaults apply at on the lens it composes.
-  const composedVisits = shownVisits({
-    lens: parentPolicy.lens,
-    chain: [...parentPolicy.chain, narrowing],
-  });
+  // A grant the runtime refuses stops only the part of the check that applies it; the rest runs.
+  const refusals: LensRefusal[] = [];
+  const guarded = (check: () => void): void => {
+    try {
+      check();
+    } catch (error) {
+      if (!(error instanceof LensRefusal)) throw error;
+      refusals.push(error);
+    }
+  };
+  let composed: ShownVisit[] | null = null;
+  const composedVisits = (): ShownVisit[] => {
+    composed ??= shownVisits({ ...parentPolicy, chain: [...parentPolicy.chain, narrowing] });
+    return composed;
+  };
 
   for (const [mapName, defaults] of Object.entries(narrowing.mapDefaults ?? {})) {
     const fieldMap = own(set.maps, mapName);
@@ -671,18 +707,24 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
         visits
           .map(({ at }) => at)
           .filter((at) => at.mapName === mapName && at.modelName === modelName);
-      validateNode(
-        dflt,
-        ancestorDefaultsForModel,
-        narrowing,
-        ancestors,
-        set.maps,
-        mapName,
-        modelName,
-        `mapDefaults.${mapName}.models.${modelName}`,
-        errors,
-        parentPolicy,
-        { parent: of(parentVisits), composed: of(composedVisits), isDefault: true },
+      let composedOfModel: WhereVisit[] = [];
+      guarded(() => {
+        composedOfModel = of(composedVisits());
+      });
+      guarded(() =>
+        validateNode(
+          dflt,
+          ancestorDefaultsForModel,
+          narrowing,
+          ancestors,
+          set.maps,
+          mapName,
+          modelName,
+          `mapDefaults.${mapName}.models.${modelName}`,
+          errors,
+          parentPolicy,
+          { parent: of(parentVisits), composed: composedOfModel, isDefault: true },
+        ),
       );
     }
 
@@ -712,26 +754,29 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
         .map((anc) => anc.root)
         .filter((x): x is ModelNarrowing => x !== undefined);
       const anchor = { mapName: lensMapName, modelName: lensModel, relPath: [] };
-      validateNode(
-        narrowing.root,
-        ancestorChainForRoot,
-        narrowing,
-        ancestors,
-        set.maps,
-        lensMapName,
-        lensModel,
-        'root',
-        errors,
-        parentPolicy,
-        { parent: [anchor], composed: [anchor], isDefault: false },
+      guarded(() =>
+        validateNode(
+          narrowing.root as ModelNarrowing,
+          ancestorChainForRoot,
+          narrowing,
+          ancestors,
+          set.maps,
+          lensMapName,
+          lensModel,
+          'root',
+          errors,
+          parentPolicy,
+          { parent: [anchor], composed: [anchor], isDefault: false },
+        ),
       );
     }
   }
 
   for (const message of validateBindNames(narrowing))
     errors.push({ path: 'bindings', code: 'invalid_binding', message });
-
-  return validationResult(errors);
+  for (const refusal of refusals)
+    if (!errors.some((issue) => issue.code === refusal.code))
+      errors.push({ path: '', code: refusal.code, message: refusal.message });
 };
 
 /** `validateNarrowing`, throwing its issues. */

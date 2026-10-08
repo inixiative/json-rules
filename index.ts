@@ -48,6 +48,7 @@ export {
   type LensSelect,
   type LensSelectOptions,
   type LensValue,
+  lensVisit,
   listLensBindings,
   type MaterializeSourceQueryOptions,
   materializeSourceQuery,

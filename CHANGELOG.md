@@ -25,12 +25,19 @@ reads one exposure from `src/lens/policy.ts`.
   show is `not_visible`.
 - **`picks` names columns only.** A relation in `picks` is `wrong_kind`; `omits` may name a
   relation beside `picks`.
-- **Each edge once per path.** A model-default relation crosses each edge `Model.relation` at most
-  once along a path; deeper recursion is spelled under `root.relations`. The cap holds on every
-  posture, so projections and fetches end.
+- **Each model once per path.** A model-default relation never re-enters a model already on the
+  path (the root's included); deeper recursion is spelled under `root.relations`, which is always
+  followed. The cap holds on every posture. The enumerating walks (`projectLens`, `validateNarrowing`,
+  the sources) visit each class of visit once (model, spelled path or "a model default", incoming
+  edge) through its shortest path, so they stay small on dense schemas.
 - **Grants.** The first narrowing's `where`s and source eligibility `where`s may read any relation
   on the schema; a later layer's only what its parent shows (a delegate can't probe what it can't
-  see).
+  see) — `validateNarrowing` reports it and every runtime posture throws rather than apply it. A
+  bare value `path` reads the root row, so only `root.where` may hold one; in a relation grant, a
+  model default or a source's eligibility `where` it is `invalid_value_source` and a runtime throw.
+- **`lensVisit(lens, relationPath)`** (new; first consumer: rules-builder 0.30): one visit as
+  `projectLens` by path gives it, resolved on demand without enumerating; `null` when the path
+  isn't shown. `projectLens` by path keeps a map's declared option labels and groups.
 - **Sources.** A dotted `label` / `groupBy` crosses only relations shown at each visit it is
   projected (else `invalid_source`, and the projection drops it); a source keyed on a relation, or
   a bare `label` naming one, is `wrong_kind`.
@@ -55,7 +62,12 @@ the compilers read it from `options.context` — a second caller-value channel b
   `notEquals` / `lessThan(Equals)` / `greaterThan(Equals)` and no offset — NULL rows as
   `IS [NOT] DISTINCT FROM`. Anything else throws, and `validateRule(rule, { target: 'toPrisma',
   map, model })` / `describeRule` report it first. A substring operator against a column throws on
-  both compilers (it would be a LIKE pattern).
+  both compilers (it would be a LIKE pattern). A negated comparison (`if`, `all`) compiles to its
+  complement with NULL arms. Inside a counting step (a count or relation aggregate condition) a
+  column comparison has no Prisma form and throws.
+- **The plan's references are unforgeable.** Each step records where its own `{ __step }` /
+  `{ __field }` references sit (`refs`), and `executePrismaPlan` resolves only those locations; a
+  rule value holding a `__step` / `__field` key is refused at compile.
 
 Migration: turn on every relation you cross with `relations` (path or mapDefaults) on the first
 narrowing; remove relation names from `picks`; drop `rules` from `toLensSelect` / `projectRows`;

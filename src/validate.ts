@@ -78,6 +78,8 @@ type ValidationContext = {
   map?: FieldMap;
   /** The model each scope reads, outermost first (index = depth - 1), where the map knows it. */
   scopeModels: (string | undefined)[];
+  /** Whether each scope sits inside a counting step (a count or relation aggregate condition). */
+  stepScopes: boolean[];
 };
 
 /** Which engine a rule must compile for; `check` (the default) accepts every rule. The schema
@@ -101,6 +103,7 @@ export const validateRule = (
     errors: [],
     map: resolveFieldMap(options.map, options.mapName, 'toPrisma'),
     scopeModels: [options.model],
+    stepScopes: [false],
   };
 
   validateCondition(condition, '$', context, 1);
@@ -237,7 +240,13 @@ const validateRef = (
 type SourceForm = (typeof SOURCE_FORMS)[number];
 
 // A relation node's condition / filter reads the relation's model one scope in.
-const enterScope = (context: ValidationContext, depth: number, field: unknown): void => {
+const enterScope = (
+  context: ValidationContext,
+  depth: number,
+  field: unknown,
+  step = false,
+): void => {
+  context.stepScopes[depth] = step || context.stepScopes[depth - 1] === true;
   const outer = context.scopeModels[depth - 1];
   context.scopeModels[depth] =
     context.map && outer && typeof field === 'string'
@@ -425,6 +434,7 @@ const validateFieldRule = (
       context.map,
       context.scopeModels[depth - 1],
       depth > 1,
+      context.stepScopes[depth - 1] === true,
     );
     if ('problem' in compare)
       pushIssue(
@@ -568,7 +578,7 @@ const validateAggregateRule = (
         `Aggregate condition filtering is not supported by toSql(); use check() or toPrisma()`,
       );
     }
-    enterScope(context, depth, rule.field);
+    enterScope(context, depth, rule.field, true);
     validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
   }
 
@@ -686,7 +696,7 @@ const validateArrayRule = (
         'count must be a non-negative whole number',
       );
     if (hasCondition) {
-      enterScope(context, depth, rule.field);
+      enterScope(context, depth, rule.field, true);
       validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
     } else if (context.target === 'check')
       pushIssue(

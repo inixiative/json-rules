@@ -85,7 +85,11 @@ const buildAggregateStep = (
     : { [itemField]: aggregate };
 
   const where = rule.condition
-    ? buildCondition(rule.condition, nestedScope({ ...options, model: path.target }), state)
+    ? buildCondition(
+        rule.condition,
+        nestedScope({ ...options, model: path.target }, options, true),
+        state,
+      )
     : matchAll();
   const membership = groupMembership(state, path, where, having, holdsEmpty);
   // check() reads the array under an absent to-one relation as empty.

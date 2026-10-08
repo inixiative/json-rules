@@ -82,11 +82,10 @@ describe('validateNarrowing — every where position is gated against the parent
     ).toThrow(/orders\.where: '\$\.secretMargin' .*comparison ref/);
   });
 
-  test('a bare comparison ref is root context: gated at the lens anchor, not the related model', () => {
-    // check() resolves a bare `path` against the root row and narrowRule injects a to-many
-    // grant unchanged, so `path: 'email'` in an Order grant means Customer.email — legal even
-    // though Order has no `email` column.
-    const rootRef = withParent(lens, {
+  test('a bare comparison ref reads the root row: only root.where may hold one', () => {
+    // A grant at a relation visit or a model default stands on another row: a bare `path` there
+    // would read the root's, so it is refused — use a literal, a bind, or a `$` scope ref.
+    const modelDefault = withParent(lens, {
       mapDefaults: {
         prisma: {
           models: {
@@ -95,34 +94,26 @@ describe('validateNarrowing — every where position is gated against the parent
         },
       },
     });
-    expect(() => assertValidNarrowing(rootRef)).not.toThrow();
-
-    // ...and it is gated by the ANCESTOR's anchor surface, like any root ref.
-    const platform = withParent(lens, { root: { omits: ['internalScore'] } });
-    const hiddenRootRef = withParent(platform, {
-      mapDefaults: {
-        prisma: {
-          models: {
-            Order: {
-              where: { field: 'secretMargin', operator: Operator.equals, path: 'internalScore' },
-            },
-          },
-        },
-      },
-    });
-    expect(() => assertValidNarrowing(hiddenRootRef)).toThrow(
-      /Order\.where: 'internalScore' .*comparison ref/,
+    expect(() => assertValidNarrowing(modelDefault)).toThrow(
+      /Order\.where: a bare path \('email'\) reads the root row/,
     );
-
-    // A bare ref naming a related-model-only column resolves to nothing at the root.
-    const relatedOnly = withParent(lens, {
+    const relationGrant = withParent(lens, {
       root: {
         relations: {
           orders: { where: { field: 'id', operator: Operator.equals, path: 'secretMargin' } },
         },
       },
     });
-    expect(() => assertValidNarrowing(relatedOnly)).toThrow(/'secretMargin' .*comparison ref/);
+    expect(() => assertValidNarrowing(relationGrant)).toThrow(/a bind, or a `\$` scope ref/);
+
+    // root.where stands on the root row: its bare ref is gated at the anchor surface.
+    const platform = withParent(lens, { root: { omits: ['internalScore'] } });
+    const hiddenRootRef = withParent(platform, {
+      root: { where: { field: 'id', operator: Operator.equals, path: 'internalScore' } },
+    });
+    expect(() => assertValidNarrowing(hiddenRootRef)).toThrow(
+      /root\.where: 'internalScore' .*comparison ref/,
+    );
   });
   test('root.relations[R].where on a field the ancestor hid at that path → error', () => {
     const platform = withParent(lens, {

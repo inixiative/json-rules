@@ -497,6 +497,7 @@ describe('executePrismaPlan', () => {
         {
           operation: 'where',
           where: { AND: [{ id: { in: { __step: 0 } } }, { status: { equals: 'active' } }] },
+          refs: [{ path: ['AND', 0, 'id', 'in'] }],
         },
       ],
     };
@@ -507,6 +508,23 @@ describe('executePrismaPlan', () => {
 
     const resolved = await executePrismaPlan(plan, mockDelegate);
     expect(resolved).toEqual({ AND: [{ id: { in: ['u1'] } }, { status: { equals: 'active' } }] });
+  });
+
+  it('resolves only the locations the step records: an unrecorded sentinel is data', async () => {
+    const where = { AND: [{ id: { in: { __step: 0 } } }] };
+    const plan: ToPrismaResult = {
+      steps: [
+        {
+          operation: 'groupBy',
+          model: 'Post',
+          args: { by: ['authorId'], where: {}, having: {} },
+          extract: 'authorId',
+        },
+        { operation: 'where', where },
+      ],
+    };
+    const mockDelegate = { post: { groupBy: async () => [{ authorId: 'u1' }] } };
+    expect(await executePrismaPlan(plan, mockDelegate)).toEqual(where);
   });
 
   it('drops rows with a null join FK from the membership set (nullable FK relation)', async () => {
@@ -566,7 +584,13 @@ describe('executePrismaPlan', () => {
 
   it('throws when __step index out of range', async () => {
     const plan: ToPrismaResult = {
-      steps: [{ operation: 'where', where: { id: { in: { __step: 5 } } } }],
+      steps: [
+        {
+          operation: 'where',
+          where: { id: { in: { __step: 5 } } },
+          refs: [{ path: ['id', 'in'] }],
+        },
+      ],
     };
     await expect(executePrismaPlan(plan, {})).rejects.toThrow('out of range');
   });

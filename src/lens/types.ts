@@ -44,7 +44,9 @@ export type ModelDefaultNarrowing = {
    * path node, at that visit; on a model default, wherever the model is visited — and its value is
    * that hop's narrowing (`where`, `picks`/`omits` of the target's columns, further `relations`).
    * Only the first narrowing over the base lens turns a relation on; a later layer may only narrow
-   * one its parent shows. Grants (`where`) may read any relation.
+   * one its parent shows. A relation turned on here never re-enters a model already on the path
+   * unless the path is spelled under `root`. The first narrowing's grants (`where`) may read any
+   * relation; a later layer's only what its parent shows.
    */
   relations?: Record<string, ModelNarrowing>;
 };

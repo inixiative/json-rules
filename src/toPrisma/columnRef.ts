@@ -5,6 +5,7 @@ import { walkFieldPath } from '../fieldMap/walk';
 import { Operator } from '../operator';
 import { parseScopeRef } from '../scope';
 import type { Rule } from '../types';
+import { emit } from './sentinels';
 
 /**
  * A compared column on the Prisma rail: `{ __field }` stands for `<delegate>.fields.<field>`,
@@ -59,8 +60,14 @@ export const columnCompare = (
   map: FieldMap | undefined,
   model: string | undefined,
   nested: boolean,
+  inStep = false,
 ): ColumnCompare | { problem: string } => {
   const ref = rule.path as string;
+  if (inStep)
+    return {
+      problem:
+        'inside a counting step (a count or relation aggregate) a groupBy carries no column reference',
+    };
   const scoped = parseScopeRef(ref);
   if (scoped && scoped.depth > 1)
     return { problem: `'${ref}' reads an enclosing scope, which a Prisma filter can't reach` };
@@ -83,7 +90,13 @@ export const columnCompare = (
     };
   if (field.type === 'String' && resolveCaseInsensitive(rule.caseInsensitive))
     return { problem: 'a case-insensitive column comparison compiles to ILIKE' };
-  return { key: op, ref: { __field: { model, field: columnPath } }, field, column, columnPath };
+  return {
+    key: op,
+    ref: emit({ __field: { model, field: columnPath } }),
+    field,
+    column,
+    columnPath,
+  };
 };
 
 /** The message a column comparison Prisma can't compile throws with. */
@@ -92,14 +105,21 @@ export const columnCompareError = (ref: string, problem: string): Error =>
     `Path '${ref}' compares to a column, which the Prisma rail supports only between columns of the same model and type: ${problem}. Use toSql() or check().`,
   );
 
-// The options objects of relation filters: a bare path there reads the root row, out of reach.
+// The options objects of relation filters: a bare path there reads the root row, out of reach;
+// and of a counting step's condition, which a groupBy compiles.
 const NESTED = new WeakSet<object>();
+const STEP = new WeakSet<object>();
 
-/** Marks compile options as a relation filter's (a nested scope). */
-export const nestedScope = <O extends object>(options: O): O => {
+/** Marks compile options as a relation filter's (a nested scope) — a counting step's when `step`,
+ *  or when the scope it opens from is inside one. */
+export const nestedScope = <O extends object>(options: O, from?: object, step = false): O => {
   NESTED.add(options);
+  if (step || (from !== undefined && STEP.has(from))) STEP.add(options);
   return options;
 };
 
 export const isNestedScope = (options: object | undefined): boolean =>
   options !== undefined && NESTED.has(options);
+
+export const isStepScope = (options: object | undefined): boolean =>
+  options !== undefined && STEP.has(options);

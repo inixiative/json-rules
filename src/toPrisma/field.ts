@@ -35,7 +35,7 @@ import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
 import { hasPath } from '../valueSource';
 import { prismaAnyNull } from './anyNull';
-import { columnCompare, columnCompareError, isNestedScope } from './columnRef';
+import { columnCompare, columnCompareError, isNestedScope, isStepScope } from './columnRef';
 import { andWhere, matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
 import { buildCondition } from './recurse';
@@ -260,6 +260,7 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
       options?.map as FieldMap | undefined,
       options?.model,
       isNestedScope(options),
+      isStepScope(options),
     );
     if ('problem' in compare) throw columnCompareError(rule.path, compare.problem);
     const filter = at({ [compare.key]: compare.ref });

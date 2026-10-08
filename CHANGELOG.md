@@ -27,6 +27,15 @@ Additive. Each function replaces code template wrote around the lens.
   `check(narrowRule(rule, lens), row)` can re-test the grants. Replaces template's `prune`;
   with `toLensSelect` and `toPrisma(true, { lens })`, `fetchLens` becomes three calls.
 
+- **`exists` / `notExists` on a required column compile on Prisma.** They read `{ not: null }` /
+  `{ equals: null }`, which Prisma rejects on a required column; a required column is null only
+  where the row it sits on is missing, so they now ask that (`{ is: {} }` on the path above, or
+  always / never at the root).
+- **`projectRows(…, { keepGrantColumns: true })` keeps a hidden to-one row as its grant columns**
+  instead of `null`, so a narrowed re-check fails it as the database does (a negation or
+  `notExists` through it no longer admits it). That output carries hidden values — for re-checks,
+  never for a viewer.
+
 ## 3.1.1 — a pointer never widens what a parent layer gave
 
 - **Security:** a child layer could turn a parent's path source into `from: 'mapDefaults'` and drop

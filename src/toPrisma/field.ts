@@ -33,7 +33,7 @@ import {
 import { escapeLikePattern } from '../toSql/quoting';
 import type { Condition, Rule } from '../types';
 import { prismaAnyNull } from './anyNull';
-import { andWhere, notLeaf, orWhere, overFetch } from './logical';
+import { andWhere, matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
 import { offsetNumber } from './offset';
 import { buildCondition } from './recurse';
 import type { PrismaWhere, ToPrismaOptions } from './types';
@@ -180,6 +180,9 @@ const buildRelationRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere =
     : present;
 };
 
+const entryOf = (rule: Rule, options?: ToPrismaOptions) =>
+  fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model);
+
 export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
   const shape = shapeOf(rule, options);
@@ -195,8 +198,19 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
   switch (rule.operator) {
     // A list filter has no `not`: its complements negate `equals` at the WHERE level.
     case Operator.exists:
-      return shape === 'list' ? notLeaf(at({ equals: null })) : at({ not: nullOf(shape) });
     case Operator.notExists: {
+      // A required column is null only where its row is missing: Prisma takes no `null` on it,
+      // so it asks whether the row it sits on is there (`is: {}` on the path above, or always).
+      const required = shape !== 'list' && entryOf(rule, options)?.isRequired === true;
+      if (required) {
+        const parent = rule.field.split('.').slice(0, -1).join('.');
+        const exists = rule.operator === Operator.exists;
+        if (!parent) return exists ? matchAll() : matchNothing();
+        const present = buildMapAwareFilter(parent, { is: {} }, options);
+        return exists ? present : notLeaf(present);
+      }
+      if (rule.operator === Operator.exists)
+        return shape === 'list' ? notLeaf(at({ equals: null })) : at({ not: nullOf(shape) });
       const absent = arms();
       return absent.length ? orWhere(absent) : at({ equals: nullOf(shape) });
     }

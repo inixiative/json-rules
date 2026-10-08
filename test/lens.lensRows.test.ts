@@ -236,7 +236,7 @@ describe('projectRows', () => {
     ]);
   });
 
-  test("drops the related rows a visit's where hides: a list element goes, a to-one becomes null", () => {
+  test("drops the related rows a visit's where hides: a list element goes, a to-one keeps only its grant columns", () => {
     const lens: LensNarrowing = {
       parent: base,
       root: {
@@ -268,7 +268,7 @@ describe('projectRows', () => {
         id: 'u1',
         posts: [
           { deletedAt: null, tag: { id: 'mine', name: 'vip', ownerModel: 'platform' } },
-          { deletedAt: null, tag: null },
+          { deletedAt: null, tag: { ownerModel: 'Organization' } }, // hidden: its grant column, for the re-check
         ],
       },
     ]);

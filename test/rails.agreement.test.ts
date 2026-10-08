@@ -294,6 +294,24 @@ const MATRIX: Record<string, Case> = {
     ids: [1, 2, 3],
     refuses: { sql: 'relation arrays are not supported' },
   },
+  'a required column always exists': {
+    rule: { field: 'id', operator: 'exists' },
+    ids: [1, 2, 3, 4, 5],
+  },
+  'a required column is never missing': { rule: { field: 'id', operator: 'notExists' }, ids: [] },
+  'a required column through a relation exists where its row does': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'any',
+      condition: { field: 'authorId', operator: 'exists' },
+    },
+    ids: [1, 3],
+    refuses: { sql: 'relation arrays are not supported' },
+  },
+  'a required column past an optional to-one is missing where the hop is': {
+    rule: { field: 'org.id', operator: 'notExists' },
+    ids: [4, 5],
+  },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
     ids: [1, 2, 3, 5],

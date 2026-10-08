@@ -49,6 +49,13 @@ const mergeTrees = (into: PathTree, from: PathTree): PathTree => {
 // The columns a visit's grants read, relative to its model.
 const grantPaths = (effect: VisitEffect): string[] => effect.whereClauses.flatMap(readPaths);
 
+// The columns a visit's grants read, with any already asked for below it.
+const grantTree = (policy: Policy, at: MapVisit, below: PathTree | undefined): PathTree =>
+  addPaths(
+    mergeTrees({}, below ?? {}),
+    grantPaths(resolveVisit(policy, at.mapName, at.modelName, at.relPath)),
+  );
+
 // A visit the lens projects (`declared`: its relations follow their narrowing), one it shows off a
 // declared path (`shallow`: its columns, no relations), or one only a grant reads (`paths`).
 type Mode = 'declared' | 'shallow' | 'paths';
@@ -206,8 +213,16 @@ const cutRow = (
     const child = childVisit(at, field, target);
     if (visible && mode === 'declared') {
       const childMode = openedMode(mode, effect, field);
-      out[field] = mapRelation(row[field], (r) =>
-        cutRow(policy, child, childMode, r, below ?? {}, keepGrants, options),
+      // A to-one row its grant hides is still there for a re-check: as its grant columns alone,
+      // so the narrowed rule's grant fails on it, as in the database — never as a missing row.
+      const single = !Array.isArray(row[field]);
+      out[field] = mapRelation(
+        row[field],
+        (r) =>
+          cutRow(policy, child, childMode, r, below ?? {}, keepGrants, options) ??
+          (keepGrants && single
+            ? pickPaths(policy, child, r, grantTree(policy, child, below))
+            : null),
       );
     } else if (below !== undefined) {
       out[field] = mapRelation(row[field], (r) => pickPaths(policy, child, r, below));
@@ -219,8 +234,10 @@ const cutRow = (
 /**
  * Rows cut to what a lens shows, recursively from its base model: hidden columns and relations
  * removed, and every row a visit's `where` hides gone — a root or list row dropped, a to-one row
- * null. `keepGrantColumns` also keeps the columns those `where`s read (hidden or not), so a later
- * `check(narrowRule(rule, lens), row)` can re-test the grants. The rest of `options` is what each
+ * null. `keepGrantColumns` also keeps the columns those `where`s read (hidden or not), and a hidden
+ * to-one row as those columns alone, so a later `check(narrowRule(rule, lens), row)` re-tests the
+ * grants as the database does. Its output carries hidden values: it's for that re-check, never for
+ * a viewer. The rest of `options` is what each
  * `where` is checked with (`now`, `bindings`). Plain JSON in and out; the input is not mutated.
  */
 export const projectRows = (

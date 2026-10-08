@@ -57,10 +57,10 @@ describe('toPrisma — negations through an optional to-one carry an `is: null` 
     });
   });
 
-  it('notExists on a REQUIRED leaf through an optional hop is only the hop arm', () => {
+  it('notExists on a REQUIRED leaf through an optional hop asks whether the hop is there', () => {
     expect(
       getWhere(toPrisma({ field: 'profile.createdAt', operator: Operator.notExists }, opts)),
-    ).toEqual(ABSENT_PROFILE);
+    ).toEqual({ NOT: { profile: { is: {} } } });
   });
 
   it('notExists on a nullable leaf through an optional hop is both arms', () => {

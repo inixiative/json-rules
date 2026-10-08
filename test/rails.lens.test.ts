@@ -104,4 +104,21 @@ describe("toLensSelect: a to-many relation's grants as its where agree with chec
     const ids = rows.filter((row) => check(narrowRule(rule, lens), row) === true).map((r) => r.id);
     expect(ids).toEqual((await rails.run(rule, { lens })).prisma as number[]);
   });
+
+  test.each<[string, Condition]>([
+    [
+      'a negation through a hidden to-one',
+      { field: 'org.name', operator: 'notEquals', value: 'x' },
+    ],
+    ['notExists on a hidden to-one', { field: 'org', operator: 'notExists' }],
+  ])('%s: the re-check fails the hidden row, as the database does', async (_, rule) => {
+    const rows = projectRows(lens, await fetchUnderLens(), { keepGrantColumns: true });
+    const ids = rows.filter((row) => check(narrowRule(rule, lens), row) === true).map((r) => r.id);
+    expect(ids).toEqual((await rails.run(rule, { lens })).prisma as number[]);
+  });
+
+  test('without keepGrantColumns a hidden to-one row is null', async () => {
+    const [, second] = projectRows(lens, await fetchUnderLens());
+    expect(second.org).toBeNull();
+  });
 });

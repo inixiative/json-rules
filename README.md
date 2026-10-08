@@ -601,8 +601,8 @@ its base lens. `toSql` takes it the same way. Passing both throws.
 
 ```ts
 const plan = toPrisma(rule, { lens: narrowing, now });
-// = toPrisma(narrowRule(rule, narrowing), { map: base, mapName: base.mapName, model: base.model, now }),
-//   once validateRuleInLens(rule, narrowing) passes
+// Gated by the lens, narrowed by it with each bare value `path` read as your `context` (narrowRule
+// alone would resolve it as a column), then compiled against the base lens's map and model.
 const where = await executePrismaPlan(plan, prisma);
 ```
 

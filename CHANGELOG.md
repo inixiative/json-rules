@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.3.1 — browser bundles, own-property reads, CJS types
+
+- **No top-level `node:module` import.** `toPrisma`'s Prisma `AnyNull` lookup imported
+  `createRequire` from `node:module` at the top of the bundle, which broke every browser bundle
+  that reaches json-rules (Vite: "Module 'module' has been externalized for browser
+  compatibility"). The loader now comes lazily from `process.getBuiltinModule('module')` (Node
+  ≥20.16, Bun), with the CJS build's `require` as before; on the server a Json null check still
+  uses the installed `@prisma/client`'s `AnyNull`. `engineGlobals.set('prismaOptions.anyNull', …)`
+  still overrides it.
+- **Path reads are own-property only.** A path step read inherited non-function values (a class
+  getter), contradicting the own-property ruling and `readLensValue`'s contract. It now reads own
+  properties only — an array's index and `length` and a string's `length` included — so `check()`
+  and `readLensValue` agree inside Json. A getter on a class instance (in a row or in `context`)
+  reads `undefined`; pass plain data.
+- **CJS consumers get CJS types.** `exports["."].require` now resolves `dist/index.d.cts`
+  (`node16` from CJS was "Masquerading as ESM").
+- **Docs:** the `{ lens }` compile example no longer claims it equals
+  `toPrisma(narrowRule(rule, narrowing), …)` — on the compile rails a bare value `path` is read
+  as the caller's `context`.
+- **Tooling:** `prepare` installs lefthook only inside a git checkout.
+
 ## 3.3.0 — read a value through a lens
 
 - **`readLensValue(lens, row, path, options?)`**: one value off a row as the lens shows it. The

@@ -1,4 +1,3 @@
-import { createRequire } from 'node:module';
 import { engineGlobals } from '../engineGlobals';
 
 // Prisma matches a DB NULL, a JSON null and an absent Json path together only with its AnyNull
@@ -27,11 +26,20 @@ const installedAnyNull = (): unknown => {
   return undefined;
 };
 
-// ESM resolves from this module's URL; the CJS build has `require` (and no import.meta.url).
-const loaders = (): ((id: string) => unknown)[] => {
-  const out: ((id: string) => unknown)[] = [];
+type Require = (id: string) => unknown;
+type BuiltinModule = { createRequire?: (url: string) => Require };
+type Process = { getBuiltinModule?: (id: string) => BuiltinModule | undefined };
+
+// No top-level 'node:module' import: browser bundles reach this file. On a server the module
+// loader comes from the runtime itself (Node ≥20.16, Bun); ESM resolves from this module's URL,
+// the CJS build also has `require` (and no import.meta.url).
+const loaders = (): Require[] => {
+  const out: Require[] = [];
   try {
-    out.push(createRequire(import.meta.url));
+    const createRequire = (globalThis as { process?: Process }).process?.getBuiltinModule?.(
+      'module',
+    )?.createRequire;
+    if (createRequire) out.push(createRequire(import.meta.url));
   } catch {
     // CJS: import.meta.url is empty.
   }

@@ -33,6 +33,10 @@ export const composeLens = (
   let lens: Lens | LensNarrowing | null = null;
   for (const [depth, at] of ids.entries()) {
     const record = read(at);
+    if (Object.hasOwn(record, 'parent'))
+      throw new Error(
+        `composeLens: '${at}' carries a parent; a layer composes only through \`parents\``,
+      );
     const { id: _id, parents, ...part } = record;
     if (parents.join('\u0000') !== ids.slice(0, depth).join('\u0000'))
       throw new Error(

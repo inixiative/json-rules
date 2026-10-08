@@ -45,6 +45,12 @@ Additive. Each function replaces code template wrote around the lens.
 - **SQL reads a non-array Json value as an empty array for `empty` / `notEmpty`**, as it already
   did for an aggregate (it read it as non-empty).
 - `check()`'s failure text prints a RegExp pattern as written (it printed `{}`).
+- **`composeLens` refuses a stored record carrying its own `parent`.** The record's `parent`
+  replaced the composed chain, so a forged layer dropped every layer above it (a tenancy grant
+  with it); a layer composes only through `parents`.
+- **A source `label` / `groupBy` is exempt only for the layer that set the value in force.** A
+  layer could restore a label on a column an ancestor hides after a layer between replaced it
+  (`name` → `age` → `name`); restating the value in force still keeps it.
 
 ## 3.1.1 — a pointer never widens what a parent layer gave
 

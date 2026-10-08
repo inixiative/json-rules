@@ -6,6 +6,7 @@ import {
   projectLens,
   type StoredLens,
   storeLens,
+  assertValidNarrowing as validateNarrowingOrThrow,
 } from '../index';
 import type { FieldMap } from '../src/fieldMap/types';
 
@@ -93,5 +94,33 @@ describe('a lens has three forms: composed, stored, projected', () => {
 
   test('storeLens needs one id per layer', () => {
     expect(() => storeLens(grant, ['user', 'grant-7'])).toThrow('3 layers');
+  });
+});
+
+describe('a stored layer composes only through its parents', () => {
+  test('a record carrying its own parent is refused, so it cannot drop the layers above it', () => {
+    const records = byId(storeLens(grant, ['base', 'org', 'grant']));
+    const forged = { ...records.grant, parent: base } as unknown as StoredLens;
+    expect(() => composeLens('grant', { ...records, grant: forged })).toThrow(/carries a parent/);
+  });
+});
+
+describe('a source label is exempt only for the layer that set the value in force', () => {
+  const owner: LensNarrowing = {
+    parent: base,
+    root: { omits: ['name'], sources: { id: { label: 'name' } } },
+  };
+  const relabeled: LensNarrowing = { parent: owner, root: { sources: { id: { label: 'orgId' } } } };
+
+  test('a layer restating the label keeps it', () => {
+    expect(() =>
+      validateNarrowingOrThrow({ parent: owner, root: { sources: { id: { label: 'name' } } } }),
+    ).not.toThrow();
+  });
+
+  test('a later layer cannot bring back a hidden label a layer between replaced', () => {
+    expect(() =>
+      validateNarrowingOrThrow({ parent: relabeled, root: { sources: { id: { label: 'name' } } } }),
+    ).toThrow(/hidden by another layer/);
   });
 });

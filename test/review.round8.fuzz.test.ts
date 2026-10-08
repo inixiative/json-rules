@@ -218,6 +218,15 @@ const sourceFor = (s: Schema, model: string, onPath: boolean): unknown => {
   const k = rnd();
   if (onPath && k < 0.2)
     return { from: 'mapDefaults', ...(rnd() < 0.5 ? { where: grantFor(s, model) } : {}) };
+  // An array condition over a list: the list's grants (windowed ones too) are carried into it.
+  const lists = s.app[model].filter((r) => r.isList && !r.bridge);
+  if (k < 0.3 && lists.length)
+    return {
+      field: pick(lists).name,
+      arrayOperator: pick(['any', 'all']),
+      condition: leaf(),
+      ...(rnd() < 0.5 ? { orderBy: [{ field: 'd', dir: 'desc' }], take: 1 } : {}),
+    };
   if (k < 0.5) return grantFor(s, model);
   const dotted = [...toOnePath(s, model, 1 + Math.floor(rnd() * 2)), pick(COLS)].join('.');
   const where = rnd() < 0.5 ? { where: grantFor(s, model) } : {};
@@ -301,6 +310,9 @@ const REFUSED_ISSUE = new RegExp(
 // The first refusal a bound posture makes, or null: projection both ways, the fetch, the source
 // plans and options, rows, and — at every shown visit — the visit, a presence rule reaching it and
 // a rule and a read of each column there. Any other throw is a compile's or a read's own limit.
+// A compile limit the lens's own queries hit is a refusal the planner makes first, never a throw.
+const leaks: string[] = [];
+
 const refusedBy = (s: Schema, lens: LensNarrowing, row: Row): string | null => {
   const bound = bindLens(lens, { viewer: 'X' });
   const attempts: [string, () => unknown][] = [
@@ -361,6 +373,11 @@ const refusedBy = (s: Schema, lens: LensNarrowing, row: Row): string | null => {
         (error as Error).constructor.name === 'LensRefusal' ||
         (error as { refusal?: boolean }).refusal;
       if (refused) return `${name}: ${(error as Error).message}`;
+      if (
+        /^(toSourceQueries|toLensSelect)$/.test(name) &&
+        /Windowing/.test((error as Error).message)
+      )
+        leaks.push(`${name}: ${(error as Error).message}`);
     }
   }
   return null;
@@ -409,5 +426,6 @@ test('validateNarrowing.ok holds exactly when no bound posture refuses', () => {
     }
   }
   expect(mismatches).toEqual([]);
+  expect(leaks).toEqual([]);
   expect(later).toBeGreaterThanOrEqual(2000);
 }, 120_000);

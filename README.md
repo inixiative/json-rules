@@ -1231,7 +1231,8 @@ narrowed under the whole lens as `narrowRule` narrows a rule — every relation 
 that visit's grants, inside an array condition (into its `condition`, or its `filter` under `all`,
 a window or no condition) and on each hop and terminal relation of a dotted path. A grant a rule
 couldn't carry there (one narrowRule can't re-root, a to-many relation read flat) is refused, as
-it is for a rule.
+it is for a rule; so is a source whose query has a window toPrisma can't compile (by its shape,
+before anything compiles — `materializeSources` refuses it too, so the two never disagree).
 
 #### Two kinds of source
 

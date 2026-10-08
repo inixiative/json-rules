@@ -64,7 +64,9 @@ reads one exposure from `src/lens/policy.ts`.
   condition, or on the relation a path ends on, was not applied). A source's label and axes read
   what every layer but the one declaring them shows, the chain kept whole (before, dropping the
   declaring layer from the chain lost the first narrowing's turn-ons when it was the one).
-  `toSourceQueries`' SQL selects from the model's `dbName`, as its joins do.
+  `toSourceQueries`' SQL selects from the model's `dbName`, as its joins do. A source whose query
+  holds a window toPrisma can't compile — its own `where`'s or a grant carried into it — is refused
+  by its shape (a `LensRefusal`, which `validateNarrowing` reports), by both materializers.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
   can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has

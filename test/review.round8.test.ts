@@ -453,3 +453,66 @@ describe('R8-6: a malformed source is an issue, never a throw', () => {
     expect(refusedBy(lens)).toMatch(/is not a Condition/);
   });
 });
+
+describe('R8-7: a source the option query cannot compile is refused by its shape', () => {
+  const windowBase = createLens({ maps: { app: windowSchema }, mapName: 'app', model: 'User' });
+  const latestOk = rule({
+    field: 'comments',
+    arrayOperator: 'all',
+    condition: { field: 'ok', operator: 'equals', value: true },
+    orderBy: [{ field: 'at', dir: 'desc' }],
+    take: 1,
+  });
+  const anyPost = rule({
+    field: 'posts',
+    arrayOperator: 'any',
+    condition: { field: 'id', operator: 'exists' },
+  });
+
+  test.each<[string, LensNarrowing]>([
+    [
+      'a windowed grant carried into the source where',
+      {
+        parent: windowBase,
+        root: { sources: { id: anyPost } },
+        mapDefaults: { app: { models: { Post: { where: latestOk } } } },
+      },
+    ],
+    [
+      'a windowed source where of its own',
+      {
+        parent: windowBase,
+        root: { relations: { posts: {} } },
+        mapDefaults: { app: { models: { Post: { sources: { id: latestOk } } } } },
+      },
+    ],
+  ])('%s: validation and the runtime both refuse', (_, lens) => {
+    const v = validateNarrowing(lens);
+    expect(v.ok).toBe(false);
+    expect(v.errors.map((e) => e.message).join()).toMatch(/Windowing/);
+    expect(refusedBy(lens)).toMatch(/^toSourceQueries: .*Windowing/);
+  });
+
+  test('a counting grant in a source where compiles (the option query runs its steps)', () => {
+    const lens: LensNarrowing = {
+      parent: windowBase,
+      root: { sources: { id: anyPost } },
+      mapDefaults: {
+        app: {
+          models: {
+            Post: {
+              where: rule({
+                field: 'comments',
+                arrayOperator: 'atLeast',
+                count: 1,
+                condition: { field: 'ok', operator: 'equals', value: true },
+              }),
+            },
+          },
+        },
+      },
+    };
+    expect(validateNarrowing(lens).ok).toBe(true);
+    expect(toSourceQueries(lens)[0].prisma.steps?.length).toBeGreaterThan(1);
+  });
+});

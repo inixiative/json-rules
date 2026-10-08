@@ -82,13 +82,16 @@ const childVisit = (
   relPath: [...at.relPath, field],
 });
 
-// What a relation's where in a select can't hold, read off the grant's shape before anything
-// compiles: a window toPrisma has no form for, or a count or an aggregate (a counting step, which
-// only executePrismaPlan runs).
-const selectGrantRefusal = (grant: Condition, at: MapVisit): LensRefusal | null => {
+/** What a Prisma compile of a lens's own condition can't hold, read off its shape before anything
+ *  compiles (`on` names it): a window toPrisma has no form for, or — where no step can run, as in a
+ *  relation's where in a select (`counting: false`) — a count or an aggregate. */
+export const prismaShapeRefusal = (
+  condition: Condition,
+  on: string,
+  counting: boolean,
+): LensRefusal | null => {
   let refusal: LensRefusal | null = null;
-  const on = `toLensSelect: the grant on '${at.relPath.join('.')}'`;
-  visitCondition(grant, (node) => {
+  visitCondition(condition, (node) => {
     if (refusal !== null || !isRelationNode(node)) return;
     const rule = node as ArrayRule | AggregateRule;
     if (hasWindow(rule) && windowRewrite(rule) === null)
@@ -96,7 +99,10 @@ const selectGrantRefusal = (grant: Condition, at: MapVisit): LensRefusal | null 
         `${on}: ${windowUnsupported('toPrisma').message}`,
         'unsupported_grant',
       );
-    else if ('aggregate' in rule || ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator))
+    else if (
+      !counting &&
+      ('aggregate' in rule || ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator))
+    )
       refusal = new LensRefusal(
         `${on} needs a counting step (executePrismaPlan), which a relation's where in a select can't run`,
         'unsupported_grant',
@@ -113,7 +119,11 @@ const grantWhere = (
 ): PrismaWhere | undefined => {
   if (!effect.whereClauses.length) return undefined;
   const grant = allOf(effect.whereClauses);
-  const refusal = selectGrantRefusal(grant, at);
+  const refusal = prismaShapeRefusal(
+    grant,
+    `toLensSelect: the grant on '${at.relPath.join('.')}'`,
+    false,
+  );
   if (refusal) throw refusal;
   if (policy.inspect) return undefined;
   const plan = toPrisma(grant, {

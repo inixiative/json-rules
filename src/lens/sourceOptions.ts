@@ -4,6 +4,7 @@ import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import { allOf } from '../traverse';
 import type { Condition, Row } from '../types';
+import { prismaShapeRefusal } from './lensRows.ts';
 import { narrowAt, prefixConditionFields } from './narrowRule.ts';
 import { LensRefusal, type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
 import type { PathProjection, ProjectedVisit } from './projectPaths.ts';
@@ -294,6 +295,20 @@ export const sourcePlansWith = (
         at.relPath,
         carriedFor(skip),
       );
+      const eligibility = [
+        ...above,
+        ...wheres,
+        ...guards,
+        ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
+      ];
+      // The option query compiles the visit's grants and the eligibility as one where: a shape it
+      // has no form for is refused here, so validation and every materializer refuse it alike.
+      const refusal = prismaShapeRefusal(
+        allOf([...visit.whereClauses, ...eligibility]),
+        `source '${field}' at '${path}'`,
+        true,
+      );
+      if (refusal) throw refusal;
       return {
         path,
         visit,
@@ -301,12 +316,7 @@ export const sourcePlansWith = (
         ...(fromModel && { from: 'mapDefaults' as const }),
         ...(label !== undefined && { label }),
         ...(groupBy !== undefined && { groupBy }),
-        eligibility: [
-          ...above,
-          ...wheres,
-          ...guards,
-          ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
-        ],
+        eligibility,
       };
     }),
   );

@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.4.2 — orderRecords
+
+- **`orderRecords(items, orderBy)`**: records sorted by an `OrderBy` exactly as a window orders them
+  on every rail — each key in turn, own-property path reads, `dir` order, NULL or absent last in
+  either direction, ties in input order; a new array. The comparator windows already used, now
+  public so callers don't keep a second copy. First consumer: agent-session capacity routing
+  (ordering candidates by priority and utilization).
+
 ## 3.4.1 — sources across a bridge over-fetch and re-check
 
 "When you're doing an in-memory check, you have to overfetch. You shouldn't be pre-filtering

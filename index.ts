@@ -176,3 +176,4 @@ export {
   type ValidationResult,
   validateRule,
 } from './src/validate';
+export { orderRecords } from './src/window';

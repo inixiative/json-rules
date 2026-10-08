@@ -76,7 +76,10 @@ export const openRails = async (seed = '') => {
   const rows = await prisma.user.findMany({
     include: {
       org: {
-        include: { users: { include: { org: true } }, parent: { include: { parent: true } } },
+        include: {
+          users: { include: { org: true, posts: true } },
+          parent: { include: { parent: true } },
+        },
       },
       posts: { include: { author: true } },
     },

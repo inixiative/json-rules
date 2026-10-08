@@ -1,3 +1,4 @@
+import { enumColumnProblem } from '../columnEnum';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { isJsonEntry, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
@@ -88,6 +89,8 @@ export const columnCompare = (
     return {
       problem: `'${rule.field}' (${field.type}) and '${columnPath}' (${column.type}) are not the same type`,
     };
+  const enumProblem = enumColumnProblem(field, column, rule.operator);
+  if (enumProblem) return { problem: enumProblem };
   if (field.type === 'String' && resolveCaseInsensitive(rule.caseInsensitive))
     return { problem: 'a case-insensitive column comparison compiles to ILIKE' };
   return {

@@ -172,7 +172,7 @@ export const projectPaths = (
 /**
  * One visit as `projectLens` (by path) gives it, resolved on demand: `relationPath` is the dotted
  * relation path from the lens anchor (`''` for the anchor). Null when a relation on it isn't shown
- * there — off, omitted, or a model default re-entering a model already on the path. Nothing is
+ * there — off, omitted, or outside the model-default tree. Nothing is
  * enumerated, so it is cheap on any schema.
  */
 export const lensVisit = (

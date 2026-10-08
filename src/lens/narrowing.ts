@@ -15,6 +15,8 @@ import {
   allowedEnumValues,
   bareValueRef,
   declaresModelSource,
+  escapingGrantRef,
+  escapingRef,
   hiddenHop,
   intersectStringSet,
   isSourceSpec,
@@ -24,7 +26,6 @@ import {
   normalizeSource,
   OFF_PATH,
   type Policy,
-  reenters,
   relationHops,
   resolvePolicy,
   resolveVisit,
@@ -66,6 +67,15 @@ const validateWhere = (
       path: position,
       code: 'invalid_value_source',
       message: misanchoredPath(bare).message,
+    });
+    return;
+  }
+  const escaping = escapingRef(condition);
+  if (escaping !== null) {
+    errors.push({
+      path: position,
+      code: 'scope_out_of_bounds',
+      message: escapingGrantRef(escaping).message,
     });
     return;
   }
@@ -585,18 +595,11 @@ const validateNode = (
     }
     // The base lens is the menu: the first narrowing may turn any relation on. A later layer
     // narrows only what its parent shows — on a model default, wherever the parent visits it.
-    // A visit where the relation would re-enter a model already on the path shows it to no one:
-    // restating it there narrows nothing, so it doesn't count against a model default.
+    // A path node's relation must be shown at its visit; a model default's at one or more of the
+    // model's visits (where the tree doesn't cross it, restating it narrows nothing).
     const shown = (v: WhereVisit) =>
-      resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField) ||
-      (visits.isDefault && reenters(parentPolicy, v, relField));
-    if (
-      !isFirst &&
-      (!visits.parent.some((v) =>
-        resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField),
-      ) ||
-        !visits.parent.every(shown))
-    ) {
+      resolveVisit(parentPolicy, v.mapName, v.modelName, v.relPath).relations.has(relField);
+    if (!isFirst && !(visits.isDefault ? visits.parent.some(shown) : visits.parent.every(shown))) {
       errors.push({
         path: `${position}.relations`,
         code: 'not_visible',

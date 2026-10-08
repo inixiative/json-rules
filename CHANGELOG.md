@@ -25,16 +25,18 @@ reads one exposure from `src/lens/policy.ts`.
   show is `not_visible`.
 - **`picks` names columns only.** A relation in `picks` is `wrong_kind`; `omits` may name a
   relation beside `picks`.
-- **Each model once per path.** A model-default relation never re-enters a model already on the
-  path (the root's included); deeper recursion is spelled under `root.relations`, which is always
-  followed. The cap holds on every posture. The enumerating walks (`projectLens`, `validateNarrowing`,
-  the sources) visit each class of visit once (model, spelled path or "a model default", incoming
-  edge) through its shortest path, so they stay small on dense schemas.
+- **The model defaults grow a tree.** From the anchor and every path spelled under
+  `root.relations`, model-default turn-ons are followed breadth-first, each model at most once — at
+  its nearest reach, ties to the earlier parent and then field order — never one already on the
+  spelled path. Anything else is spelled. Every posture walks the same tree (exact agreement, at
+  most spelled nodes × models visits).
 - **Grants.** The first narrowing's `where`s and source eligibility `where`s may read any relation
   on the schema; a later layer's only what its parent shows (a delegate can't probe what it can't
   see) — `validateNarrowing` reports it and every runtime posture throws rather than apply it. A
   bare value `path` reads the root row, so only `root.where` may hold one; in a relation grant, a
   model default or a source's eligibility `where` it is `invalid_value_source` and a runtime throw.
+  A grant reads its own row: a scope ref that climbs out of it (`$$.` at its top) is
+  `scope_out_of_bounds` and a runtime throw.
 - **`lensVisit(lens, relationPath)`** (new; first consumer: rules-builder 0.30): one visit as
   `projectLens` by path gives it, resolved on demand without enumerating; `null` when the path
   isn't shown. `projectLens` by path keeps a map's declared option labels and groups.
@@ -63,7 +65,8 @@ the compilers read it from `options.context` — a second caller-value channel b
   `IS [NOT] DISTINCT FROM`. Anything else throws, and `validateRule(rule, { target: 'toPrisma',
   map, model })` / `describeRule` report it first. A substring operator against a column throws on
   both compilers (it would be a LIKE pattern). A negated comparison (`if`, `all`) compiles to its
-  complement with NULL arms. Inside a counting step (a count or relation aggregate condition) a
+  complement with NULL arms. An enum column compares only with an enum column of its own type, by
+  equality (natively on SQL); ordered and enum-to-text comparisons are refused. Inside a counting step (a count or relation aggregate condition) a
   column comparison has no Prisma form and throws.
 - **The plan's references are unforgeable.** Each step records where its own `{ __step }` /
   `{ __field }` references sit (`refs`), and `executePrismaPlan` resolves only those locations; a

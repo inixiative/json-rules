@@ -42,7 +42,7 @@ What one layer may do, given the layers above it (layer 1 is the first narrowing
 | --- | --- | --- |
 | `picks` / `omits` / `enumPicks` / `enumOmits` | intersect (omits union) | only hide more; naming what an ancestor hid is an error. `picks` names columns only (a relation in it is `wrong_kind`); `omits` may name a relation, beside `picks` too |
 | `relations` (turning on) | exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ = exposedₖ₋₁ ∧ ¬ layer k hides it | layer 1: turn on any relation, along the path (`root.relations`) or at a model default (`mapDefaults…models.M.relations`). Later layers: hide it with `omits`, or restate one the parent shows to narrow that hop (else `not_visible`); a restatement hides nothing else |
-| model-default relations | each model once per path (never re-entering one on the path, the root's included) | spell deeper recursion under `root.relations`; the cap holds for every posture |
+| model-default relations | a tree under each spelled node: each model once, at its nearest reach (ties: earlier parent, then field order) | spell under `root.relations` to reach a model another way; every posture walks the same tree |
 | `where` grants | AND at their anchor | only add. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`, and at runtime every posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation grant or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
 | `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a grant (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
 | `from: 'mapDefaults'` pointers | — | escape only their own layer's path grants; every other layer's still apply |
@@ -124,18 +124,30 @@ The relation object carries that hop's narrowing — `where`, `picks` / `omits` 
 columns, further `relations`. On a model default it narrows the hop wherever the model is
 visited, and may nest (`Org.relations.users.relations.posts` turns posts on below Org.users only).
 
-**Each model once per path.** A relation turned on at a model default never re-enters a model
-already on the path, the root's included. Anchored at User with `User.org`, `User.posts`,
-`Org.users`, `Org.parent` and `Post.author` on at the defaults: `org.name` and `posts.title`
-resolve; `org.users` (User again), `org.parent` (Org again) and `posts.author` (User again) do
-not. Deeper recursion is spelled under `root.relations` — `org: { relations: { users: {} } }`
-opens `org.users`, and below a spelled path the defaults go on (`org.users.posts`), still never
-re-entering a model on the path. A spelled path is always followed as written. The cap lives in
-the one walk every posture shares, so the gate, `walkLensPath`, `readLensValue`, the projections,
-the sources, the fetch and `validateNarrowing` agree, and each ends. The walks that enumerate
-(`projectLens`, `validateNarrowing`, the sources) visit each class of visit once — its model, its
-spelled path or "a model default", and the edge that reached it — through its shortest path, so
-they stay small on a dense schema; `lensVisit` resolves any one path on demand.
+**The model defaults grow a tree.** From each spelled node — the anchor, and every path spelled
+under `root.relations` — the first narrowing's model-default turn-ons are followed breadth-first,
+and each model is included at most once: at its nearest reach (fewest hops), ties going to the
+earlier parent and then to the relation declared first in the map. A model already on the
+spelled path, or earlier in that tree, is not entered again. Anything outside the tree is reached
+by spelling it under `root.relations`; a spelled node is always followed and grows its own tree.
+Nested relation objects under a model default apply along tree edges only.
+
+```ts
+// A has p → P and q → Q; both P and Q have t → T. All turned on at the defaults:
+mapDefaults: { app: { models: { A: { relations: { p: {}, q: {} } },
+                                 P: { relations: { t: {} } }, Q: { relations: { t: {} } } } } }
+// T is reached once, by p (declared before q): 'p.t.id' resolves, 'q.t.id' is hidden.
+// Spell it to reach it another way:
+root: { relations: { q: { relations: { t: {} } } } }      // now 'q.t.id' resolves too
+```
+
+Anchored at User with `User.org`, `User.posts`, `Org.users`, `Org.parent` and `Post.author` on at
+the defaults: `org.name` and `posts.title` resolve; `org.users`, `org.parent` and `posts.author`
+do not (User and Org are already in the tree). `org: { relations: { users: {} } }` spells
+`org.users`, and below it the defaults grow again (`org.users.posts`). Every posture walks this
+same tree — the gate, `walkLensPath`, `readLensValue`, `lensVisit`, `narrowRule`, `{ lens }`
+compiles, `projectLens` (both modes), the sources, `validateNarrowing` and `toLensSelect` — so
+they agree exactly, and each stays within (spelled nodes × models) visits.
 
 What turning on governs:
 
@@ -159,6 +171,8 @@ Later layers:
   can't see. Layer 1's grants read the schema. `validateNarrowing` reports a grant that crosses
   more, and every runtime posture (the gate, `narrowRule`, `{ lens }` compiles, `toLensSelect`,
   `projectRows`, `readLensValue`, the sources) throws instead of applying it.
+- **A grant reads its own row.** A scope ref that climbs out of the grant (`$$.` at its top,
+  `$$$.` one array down) is `scope_out_of_bounds` in `validateNarrowing`, and every posture throws.
 - **A bare `path` in a grant reads the root row.** Only `root.where` stands on it; in a relation
   grant, a model default or a source's eligibility `where`, use a literal, a bind, or a `$` scope
   ref — otherwise `validateNarrowing` reports `invalid_value_source` and every posture throws.
@@ -895,9 +909,9 @@ alone; a surface spanning several models (a synthetic root whose relations lead
 to each slot) turns each slot on under `root.relations`. Fields hidden on every path (including those
 hidden only by `root`) are absent, so it never exposes the raw, un-narrowed lens.
 `where` (data scope) is dropped, and the emitted enum registry carries only
-exposed values. A model-default relation never re-enters a model on the path,
-so recursive schemas (`User → Org → members(User) → …`) project only as deep
-as that, or as a spelled path goes.
+exposed values. The model defaults grow a tree (each model once), so recursive
+schemas (`User → Org → members(User) → …`) project only as deep as that, or as a
+spelled path goes.
 
 > **Lens vs Projection.** Both derive from a lens, but they are different shapes:
 > a **Lens** keeps its maps (the model→field→model graph) and is navigable; a
@@ -971,7 +985,7 @@ narrows for you; with a bare `map`, nothing does. Treat validate → apply (or
 **Relations are off until turned on.** Turn on every relation you cross — in rules, value refs,
 source labels and axes, reads and fetches — with `relations`, on the first narrowing over the base
 lens: along the path (`root.relations`, one level per hop) or at the model default
-(`mapDefaults…models.M.relations`, wherever M is visited; never re-entering a model on the path).
+(`mapDefaults…models.M.relations`, a tree under each spelled node, each model once at its nearest reach).
 Remove
 relation names from `picks` (`wrong_kind` now):
 

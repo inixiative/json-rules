@@ -1,5 +1,6 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { unitAmountProblem } from './amount';
+import { enumColumnProblem } from './columnEnum';
 import { parseDateValue } from './date';
 import {
   DEFAULT_ZONE,
@@ -20,7 +21,7 @@ import {
 } from './errors';
 import { resolveFieldMap } from './fieldMap/resolveFieldMap';
 import type { FieldMap, FieldMapSet } from './fieldMap/types';
-import { relationTarget } from './fieldMap/walk';
+import { fieldEntry, relationTarget } from './fieldMap/walk';
 import { isOrderedValue, readOrderedPair } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
@@ -443,6 +444,17 @@ const validateFieldRule = (
         'unsupported_prisma_path',
         columnCompareError(rule.path, compare.problem).message,
       );
+  }
+  if (context.target === 'toSql' && typeof rule.path === 'string' && context.map) {
+    const model = context.scopeModels[depth - 1];
+    const column = (parseScopeRef(rule.path) ?? { path: rule.path }).path;
+    const problem = enumColumnProblem(
+      fieldEntry(rule.field as string, context.map, model),
+      fieldEntry(column, context.map, model),
+      operator,
+    );
+    if (problem)
+      pushIssue(context, `${path}.path`, 'unsupported_sql_path', `'${rule.path}': ${problem}`);
   }
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 

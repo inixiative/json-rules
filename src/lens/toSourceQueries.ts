@@ -1,4 +1,3 @@
-import { endpointKey } from '../fieldMap/endpointKey';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { FieldMap } from '../fieldMap/types';
 import { walkFieldPath } from '../fieldMap/walk';
@@ -10,10 +9,10 @@ import { escapeIdentifier } from '../toSql/escape.ts';
 import { builderState } from '../toSql/index.ts';
 import { resolveFieldSql } from '../toSql/join.ts';
 import type { Condition, DateConfig } from '../types.ts';
-import { LensRefusal, resolvePolicy } from './policy.ts';
+import { resolvePolicy } from './policy.ts';
 import { compileOrRefuse } from './prismaRefusal.ts';
 import { readPaths } from './readPaths.ts';
-import { sourcePlans } from './sourceOptions.ts';
+import { localReads, sourcePlans } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /** Prisma `select` shape — nested for a grouped source's relation path. */
@@ -28,7 +27,8 @@ export type SourcePrismaQuery = {
   distinct?: string[];
   select: SourceSelect;
   where: PrismaWhere;
-  /** Present only if the composed where used count operators (run via executePrismaPlan). */
+  /** Present when the where needs `executePrismaPlan`: a count step, or a column reference to
+   *  resolve. Run `executePrismaPlan({ steps }, prisma)` and query with the where it returns. */
   steps?: PrismaStep[];
 };
 
@@ -85,25 +85,6 @@ const mergeSelect = (into: SourceSelect, path: string[]): void => {
   into[head] = { select: nested };
 };
 
-// The local column a read across a bridge needs: the near endpoint's `on` key, under the local
-// relations the read crosses before the bridge ('org.crm:Account.tier' → 'org.crmId').
-const bridgeKey = (lens: Lens, map: FieldMap, mapName: string, model: string, read: string) => {
-  const { hops } = walkFieldPath(read, map, model);
-  const parts = read.split('.');
-  const near = hops.at(-1)?.entry.type ?? model;
-  const farKey = parts[hops.length];
-  for (const { endpoints } of lens.bridges ?? []) {
-    const [a, b] = endpoints;
-    for (const [here, there] of [
-      [a, b],
-      [b, a],
-    ])
-      if (here.fieldMap === mapName && here.model === near && endpointKey(there) === farKey)
-        return [...parts.slice(0, hops.length), here.on].join('.');
-  }
-  throw new LensRefusal(`'${read}' crosses no bridge the lens declares on ${near}`, 'not_in_lens');
-};
-
 const compileOne = (
   lens: Lens,
   path: string,
@@ -122,27 +103,35 @@ const compileOne = (
     toPrisma(where, { ...options, map: lens, mapName, model }),
   );
   // A plan ends on its where step.
-  const prismaWhere = (plan.steps.at(-1) as WhereStep).where;
-  const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
+  const whereStep = plan.steps.at(-1) as WhereStep;
+  const prismaWhere = whereStep.where;
+  // A count step, or a column reference in the where, resolves through executePrismaPlan.
+  const needsPlan = plan.steps.length > 1 || (whereStep.refs?.length ?? 0) > 0;
   const map = resolveFieldMap(lens, mapName, 'toPrisma') as FieldMap;
   const far = (read: string): boolean =>
     recheck !== undefined && walkFieldPath(read, map, model).kind === 'bridge';
   // A label or axis across a bridge is read from the far side; the query selects its local key.
   const localLabel = label !== undefined && !far(label) ? label : undefined;
   const localAxes = (groupBy ?? []).map((axis) => (far(axis) ? undefined : axis));
+  // A read into a Json column selects the column whole: a select can't open a Json value.
+  const columnOf = (read: string): string => {
+    const walk = walkFieldPath(read, map, model);
+    return walk.kind === 'json-path' ? read.split('.').slice(0, walk.stopIndex).join('.') : read;
+  };
   // What the re-check reads here: its local columns, and each bridge's local key.
   const recheckReads =
     recheck === undefined
       ? []
-      : [
-          ...new Set(
-            [
-              ...readPaths(recheck),
-              ...(label !== undefined && localLabel === undefined ? [label] : []),
-              ...(groupBy ?? []).filter(far),
-            ].map((read) => (far(read) ? bridgeKey(lens, map, mapName, model, read) : read)),
-          ),
-        ].filter((read) => read !== field);
+      : localReads(
+          lens,
+          mapName,
+          model,
+          [
+            ...readPaths(recheck),
+            ...(label !== undefined && localLabel === undefined ? [label] : []),
+            ...(groupBy ?? []).filter(far),
+          ].map(columnOf),
+        ).filter((read) => read !== field);
   // A dotted label materializes exactly like a groupBy axis — same nested select
   // (merged with any axis sharing its prefix), same joined SQL column.
   const labelPath = localLabel?.includes('.') ? localLabel : undefined;
@@ -164,20 +153,21 @@ const compileOne = (
       : { distinct: localLabel ? [field, localLabel] : [field] }),
     select,
     where: prismaWhere,
-    ...(groupBySteps.length ? { steps: plan.steps } : {}),
+    ...(needsPlan ? { steps: plan.steps } : {}),
   };
 
   let sqlQuery: SourceSqlQuery;
   try {
     // Flat SQL rows hold a column of the model, not a relation to load a far side onto.
-    const nested = recheckReads.find((read) => {
+    for (const read of recheckReads) {
       const walk = walkFieldPath(read, map, model);
-      return walk.kind !== 'direct' || walk.hops.length > 0 || walk.entry.kind === 'object';
-    });
-    if (nested !== undefined)
+      if (walk.kind === 'direct' && !walk.hops.length && walk.entry.kind !== 'object') continue;
       throw new Error(
-        `the re-check reads '${nested}' through a relation, which flat SQL rows can't hold — run the Prisma query`,
+        walk.kind === 'direct'
+          ? `the re-check reads '${read}' through a relation, which flat SQL rows can't hold — run the Prisma query`
+          : `the re-check reads '${read}', which is not a column of ${model} — run the Prisma query`,
       );
+    }
     // The where and the materialized columns resolve against one state, so a label or axis
     // path reuses (and extends) the where's joins.
     const state = builderState({ ...options, map: lens, mapName, model, alias: 't0' });

@@ -27,7 +27,6 @@ import {
   normalizeSource,
   OFF_PATH,
   type Policy,
-  relationHops,
   resolvePolicy,
   resolveVisit,
   type ShownVisit,
@@ -37,7 +36,7 @@ import {
 } from './policy.ts';
 import { projectModelsWith } from './projectModels.ts';
 import { lensVisitWith, projectPathsWith } from './projectPaths.ts';
-import { type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
+import { type SourcePlan, sourcePlansWith, toOnePathError } from './sourceOptions.ts';
 import type {
   EnumNarrowing,
   LensNarrowing,
@@ -146,29 +145,6 @@ const validateSourceTargetVisibility = (
       }
     }
   }
-};
-
-// A materialization path — a groupBy axis or a dotted label — descends to-one relations
-// only and must land on a scalar/enum column. `kind` names it in the error.
-const toOnePathError = (
-  path: string,
-  maps: Record<string, FieldMap>,
-  mapName: string,
-  modelName: string,
-  kind: 'groupBy' | 'label',
-): string | null => {
-  const segments = path.split('.');
-  const { hops } = relationHops(maps, { mapName, modelName, relPath: [] }, path);
-  const toMany = hops.find((hop, i) => hop.isList && i < segments.length - 1);
-  if (toMany) return `${kind} cannot traverse to-many relation '${segments[hops.indexOf(toMany)]}'`;
-  if (hops.length === segments.length)
-    return `${kind} must end on a scalar column, '${segments.at(-1)}' is a relation`;
-  const at = hops.at(-1) ?? { map: mapName, model: modelName };
-  const seg = segments[hops.length];
-  const entry = fieldOf(own(maps, at.map), at.model, seg);
-  if (!entry) return `${kind} segment '${seg}' not on model '${at.model}'`;
-  if (isRelationEntry(entry)) return `${kind} relation '${seg}' has no resolvable target`;
-  return hops.length === segments.length - 1 ? null : `${kind} segment '${seg}' is not a relation`;
 };
 
 // Why a field a layer names is already hidden: an ancestor's picks leave a column out or its omits

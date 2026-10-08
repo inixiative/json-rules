@@ -17,7 +17,7 @@ import {
 } from './policy.ts';
 import { compileOrRefuse, prismaRefusal } from './prismaRefusal.ts';
 import { readPaths } from './readPaths.ts';
-import { type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
+import { localReads, type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where`. */
@@ -55,22 +55,29 @@ const mergeTrees = (into: PathTree, from: PathTree): PathTree => {
 const clampPaths = (effect: VisitEffect): string[] => effect.whereClauses.flatMap(readPaths);
 
 // What each visit's sources read, by relation path: the value, its label and axes, and their
-// condition at the visit — below it only: the fetched tree is the path above. The fetch and a
-// re-check keep it as they keep clamp columns — hidden or not, never for a viewer — so
-// materializeSources over fetched rows offers what the database does.
+// condition at the visit — below it only: the fetched tree is the path above. A bridged source's
+// reads are its local ones — a read across the bridge is that bridge's local `on` key — for the
+// re-check over the rows with the far side loaded. The fetch and a re-check keep them as they keep
+// clamp columns — hidden or not, never for a viewer — so materializeSources over fetched rows
+// offers what the database does.
 type SourceReads = ReadonlyMap<string, readonly string[]>;
-const sourceReads = (plans: readonly SourcePlan[]): SourceReads => {
+const sourceReads = (policy: Policy, plans: readonly SourcePlan[]): SourceReads => {
   const out = new Map<string, string[]>();
   for (const plan of plans) {
-    // A model source's rows aren't the fetched ones, and a bridged one's aren't fetched at all.
-    if (plan.from || plan.bridged !== undefined) continue;
+    // A model source's rows aren't the fetched ones.
+    if (plan.from) continue;
     const key = plan.path.split('.').slice(1).join('.');
-    out.set(key, [
-      ...(out.get(key) ?? []),
+    const reads = [
       plan.field,
       ...(plan.label === undefined ? [] : [plan.label]),
       ...(plan.groupBy ?? []),
       ...readPaths(plan.rowWhere),
+    ];
+    out.set(key, [
+      ...(out.get(key) ?? []),
+      ...(plan.bridged === undefined
+        ? reads
+        : localReads(policy.lens, plan.visit.mapName, plan.visit.model, reads)),
     ]);
   }
   return out;
@@ -219,7 +226,14 @@ export const toLensSelectWith = (
   options: LensSelectOptions = {},
   plans: readonly SourcePlan[] = sourcePlansWith(policy),
 ): { select: LensSelect } => {
-  const select = selectAt(policy, rootVisit(policy), 'declared', {}, options, sourceReads(plans));
+  const select = selectAt(
+    policy,
+    rootVisit(policy),
+    'declared',
+    {},
+    options,
+    sourceReads(policy, plans),
+  );
   // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
   // (a viewer's projection drops it). A root model with no `id` stays as it is.
   if (!Object.values(select).some((selected) => selected === true)) {
@@ -322,7 +336,7 @@ export const projectRows = (
   const root = rootVisit(policy);
   // A viewer's rows carry nothing a source reads.
   const reads = keepClampColumns
-    ? sourceReads(sourcePlansWith(policy))
+    ? sourceReads(policy, sourcePlansWith(policy))
     : new Map<string, string[]>();
   return rows.flatMap((row) => {
     const kept = cutRow(policy, root, row, {}, keepClampColumns, options, reads);

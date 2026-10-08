@@ -47,6 +47,9 @@ const groupByKey = (rows: Row[], on: string): Record<string, Row[]> => {
   return out;
 };
 
+/** Raw rows (keyed by endpoint, `<fieldMap>:<Model>`) indexed for embedding under bridge keys:
+ *  map → model → `on` field → its value → the row, or the rows on a oneToMany's "many" side.
+ *  Throws on a duplicate value where a side must be unique. */
 export const indexBridges = (
   set: FieldMapSet,
   rawData: Record<string, Row[]>,

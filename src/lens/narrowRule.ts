@@ -227,6 +227,8 @@ export const narrowAt = (rule: Condition, policy: Policy, root: Visit): Conditio
     [root],
   );
 
+/** A rule with the lens's grants (`where`s) injected at their anchors: the root's around it, each
+ *  relation's where the rule descends into it — under an `all`, into its window `filter`. */
 export const narrowRule = (rule: Condition, lensOrNarrowing: Lens | LensNarrowing): Condition => {
   const policy = resolvePolicy(lensOrNarrowing);
   const rootEffect = resolveVisit(policy, policy.lens.mapName, policy.lens.model, []);

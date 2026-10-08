@@ -5,11 +5,11 @@ import type { Condition } from '../types.ts';
 import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
-// Stamp coerceType onto every field rule from the lens's field map — the explicit dual of the
-// server's coerceValueForField: the rule carries its coercion, check() never infers types from
-// values. A relation node's condition / filter stamp against the relation's model; below a Json
-// boundary the kind is undeclared, so nothing is stamped. A date rule, an aggregate comparison
-// (numeric by contract) and a rule that already names its coercion are left as they are.
+/** Stamp `coerceType` onto every field rule from the lens's field map: the rule carries its
+ *  coercion; `check()` never infers types from values. A relation node's condition / filter stamp
+ *  against the relation's model; below a Json boundary the kind is undeclared, so nothing is
+ *  stamped. A date rule, an aggregate comparison (numeric by contract) and a rule that already
+ *  names its coercion are left as they are. */
 export const coerceRule = (
   condition: Condition,
   lensOrNarrowing: Lens | LensNarrowing,

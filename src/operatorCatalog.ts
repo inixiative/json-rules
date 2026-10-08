@@ -297,6 +297,8 @@ export const leafCatalogEntry = (node: {
 export const comparatorOf = (operator: string, family: OperatorFamily): Comparator | undefined =>
   catalogEntry(operator, family)?.comparator;
 
+/** The operand an operator takes in its family (`between` is a field and a date operator).
+ *  Throws on an operator the family doesn't have. */
 export const getValueShape = (operator: string, family: OperatorFamily): ValueShape => {
   const entry = catalogEntry(operator, family);
   if (!entry) throw unknownOperator(operator, family);
@@ -309,6 +311,7 @@ export const isOperatorSupportedForTarget = (
   target: RuleTarget,
 ): boolean => catalogEntry(operator, family)?.targets.includes(target) ?? false;
 
+/** The field and date operators a field kind takes, narrowed to one target when given. */
 export const getOperatorsForKind = (
   kind: FieldKind,
   target?: RuleTarget,
@@ -328,6 +331,7 @@ export const getOperatorsForKind = (
   return { field, date };
 };
 
+/** The array operators, narrowed to one target when given. */
 export const getArrayOperators = (target?: RuleTarget): ArrayOperator[] => {
   return (Object.keys(ARRAY_OPERATOR_CATALOG) as ArrayOperator[]).filter((op) => {
     if (!target) return true;
@@ -368,6 +372,7 @@ export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as re
 /** What an aggregate computes over its items. */
 export const AGGREGATE_MODES: readonly AggregateMode[] = ['sum', 'avg'];
 
+/** The comparisons an aggregate rule takes; every target compiles all of them. */
 export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
 
 /** Equality with one value: `equals` / `notEquals`. */

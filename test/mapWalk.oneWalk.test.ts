@@ -43,7 +43,7 @@ describe('toSql array and aggregate rules walk their field', () => {
   test('a JSON array through a relation reads as JSONB', () => {
     const { sql } = toSql(rule({ field: 'customer.meta.scores', arrayOperator: 'empty' }), opts);
     expect(sql).toBe(
-      `("t1"."meta"->'scores' IS NULL OR "t1"."meta"->'scores' IN ('null'::jsonb, '[]'::jsonb))`,
+      `(CASE WHEN jsonb_typeof("t1"."meta"->'scores') = 'array' THEN jsonb_array_length("t1"."meta"->'scores') = 0 ELSE TRUE END)`,
     );
   });
 

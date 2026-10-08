@@ -19,5 +19,6 @@ export const validateFieldMaps = (set: FieldMapSet): ValidationResult => {
   return validationResult(errors);
 };
 
+/** `validateFieldMaps`, throwing its issues. */
 export const assertValidFieldMaps = (set: FieldMapSet): void =>
   throwIfInvalid(validateFieldMaps(set), 'validateFieldMaps');

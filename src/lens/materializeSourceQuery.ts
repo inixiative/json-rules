@@ -7,6 +7,9 @@ import type { SourceQuery } from './toSourceQueries.ts';
 /** Which executor produced the rows — the caller always knows; never guessed. */
 export type SourceRowShape = 'prisma' | 'sql';
 
+/** `rowShape`: how the rows came back — nested Prisma rows (the default) or flat SQL rows. */
+export type MaterializeSourceQueryOptions = { rowShape?: SourceRowShape };
+
 /**
  * Materialize one compiled `SourceQuery`'s fetched rows into its `SourceValues` —
  * the executor-side counterpart of `toSourceQueries`, so apps never hand-map rows.
@@ -15,9 +18,6 @@ export type SourceRowShape = 'prisma' | 'sql';
  * statement's `__group_i` / `__label` aliases. Grouped queries fetch without
  * DISTINCT, so dedup per (groups, value) happens here.
  */
-/** `rowShape`: how the rows came back — nested Prisma rows (the default) or flat SQL rows. */
-export type MaterializeSourceQueryOptions = { rowShape?: SourceRowShape };
-
 export const materializeSourceQuery = (
   query: SourceQuery,
   rows: readonly Row[],

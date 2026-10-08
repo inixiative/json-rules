@@ -1,5 +1,64 @@
 # Changelog
 
+## 3.2.0 — compile and fetch under a lens
+
+Additive. Each function replaces code template wrote around the lens.
+
+- **`getLensRoot(lensOrNarrowing): Lens`**: the base lens of a narrowing chain (a lens is its own),
+  throwing on a cyclic chain. It is the internal `getRoot`, now public. Replaces template's
+  `rootLens` and its repeated `'parent' in lens ? rootLens(lens) : lens`.
+- **`toPrisma` / `toSql` take `{ lens }`**: the rule is gated by the lens (`validateRuleInLens`; a
+  rule it refuses throws, so `{ lens }` can't compile a read of a hidden column; a bare value
+  `path` is the caller's `context` on these rails, not a column, and isn't resolved through it) and compiles
+  narrowed by it (`narrowRule`), against the base lens's maps, `mapName` and `model`. Passing `lens` with `map` / `mapName` /
+  `model` throws. Replaces the `toPrisma(narrowRule(rule, lens), { map: root, mapName, model })`
+  call sites in template (`compileSegmentWhere`, `resolveUsers`, `validateRuleForLens`).
+- **`bindLens` keeps its input's type**: `bindLens<T extends Lens | LensNarrowing>(lens: T, …): T`,
+  so template's `bindLens(…) as LensNarrowing` casts go.
+- **`toLensSelect(lensOrNarrowing, options?)`**: Prisma `findMany` select args for the rows a lens
+  shows. It selects each projected path's visible columns, the relations its declared paths open
+  (a visible relation off them brings its visible columns), and every column a `where` on the way
+  reads. A to-many relation carries its visit's grants, compiled, as its `where`, so related rows
+  come pre-narrowed, unless a grant reads that list (a grant reads it whole, as the database does).
+  `rules` opens each relation the given rules read past the declared paths as a declared one, so a
+  re-check of those rules has every row and column it reads, grants applied. A to-one relation can't take a `where` in Prisma; `projectRows` drops the
+  rows its grant hides. A relation that shows no column is fetched whole; bridges are skipped. A
+  relation grant that needs a counting step throws. `options` carries the clock (and context) for
+  the grants' compile. Replaces template's `includeFromLens`.
+- **`projectRows(lensOrNarrowing, rows, { keepGrantColumns?, rules?, ...checkOptions })`**: rows cut to
+  what a lens shows, recursively. Hidden columns and relations are removed, and every row a
+  visit's `where` hides is gone: a root or list row is dropped, a to-one row is null.
+  `keepGrantColumns` keeps the exact columns those `where`s read, and a hidden to-one row, or a hidden row of a list a grant reads, as those
+  columns alone instead of `null`, so a later `check(narrowRule(rule, lens), row)` re-tests the
+  grants as the database does (a negation or `notExists` through it doesn't admit it). That output
+  carries hidden values — for re-checks, never for a viewer. It takes `toLensSelect`'s `rules`, for
+  the rules it will be re-checked with. Replaces template's `prune`; with
+  `toLensSelect` and `toPrisma(true, { lens })`, `fetchLens` becomes three calls.
+
+- **`exists` / `notExists` on a required column compile on Prisma.** They read `{ not: null }` /
+  `{ equals: null }`, which Prisma rejects on a required column; a required column is null only
+  where the row it sits on is missing, so they now ask that (`{ is: {} }` on the path above, or
+  always / never at the root).
+
+- **A null read from a source, on Prisma:** `equals` / `notEquals` against an unbound optional bind
+  or a path reading null on a required column, an aggregate threshold with no operand (it matches
+  nothing, as `check()` says), and a negated date range missing an end now agree with `check()`.
+- **SQL reads a non-array Json value as an empty array for `empty` / `notEmpty`**, as it already
+  did for an aggregate (it read it as non-empty).
+- `check()`'s failure text prints a RegExp pattern as written (it printed `{}`).
+- **A narrowing is what has a `parent`.** A narrowing carrying a stray `model` (e.g. spread from a
+  row) was read as the base lens, dropping every layer above it; one carrying `model` / `maps` now
+  throws.
+- **A pointer escapes only the layer that declares it.** Layers after it carried nothing into its
+  options, so a tenant layer added after a platform pointer (scoping by a root `where`) left other
+  tenants' rows in the picker. Every layer but the pointing one now carries its grants.
+- **`composeLens` refuses a stored record carrying its own `parent`.** The record's `parent`
+  replaced the composed chain, so a forged layer dropped every layer above it (a tenancy grant
+  with it); a layer composes only through `parents`.
+- **A source `label` / `groupBy` is exempt only for the layer that set the value in force.** A
+  layer could restore a label on a column an ancestor hides after a layer between replaced it
+  (`name` → `age` → `name`); restating the value in force still keeps it.
+
 ## 3.1.1 — a pointer never widens what a parent layer gave
 
 - **Security:** a child layer could turn a parent's path source into `from: 'mapDefaults'` and drop
@@ -300,7 +359,7 @@ Three differences remain, all outside the rules' control:
 - Case-insensitive comparison follows each engine's case mapping: JavaScript's `toLowerCase` and
   Postgres's `LOWER` under the database collation can differ on letters like `İ`.
 - An array or aggregate rule on a Json value that isn't an array is a data error: `check()`
-  reports it, and SQL, which can't raise per row, reads it as empty.
+  throws on it, and SQL, which can't raise per row, reads it as an empty array.
 - Ordered string comparisons (`lessThan`, `between` on text) follow each engine's order:
   `check()` compares UTF-16 code units, Postgres the column's collation.
 

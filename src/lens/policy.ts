@@ -4,7 +4,7 @@ import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { modelOf, own } from '../own';
 import { readScopeRef } from '../scope';
 import type { Condition } from '../types.ts';
-import { collectChain, getRoot } from './chain.ts';
+import { collectChain, getLensRoot } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
   Lens,
@@ -64,7 +64,7 @@ export type Policy = {
 export const OFF_PATH: readonly string[] = ['__offpath__'];
 
 export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => {
-  const lens = getRoot(lensOrNarrowing);
+  const lens = getLensRoot(lensOrNarrowing);
   const chain =
     (lensOrNarrowing as Lens).maps === lens.maps
       ? []
@@ -150,13 +150,16 @@ const accumulateInto = (
       if (spec.where !== undefined) clauses.push(narrow(spec.where));
       out.sources.set(field, clauses); // register the field even when only a label is set
       const axes = normalizeGroupBy(spec.groupBy);
-      for (const [kind, value] of [
-        ['label', spec.label],
-        ['groupBy', axes],
+      // The layer that set the value in force is the one its reads are exempt for: restating it
+      // keeps that layer, changing it moves to this one.
+      for (const [kind, value, inForce] of [
+        ['label', spec.label, out.sourceLabels.get(field)],
+        ['groupBy', axes, out.sourceGroupBys.get(field)],
       ] as const) {
         if (value === undefined) continue;
         const key = declaredKey(field, kind, value);
-        if (!out.sourceDeclaredAt.has(key)) out.sourceDeclaredAt.set(key, layer);
+        const restated = inForce !== undefined && declaredKey(field, kind, inForce) === key;
+        if (!restated) out.sourceDeclaredAt.set(key, layer);
       }
       if (spec.label !== undefined) out.sourceLabels.set(field, spec.label);
       if (axes !== undefined) out.sourceGroupBys.set(field, axes);

@@ -32,6 +32,7 @@ const visit = (
   policy: Policy,
   root: VisitScope,
   issues: ValidationIssue[],
+  bareRefsReadContext = false,
 ): void =>
   visitCondition<readonly VisitScope[]>(
     rule,
@@ -90,6 +91,8 @@ const visit = (
       // into the JSON value, so there is nothing to resolve — a root ref is still gated. An amount
       // reads a number, and a calendar unit's amount a whole number.
       for (const { ref, role } of valueRefRoles(cond as Record<string, unknown>)) {
+        // On the compile rails a bare ref reads the caller's context, never a column.
+        if (!parseScopeRef(ref) && bareRefsReadContext) continue;
         const target = parseScopeRef(ref)
           ? scopeFor(ref)
           : { scope: lensRootScope(policy), field: ref };
@@ -223,6 +226,24 @@ export const checkConditionAtVisit = (
   const issues: ValidationIssue[] = [];
   visit(cond, policy, { mapName, modelName, relPath, open: false }, issues);
   return issues;
+};
+
+/** The gate as a compile rail reads the rule: a bare value ref is a context read there, not a
+ *  column, so only fields and `$` refs resolve through the lens. Internal to `{ lens }`. */
+export const validateRuleForCompile = (
+  rule: Condition,
+  lensOrNarrowing: Lens | LensNarrowing,
+): ValidationResult => {
+  const policy = resolvePolicy(lensOrNarrowing);
+  const issues: ValidationIssue[] = [];
+  visit(
+    rule,
+    policy,
+    { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [], open: false },
+    issues,
+    true,
+  );
+  return validationResult(issues);
 };
 
 /** Gate a rule against a lens: every field and value-side ref resolves through it, and every

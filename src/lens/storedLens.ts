@@ -1,5 +1,5 @@
 import { own } from '../own';
-import { collectChain, getRoot, isLens } from './chain.ts';
+import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { assertValidNarrowing } from './narrowing.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
@@ -33,6 +33,10 @@ export const composeLens = (
   let lens: Lens | LensNarrowing | null = null;
   for (const [depth, at] of ids.entries()) {
     const record = read(at);
+    if (Object.hasOwn(record, 'parent'))
+      throw new Error(
+        `composeLens: '${at}' carries a parent; a layer composes only through \`parents\``,
+      );
     const { id: _id, parents, ...part } = record;
     if (parents.join('\u0000') !== ids.slice(0, depth).join('\u0000'))
       throw new Error(
@@ -65,7 +69,7 @@ export const storeLens = (lens: Lens | LensNarrowing, ids: readonly string[]): S
       `storeLens: the lens has ${chain.length + 1} layers, base included, but ${ids.length} ids`,
     );
   return [
-    { ...getRoot(lens), id: ids[0], parents: [] },
+    { ...getLensRoot(lens), id: ids[0], parents: [] },
     ...chain.map(({ parent: _parent, ...part }, depth) => ({
       ...part,
       id: ids[depth + 1],

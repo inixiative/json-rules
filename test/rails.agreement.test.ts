@@ -294,6 +294,79 @@ const MATRIX: Record<string, Case> = {
     ids: [1, 2, 3],
     refuses: { sql: 'relation arrays are not supported' },
   },
+  'a required column always exists': {
+    rule: { field: 'id', operator: 'exists' },
+    ids: [1, 2, 3, 4, 5],
+  },
+  'a required column is never missing': { rule: { field: 'id', operator: 'notExists' }, ids: [] },
+  'a required column through a relation exists where its row does': {
+    rule: {
+      field: 'posts',
+      arrayOperator: 'any',
+      condition: { field: 'authorId', operator: 'exists' },
+    },
+    ids: [1, 3],
+    refuses: { sql: 'relation arrays are not supported' },
+  },
+  'a required column past an optional to-one is missing where the hop is': {
+    rule: { field: 'org.id', operator: 'notExists' },
+    ids: [4, 5],
+  },
+  'a required column is never empty': { rule: { field: 'id', operator: 'isEmpty' }, ids: [] },
+  'a required column is always notEmpty': {
+    rule: { field: 'id', operator: 'notEmpty' },
+    ids: [1, 2, 3, 4, 5],
+  },
+  'a required column equals null where its row is missing': {
+    rule: { field: 'org.id', operator: 'equals', value: null },
+    ids: [4, 5],
+  },
+  'a required column notEquals null where its row is there': {
+    rule: { field: 'org.id', operator: 'notEquals', value: null },
+    ids: [1, 2, 3],
+  },
+  'a required column notIn a set with null keeps only present rows': {
+    rule: { field: 'org.id', operator: 'notIn', value: [null, 10] },
+    ids: [2, 3],
+  },
+  'a required column equals an unbound optional bind': {
+    rule: { field: 'org.id', operator: 'equals', bind: 'x', bindOptional: true },
+    ids: [4, 5],
+  },
+  'a required column notEquals an unbound optional bind': {
+    rule: { field: 'org.id', operator: 'notEquals', bind: 'x', bindOptional: true },
+    ids: [1, 2, 3],
+  },
+  'a required column equals a context path reading null': {
+    rule: { field: 'id', operator: 'equals', path: 'ctx.missing' },
+    ids: [],
+    options: { context: { ctx: { missing: null } } },
+  },
+  'a required column notEquals a context path reading null': {
+    rule: { field: 'id', operator: 'notEquals', path: 'ctx.missing' },
+    ids: [1, 2, 3, 4, 5],
+    options: { context: { ctx: { missing: null } } },
+  },
+  'an aggregate threshold reading null matches nothing': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'sum', field: 'views' },
+      operator: 'greaterThan',
+      path: 'ctx.n',
+    },
+    ids: [],
+    options: { context: { ctx: { n: null } } },
+    refuses: { sql: 'relation' },
+  },
+  'a negated date range missing an end keeps every row': {
+    rule: {
+      if: { field: 'createdAt', dateOperator: 'between', path: 'ctx.range' },
+      then: false,
+      else: true,
+    },
+    ids: [1, 2, 3, 4, 5],
+    options: { context: { ctx: { range: [null, '2026-10-05'] } } },
+  },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
     ids: [1, 2, 3, 5],

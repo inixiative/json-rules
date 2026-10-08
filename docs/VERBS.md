@@ -9,7 +9,8 @@ modules allowed to implement it, and every exported function must appear in this
 | Verb | Name | What it does |
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
-| compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan. |
+| compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
+| compile | `toLensSelect` | Compile what a lens shows to Prisma `findMany` select args, to-many grants as relation `where`s. |
 | compile | `toSourceQueries` | Compile a lens's sources to option queries (Prisma and SQL). |
 | execute | `executePrismaPlan` | Run a Prisma query plan's steps and return its final WHERE. |
 | validate | `validateRule`, `validateRuleInLens`, `validateNarrowing`, `validateFieldMaps` | Return `{ ok, errors: { path, message, code }[] }`. |
@@ -19,7 +20,9 @@ modules allowed to implement it, and every exported function must appear in this
 | narrow | `narrowRule` | Inject a lens's grants into a rule at their anchors. |
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
 | project | `projectLens` | What a lens exposes: by declared path (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
+| project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations and rows removed. |
 | walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop. |
+| walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |
 | describe | `describeRule` | A rule's sources, bridge crossings and compile targets under a lens. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |
 | materialize | `materializeSources`, `materializeSourceQuery` | Turn fetched rows into source option sets. |

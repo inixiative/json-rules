@@ -10,7 +10,7 @@ import {
   validationResult,
 } from '../validate';
 import { validateBindNames } from './bindings.ts';
-import { collectChain, getRoot } from './chain.ts';
+import { collectChain, getLensRoot } from './chain.ts';
 import {
   allowedEnumValues,
   augmentPicksWithRelations,
@@ -85,6 +85,11 @@ const validateSourceTargetVisibility = (
       const spec = normalizeSource(entry);
       for (const kind of ['label', 'groupBy'] as const) {
         if (spec[kind] === undefined || reported.has(`${field}|${kind}`)) continue;
+        // The value in force is what's checked; only the node that set it is at fault.
+        const declared = kind === 'label' ? spec.label : normalizeGroupBy(spec.groupBy);
+        const inForce =
+          kind === 'label' ? effect.sourceLabels.get(field) : effect.sourceGroupBys.get(field);
+        if (JSON.stringify(declared) !== JSON.stringify(inForce)) continue;
         if (sourceReadsVisible(policy, effect, at, field, kind)) continue;
         reported.add(`${field}|${kind}`);
         errors.push({
@@ -536,9 +541,13 @@ const validatePathNarrowing = (
   }
 };
 
+/** A narrowing layer checked against the layers above it: it names only what they still show and
+ *  only narrows. Each problem is an issue with a code (`not_in_lens`, `not_visible`,
+ *  `conflicting_selection`, `wrong_kind`, `value_not_allowed`, `invalid_source`,
+ *  `invalid_binding`, or the lens gate's for a `where`). */
 export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult => {
   const errors: ValidationIssue[] = [];
-  const set = getRoot(narrowing);
+  const set = getLensRoot(narrowing);
   const ancestors = collectChain(narrowing.parent);
   const parentPolicy = resolvePolicy(narrowing.parent);
   const parentVisits = projectPaths(narrowing.parent);
@@ -656,5 +665,6 @@ export const validateNarrowing = (narrowing: LensNarrowing): ValidationResult =>
   return validationResult(errors);
 };
 
+/** `validateNarrowing`, throwing its issues. */
 export const assertValidNarrowing = (narrowing: LensNarrowing): void =>
   throwIfInvalid(validateNarrowing(narrowing), 'validateNarrowing');

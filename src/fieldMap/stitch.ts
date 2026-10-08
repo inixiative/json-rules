@@ -2,6 +2,9 @@ import { modelOf, own } from '../own';
 import { endpointKey } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
+/** A copy of the set where each bridge's endpoint models gain a `kind: 'bridge'` field named
+ *  after the other endpoint (`<fieldMap>:<Model>`). Throws on a missing endpoint or `on` field, a
+ *  self-bridge, or a bridge stitched twice. */
 export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
   const out: FieldMapSet = {
     maps: structuredClone(set.maps),

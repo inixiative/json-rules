@@ -4,6 +4,7 @@ export type ScopeRef = { depth: number; path: string };
 
 const SCOPE_REF = /^(\$+)\.(.*)$/;
 
+/** A `$`-prefixed ref's depth (one per `$`) and the path after it; `null` for a bare ref. */
 export const parseScopeRef = (ref: string): ScopeRef | null => {
   const match = SCOPE_REF.exec(ref);
   return match ? { depth: match[1].length, path: match[2] } : null;
@@ -15,9 +16,9 @@ export const scopeOutOfBounds = (ref: string, depth: number, available: number):
 export type ScopedRef<S> = { scope: S; path: string };
 export type ScopeOutOfBounds = { outOfBounds: string };
 
-// Resolves a ref against a stack of scopes (innermost last): a bare ref is the innermost
-// scope, `$.` the innermost, `$$.` the one above it, … A ref deeper than the stack is
-// out of bounds and carries its message.
+/** The scope a ref names in a stack (innermost last) and the path left to read in it: a bare
+ *  ref and `$.` read the innermost, `$$.` the one above it, … A ref deeper than the stack comes
+ *  back as `{ outOfBounds }` with its message; it never throws. */
 export const readScopeRef = <S>(
   ref: string,
   scopes: readonly S[],

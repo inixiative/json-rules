@@ -54,6 +54,8 @@ const copy = <T>(value: T): T =>
 const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
 
+/** Process-wide defaults, read and written by dotted path (`string.caseInsensitive`,
+ *  `string.fuzzy`, `prismaOptions.datasource.provider`, `prismaOptions.anyNull`). */
 export const engineGlobals = {
   set: (path: string, value: unknown): void => {
     set(store, path, copy(value));

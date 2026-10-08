@@ -41,6 +41,9 @@ const visit = (rule: Condition, acc: Acc): void =>
     [lensRootScope(acc.policy)],
   );
 
+/** A rule under a lens, for routing and UX: the maps it reads, whether it crosses a bridge, the
+ *  targets `validateRule` passes it for (a bridge leaves `check` alone), and the lens gate's
+ *  issues. `validateRuleInLens` stays the gate. */
 export const describeRule = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,

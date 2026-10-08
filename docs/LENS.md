@@ -1,6 +1,6 @@
 # Lens deep-dive guide
 
-> The Lens primitive as of 3.0. For library basics (operators, `check()`,
+> The Lens primitive as of 3.2. For library basics (operators, `check()`,
 > `toPrisma()`, `toSql()`, bridges, multi-source data evaluation), see the
 > [README](../README.md).
 
@@ -190,8 +190,8 @@ the user's data over rows they weren't even asking about.
 `toPrisma` compiles a window that is only a `filter` (no `orderBy` / `take` / `skip`) by folding
 it into the rule: `all` becomes "no row in scope breaks the condition", through the exact
 complement of the condition (NULL fields included); `any`, `none`, counts and aggregates take
-`filter AND condition`. A window with `orderBy` / `take` / `skip` beyond the extremal case
-stays check-only, and `toSql` compiles no relation arrays.
+`filter AND condition`. A `filter` beside `orderBy` / `take` / `skip` stays check-only, and
+`toSql` compiles no relation arrays.
 
 ### Why not a per-row implication?
 
@@ -667,6 +667,36 @@ const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' })
 const where = await executePrismaPlan(plan, { post: prisma.post });
 ```
 
+`{ lens }` does all of it in one call: the rule gated by the lens (a rule it refuses throws; a
+bare value `path` is the caller's context on these rails, not a column), narrowed by it, and
+compiled against its base lens (`getLensRoot`) and that lens's `mapName` / `model`. `toSql` takes it the same way. Passing `lens`
+with `map`, `mapName` or `model` throws.
+
+```ts
+const plan = toPrisma(anyPublishedRule, { lens: narrowing });
+```
+
+### Fetching rows under a lens
+
+`toLensSelect(narrowing, options?)` gives the `findMany` `select` for the rows a lens shows: each
+projected path's visible columns, the relations its declared paths open, and every column a
+`where` on the way reads. A to-many relation carries its grants as its `where`, unless a grant
+reads that list — a grant reads a list whole, as the database does. `rules` (on both calls) opens
+each relation the rules you'll re-check read past the declared paths, grants applied. `projectRows(
+narrowing, rows, options?)` cuts fetched rows to what the lens shows: hidden columns and relations
+removed, a row a `where` hides dropped (a to-one row becomes `null`). With
+`keepGrantColumns: true` it keeps the columns those `where`s read, and a hidden to-one row, or a hidden row of a list a grant reads, as
+those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the grants as the
+database does, for a rule passed in `rules` (or one reading only the declared paths); that output carries hidden values and is never for a viewer. See the README,
+"Fetching Under a Lens".
+
+```ts
+const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);
+const rows = await prisma.user.findMany({ where, ...toLensSelect(narrowing, { now, rules: [rule] }) });
+const shown = projectRows(narrowing, rows, { now });
+const forRecheck = projectRows(narrowing, rows, { keepGrantColumns: true, rules: [rule], now });
+```
+
 ### `projectLens(lens)` — path-keyed projection
 
 ```ts
@@ -775,7 +805,8 @@ caller may say. The flow is:
    unresolvable path. This is the security boundary.
 2. **Apply** the lens with `narrowRule` to inject the where clauses at their
    proper anchors.
-3. **Execute** the composed rule with `toPrisma` / `toSql` / `check`.
+3. **Execute** the composed rule with `toPrisma` / `toSql` / `check`. `toPrisma(rule, { lens })`
+   and `toSql(rule, { lens })` do all three in one call: a rule the gate refuses throws.
 
 To *classify* a rule before executing — which sources it touches, whether it
 crosses a bridge, and which targets can run it — use `describeRule(rule, lens)`.
@@ -799,19 +830,18 @@ if (!gate.ok) throw new HttpError(400, gate.errors);
 
 const composed = narrowRule(userRule, narrowing);
 if (!describeRule(composed, narrowing).supportedTargets.includes('toPrisma')) {
-  // e.g. a narrowed `all`: fetch under the lens and evaluate with check()
+  // e.g. a window beyond the extremal case: fetch under the lens and evaluate with check()
 }
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
 const where = await executePrismaPlan(plan, { post: prisma.post });
 return prisma.user.findMany({ where });
 ```
 
-`toPrisma` / `toSql` / `check` operate against the **base lens / FieldMap** —
-they're *not* the security boundary. They don't know about narrowing chains;
-they only see the composed rule they're given. If you skip
-`validateRuleInLens` or skip `narrowRule`, the executor will happily run an
-unnarrowed rule. Treat the two-step (validate → apply) as the bottleneck for
-every rule entering execution.
+`toPrisma` / `toSql` / `check` are *not* the security boundary. Given a `map`,
+they run against the base FieldMap and see only the rule they're given: skip
+`narrowRule` and the executor runs an unnarrowed rule. `{ lens }` gates and
+narrows for you; with a bare `map`, nothing does. Treat validate → apply (or
+`{ lens }`) as the bottleneck for every rule entering execution.
 
 ## 12. Migration
 
@@ -1073,6 +1103,7 @@ lens admits.
 import { executePrismaPlan, toPrisma } from '@inixiative/json-rules';
 
 const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' });
+// or, narrowing and compiling in one call: toPrisma(userRule, { lens: narrowing })
 const where = await executePrismaPlan(plan, { post: prisma.post });
 // { AND: [
 //   { tenantId: { equals: 'tenant-42' } },
@@ -1093,15 +1124,24 @@ that is in scope.
 
 "Every post is published" (`arrayOperator: 'all'`) narrows differently: the
 Post grant becomes the array rule's window `filter` (section 4), so deleted and
-cross-tenant posts are dropped before the `all` runs. Neither compiler
-expresses a window `filter`, so `describeRule(composed, narrowing).supportedTargets`
-is `['check']` and `toPrisma` throws. Fetch the users with their posts under the
-lens and evaluate the composed rule with `check()`:
+cross-tenant posts are dropped before the `all` runs. `toPrisma` folds that
+filter into the rule — "no post in scope is unpublished" — and `toSql` compiles
+no relation arrays, so `describeRule(composedAll, narrowing).supportedTargets` is
+`['check', 'toPrisma']`:
 
 ```ts
-import { check } from '@inixiative/json-rules';
+import { check, toPrisma } from '@inixiative/json-rules';
 
 const composedAll = narrowRule({ ...userRule, arrayOperator: 'all' }, narrowing);
+toPrisma(composedAll, { map: lens, mapName: 'prisma', model: 'User' }).steps[0].where;
+// { AND: [
+//   { tenantId: { equals: 'tenant-42' } },
+//   { posts: { none: { AND: [
+//     { AND: [{ tenantId: { equals: 'tenant-42' } }, { deletedAt: { equals: null } }] },
+//     { published: { not: true } },
+//   ] } } },
+// ] }
+
 check(composedAll, {
   tenantId: 'tenant-42',
   posts: [

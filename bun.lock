@@ -13,7 +13,7 @@
         "@biomejs/biome": "2.5.2",
         "@electric-sql/pglite": "^0.4.1",
         "@electric-sql/pglite-socket": "0.1.1",
-        "@inixiative/config": "^0.5.56",
+        "@inixiative/config": "^0.5.57",
         "@inixiative/prisma-map": "^0.2.0",
         "@prisma/adapter-pg": "7.8.0",
         "@prisma/client": "7.8.0",
@@ -114,7 +114,7 @@
 
     "@hono/node-server": ["@hono/node-server@1.19.11", "", { "peerDependencies": { "hono": "^4" } }, "sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g=="],
 
-    "@inixiative/config": ["@inixiative/config@0.5.56", "", { "peerDependencies": { "@biomejs/biome": ">=2.5.0", "tsup": ">=8.5.0", "typescript": ">=6.0.0" }, "optionalPeers": ["@biomejs/biome", "tsup", "typescript"], "bin": { "inixiative-config": "dist/cli.js" } }, "sha512-BX1evY6dvSnyk5zn3/DCirqs6ofOHYU6xO9SIOOGZ7sr7bVO0H1sosqBvUSEcUKjKat1pR+vIpypmhhKOj7+Zg=="],
+    "@inixiative/config": ["@inixiative/config@0.5.57", "", { "peerDependencies": { "@biomejs/biome": ">=2.5.0", "tsup": ">=8.5.0", "typescript": ">=6.0.0" }, "optionalPeers": ["@biomejs/biome", "tsup", "typescript"], "bin": { "inixiative-config": "dist/cli.js" } }, "sha512-Jia4wMSYeQGir0hGbJYr/h6KeKOaO8iZsPSwLMpVIaYO1ua5q8kEldGA4x8zTIj9bhhHACX6OsfjJnj6ZGt5Jg=="],
 
     "@inixiative/prisma-map": ["@inixiative/prisma-map@0.2.0", "", {}, "sha512-8zXkKog5zQ4Chu/oJLzbDjY66FvPaf7f0ttuo4WBjtnXblnKdDkXvoqx0XDYlXvWllTCLxE0g9G/39N450PzYA=="],
 

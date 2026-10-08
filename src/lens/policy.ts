@@ -113,6 +113,8 @@ type CallMemo = {
   models: Map<ModelEntry, ModelFields>;
   /** Each grant's first bare value ref and first ref climbing out of it. */
   refs: Map<Condition, { bare: string | null; escaping: string | null }>;
+  /** Why toPrisma can't compile a condition at a model (null: it can), by map and model. */
+  compiles: Map<Condition, Map<string, string | null>>;
 };
 
 type Place = { trail: MapVisit[] | null; turnedOn: string[] };
@@ -191,6 +193,7 @@ export const resolvePolicy = (lensOrNarrowing: Lens | LensNarrowing): Policy => 
       places: new Map(),
       models: new Map(),
       refs: new Map(),
+      compiles: new Map(),
     },
   };
 };

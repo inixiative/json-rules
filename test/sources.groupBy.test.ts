@@ -170,8 +170,8 @@ describe('toSourceQueries — grouped compile', () => {
   test('carries groupBy, drops distinct, nests the group path into the prisma select', () => {
     const [q] = toSourceQueries(grouped());
     expect(q.groupBy).toEqual(['map.definition.label']);
-    expect(q.prisma.distinct).toBeUndefined();
-    expect(q.prisma.select).toEqual({
+    expect(q.prisma?.distinct).toBeUndefined();
+    expect(q.prisma?.select).toEqual({
       value: true,
       map: { select: { definition: { select: { label: true } } } },
     });
@@ -194,8 +194,8 @@ describe('toSourceQueries — grouped compile', () => {
     });
     const [q] = toSourceQueries(n);
     expect(q.groupBy).toBeUndefined();
-    expect(q.prisma.distinct).toEqual(['value']);
-    expect(q.prisma.select).toEqual({ value: true });
+    expect(q.prisma?.distinct).toEqual(['value']);
+    expect(q.prisma?.select).toEqual({ value: true });
   });
 });
 

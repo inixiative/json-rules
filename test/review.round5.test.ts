@@ -461,7 +461,14 @@ describe('F3: a grant reads only its own row: no scope ref climbs out of it', ()
         },
       },
     };
-    expect(validateNarrowing(inside).ok).toBe(true);
+    // Its own row: no scope issue. The fetch select can't carry a column compared across scopes
+    // as the users relation's Prisma where, so the lens is refused for that (round 9), not for
+    // the ref.
+    const { errors } = validateNarrowing(inside);
+    expect(errors.map((e) => e.message).join()).not.toMatch(/climbs out/);
+    expect(errors.map((e) => e.message)).toEqual([
+      expect.stringMatching(/^toLensSelect: the grant on 'org.users': .*Prisma/),
+    ]);
     expect(() => projectRows(inside, rails.rows as never)).not.toThrow();
   });
 });

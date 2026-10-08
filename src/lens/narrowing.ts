@@ -37,7 +37,7 @@ import {
 } from './policy.ts';
 import { projectModelsWith } from './projectModels.ts';
 import { lensVisitWith, projectPathsWith } from './projectPaths.ts';
-import { sourcePlansWith } from './sourceOptions.ts';
+import { type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
 import type {
   EnumNarrowing,
   LensNarrowing,
@@ -832,9 +832,13 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
     chain: [...parentPolicy.chain, narrowing],
     inspect: true,
   };
-  guarded(() => sourcePlansWith(inspect, projectPathsWith(inspect)));
+  let plans: SourcePlan[] | undefined;
+  guarded(() => {
+    plans = sourcePlansWith(inspect, projectPathsWith(inspect));
+  });
   guarded(() => projectModelsWith(inspect));
-  guarded(() => toLensSelectWith(inspect));
+  // Planned once: the fetch select reads what the plans read.
+  guarded(() => toLensSelectWith(inspect, {}, plans));
   guarded(() => {
     const shown = new Map<string, WhereVisit>();
     for (const { at } of composedVisits()) {

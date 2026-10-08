@@ -250,8 +250,8 @@ describe('toSourceQueries — composite compile', () => {
 
   test('prisma select nests every axis; distinct stays absent', () => {
     const [q] = toSourceQueries(composite());
-    expect(q.prisma.distinct).toBeUndefined();
-    expect(q.prisma.select).toEqual({
+    expect(q.prisma?.distinct).toBeUndefined();
+    expect(q.prisma?.select).toEqual({
       value: true,
       map: {
         select: {

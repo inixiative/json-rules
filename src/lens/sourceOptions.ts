@@ -4,9 +4,9 @@ import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import { allOf } from '../traverse';
 import type { Condition, Row } from '../types';
-import { prismaShapeRefusal } from './lensRows.ts';
 import { narrowAt, prefixConditionFields } from './narrowRule.ts';
 import { LensRefusal, type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import { prismaRefusal } from './prismaRefusal.ts';
 import type { PathProjection, ProjectedVisit } from './projectPaths.ts';
 import { projectPathsWith } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -105,7 +105,8 @@ export const groupsAtPaths = (row: Row, paths: readonly string[]): string[] | un
 export const optionKey = (groups: readonly string[] | undefined, value: string): string =>
   JSON.stringify([groups ?? null, value]);
 
-/** Merge one occurrence into the accumulator; the first non-null label wins. */
+/** Merge one occurrence into the accumulator; the least non-null label wins, so every rail —
+ *  whatever order its rows come in — labels a value alike. */
 const accumulateOption = (
   byKey: Map<string, SourceOption>,
   value: string,
@@ -120,7 +121,7 @@ const accumulateOption = (
       ...(label !== undefined ? { label } : {}),
       ...(groups !== undefined ? { groups } : {}),
     });
-  } else if (existing.label === undefined && label !== undefined) {
+  } else if (label !== undefined && (existing.label === undefined || label < existing.label)) {
     byKey.set(key, { ...existing, label });
   }
 };
@@ -156,7 +157,11 @@ export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
       const cmp = (ga[i] ?? '').localeCompare(gb[i] ?? '', 'en', { numeric: true });
       if (cmp !== 0) return cmp;
     }
-    return (a.label ?? a.value).localeCompare(b.label ?? b.value, 'en', { numeric: true });
+    // Two options with one label order by value, so no rail's row order shows through.
+    return (
+      (a.label ?? a.value).localeCompare(b.label ?? b.value, 'en', { numeric: true }) ||
+      a.value.localeCompare(b.value, 'en', { numeric: true })
+    );
   });
 
 /** One sourced field to materialize: where it sits, its label and axes, and its eligibility —
@@ -169,7 +174,9 @@ export type SourcePlan = {
   from?: 'mapDefaults';
   label?: string;
   groupBy?: string[];
-  eligibility: Condition[];
+  /** What a row must meet to offer its value: the visit's own grants and the eligibility — every
+   *  materializer, in memory or in the database, evaluates this one condition. */
+  where: Condition;
 };
 
 /**
@@ -177,12 +184,16 @@ export type SourcePlan = {
  * ancestor's `where` carried down through the inverse of the hop below it — a to-one inverse by
  * prefixing its fields, a to-many one through `any`. An option list never offers what the rows
  * under the grant don't hold, so a grant no inverse can carry (none declared, a bridge, a path
- * ref) offers nothing.
+ * ref) offers nothing. `linked`: the rows must also be reached down the path — the inverse carried
+ * where no grant sits too — as a path source's are; a pointer's rows needn't be. A relation whose
+ * map declares no inverse links nothing where no grant sits: the query offers the rows the grants
+ * admit, reached or not.
  */
 const ancestorGrants = (
   policy: Policy,
   relPath: readonly string[],
   carriedTo: Map<string, Condition | null>,
+  linked: boolean,
 ): Condition[] => {
   if (relPath.length === 0) return [];
   const root = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
@@ -208,7 +219,7 @@ const ancestorGrants = (
       relPath.slice(0, level),
     ).whereClauses;
     const grants = carried === null ? declared : [...declared, carried];
-    if (grants.length === 0) {
+    if (grants.length === 0 && !linked) {
       done(null);
       continue;
     }
@@ -218,19 +229,23 @@ const ancestorGrants = (
       map && entry && entry.kind === 'object' && visits[level + 1].mapName === at.mapName
         ? inverseRelation(map, at.modelName, relPath[level], entry)
         : null;
+    if (!inverse && grants.length === 0) {
+      done(null);
+      continue;
+    }
     if (!inverse) {
       done(false);
       return [false];
     }
     const here = allOf(grants);
     try {
+      const present = { field: inverse.field, operator: 'exists' } as Condition;
       done(
         inverse.entry.isList
           ? ({ field: inverse.field, arrayOperator: 'any', condition: here } as Condition)
-          : allOf([
-              { field: inverse.field, operator: 'exists' } as Condition,
-              prefixConditionFields(here, inverse.field),
-            ]),
+          : grants.length
+            ? allOf([present, prefixConditionFields(here, inverse.field)])
+            : present,
       );
     } catch (error) {
       if (!(error instanceof LensRefusal)) throw error;
@@ -294,6 +309,7 @@ export const sourcePlansWith = (
         skip === undefined ? policy : { ...policy, skipGrantsOf: skip },
         at.relPath,
         carriedFor(skip),
+        skip === undefined && !fromModel,
       );
       const eligibility = [
         ...above,
@@ -301,10 +317,13 @@ export const sourcePlansWith = (
         ...guards,
         ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
       ];
-      // The option query compiles the visit's grants and the eligibility as one where: a shape it
-      // has no form for is refused here, so validation and every materializer refuse it alike.
-      const refusal = prismaShapeRefusal(
-        allOf([...visit.whereClauses, ...eligibility]),
+      const where = allOf([...visit.whereClauses, ...eligibility]);
+      // The option query compiles it: a shape it has no form for is refused here, so validation
+      // and every materializer refuse it alike.
+      const refusal = prismaRefusal(
+        policy,
+        [...visit.whereClauses, ...eligibility],
+        at,
         `source '${field}' at '${path}'`,
         true,
       );
@@ -316,7 +335,7 @@ export const sourcePlansWith = (
         ...(fromModel && { from: 'mapDefaults' as const }),
         ...(label !== undefined && { label }),
         ...(groupBy !== undefined && { groupBy }),
-        eligibility,
+        where,
       };
     }),
   );

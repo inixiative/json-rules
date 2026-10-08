@@ -1,3 +1,5 @@
+import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
+import { conditionTouchesBridge } from '../fieldMap/walk';
 import { modelOf, own } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere, WhereStep } from '../toPrisma/types.ts';
@@ -5,8 +7,7 @@ import { buildCondition } from '../toSql/condition.ts';
 import { escapeIdentifier } from '../toSql/escape.ts';
 import { builderState } from '../toSql/index.ts';
 import { resolveFieldSql } from '../toSql/join.ts';
-import { allOf } from '../traverse';
-import type { Condition } from '../types.ts';
+import type { Condition, DateConfig } from '../types.ts';
 import { resolvePolicy } from './policy.ts';
 import { sourcePlans } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -16,8 +17,10 @@ export type SourceSelect = { [field: string]: true | { select: SourceSelect } };
 
 export type SourcePrismaQuery = {
   model: string;
-  /** Absent for grouped sources — DISTINCT on the value column alone would collapse
-   * same-value rows across groups; dedup happens in `materializeSourceQuery`. */
+  /** The value column, and a sibling label column: one row per value and label, so the least
+   * label is there for `materializeSourceQuery` to pick. Absent for grouped sources and a dotted
+   * label — DISTINCT on columns alone would collapse rows across groups or labels; dedup happens
+   * in `materializeSourceQuery`. */
   distinct?: string[];
   select: SourceSelect;
   where: PrismaWhere;
@@ -43,9 +46,15 @@ export type SourceQuery = {
    * column is selected nested in prisma and aliased `__group_i` in sql. */
   groupBy?: string[];
   composedWhere: Condition; // node whereClauses ∧ source where(s)
-  prisma: SourcePrismaQuery;
+  /** Null, with `sql.sql` null and `sql.error` saying why, when the composed where crosses a
+   * bridge: a database holds one side of it only, so no query offers the right set — materialize
+   * it with `materializeSources` over rows that hold both sides. */
+  prisma: SourcePrismaQuery | null;
   sql: SourceSqlQuery;
 };
+
+/** What a source query's compile reads besides the lens: the clock, as the compilers take it. */
+export type SourceQueryOptions = DateConfig;
 
 // 'map.definition.label' → { map: { select: { definition: { select: { label: true } } } } };
 // axes sharing a prefix merge into one nested select tree.
@@ -68,14 +77,26 @@ const nestedSelects = (paths: readonly string[]): SourceSelect => {
 
 const compileOne = (
   lens: Lens,
+  path: string,
   mapName: string,
   model: string,
   field: string,
   label: string | undefined,
   groupBy: string[] | undefined,
   where: Condition,
-): { prisma: SourcePrismaQuery; sql: SourceSqlQuery } => {
-  const plan = toPrisma(where, { map: lens, mapName, model });
+  options: SourceQueryOptions,
+): { prisma: SourcePrismaQuery | null; sql: SourceSqlQuery } => {
+  // A bridge predicate compiles to an over-fetch (`{}` / TRUE), which an option list can't take.
+  if (conditionTouchesBridge(where, resolveFieldMap(lens, mapName, 'toPrisma'), model))
+    return {
+      prisma: null,
+      sql: {
+        sql: null,
+        params: [],
+        error: `source '${field}' at '${path}' crosses a bridge, so no database query offers its options; materialize it with materializeSources over fetched rows`,
+      },
+    };
+  const plan = toPrisma(where, { ...options, map: lens, mapName, model });
   // A plan ends on its where step.
   const prismaWhere = (plan.steps.at(-1) as WhereStep).where;
   const groupBySteps = plan.steps.filter((s) => s.operation !== 'where');
@@ -90,7 +111,7 @@ const compileOne = (
   };
   const prisma: SourcePrismaQuery = {
     model,
-    ...(groupBy ? {} : { distinct: [field] }),
+    ...(groupBy || labelPath ? {} : { distinct: label ? [field, label] : [field] }),
     select,
     where: prismaWhere,
     ...(groupBySteps.length ? { steps: plan.steps } : {}),
@@ -100,7 +121,7 @@ const compileOne = (
   try {
     // The where and the materialized columns resolve against one state, so a label or axis
     // path reuses (and extends) the where's joins.
-    const state = builderState({ map: lens, mapName, model, alias: 't0' });
+    const state = builderState({ ...options, map: lens, mapName, model, alias: 't0' });
     const sql = buildCondition(where, state);
     const labelCol = labelPath ? resolveFieldSql(labelPath, state) : undefined;
     const groupCols = groupBy?.map((axis) => resolveFieldSql(axis, state));
@@ -136,20 +157,27 @@ const compileOne = (
  * where(s), the guards of the relations they cross and any allowed values. A
  * `from: 'mapDefaults'` source reads the model's own source and carries no grant from
  * its layer on. The app runs these (with its own client) to materialize each field's
- * option set — feed the fetched rows to `materializeSourceQuery`.
+ * option set — feed the fetched rows to `materializeSourceQuery`. `options` is the clock a
+ * relative date in the where compiles with (`now` required for one, as for any compile). A
+ * where across a bridge has no query (`prisma` null; see `SourceQuery`).
  */
-export const toSourceQueries = (lensOrNarrowing: Lens | LensNarrowing): SourceQuery[] => {
+export const toSourceQueries = (
+  lensOrNarrowing: Lens | LensNarrowing,
+  options: SourceQueryOptions = {},
+): SourceQuery[] => {
   const { lens } = resolvePolicy(lensOrNarrowing);
-  return sourcePlans(lensOrNarrowing).map(({ path, visit, field, label, groupBy, eligibility }) => {
-    const composedWhere = allOf([...visit.whereClauses, ...eligibility]);
+  return sourcePlans(lensOrNarrowing).map(({ path, visit, field, label, groupBy, where }) => {
+    const composedWhere = where;
     const { prisma, sql } = compileOne(
       lens,
+      path,
       visit.mapName,
       visit.model,
       field,
       label,
       groupBy,
       composedWhere,
+      options,
     );
     return {
       path,

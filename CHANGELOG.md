@@ -67,6 +67,19 @@ reads one exposure from `src/lens/policy.ts`.
   `toSourceQueries`' SQL selects from the model's `dbName`, as its joins do. A source whose query
   holds a window toPrisma can't compile — its own `where`'s or a grant carried into it — is refused
   by its shape (a `LensRefusal`, which `validateNarrowing` reports), by both materializers.
+  The source pipeline is one set on every rail: `toLensSelect` fetches what each projected source
+  reads (value, label, axes, and its condition's columns and relations — the inverse relations
+  that carry the grants above included), `projectRows(…, { keepGrantColumns: true })` keeps them,
+  and `materializeSources` checks the condition the option query compiles (the visit's own grants
+  included), so fetched rows offer what the database does. A path source is linked down its path
+  through each declared inverse even where no grant sits above, so its query offers only rows
+  reached down the path. `toSourceQueries(lens, options?)` takes the clock. A source where across
+  a bridge has no query (`prisma: null`, `sql.error`) rather than one folded to `TRUE`. Every rail
+  labels a value by its least label and orders ties by value. What toPrisma can't compile in a
+  to-many relation's grant (the fetch select) or a source's condition is read by `validateRule`
+  (toPrisma, with the map) — which now also reports a case-insensitive list comparison and a
+  count or aggregate over a relation that can't carry a group step — and refused as a
+  `LensRefusal`.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
   read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
   can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has

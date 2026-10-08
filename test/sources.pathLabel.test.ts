@@ -194,11 +194,12 @@ describe('projectPaths — a dotted label surfaces verbatim', () => {
 });
 
 describe('toSourceQueries — dotted label compile', () => {
-  test('nests the label path into the prisma select and keeps DISTINCT on the value', () => {
+  test('nests the label path into the prisma select and fetches every label', () => {
     const [q] = toSourceQueries(pathLabeled());
     expect(q.label).toBe('map.definition.label');
-    expect(q.prisma.distinct).toEqual(['mapId']);
-    expect(q.prisma.select).toEqual({
+    // No DISTINCT: every label row comes back, and materializeSourceQuery picks the least.
+    expect(q.prisma?.distinct).toBeUndefined();
+    expect(q.prisma?.select).toEqual({
       mapId: true,
       map: { select: { definition: { select: { label: true } } } },
     });
@@ -266,7 +267,7 @@ describe('toSourceQueries — dotted label compile', () => {
       },
     });
     const [q] = toSourceQueries(n);
-    expect(q.prisma.select).toEqual({
+    expect(q.prisma?.select).toEqual({
       value: true,
       map: { select: { definition: { select: { label: true, id: true } } } },
     });
@@ -424,7 +425,7 @@ describe('mutation control — a sibling label is untouched by the path spelling
 
   test('prisma select stays flat and sql keeps the bare column, no "__label" alias', () => {
     const [q] = toSourceQueries(sibling());
-    expect(q.prisma.select).toEqual({ mapId: true, value: true });
+    expect(q.prisma?.select).toEqual({ mapId: true, value: true });
     expect(q.sql.sql).toBe(
       'SELECT DISTINCT "t0"."mapId", "t0"."value" FROM "Enrichment" AS "t0" WHERE TRUE',
     );

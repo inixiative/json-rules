@@ -266,6 +266,7 @@ describe('R8-3: a source where narrows like a rule: options never come through r
         string,
         { findMany: (args: object) => Promise<object[]> }
       >;
+      if (query.prisma === null) throw new Error('no query');
       const { model, steps: _steps, ...args } = query.prisma;
       const prismaRows = await delegates[model.toLowerCase()].findMany(args);
       // SQL has no form for a relation array: the query says so, and Prisma runs it.
@@ -513,6 +514,6 @@ describe('R8-7: a source the option query cannot compile is refused by its shape
       },
     };
     expect(validateNarrowing(lens).ok).toBe(true);
-    expect(toSourceQueries(lens)[0].prisma.steps?.length).toBeGreaterThan(1);
+    expect(toSourceQueries(lens)[0].prisma?.steps?.length).toBeGreaterThan(1);
   });
 });

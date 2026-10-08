@@ -310,16 +310,16 @@ const REFUSED_ISSUE = new RegExp(
 // The first refusal a bound posture makes, or null: projection both ways, the fetch, the source
 // plans and options, rows, and — at every shown visit — the visit, a presence rule reaching it and
 // a rule and a read of each column there. Any other throw is a compile's or a read's own limit.
-// A compile limit the lens's own queries hit is a refusal the planner makes first, never a throw.
+// A throw from the lens's own queries or projections that is not a refusal.
 const leaks: string[] = [];
 
-const refusedBy = (s: Schema, lens: LensNarrowing, row: Row): string | null => {
+const refusedBy = (s: Schema, lens: LensNarrowing, row: Row, valid: boolean): string | null => {
   const bound = bindLens(lens, { viewer: 'X' });
   const attempts: [string, () => unknown][] = [
     ['projectLens', () => projectLens(bound)],
     ['projectLens by model', () => projectLens(bound, { by: 'model' })],
     ['toLensSelect', () => toLensSelect(bound, { now: NOW })],
-    ['toSourceQueries', () => toSourceQueries(bound)],
+    ['toSourceQueries', () => toSourceQueries(bound, { now: NOW })],
     ['materializeSources', () => materializeSources(bound, [row], { now: NOW })],
     ['projectRows', () => projectRows(bound, [row], { keepGrantColumns: true, now: NOW })],
   ];
@@ -361,7 +361,6 @@ const refusedBy = (s: Schema, lens: LensNarrowing, row: Row): string | null => {
           },
         ]);
       }
-    if (segs.length >= 4) return;
     for (const r of s[map][model]) walk([...segs, r.name], r.map, r.model);
   };
   walk([], 'app', 'M0');
@@ -373,24 +372,29 @@ const refusedBy = (s: Schema, lens: LensNarrowing, row: Row): string | null => {
         (error as Error).constructor.name === 'LensRefusal' ||
         (error as { refusal?: boolean }).refusal;
       if (refused) return `${name}: ${(error as Error).message}`;
-      if (
-        /^(toSourceQueries|toLensSelect)$/.test(name) &&
-        /Windowing/.test((error as Error).message)
-      )
+      // The lens's own queries and projections refuse what they can't run; they never throw.
+      if (valid && /^(toSourceQueries|toLensSelect|projectLens|lensVisit)/.test(name))
         leaks.push(`${name}: ${(error as Error).message}`);
     }
   }
   return null;
 };
 
-test('validateNarrowing.ok holds exactly when no bound posture refuses', () => {
+// Over many seeds, each to ≥ 100 later layers: ≥ 2000 in all.
+const SEEDS = [8, ...Array.from({ length: 20 }, (_, i) => 901 + i)];
+
+test.each(
+  SEEDS,
+)('seed %i: validateNarrowing.ok holds exactly when no bound posture refuses', (start) => {
+  seed = start;
+  leaks.length = 0;
   let later = 0;
   let first = 0;
   const mismatches: string[] = [];
   const agree = (s: Schema, lens: LensNarrowing, row: Row, tag: string): boolean => {
     // A validator never throws: anything but a result is a bug.
     const { ok, errors } = validateNarrowing(lens);
-    const refused = refusedBy(s, lens, row);
+    const refused = refusedBy(s, lens, row, ok);
     if (ok && refused !== null) mismatches.push(`${tag} valid, refused by ${refused}`);
     // A narrowing can be invalid for what it names (a hidden field, a relation it may not turn
     // on); one invalid only for what a posture refuses must be refused by one.
@@ -398,7 +402,7 @@ test('validateNarrowing.ok holds exactly when no bound posture refuses', () => {
       mismatches.push(`${tag} refused by validation alone: ${errors[0].message}`);
     return ok;
   };
-  while (later < 2000) {
+  while (later < 100) {
     const { schema, maps } = genSchema();
     const base = createLens({ maps, mapName: 'app', model: 'M0' });
     const defaults: Record<string, Node> = {};
@@ -427,5 +431,5 @@ test('validateNarrowing.ok holds exactly when no bound posture refuses', () => {
   }
   expect(mismatches).toEqual([]);
   expect(leaks).toEqual([]);
-  expect(later).toBeGreaterThanOrEqual(2000);
+  expect(later).toBeGreaterThanOrEqual(100);
 }, 120_000);

@@ -181,7 +181,13 @@ describe('describeRule — windowing restricts targets', () => {
     const d = describeRule(rule, singleSource);
     expect(d.supportedTargets).toEqual(
       (['check', 'toPrisma', 'toSql'] as const).filter(
-        (target) => validateRule(rule, { target }).ok,
+        (target) =>
+          validateRule(rule, {
+            target,
+            map: { maps: { prisma } },
+            mapName: 'prisma',
+            model: 'User',
+          }).ok,
       ),
     );
     expect(d.supportedTargets).not.toContain('toSql');

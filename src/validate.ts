@@ -10,16 +10,19 @@ import {
   namedPeriod,
   rollingShift,
 } from './dateExpr';
+import { resolveCaseInsensitive } from './engineGlobals';
 import {
   ambiguousCondition,
   conditionRequired,
   countRequired,
+  noCompiledForm,
   rangeExprRequired,
   unknownAggregateMode,
   unknownOperator,
   windowUnsupported,
 } from './errors';
 import { resolveFieldMap } from './fieldMap/resolveFieldMap';
+import { comparesText } from './fieldMap/shape';
 import type { FieldMap, FieldMapSet } from './fieldMap/types';
 import { fieldEntry, relationTarget } from './fieldMap/walk';
 import { isOrderedValue, readOrderedPair } from './number';
@@ -27,6 +30,7 @@ import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
   AGGREGATE_OPERATORS,
+  ARRAY_COUNT_OPERATORS,
   CONTAINS_OPERATORS,
   catalogEntry,
   DAY_NAMES,
@@ -46,6 +50,7 @@ import {
 import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
+import { groupPath } from './toPrisma/groupStep';
 import { conditionShape } from './traverse';
 import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
@@ -476,6 +481,21 @@ const validateFieldRule = (
       );
   }
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
+  // Prisma's list filters have no case-insensitive mode.
+  if (
+    context.target === 'toPrisma' &&
+    context.map &&
+    fieldEntry(rule.field as string, context.map, context.scopeModels[depth - 1])?.isList &&
+    resolveCaseInsensitive(rule.caseInsensitive as boolean | undefined) &&
+    comparesText('text', rule.value)
+  )
+    pushIssue(
+      context,
+      `${path}.caseInsensitive`,
+      'unsupported_prisma_operator',
+      noCompiledForm('toPrisma', `A case-insensitive comparison on the list '${rule.field}'`)
+        .message,
+    );
 
   validateValueShape(shape, rule.value, operator, `${path}.value`, context);
 };
@@ -543,12 +563,33 @@ const validateValueShape = (
   }
 };
 
+// A count or a relation aggregate compiles to a Prisma group step over the relation it names; the
+// compiler's own path check says whether that relation can carry one (a list relation with its
+// keys declared — not a Json list, nor an implicit many-to-many).
+const validateGroupStep = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+  kind: 'Count operators' | 'Aggregate rules',
+): void => {
+  const model = context.scopeModels[depth - 1];
+  if (context.target !== 'toPrisma' || !context.map || !model || typeof rule.field !== 'string')
+    return;
+  try {
+    groupPath(rule.field, context.map, model, kind);
+  } catch (error) {
+    pushIssue(context, `${path}.field`, 'unsupported_prisma_relation', (error as Error).message);
+  }
+};
+
 const validateAggregateRule = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
   depth: number,
 ): void => {
+  validateGroupStep(rule, path, context, depth, 'Aggregate rules');
   if (rule.offset !== undefined)
     pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
   validateWindow(rule, path, context, depth);
@@ -669,6 +710,8 @@ const validateArrayRule = (
   }
 
   const operator = rule.arrayOperator as ArrayOperator;
+  if (ARRAY_COUNT_OPERATORS.includes(operator))
+    validateGroupStep(rule, path, context, depth, 'Count operators');
 
   if (!isOperatorSupportedForTarget(operator, 'array', context.target)) {
     pushIssue(

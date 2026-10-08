@@ -1,25 +1,23 @@
 import { type CheckOptions, check } from '../check';
-import { windowUnsupported } from '../errors';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
-import { ARRAY_COUNT_OPERATORS } from '../operatorCatalog';
 import { modelOf, own, ownEntry } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
-import { allOf, isRelationNode, visitCondition } from '../traverse';
-import type { AggregateRule, ArrayRule, Condition, Row } from '../types';
-import { hasWindow, windowRewrite } from '../window';
+import { allOf } from '../traverse';
+import type { Row } from '../types';
 import {
   isFieldVisible,
-  LensRefusal,
   type Policy,
   resolvePolicy,
   resolveVisit,
   type VisitEffect,
 } from './policy.ts';
+import { prismaRefusal } from './prismaRefusal.ts';
 import { readPaths } from './readPaths.ts';
+import { type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where`. */
@@ -56,6 +54,30 @@ const mergeTrees = (into: PathTree, from: PathTree): PathTree => {
 // The columns a visit's grants read, relative to its model.
 const grantPaths = (effect: VisitEffect): string[] => effect.whereClauses.flatMap(readPaths);
 
+// What each visit's sources read, by relation path: the value, its label and axes, and the
+// condition their option query compiles (through the inverse relations that carry the grants
+// above). The fetch and a re-check keep it as they keep grant columns — hidden or not, never for
+// a viewer — so materializeSources over fetched rows offers what the database does. A model
+// source's rows aren't the fetched ones: it reads nothing here.
+type SourceReads = ReadonlyMap<string, readonly string[]>;
+const sourceReads = (plans: readonly SourcePlan[]): SourceReads => {
+  const out = new Map<string, string[]>();
+  for (const plan of plans) {
+    if (plan.from) continue;
+    const key = plan.path.split('.').slice(1).join('.');
+    out.set(key, [
+      ...(out.get(key) ?? []),
+      plan.field,
+      ...(plan.label === undefined ? [] : [plan.label]),
+      ...(plan.groupBy ?? []),
+      ...readPaths(plan.where),
+    ]);
+  }
+  return out;
+};
+const readsAt = (reads: SourceReads, at: MapVisit): readonly string[] =>
+  reads.get(at.relPath.join('.')) ?? [];
+
 // The columns a visit's grants read, with any already asked for below it.
 const grantTree = (policy: Policy, at: MapVisit, below: PathTree | undefined): PathTree =>
   addPaths(
@@ -82,35 +104,6 @@ const childVisit = (
   relPath: [...at.relPath, field],
 });
 
-/** What a Prisma compile of a lens's own condition can't hold, read off its shape before anything
- *  compiles (`on` names it): a window toPrisma has no form for, or — where no step can run, as in a
- *  relation's where in a select (`counting: false`) — a count or an aggregate. */
-export const prismaShapeRefusal = (
-  condition: Condition,
-  on: string,
-  counting: boolean,
-): LensRefusal | null => {
-  let refusal: LensRefusal | null = null;
-  visitCondition(condition, (node) => {
-    if (refusal !== null || !isRelationNode(node)) return;
-    const rule = node as ArrayRule | AggregateRule;
-    if (hasWindow(rule) && windowRewrite(rule) === null)
-      refusal = new LensRefusal(
-        `${on}: ${windowUnsupported('toPrisma').message}`,
-        'unsupported_grant',
-      );
-    else if (
-      !counting &&
-      ('aggregate' in rule || ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator))
-    )
-      refusal = new LensRefusal(
-        `${on} needs a counting step (executePrismaPlan), which a relation's where in a select can't run`,
-        'unsupported_grant',
-      );
-  });
-  return refusal;
-};
-
 const grantWhere = (
   policy: Policy,
   at: MapVisit,
@@ -119,8 +112,10 @@ const grantWhere = (
 ): PrismaWhere | undefined => {
   if (!effect.whereClauses.length) return undefined;
   const grant = allOf(effect.whereClauses);
-  const refusal = prismaShapeRefusal(
-    grant,
+  const refusal = prismaRefusal(
+    policy,
+    effect.whereClauses,
+    at,
     `toLensSelect: the grant on '${at.relPath.join('.')}'`,
     false,
   );
@@ -161,10 +156,14 @@ const selectAt = (
   mode: Mode,
   extra: PathTree,
   options: LensSelectOptions,
+  reads: SourceReads,
 ): LensSelect => {
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
-  const paths = mode === 'paths' ? extra : addPaths(mergeTrees({}, extra), grantPaths(effect));
+  const paths =
+    mode === 'paths'
+      ? extra
+      : addPaths(mergeTrees({}, extra), [...grantPaths(effect), ...readsAt(reads, at)]);
   const select: LensSelect = {};
   for (const [field, entry] of Object.entries(fields)) {
     const visible = mode !== 'paths' && isFieldVisible(effect, field);
@@ -180,7 +179,7 @@ const selectAt = (
     // A relation that is off, and that no grant reads, is not fetched.
     if (childMode === 'paths' && below === undefined) continue;
     const child = childVisit(at, field, { mapName: at.mapName, modelName: entry.type });
-    const childSelect = selectAt(policy, child, childMode, below ?? {}, options);
+    const childSelect = selectAt(policy, child, childMode, below ?? {}, options, reads);
     // A grant reads a list whole, as the database does: one it reads is fetched unnarrowed.
     const where =
       entry.isList && childMode !== 'paths' && below === undefined
@@ -221,8 +220,9 @@ export const toLensSelect = (
 export const toLensSelectWith = (
   policy: Policy,
   options: LensSelectOptions = {},
+  plans: readonly SourcePlan[] = sourcePlansWith(policy),
 ): { select: LensSelect } => {
-  const select = selectAt(policy, rootVisit(policy), 'declared', {}, options);
+  const select = selectAt(policy, rootVisit(policy), 'declared', {}, options, sourceReads(plans));
   // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
   // (a viewer's projection drops it). A root model with no `id` stays as it is.
   if (!Object.values(select).some((selected) => selected === true)) {
@@ -269,11 +269,14 @@ const cutRow = (
   extra: PathTree,
   keepGrants: boolean,
   options: CheckOptions,
+  reads: SourceReads,
 ): Row | null => {
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
   if (!effect.whereClauses.every((where) => check(where, row, options) === true)) return null;
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
-  const keep = keepGrants ? addPaths(mergeTrees({}, extra), grantPaths(effect)) : {};
+  const keep = keepGrants
+    ? addPaths(mergeTrees({}, extra), [...grantPaths(effect), ...readsAt(reads, at)])
+    : {};
   const out: Row = {};
   for (const [field, entry] of Object.entries(fields)) {
     if (!Object.hasOwn(row, field)) continue;
@@ -292,7 +295,7 @@ const cutRow = (
       out[field] = mapRelation(
         row[field],
         (r) =>
-          cutRow(policy, child, r, below ?? {}, keepGrants, options) ??
+          cutRow(policy, child, r, below ?? {}, keepGrants, options, reads) ??
           (keepGrants && readWhole
             ? pickPaths(policy, child, r, grantTree(policy, child, below))
             : null),
@@ -320,8 +323,12 @@ export const projectRows = (
 ): Row[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   const root = rootVisit(policy);
+  // A viewer's rows carry nothing a source reads.
+  const reads = keepGrantColumns
+    ? sourceReads(sourcePlansWith(policy))
+    : new Map<string, string[]>();
   return rows.flatMap((row) => {
-    const kept = cutRow(policy, root, row, {}, keepGrantColumns, options);
+    const kept = cutRow(policy, root, row, {}, keepGrantColumns, options, reads);
     return kept === null ? [] : [kept];
   });
 };

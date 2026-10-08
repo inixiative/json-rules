@@ -1,15 +1,19 @@
 import { type CheckOptions, check } from '../check';
+import { windowUnsupported } from '../errors';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
+import { ARRAY_COUNT_OPERATORS } from '../operatorCatalog';
 import { modelOf, own, ownEntry } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
-import { allOf } from '../traverse';
-import type { Row } from '../types';
+import { allOf, isRelationNode, visitCondition } from '../traverse';
+import type { AggregateRule, ArrayRule, Condition, Row } from '../types';
+import { hasWindow, windowRewrite } from '../window';
 import {
   isFieldVisible,
+  LensRefusal,
   type Policy,
   resolvePolicy,
   resolveVisit,
@@ -78,6 +82,29 @@ const childVisit = (
   relPath: [...at.relPath, field],
 });
 
+// What a relation's where in a select can't hold, read off the grant's shape before anything
+// compiles: a window toPrisma has no form for, or a count or an aggregate (a counting step, which
+// only executePrismaPlan runs).
+const selectGrantRefusal = (grant: Condition, at: MapVisit): LensRefusal | null => {
+  let refusal: LensRefusal | null = null;
+  const on = `toLensSelect: the grant on '${at.relPath.join('.')}'`;
+  visitCondition(grant, (node) => {
+    if (refusal !== null || !isRelationNode(node)) return;
+    const rule = node as ArrayRule | AggregateRule;
+    if (hasWindow(rule) && windowRewrite(rule) === null)
+      refusal = new LensRefusal(
+        `${on}: ${windowUnsupported('toPrisma').message}`,
+        'unsupported_grant',
+      );
+    else if ('aggregate' in rule || ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator))
+      refusal = new LensRefusal(
+        `${on} needs a counting step (executePrismaPlan), which a relation's where in a select can't run`,
+        'unsupported_grant',
+      );
+  });
+  return refusal;
+};
+
 const grantWhere = (
   policy: Policy,
   at: MapVisit,
@@ -85,16 +112,16 @@ const grantWhere = (
   options: LensSelectOptions,
 ): PrismaWhere | undefined => {
   if (!effect.whereClauses.length) return undefined;
-  const plan = toPrisma(allOf(effect.whereClauses), {
+  const grant = allOf(effect.whereClauses);
+  const refusal = selectGrantRefusal(grant, at);
+  if (refusal) throw refusal;
+  if (policy.inspect) return undefined;
+  const plan = toPrisma(grant, {
     ...options,
     map: policy.lens,
     mapName: at.mapName,
     model: at.modelName,
   });
-  if (plan.steps.length > 1)
-    throw new Error(
-      `toLensSelect: the grant on '${at.relPath.join('.')}' needs a counting step (executePrismaPlan), which a relation's where in a select can't run`,
-    );
   const { where } = plan.steps[0] as WhereStep;
   return Object.keys(where).length ? where : undefined;
 };
@@ -172,14 +199,19 @@ const selectAt = (
  * columns every `where` on the way reads, through any relation. A to-many relation carries its visit's grants compiled as its `where`, so
  * related rows come pre-narrowed, unless a grant reads that list (it reads it whole); a to-one relation can't (Prisma
  * takes no `where` there), so `projectRows` drops one its grant hides. The root's own grants are the
- * query's `where`: `toPrisma(rule, { lens })`. Bridges are not selected. A relation grant that needs
- * a counting step throws.
+ * query's `where`: `toPrisma(rule, { lens })`. Bridges are not selected. A to-many relation's grant
+ * that needs a counting step, or has a window toPrisma can't compile, is refused before anything
+ * compiles.
  */
 export const toLensSelect = (
   lensOrNarrowing: Lens | LensNarrowing,
   options: LensSelectOptions = {},
+): { select: LensSelect } => toLensSelectWith(resolvePolicy(lensOrNarrowing), options);
+
+export const toLensSelectWith = (
+  policy: Policy,
+  options: LensSelectOptions = {},
 ): { select: LensSelect } => {
-  const policy = resolvePolicy(lensOrNarrowing);
   const select = selectAt(policy, rootVisit(policy), 'declared', {}, options);
   // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
   // (a viewer's projection drops it). A root model with no `id` stays as it is.

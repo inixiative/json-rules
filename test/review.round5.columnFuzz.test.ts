@@ -15,7 +15,7 @@ const lens: LensNarrowing = {
   parent: base,
   root: { relations: { posts: {}, org: { relations: { parent: {}, users: {} } } } },
 };
-let rails: any;
+let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails(
     `INSERT INTO users (id, tags) VALUES (6, '{}'); INSERT INTO posts (id, "authorId", views, title) VALUES (104, 6, NULL, NULL), (105, 4, 4, 'x');`,

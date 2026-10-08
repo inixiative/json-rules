@@ -64,7 +64,7 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
     const relations = path.split('.').slice(0, -1).join('.');
     expect(
       lensVisit(lens, relations) !== null &&
-        path.split('.').at(-1)! in (lensVisit(lens, relations)?.fields ?? {}),
+        Object.hasOwn(lensVisit(lens, relations)?.fields ?? {}, path.split('.').at(-1) ?? ''),
     ).toBe(open);
     expect(Object.hasOwn(projectLens(lens), ['A', ...path.split('.').slice(0, -1)].join('.'))).toBe(
       lensVisit(lens, relations) !== null,

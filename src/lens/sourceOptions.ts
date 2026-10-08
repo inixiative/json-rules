@@ -2,27 +2,23 @@ import type { SourceOption } from '../fieldMap/types';
 import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
-import { allOf, visitCondition } from '../traverse';
+import { allOf } from '../traverse';
 import type { Condition, Row } from '../types';
-import { prefixConditionFields } from './narrowRule.ts';
-import { type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
-import type { ProjectedVisit } from './projectPaths.ts';
-import { projectPaths } from './projectPaths.ts';
+import { narrowAt, prefixConditionFields } from './narrowRule.ts';
+import { LensRefusal, type Policy, relationHops, resolvePolicy, resolveVisit } from './policy.ts';
+import type { PathProjection, ProjectedVisit } from './projectPaths.ts';
+import { projectPathsWith } from './projectPaths.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
- * Fold the traversal guards one dotted path picks up: every traversed model's
- * effective narrowing `where` (tenancy/soft-delete) — declared relation nodes AND
- * mapDefaults, composed across all layers via `resolveVisit` — re-rooted onto the
- * sourced model, the same hop-where fold `narrowRule` performs for rule paths. The
- * compile always joins every hop the path names, so every hop must carry its guard
- * whether or not the narrowing declares it.
- *
- * `strict` (a materialization path — a groupBy axis or a dotted label; its value
- * names which): an unresolvable hop is fail-closed — throw.
- * Lenient (`null`, where-clause field paths): stop at the first non-relation segment
- * (a plain column, or a Json column with a sub-path tail) — no join past it exists.
- * `seen` dedups hops shared across paths: one guard fold per traversed node.
+ * Fold the traversal guards a materialization path — a groupBy axis or a dotted label (`kind`
+ * names which) — picks up: every traversed model's effective narrowing `where` (tenancy/soft-
+ * delete) — declared relation nodes AND mapDefaults, composed across all layers via
+ * `resolveVisit` — re-rooted onto the sourced model, the same hop-where fold `narrowRule`
+ * performs for rule paths. The compile always joins every hop the path names, so every hop must
+ * carry its guard whether or not the narrowing declares it; an unresolvable hop, or a to-many one
+ * carrying a grant, is refused. `seen` dedups hops shared across paths: one guard fold per
+ * traversed node.
  */
 const foldPathGuards = (
   policy: Policy,
@@ -30,7 +26,7 @@ const foldPathGuards = (
   modelName: string,
   baseRelPath: readonly string[],
   dotted: string,
-  strict: 'groupBy' | 'label' | null,
+  kind: 'groupBy' | 'label',
   seen: Set<string>,
   out: Condition[],
 ): void => {
@@ -42,11 +38,12 @@ const foldPathGuards = (
     dotted,
   );
   const crossed = hops.filter((_, i) => i < segments.length - 1);
-  if (strict && crossed.length < segments.length - 1) {
+  if (crossed.length < segments.length - 1) {
     const hop = segments[crossed.length];
     const on = crossed.at(-1)?.model ?? modelName;
-    throw new Error(
-      `${strict} '${dotted}': hop '${hop}' is not a resolvable relation on '${on}' — cannot guard its join`,
+    throw new LensRefusal(
+      `${kind} '${dotted}': hop '${hop}' is not a resolvable relation on '${on}' — cannot guard its join`,
+      'invalid_source',
     );
   }
   for (const hop of crossed) {
@@ -56,39 +53,23 @@ const foldPathGuards = (
     const effect = resolveVisit(policy, hop.map, hop.model, hop.relPath);
     // A to-many hop has no single row to AND its grant against: fail closed, as narrowRule does.
     if (hop.isList && effect.whereClauses.length)
-      throw new Error(
-        `source path '${dotted}': cannot enforce the grant on to-many relation '${hop.prefix}' in a dotted path`,
+      throw new LensRefusal(
+        `${kind} '${dotted}': cannot enforce the grant on to-many relation '${hop.prefix}' in a dotted path`,
+        'unsupported_grant',
       );
     for (const where of effect.whereClauses) out.push(prefixConditionFields(where, hop.prefix));
   }
 };
 
-/** Every dotted `field` a condition references. Relation nodes contribute their own
- * anchor `field`; their nested conditions are element-relative and compile inside the
- * relation filter, not as new joins from this model, so descent stops there. */
-const collectFieldPaths = (condition: Condition): string[] => {
-  const out: string[] = [];
-  visitCondition(condition, (node) => {
-    if (typeof node.field === 'string') out.push(node.field);
-    return false;
-  });
-  return out;
-};
-
-/**
- * The composed traversal guards for one source: guards for every groupBy axis and
- * for a dotted label path (both strict — they name joins the select ships), and for
- * every relation path its `where` clauses reference (lenient) — the where ships
- * those joins just as surely as the group select does. Hops are folded once each
- * across all paths, so a label sharing a prefix with an axis costs no extra guard.
- */
+/** The composed traversal guards for one source's materialization paths: every groupBy axis and a
+ *  dotted label — they name joins the select ships. Hops are folded once each across the paths,
+ *  so a label sharing a prefix with an axis costs no extra guard. */
 const traversalGuards = (
   policy: Policy,
   mapName: string,
   modelName: string,
   baseRelPath: readonly string[],
   axes: readonly string[],
-  whereClauses: readonly Condition[],
   label?: string,
 ): Condition[] => {
   const out: Condition[] = [];
@@ -97,12 +78,6 @@ const traversalGuards = (
     foldPathGuards(policy, mapName, modelName, baseRelPath, axis, 'groupBy', seen, out);
   if (label?.includes('.'))
     foldPathGuards(policy, mapName, modelName, baseRelPath, label, 'label', seen, out);
-  for (const clause of whereClauses) {
-    for (const path of collectFieldPaths(clause)) {
-      if (path.includes('.'))
-        foldPathGuards(policy, mapName, modelName, baseRelPath, path, null, seen, out);
-    }
-  }
   return out;
 };
 
@@ -203,14 +178,27 @@ export type SourcePlan = {
  * under the grant don't hold, so a grant no inverse can carry (none declared, a bridge, a path
  * ref) offers nothing.
  */
-const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[] => {
+const ancestorGrants = (
+  policy: Policy,
+  relPath: readonly string[],
+  carriedTo: Map<string, Condition | null>,
+): Condition[] => {
   if (relPath.length === 0) return [];
   const root = { mapName: policy.lens.mapName, modelName: policy.lens.model, relPath: [] };
   const { hops, end } = relationHops(policy.lens.maps, root, relPath.join('.'));
   if (!end) return [false];
   const visits = [root, ...hops.map((hop) => ({ mapName: hop.map, modelName: hop.model }))];
-  let carried: Condition | null = null;
-  for (let level = 0; level < relPath.length; level++) {
+  // What the levels above carry is the same for every source below them: start below the deepest
+  // level already carried.
+  let from = relPath.length;
+  while (from > 0 && !carriedTo.has(relPath.slice(0, from).join('.'))) from--;
+  let carried = from > 0 ? (carriedTo.get(relPath.slice(0, from).join('.')) ?? null) : null;
+  if (carried === false) return [false];
+  for (let level = from; level < relPath.length; level++) {
+    const done = (value: Condition | null): void => {
+      carried = value;
+      carriedTo.set(relPath.slice(0, level + 1).join('.'), value);
+    };
     const at = visits[level];
     const declared = resolveVisit(
       policy,
@@ -220,7 +208,7 @@ const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[]
     ).whereClauses;
     const grants = carried === null ? declared : [...declared, carried];
     if (grants.length === 0) {
-      carried = null;
+      done(null);
       continue;
     }
     const map = own(policy.lens.maps, at.mapName);
@@ -229,56 +217,82 @@ const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[]
       map && entry && entry.kind === 'object' && visits[level + 1].mapName === at.mapName
         ? inverseRelation(map, at.modelName, relPath[level], entry)
         : null;
-    if (!inverse) return [false];
+    if (!inverse) {
+      done(false);
+      return [false];
+    }
     const here = allOf(grants);
     try {
-      carried = inverse.entry.isList
-        ? ({ field: inverse.field, arrayOperator: 'any', condition: here } as Condition)
-        : allOf([
-            { field: inverse.field, operator: 'exists' } as Condition,
-            prefixConditionFields(here, inverse.field),
-          ]);
-    } catch {
+      done(
+        inverse.entry.isList
+          ? ({ field: inverse.field, arrayOperator: 'any', condition: here } as Condition)
+          : allOf([
+              { field: inverse.field, operator: 'exists' } as Condition,
+              prefixConditionFields(here, inverse.field),
+            ]),
+      );
+    } catch (error) {
+      if (!(error instanceof LensRefusal)) throw error;
+      done(false);
       return [false];
     }
   }
   return carried === null ? [] : [carried];
 };
 
-/** Every sourced field the lens projects, planned once for both materializers. A path source
- *  carries the grants above it; one that offers its model's own source (`from: 'mapDefaults'`)
- *  reads that model as the lens narrows it — nothing carried from the path above by the layer
- *  that points; every other layer still carries its own. */
-export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] => {
-  const policy = resolvePolicy(lensOrNarrowing);
-  return Object.entries(projectPaths(lensOrNarrowing)).flatMap(([path, visit]) =>
-    Object.entries(visit.sources).map(([field, sourceClauses]) => {
+/** Every sourced field the lens projects, planned once for both materializers. Each source where
+ *  is narrowed as a rule is under the whole lens — every relation it crosses carries its grants,
+ *  inside an array condition too — so an option never comes through a row the lens hides. A path
+ *  source carries the grants above it; one that offers its model's own source (`from:
+ *  'mapDefaults'`) reads that model as the lens narrows it — nothing carried from the path above
+ *  by the layer that points; every other layer still carries its own. */
+export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] =>
+  sourcePlansWith(resolvePolicy(lensOrNarrowing));
+
+export const sourcePlansWith = (
+  policy: Policy,
+  projection: PathProjection = projectPathsWith(policy),
+): SourcePlan[] => {
+  // What the grants above carry down each path, per layer a pointer drops (or none).
+  const carried = new Map<LensNarrowing | undefined, Map<string, Condition | null>>();
+  const carriedFor = (layer: LensNarrowing | undefined): Map<string, Condition | null> => {
+    const kept = carried.get(layer) ?? new Map<string, Condition | null>();
+    carried.set(layer, kept);
+    return kept;
+  };
+  return Object.entries(projection).flatMap(([path, visit]) =>
+    Object.keys(visit.sources).map((field) => {
       const label = own(visit.sourceLabels, field);
       const groupBy = own(visit.sourceGroupBys, field);
       const fromModel = Object.hasOwn(visit.sourceFrom, field);
-      const relPath = path.split('.').slice(1);
+      const at = {
+        mapName: visit.mapName,
+        modelName: visit.model,
+        relPath: path.split('.').slice(1),
+      };
+      const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
+      const wheres = (effect.sourceWheres.get(field) ?? []).map((where) =>
+        narrowAt(where, policy, at),
+      );
       // Relations below the path keep every layer's narrowing, a pointer's included.
       const guards = traversalGuards(
         policy,
-        visit.mapName,
-        visit.model,
-        relPath,
+        at.mapName,
+        at.modelName,
+        at.relPath,
         groupBy ?? [],
-        sourceClauses,
         label,
       );
       const allowed = own(visit.fields, field)?.values;
       // A pointer drops what the path above carries in the layer that points, and only there:
       // every layer before or after it still carries, and later layers' grants still read through
       // the pointing layer (the chain keeps its indices), so no layer's narrowing is lost.
-      const pointsFrom = fromModel
-        ? resolveVisit(policy, visit.mapName, visit.model, relPath).sourcesFromMapDefaults.get(
-            field,
-          )
-        : undefined;
+      const pointsFrom = fromModel ? effect.sourcesFromMapDefaults.get(field) : undefined;
+      const skip = pointsFrom === undefined ? undefined : policy.chain[pointsFrom];
       const above = ancestorGrants(
-        pointsFrom === undefined ? policy : { ...policy, skipGrantsOf: policy.chain[pointsFrom] },
-        relPath,
+        skip === undefined ? policy : { ...policy, skipGrantsOf: skip },
+        at.relPath,
+        carriedFor(skip),
       );
       return {
         path,
@@ -289,7 +303,7 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
         ...(groupBy !== undefined && { groupBy }),
         eligibility: [
           ...above,
-          ...sourceClauses,
+          ...wheres,
           ...guards,
           ...(allowed ? [{ field, operator: 'in', value: [...allowed] } as Condition] : []),
         ],

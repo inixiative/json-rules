@@ -160,8 +160,9 @@ const fetchedBy = (opts: ProjectLensOptions): Map<string, readonly SourceOption[
 export const projectPaths = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectLensOptions = {},
-): PathProjection => {
-  const policy = resolvePolicy(lensOrNarrowing);
+): PathProjection => projectPathsWith(resolvePolicy(lensOrNarrowing), opts);
+
+export const projectPathsWith = (policy: Policy, opts: ProjectLensOptions = {}): PathProjection => {
   const fetched = fetchedBy(opts);
   const out: PathProjection = {};
   for (const { path, at, effect } of shownVisits(policy))
@@ -179,8 +180,13 @@ export const lensVisit = (
   lensOrNarrowing: Lens | LensNarrowing,
   relationPath: string,
   opts: ProjectLensOptions = {},
+): ProjectedVisit | null => lensVisitWith(resolvePolicy(lensOrNarrowing), relationPath, opts);
+
+export const lensVisitWith = (
+  policy: Policy,
+  relationPath: string,
+  opts: ProjectLensOptions = {},
 ): ProjectedVisit | null => {
-  const policy = resolvePolicy(lensOrNarrowing);
   let at: MapVisit = {
     mapName: policy.lens.mapName,
     modelName: policy.lens.model,

@@ -120,7 +120,7 @@ export const openRails = async (seed = '') => {
     rmSync(dir, { recursive: true, force: true });
   };
 
-  return { run, close, rows, prisma };
+  return { run, close, rows, prisma, db };
 };
 
 /** All three rails returning `ids`. */

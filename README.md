@@ -1205,7 +1205,7 @@ const narrowing: LensNarrowing = {
 // Against a database: one DISTINCT query per sourced field, in Prisma and SQL form.
 const [query] = toSourceQueries(narrowing);
 // query.path => 'User', query.field => 'region'
-// query.composedWhere => the node's `where` AND the source's eligibility
+// query.composedWhere => the node's `where` AND the source's eligibility, narrowed as a rule is
 // query.prisma => { model: 'User', distinct: ['region'], select: { region: true }, where: { AND: [...] } }
 // query.sql => { sql: 'SELECT DISTINCT "t0"."region" FROM "User" AS "t0" WHERE (...)', params: ['t-42', true] }
 const { distinct, select, where } = query.prisma;
@@ -1223,10 +1223,15 @@ const projection = projectLens(narrowing, { sourceValues: [values] });
 | --- | --- |
 | `toSourceQueries(lensOrNarrowing)` | `SourceQuery[]`, one per sourced field: `{ path, mapName, model, field, label?, groupBy?, composedWhere, prisma, sql }`. `prisma.steps` is present when the where needs `executePrismaPlan`. `sql.sql` is `null` with an `error` when SQL can't express the where. A grouped source drops `distinct`. |
 | `materializeSourceQuery(query, rows, { rowShape? })` | One query's fetched rows as `SourceValues`. `rowShape` is `'prisma'` (default: a dotted `label` and each `groupBy` axis come nested) or `'sql'` (they come flat as `__label` / `__group_i`). Options are deduplicated and sorted. |
-| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from rows fetched under the lens (relations inline). Each row at the source's path must pass, through `check()` with `options`, its source `where`, the grants of the visits above it, the guards of the relations it crosses and the values the lens allows; its own visit's `where` is not re-applied, since the rows were fetched under it. A scalar-list field gives one option per element. A `from: 'mapDefaults'` source throws (see below). |
+| `materializeSources(lensOrNarrowing, rows, options?)` | `SourceValues[]` for every sourced field, from rows fetched under the lens (relations inline). Each row at the source's path must pass, through `check()` with `options`, its source `where` narrowed as a rule is, the grants of the visits above it, the guards of the relations its label and axes cross and the values the lens allows; its own visit's `where` is not re-applied, since the rows were fetched under it. A scalar-list field gives one option per element. A `from: 'mapDefaults'` source throws (see below). |
 
 Options never offer a value the lens disallows: `projectLens` drops fetched values outside a
-field's allowed set.
+field's allowed set. Nor do they come through a row the lens hides: each source `where` is
+narrowed under the whole lens as `narrowRule` narrows a rule — every relation it crosses carries
+that visit's grants, inside an array condition (into its `condition`, or its `filter` under `all`,
+a window or no condition) and on each hop and terminal relation of a dotted path. A grant a rule
+couldn't carry there (one narrowRule can't re-root, a to-many relation read flat) is refused, as
+it is for a rule.
 
 #### Two kinds of source
 
@@ -1294,7 +1299,7 @@ const holds = forRecheck.filter((row) => check(narrowRule(rule, narrowing), row,
 
 | Function | Purpose |
 | --- | --- |
-| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so related rows come pre-narrowed — unless a grant reads that list: a grant reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its grant hides. A relation that shows no column — one turned on with all its columns hidden, or one a grant reads only for presence or a count — is fetched by its key alone — the join key, else `id` — even a hidden one, as a grant's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. A relation grant that needs a counting step throws. `options` is the clock for compiling the grants. The root's own grants are the query's `where`: `toPrisma(rule, { lens })`. |
+| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's grants compiled as its `where`, so related rows come pre-narrowed — unless a grant reads that list: a grant reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its grant hides. A relation that shows no column — one turned on with all its columns hidden, or one a grant reads only for presence or a count — is fetched by its key alone — the join key, else `id` — even a hidden one, as a grant's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. A to-many relation's grant that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the grants. The root's own grants are the query's `where`: `toPrisma(rule, { lens })`. |
 | `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns, and relations that are off or omitted, are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepGrantColumns: true` keeps the columns those `where`s read, even hidden ones, and a hidden to-one row, or a hidden row of a list a grant reads, as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the grants as the database does, for any rule the lens admits; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. Plain JSON in and out. |
 
 ### Evaluating Across Bridges

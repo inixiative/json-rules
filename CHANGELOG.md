@@ -42,10 +42,14 @@ reads one exposure from `src/lens/policy.ts`.
   grant applies at, including those a layer-1 grant or source crosses off the shown tree. A grant
   narrowRule can't re-root under a to-one hop is refused by `validateNarrowing` and by
   `validateRuleInLens` (with narrowRule's message), as the compile would.
-  The visits a grant applies at off the shown tree are found from the reads of the grants and
-  sources at the shown visits — nothing is compiled, so an unbound lens validates as its bound
-  runtime runs. Every refusal narrowRule raises is a `LensRefusal`: the validators report it as an
-  issue and never throw on a well-formed lens or rule; the runtime postures throw it.
+  `validateNarrowing` runs the postures the runtime runs — the projection by path and by model,
+  `lensVisit` at every shown path, the source plans, the fetch select, and a rule reaching each
+  shown visit narrowed — and reports each refusal they raise as an issue, so `ok` holds exactly
+  when no posture refuses. Nothing compiles there, so an unbound lens validates as its bound
+  runtime runs. Every refusal a posture raises is a `LensRefusal` — narrowRule's, the source
+  planner's (a label or axis hop it can't guard, an empty `sources: {}`), the fetch select's — and
+  the validators report it as an issue and never throw on a well-formed lens or rule; the runtime
+  postures throw it.
 - **The fetch's root.** A root that shows no column is selected by its `id`, hidden or not (a
   viewer's projection drops it), since Prisma can't select nothing.
 - **`lensVisit(lens, relationPath)`** (new; first consumer: rules-builder 0.30): one visit as
@@ -53,9 +57,18 @@ reads one exposure from `src/lens/policy.ts`.
   isn't shown. `projectLens` by path keeps a map's declared option labels and groups.
 - **Sources.** A dotted `label` / `groupBy` crosses only relations shown at each visit it is
   projected (else `invalid_source`, and the projection drops it); a source keyed on a relation, or
-  a bare `label` naming one, is `wrong_kind`.
+  a bare `label` naming one, is `wrong_kind`. A source `where` is narrowed under the whole lens as
+  `narrowRule` narrows a rule — each relation it crosses carries its grants, inside an array
+  condition and on every hop and terminal relation of a dotted path — so an option never comes
+  through a row the lens hides (before, a grant on a relation read inside the source's array
+  condition, or on the relation a path ends on, was not applied). A source's label and axes read
+  what every layer but the one declaring them shows, the chain kept whole (before, dropping the
+  declaring layer from the chain lost the first narrowing's turn-ons when it was the one).
+  `toSourceQueries`' SQL selects from the model's `dbName`, as its joins do.
 - **Fetch.** `toLensSelect` / `projectRows` open exactly what is turned on, plus the columns grants
-  read. The `rules` option and the shallow fetch are removed. A relation that shows no column is
+  read. The `rules` option and the shallow fetch are removed. A to-many relation's grant the select
+  can't carry as its `where` — a count or an aggregate (a counting step), or a window toPrisma has
+  no form for — is refused before anything compiles. A relation that shows no column is
   selected by its key alone (the join key, else `id`, hidden or not), never another column; a model
   with no key is not fetched, and presence on it can't be re-checked from fetched rows.
 

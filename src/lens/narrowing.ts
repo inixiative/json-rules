@@ -11,13 +11,13 @@ import {
 } from '../validate';
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
-import { prefixConditionFields } from './narrowRule.ts';
+import { toLensSelectWith } from './lensRows.ts';
+import { narrowAt } from './narrowRule.ts';
 import {
   allowedEnumValues,
-  bareValueRef,
   declaresModelSource,
   escapingGrantRef,
-  escapingRef,
+  grantRefs,
   hiddenHop,
   intersectStringSet,
   isSourceSpec,
@@ -35,12 +35,15 @@ import {
   sourceReadsVisible,
   undeclaredModelSource,
 } from './policy.ts';
-import { readPaths } from './readPaths.ts';
+import { projectModelsWith } from './projectModels.ts';
+import { lensVisitWith, projectPathsWith } from './projectPaths.ts';
+import { sourcePlansWith } from './sourceOptions.ts';
 import type {
   EnumNarrowing,
   LensNarrowing,
   ModelDefaultNarrowing,
   ModelNarrowing,
+  SourceSpec,
 } from './types.ts';
 import { checkConditionAtVisit } from './validateRuleInLens.ts';
 
@@ -63,7 +66,8 @@ const validateWhere = (
 ): void => {
   if (condition === undefined) return;
   // A bare value path reads the root row: only the root grant stands on it.
-  const bare = position === 'root.where' ? null : bareValueRef(condition);
+  const refs = grantRefs(condition);
+  const bare = position === 'root.where' ? null : refs.bare;
   if (bare !== null) {
     errors.push({
       path: position,
@@ -72,7 +76,7 @@ const validateWhere = (
     });
     return;
   }
-  const escaping = escapingRef(condition);
+  const { escaping } = refs;
   if (escaping !== null) {
     errors.push({
       path: position,
@@ -303,7 +307,18 @@ const validateModelNode = (
       });
       continue;
     }
-    const spec = normalizeSource(entry);
+    let spec: SourceSpec;
+    try {
+      spec = normalizeSource(entry);
+    } catch (error) {
+      if (!(error instanceof LensRefusal)) throw error;
+      errors.push({
+        path: `${position}.sources.${field}`,
+        code: error.code,
+        message: error.message,
+      });
+      continue;
+    }
     // Read as stored data: `from` may hold anything.
     const from = (spec as { from?: unknown }).from;
     if (from !== undefined) {
@@ -582,7 +597,12 @@ const validateNode = (
         errors.push({
           path: `${position}.sources.${field}`,
           code: 'invalid_source',
-          message: undeclaredModelSource(position, mapName, modelName, field).message,
+          message: undeclaredModelSource(
+            [getLensRoot(current).model, ...(visits.parent[0]?.relPath ?? [])].join('.'),
+            mapName,
+            modelName,
+            field,
+          ).message,
         });
     }
 
@@ -804,33 +824,32 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
 
   for (const message of validateBindNames(narrowing))
     errors.push({ path: 'bindings', code: 'invalid_binding', message });
-  // A rule crossing a to-one hop carries that visit's grants re-rooted under it: one narrowRule
-  // can't re-root is refused here, as the gate refuses the rule.
+  // The postures, run as the runtime runs them, their refusals collected: the projection by path
+  // and by model, a visit at each shown path, the source plans, the fetch select, and a rule
+  // reaching each shown visit narrowed. Nothing compiles, so no binding, clock or literal is read.
+  const inspect: Policy = {
+    ...parentPolicy,
+    chain: [...parentPolicy.chain, narrowing],
+    inspect: true,
+  };
+  guarded(() => sourcePlansWith(inspect, projectPathsWith(inspect)));
+  guarded(() => projectModelsWith(inspect));
+  guarded(() => toLensSelectWith(inspect));
   guarded(() => {
-    const anchor = { mapName: set.mapName, modelName: set.model, relPath: [] };
-    for (const { at, effect } of composedVisits()) {
-      const hop = relationHops(set.maps, anchor, at.relPath.join('.')).hops.at(-1);
-      if (at.relPath.length === 0 || !hop || hop.isList) continue;
-      for (const where of effect.whereClauses) prefixConditionFields(where, hop.prefix);
-    }
-  });
-  // Every visit a posture resolves is checked the way the posture checks it: the shown visits,
-  // and those the grants and sources at them read through, off the shown tree too (the fetch and
-  // the sources follow those reads). Found from the reads themselves — nothing is compiled, so no
-  // binding or clock is needed.
-  const composedPolicy: Policy = { ...parentPolicy, chain: [...parentPolicy.chain, narrowing] };
-  guarded(() => {
-    for (const { at, effect } of composedVisits()) {
-      guarded(() => resolveVisit(composedPolicy, at.mapName, at.modelName, at.relPath));
-      const reads = [
-        ...effect.whereClauses.flatMap(readPaths),
-        ...[...effect.sources.values()].flat().flatMap(readPaths),
-        ...effect.sourceLabels.values(),
-        ...[...effect.sourceGroupBys.values()].flat(),
-      ];
-      for (const read of reads)
-        for (const hop of relationHops(set.maps, at, read).hops)
-          guarded(() => resolveVisit(composedPolicy, hop.map, hop.model, hop.relPath));
+    const shown = new Map<string, WhereVisit>();
+    for (const { at } of composedVisits()) {
+      shown.set(at.relPath.join('.'), at);
+      guarded(() => lensVisitWith(inspect, at.relPath.join('.')));
+      // A rule reaching the visit from the one above: its grants injected as a rule's are — re-rooted
+      // across a to-one relation, into the array condition across a to-many one.
+      const relation = at.relPath.at(-1);
+      const from = shown.get(at.relPath.slice(0, -1).join('.'));
+      if (relation === undefined || !from) continue;
+      const entry = fieldOf(own(set.maps, from.mapName), from.modelName, relation);
+      const reach: Condition = entry?.isList
+        ? ({ field: relation, arrayOperator: 'any', condition: true } as Condition)
+        : { field: relation, operator: 'exists' };
+      guarded(() => narrowAt(reach, inspect, from));
     }
   });
   for (const refusal of refusals)

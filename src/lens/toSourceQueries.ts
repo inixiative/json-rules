@@ -1,3 +1,4 @@
+import { modelOf, own } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere, WhereStep } from '../toPrisma/types.ts';
 import { buildCondition } from '../toSql/condition.ts';
@@ -118,7 +119,9 @@ const compileOne = (
         ? groupCols.map((col, i) => `${col} AS ${escapeIdentifier(`__group_${i}`)}`)
         : []),
     ].join(', ');
-    const statement = `SELECT DISTINCT ${cols} FROM ${escapeIdentifier(model)} AS ${root}${joinSql}${whereSql}`;
+    // The table, as the joins name theirs: the model's `dbName` when it has one.
+    const table = modelOf(own(lens.maps, mapName), model)?.dbName ?? model;
+    const statement = `SELECT DISTINCT ${cols} FROM ${escapeIdentifier(table)} AS ${root}${joinSql}${whereSql}`;
     sqlQuery = { sql: statement, params: state.params };
   } catch (err) {
     sqlQuery = { sql: null, params: [], error: err instanceof Error ? err.message : String(err) };

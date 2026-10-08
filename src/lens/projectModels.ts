@@ -1,7 +1,7 @@
 import { endpointKey } from '../fieldMap/endpointKey.ts';
 import type { Bridge, FieldMap, FieldMapEntry, FieldMapSet, SourceOption } from '../fieldMap/types';
 import { fieldOf, modelOf, own } from '../own';
-import { type Policy, resolvePolicy, shownVisits } from './policy.ts';
+import { LensRefusal, type Policy, resolvePolicy, shownVisits } from './policy.ts';
 import { type ProjectLensOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -39,8 +39,9 @@ const unionFieldInto = (
 export const projectModels = (
   lensOrNarrowing: Lens | LensNarrowing,
   opts: ProjectLensOptions = {},
-): Lens => {
-  const policy: Policy = resolvePolicy(lensOrNarrowing);
+): Lens => projectModelsWith(resolvePolicy(lensOrNarrowing), opts);
+
+export const projectModelsWith = (policy: Policy, opts: ProjectLensOptions = {}): Lens => {
   const { lens } = policy;
 
   // Per-model union of fetched options (the flattened surface collapses paths):
@@ -80,8 +81,9 @@ export const projectModels = (
         existing !== undefined &&
         JSON.stringify(existing) !== JSON.stringify(axes)
       )
-        throw new Error(
+        throw new LensRefusal(
           `projectLens: '${modelName}.${fieldName}' is grouped by different axes on different paths ([${existing}] vs [${axes}]) — one surface field cannot carry two partition namespaces`,
+          'invalid_source',
         );
       unionFieldInto(acc.fields, fieldName, nextEntry);
     }

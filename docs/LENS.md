@@ -148,7 +148,10 @@ do not (User and Org are already in the tree). `org: { relations: { users: {} } 
 `org.users`, and below it the defaults grow again (`org.users.posts`). Every posture walks this
 same tree — the gate, `walkLensPath`, `readLensValue`, `lensVisit`, `narrowRule`, `{ lens }`
 compiles, `projectLens` (both modes), the sources, `validateNarrowing` and `toLensSelect` — so
-they agree exactly, and each stays within (spelled nodes × models) visits.
+they agree exactly, and each stays within (spelled nodes × models) visits. The trees are kept on
+the first narrowing, keyed by the base lens it stands on and its model defaults, so a narrowing
+edited or re-parented in place grows fresh ones; a field map edited in place is not seen — build
+the lens anew (`createLens`) after changing a map.
 
 What turning on governs:
 
@@ -172,6 +175,15 @@ Later layers:
   can't see. Layer 1's grants read the schema. `validateNarrowing` reports a grant that crosses
   more, and every runtime posture (the gate, `narrowRule`, `{ lens }` compiles, `toLensSelect`,
   `projectRows`, `readLensValue`, the sources) throws instead of applying it.
+- **A source `where` narrows as a rule.** It is a grant on the options and a surface a viewer
+  reasons over, so each one is narrowed under the whole lens as `narrowRule` narrows a rule: an
+  option never comes through a row any layer hides. A later layer's grant on a relation a source
+  reads thereby applies there — and is checked there, like any other.
+- **One posture code path.** `validateNarrowing` runs the postures the runtime runs — the
+  projection by path and by model, `lensVisit` at every shown path, the source plans, the fetch
+  select, and a rule reaching each shown visit narrowed — and reports each `LensRefusal` they
+  raise as an issue. Nothing compiles there, so no binding, clock or literal is read: an unbound
+  lens validates exactly as its bound runtime refuses (`ok` ⇔ no posture refuses).
 - **A grant reads its own row.** A scope ref that climbs out of the grant (`$$.` at its top,
   `$$$.` one array down) is `scope_out_of_bounds` in `validateNarrowing`, and every posture throws.
 - **A bare `path` in a grant reads the root row.** Only `root.where` stands on it; in a relation

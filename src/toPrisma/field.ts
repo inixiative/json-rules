@@ -183,6 +183,19 @@ const buildRelationRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere =
 const entryOf = (rule: Rule, options?: ToPrismaOptions) =>
   fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model);
 
+const MATCH_ALL = matchAll();
+
+// Where a required, non-Json column holds a value: wherever the row it sits on is there.
+const requiredPresence = (
+  rule: Rule,
+  shape: FieldShape,
+  options?: ToPrismaOptions,
+): PrismaWhere | null => {
+  if (shape === 'list' || isJson(shape) || entryOf(rule, options)?.isRequired !== true) return null;
+  const parent = rule.field.split('.').slice(0, -1).join('.');
+  return parent ? buildMapAwareFilter(parent, { is: {} }, options) : MATCH_ALL;
+};
+
 export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere => {
   const at = (filter: unknown) => buildMapAwareFilter(rule.field, filter, options);
   const shape = shapeOf(rule, options);
@@ -195,20 +208,22 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
 
   if (shape === 'relation') return buildRelationRule(rule, options);
 
+  // A required column (not Json, which can hold JSON null) is null only where the row it sits on
+  // is missing, and Prisma takes no `null` on it: an existence test asks whether that row is there.
+  const present = requiredPresence(rule, shape, options);
+  if (present && isExistenceTest(rule)) {
+    const missing = present === MATCH_ALL ? matchNothing() : notLeaf(present);
+    const empties = emptyValues(shape, emptyString);
+    if (rule.operator === Operator.isEmpty) return orWhere([missing, ...empties.map(at)]);
+    if (rule.operator === Operator.notEmpty)
+      return andWhere([present, ...empties.map((value) => at(notEmpty(value)))]);
+    return check({ ...rule, field: 'f' } as Condition, { f: null }) === true ? missing : present;
+  }
+
   switch (rule.operator) {
     // A list filter has no `not`: its complements negate `equals` at the WHERE level.
     case Operator.exists:
     case Operator.notExists: {
-      // A required column is null only where its row is missing: Prisma takes no `null` on it,
-      // so it asks whether the row it sits on is there (`is: {}` on the path above, or always).
-      const required = shape !== 'list' && entryOf(rule, options)?.isRequired === true;
-      if (required) {
-        const parent = rule.field.split('.').slice(0, -1).join('.');
-        const exists = rule.operator === Operator.exists;
-        if (!parent) return exists ? matchAll() : matchNothing();
-        const present = buildMapAwareFilter(parent, { is: {} }, options);
-        return exists ? present : notLeaf(present);
-      }
       if (rule.operator === Operator.exists)
         return shape === 'list' ? notLeaf(at({ equals: null })) : at({ not: nullOf(shape) });
       const absent = arms();
@@ -274,7 +289,9 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
         : andWhere(values.map((v) => at(equalityFilter('not', v, ci, shape))))
       : at({ [rule.operator]: values, ...ci });
     if (rule.operator === Operator.in) return hasNull ? orWhere([listed, ...arms()]) : listed;
-    return hasNull ? andWhere([listed, at({ not: nullOf(shape) })]) : orWhere([listed, ...arms()]);
+    return hasNull
+      ? andWhere([listed, present ?? at({ not: nullOf(shape) })])
+      : orWhere([listed, ...arms()]);
   }
 
   // A string operator's positive form; a Json value contains a string's substring, or a

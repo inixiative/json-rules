@@ -29,3 +29,14 @@ describe('existence of a relation compiles without null, required or not', () =>
       expect(where('notExists', bRequired)).toEqual({ NOT: { b: { c: { is: {} } } } });
     });
 });
+
+test('a required Json column keeps its null filter: it can hold JSON null', () => {
+  const jsonMap: FieldMap = {
+    models: { A: { fields: { meta: { kind: 'scalar', type: 'Json', isRequired: true } } } },
+  };
+  const exists = getWhere(
+    toPrisma({ field: 'meta', operator: 'exists' }, { map: jsonMap, model: 'A' }),
+  );
+  expect(exists).not.toEqual({});
+  expect(Object.keys(exists)).toEqual(['meta']);
+});

@@ -312,6 +312,23 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'org.id', operator: 'notExists' },
     ids: [4, 5],
   },
+  'a required column is never empty': { rule: { field: 'id', operator: 'isEmpty' }, ids: [] },
+  'a required column is always notEmpty': {
+    rule: { field: 'id', operator: 'notEmpty' },
+    ids: [1, 2, 3, 4, 5],
+  },
+  'a required column equals null where its row is missing': {
+    rule: { field: 'org.id', operator: 'equals', value: null },
+    ids: [4, 5],
+  },
+  'a required column notEquals null where its row is there': {
+    rule: { field: 'org.id', operator: 'notEquals', value: null },
+    ids: [1, 2, 3],
+  },
+  'a required column notIn a set with null keeps only present rows': {
+    rule: { field: 'org.id', operator: 'notIn', value: [null, 10] },
+    ids: [2, 3],
+  },
   'a list in a set of lists': {
     rule: { field: 'tags', operator: 'in', value: [['a', 'b'], []] },
     ids: [1, 2, 3, 5],

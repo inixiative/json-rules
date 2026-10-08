@@ -1,6 +1,7 @@
 import type { Lens, LensNarrowing } from './types.ts';
 
-export const isLens = (x: Lens | LensNarrowing): x is Lens => 'model' in x;
+// A narrowing is what has a parent; a stray base-lens key on one must not end the chain early.
+export const isLens = (x: Lens | LensNarrowing): x is Lens => !Object.hasOwn(x, 'parent');
 
 export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
   const list: LensNarrowing[] = [];
@@ -8,6 +9,10 @@ export const collectChain = (x: Lens | LensNarrowing): LensNarrowing[] => {
   let cursor: Lens | LensNarrowing = x;
   while (!isLens(cursor)) {
     if (visited.has(cursor)) throw new Error('cycle detected in narrowing parent chain');
+    if (Object.hasOwn(cursor, 'model') || Object.hasOwn(cursor, 'maps'))
+      throw new Error(
+        'a narrowing carries a base lens key (model / maps); it has a parent instead',
+      );
     visited.add(cursor);
     list.unshift(cursor);
     cursor = cursor.parent;

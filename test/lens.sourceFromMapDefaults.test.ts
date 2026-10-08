@@ -236,6 +236,30 @@ describe("from: 'mapDefaults' offers the model's own source", () => {
   });
 });
 
+describe('a pointer escapes only the layer that points: every other layer still narrows it', () => {
+  const platform: LensNarrowing = {
+    parent: base,
+    root: {
+      relations: {
+        tagAttachments: { relations: { tag: { sources: { id: { from: 'mapDefaults' } } } } },
+      },
+    } as never,
+    mapDefaults: { app: { models: { Tag: { where: live, sources: { id: { label: 'name' } } } } } },
+  };
+  const tenant: LensNarrowing = {
+    parent: platform,
+    root: { where: { field: 'orgId', operator: 'equals', value: 'acme' } },
+  };
+
+  test('the pointing layer offers every live tag', () => {
+    expect(offered(platform)).toEqual(['T1', 'T2', 'T3', 'T9']);
+  });
+
+  test("a tenant layer after it narrows its options to the tenant's reach", () => {
+    expect(offered(tenant)).toEqual(['T1', 'T2']);
+  });
+});
+
 describe('a pointer must find its model source', () => {
   const undeclared: LensNarrowing = {
     parent: base,

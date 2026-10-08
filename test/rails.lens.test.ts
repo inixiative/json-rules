@@ -59,6 +59,23 @@ describe('toPrisma / toSql with { lens }', () => {
     expect(() => toSql(rule, { lens: hidden })).toThrow(/leaves the lens/);
   });
 
+  test("a context ref is the caller's value, not a column: it compiles under the lens", async () => {
+    const shown: LensNarrowing = { parent: base, root: { picks: ['id', 'name', 'org'] } };
+    const rule: Condition = { field: 'id', operator: 'equals', path: 'viewer.id' };
+    expect(await rails.run(rule, { lens: shown, context: { viewer: { id: 1 } } })).toEqual(
+      agree([1]),
+    );
+  });
+
+  test('a narrowing carrying a base lens key is refused, never read as the base', () => {
+    const tenant: LensNarrowing = {
+      parent: base,
+      root: { where: { field: 'id', operator: 'equals', value: 1 } },
+    };
+    const stray = { parent: tenant, model: 'User', root: {} } as unknown as LensNarrowing;
+    expect(() => toPrisma(true, { lens: stray })).toThrow(/base lens key/);
+  });
+
   test('a lens with map / mapName / model is refused', () => {
     expect(() => toPrisma(true, { lens, map })).toThrow(/not both/);
     expect(() => toSql(true, { lens, model: 'User' })).toThrow(/not both/);

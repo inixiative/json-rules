@@ -8,7 +8,8 @@ Additive. Each function replaces code template wrote around the lens.
   throwing on a cyclic chain. It is the internal `getRoot`, now public. Replaces template's
   `rootLens` and its repeated `'parent' in lens ? rootLens(lens) : lens`.
 - **`toPrisma` / `toSql` take `{ lens }`**: the rule is gated by the lens (`validateRuleInLens`; a
-  rule it refuses throws, so `{ lens }` can't compile a read of a hidden column) and compiles
+  rule it refuses throws, so `{ lens }` can't compile a read of a hidden column; a bare value
+  `path` is the caller's `context` on these rails, not a column, and isn't resolved through it) and compiles
   narrowed by it (`narrowRule`), against the base lens's maps, `mapName` and `model`. Passing `lens` with `map` / `mapName` /
   `model` throws. Replaces the `toPrisma(narrowRule(rule, lens), { map: root, mapName, model })`
   call sites in template (`compileSegmentWhere`, `resolveUsers`, `validateRuleForLens`).
@@ -45,6 +46,12 @@ Additive. Each function replaces code template wrote around the lens.
 - **SQL reads a non-array Json value as an empty array for `empty` / `notEmpty`**, as it already
   did for an aggregate (it read it as non-empty).
 - `check()`'s failure text prints a RegExp pattern as written (it printed `{}`).
+- **A narrowing is what has a `parent`.** A narrowing carrying a stray `model` (e.g. spread from a
+  row) was read as the base lens, dropping every layer above it; one carrying `model` / `maps` now
+  throws.
+- **A pointer escapes only the layer that declares it.** Layers after it carried nothing into its
+  options, so a tenant layer added after a platform pointer (scoping by a root `where`) left other
+  tenants' rows in the picker. Every layer but the pointing one now carries its grants.
 - **`composeLens` refuses a stored record carrying its own `parent`.** The record's `parent`
   replaced the composed chain, so a forged layer dropped every layer above it (a tenancy grant
   with it); a layer composes only through `parents`.

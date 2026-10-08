@@ -667,8 +667,9 @@ const plan = toPrisma(composed, { map: lens, mapName: 'prisma', model: 'User' })
 const where = await executePrismaPlan(plan, { post: prisma.post });
 ```
 
-`{ lens }` does both in one call: the rule narrowed by the lens, compiled against its base lens
-(`getLensRoot`) and that lens's `mapName` / `model`. `toSql` takes it the same way. Passing `lens`
+`{ lens }` does all of it in one call: the rule gated by the lens (a rule it refuses throws; a
+bare value `path` is the caller's context on these rails, not a column), narrowed by it, and
+compiled against its base lens (`getLensRoot`) and that lens's `mapName` / `model`. `toSql` takes it the same way. Passing `lens`
 with `map`, `mapName` or `model` throws.
 
 ```ts

@@ -595,8 +595,9 @@ parents outside the groups where it fails, so childless parents stay in.
 ### Compiling under a lens
 
 Pass `lens` instead of `map` / `mapName` / `model` and the rule is gated by the lens
-(`validateRuleInLens`: a rule it refuses throws), narrowed by it, and compiled against its base
-lens. `toSql` takes it the same way. Passing both throws.
+(`validateRuleInLens`: a rule it refuses throws; a bare value `path` is your `context` on these
+rails, not a column, so it isn't resolved through the lens), narrowed by it, and compiled against
+its base lens. `toSql` takes it the same way. Passing both throws.
 
 ```ts
 const plan = toPrisma(rule, { lens: narrowing, now });
@@ -1205,9 +1206,9 @@ mapDefaults: {
 `from: 'mapDefaults'` resolves where it sits — `mapDefaults[<this path's map>].models[<this path's
 model>].sources[<field>]` — and takes that source's eligibility (tenancy included), label and
 axes; its own `where`, and child layers, only narrow it. A pointer drops the grants the path
-carries down only from the layer that declares it on: the layers before it still carry theirs, so
-a child's pointer can only narrow what its parent gave. A tenant layer added *after* a pointer
-scopes it through `mapDefaults` (the model's own grant or source), not a root `where`.
+carries down only in the layer that declares it: every layer before or after it still carries
+theirs, so a child's pointer can only narrow what its parent gave, and a tenant layer added after a
+pointer narrows it whichever way it scopes (a root `where`, or `mapDefaults`).
 A pointer whose model declares no source fails `validateNarrowing` (`invalid_source`) and throws
 from `projectLens` (by path) / `toSourceQueries` / `materializeSources`, even where a layer hides
 its field; `projectLens(…, { by: 'model' })` and `describeRuleSources` read the lens without

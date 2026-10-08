@@ -248,7 +248,7 @@ const ancestorGrants = (policy: Policy, relPath: readonly string[]): Condition[]
 /** Every sourced field the lens projects, planned once for both materializers. A path source
  *  carries the grants above it; one that offers its model's own source (`from: 'mapDefaults'`)
  *  reads that model as the lens narrows it — nothing carried from the path above by the layer
- *  that points or any after it; the layers before it still carry theirs. */
+ *  that points; every other layer still carries its own. */
 export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[] => {
   const policy = resolvePolicy(lensOrNarrowing);
   return Object.entries(projectPaths(lensOrNarrowing)).flatMap(([path, visit]) =>
@@ -268,8 +268,8 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
         label,
       );
       const allowed = own(visit.fields, field)?.values;
-      // A pointer drops what the path above carries only from the layer that points on: the
-      // layers before it still carry, so a child's pointer can only narrow what it was given.
+      // A pointer drops what the path above carries in the layer that points, and only there:
+      // every layer before or after it still carries, so no layer's narrowing is lost.
       const pointsFrom = fromModel
         ? resolveVisit(policy, visit.mapName, visit.model, relPath).sourcesFromMapDefaults.get(
             field,
@@ -278,7 +278,7 @@ export const sourcePlans = (lensOrNarrowing: Lens | LensNarrowing): SourcePlan[]
       const above = ancestorGrants(
         pointsFrom === undefined
           ? policy
-          : { lens: policy.lens, chain: policy.chain.slice(0, pointsFrom) },
+          : { lens: policy.lens, chain: policy.chain.filter((_, layer) => layer !== pointsFrom) },
         relPath,
       );
       return {

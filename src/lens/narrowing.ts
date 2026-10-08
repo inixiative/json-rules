@@ -85,6 +85,11 @@ const validateSourceTargetVisibility = (
       const spec = normalizeSource(entry);
       for (const kind of ['label', 'groupBy'] as const) {
         if (spec[kind] === undefined || reported.has(`${field}|${kind}`)) continue;
+        // The value in force is what's checked; only the node that set it is at fault.
+        const declared = kind === 'label' ? spec.label : normalizeGroupBy(spec.groupBy);
+        const inForce =
+          kind === 'label' ? effect.sourceLabels.get(field) : effect.sourceGroupBys.get(field);
+        if (JSON.stringify(declared) !== JSON.stringify(inForce)) continue;
         if (sourceReadsVisible(policy, effect, at, field, kind)) continue;
         reported.add(`${field}|${kind}`);
         errors.push({

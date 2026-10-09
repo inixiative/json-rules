@@ -14,7 +14,7 @@
         "@electric-sql/pglite": "^0.4.1",
         "@electric-sql/pglite-socket": "0.1.1",
         "@inixiative/config": "^0.5.64",
-        "@inixiative/prisma-map": "^0.3.0",
+        "@inixiative/prisma-map": "^0.3.1",
         "@prisma/adapter-pg": "7.8.0",
         "@prisma/client": "7.8.0",
         "@types/bun": "1.4.2",
@@ -116,7 +116,7 @@
 
     "@inixiative/config": ["@inixiative/config@0.5.64", "", { "peerDependencies": { "@biomejs/biome": ">=2.5.0", "tsup": ">=8.5.0", "typescript": ">=6.0.0" }, "optionalPeers": ["@biomejs/biome", "tsup", "typescript"], "bin": { "inixiative-config": "dist/cli.js" } }, "sha512-IUc1S+DK8D4X+tlP3rSTobWmdDa8C+khlPFX0v1gSHTaTC2gX34HwPVlt8mVCoWyyaHj3b+8bGRV5hqLCp6HPw=="],
 
-    "@inixiative/prisma-map": ["@inixiative/prisma-map@0.3.0", "", {}, "sha512-H/rRPs8ILiorRlqM/WmLgS1oYKL1lNPHitrEiJOa2agyxmJqp6gOKuW4dJ0hdJgHmykLfKpBORXgY3+Cbc8t9g=="],
+    "@inixiative/prisma-map": ["@inixiative/prisma-map@0.3.1", "", {}, "sha512-gFUaG7rL15/He2sYVdLvbMoNiTlWIdq4Ocyw5qD+7zSZce/khVTVQcc3aDigkapSCAmKQsfOoUvr1vhn2jdo4Q=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

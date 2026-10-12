@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.5.4 — SourceOptionOrder is a named constant
+
+- **`SourceOptionOrder`** is now a const object like `Operator`, so the choices read at the call
+  site: `SourceOptionOrder.value` (sorted by value, the default) and `SourceOptionOrder.query` (the
+  order the query returned its rows in). 3.5.3's `'rows'` is renamed `'query'`; nothing consumed it.
+
 ## 3.5.3 — materializeSourceQuery keeps the query's row order on request
 
 - **`materializeSourceQuery(query, rows, { order: 'rows' })`** returns options in the order each

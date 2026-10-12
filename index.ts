@@ -66,7 +66,7 @@ export {
   type RuleDescription,
   type RuleSourceDescription,
   readLensValue,
-  type SourceOptionOrder,
+  SourceOptionOrder,
   type SourcePrismaQuery,
   type SourceQuery,
   type SourceRowShape,

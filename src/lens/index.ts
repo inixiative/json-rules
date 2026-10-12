@@ -14,7 +14,11 @@ export type {
   ProjectRowsOptions,
 } from './lensRows';
 export { projectRows, toLensSelect } from './lensRows';
-export type { MaterializeSourceQueryOptions, SourceRowShape } from './materializeSourceQuery';
+export type {
+  MaterializeSourceQueryOptions,
+  SourceOptionOrder,
+  SourceRowShape,
+} from './materializeSourceQuery';
 export { materializeSourceQuery } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';

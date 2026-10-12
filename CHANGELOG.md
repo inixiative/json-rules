@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.5.3 — materializeSourceQuery keeps the query's row order on request
+
+- **`materializeSourceQuery(query, rows, { order: 'rows' })`** returns options in the order each
+  value first appears in the rows, deduped as before, instead of sorted by value. A caller whose
+  query ranks its rows — most-held first, most recent first — keeps that ranking without
+  rebuilding it from a side map. The default (`'value'`) is unchanged. The ranking stays in the
+  query: nothing is counted here, so no caller has to fetch every row to get an order.
+  `SourceOptionOrder` is exported. `test/sources.rowOrder.test.ts`.
+
 ## 3.5.2 — compose compiled WHEREs: andWhere / orWhere exported
 
 - **`andWhere`, `orWhere`, `matchAll`, `matchNothing` are public.** A consumer that ANDs a compiled

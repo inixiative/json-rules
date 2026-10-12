@@ -15,12 +15,18 @@ import type { Lens, LensNarrowing } from './types.ts';
 /** Which executor produced the rows — the caller always knows; never guessed. */
 export type SourceRowShape = 'prisma' | 'sql';
 
+/** How the options come back: sorted by value (the default), or in the order each first appears
+ *  in the rows — so a query that ranks its rows (most-held first) keeps its ranking. */
+export type SourceOptionOrder = 'value' | 'rows';
+
 /** `rowShape`: how the rows came back — nested Prisma rows (the default) or flat SQL rows.
  *  `lens`: the lens the query was compiled from, required for a query with a `recheck` — it says
- *  what each far side must hold. The rest is the clock and bindings the re-check runs with. */
+ *  what each far side must hold. `order`: see `SourceOptionOrder`. The rest is the clock and
+ *  bindings the re-check runs with. */
 export type MaterializeSourceQueryOptions = CheckOptions & {
   rowShape?: SourceRowShape;
   lens?: Lens | LensNarrowing;
+  order?: SourceOptionOrder;
 };
 
 /**
@@ -42,7 +48,7 @@ export const materializeSourceQuery = (
   rows: readonly Row[],
   opts: MaterializeSourceQueryOptions = {},
 ): SourceValues => {
-  const { rowShape = 'prisma', lens, ...checkOptions } = opts;
+  const { rowShape = 'prisma', lens, order = 'value', ...checkOptions } = opts;
   const flat = rowShape === 'sql';
   const { recheck } = query;
   let far = (_read: string): boolean => false;
@@ -97,6 +103,6 @@ export const materializeSourceQuery = (
     mapName: query.mapName,
     model: query.model,
     field: query.field,
-    options: sortOptions(byKey),
+    options: order === 'rows' ? [...byKey.values()] : sortOptions(byKey),
   };
 };

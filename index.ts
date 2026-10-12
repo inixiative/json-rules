@@ -110,7 +110,14 @@ export type {
   ToPrismaResult,
   WhereStep,
 } from './src/toPrisma';
-export { executePrismaPlan, toPrisma } from './src/toPrisma';
+export {
+  andWhere,
+  executePrismaPlan,
+  matchAll,
+  matchNothing,
+  orWhere,
+  toPrisma,
+} from './src/toPrisma';
 export { type ToSqlOptions, type ToSqlResult, toSql } from './src/toSql';
 export type {
   AggregateMode,

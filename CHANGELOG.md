@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.5.2 — compose compiled WHEREs: andWhere / orWhere exported
+
+- **`andWhere`, `orWhere`, `matchAll`, `matchNothing` are public.** A consumer that ANDs a compiled
+  WHERE with its own filters (a scope, an eligibility floor, a clamp) wrote `AND: [floor, where]`,
+  and when the rule compiled to `false` the `{ OR: [] }` match-nothing sat as an AND arm — which
+  Prisma drops, so the AND matched every row (measured on Prisma 7 + Postgres in the rails, and on
+  Prisma 6 + MySQL in Zealot, where a reference request whose top priorities match no one listed
+  the whole eligible pool). The compiler never nests a constant itself; consumers now compose with
+  the same fold. `test/rails.compose.test.ts`.
+- The `logical.ts` note no longer says `{ OR: [] }` composes everywhere: it holds at the top level,
+  as an OR arm, under NOT and in a relation filter, not as an AND arm.
+
 ## 3.5.1 — review fixes: bridged fetches, to-many paths, JSON re-checks; clampLens
 
 Fail-closed and doc findings from the 3.5.0 adversarial review, and one lens-layer op the

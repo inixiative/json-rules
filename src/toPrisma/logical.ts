@@ -12,7 +12,9 @@ import { settleLeaf } from './valueSource';
  * `{}` is match-all only where Prisma treats an empty filter as "no constraint": the top
  * level, an AND arm, a relation filter (`some: {}`). Inside an OR Prisma DROPS it — `OR: [x, {}]`
  * is just `x` — and `NOT: {}` is not the negation of true. `{ OR: [] }` is the documented
- * match-nothing and composes correctly everywhere.
+ * match-nothing, and it holds at the top level, as an OR arm, under NOT and inside a relation
+ * filter — but NOT as an arm of an AND list: Prisma drops it there and `AND: [x, { OR: [] }]`
+ * is just `x` (measured on Prisma 7 + Postgres and Prisma 6 + MySQL).
  *
  * So the logical builders never nest a constant under OR or NOT; they fold it instead:
  * a `true` arm absorbs an OR, a `false` arm absorbs an AND, either drops out of the other,
@@ -26,6 +28,9 @@ import { settleLeaf } from './valueSource';
  * behind — harmless (an unreferenced step is executed and ignored) and necessary: step refs
  * are positional, so nothing may be rebuilt or renumbered.
  */
+/** A consumer composing a compiled where with its own filters (a scope, a floor, a clamp) goes
+ *  through andWhere / orWhere, never a hand-written `AND: [...]` — the same fold, so a compiled
+ *  `false` still matches nothing. */
 export const matchAll = (): PrismaWhere => ({});
 /** Unknown here — a condition across a bridge: over-fetch, and let check() decide. Prisma reads
  *  it as match-all, and so does every fold. */

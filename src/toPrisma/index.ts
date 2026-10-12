@@ -11,6 +11,7 @@ const normalizeOptions = (options?: ToPrismaOptions): ToPrismaOptions | undefine
     : options;
 
 export { executePrismaPlan } from './execute';
+export { andWhere, matchAll, matchNothing, orWhere } from './logical';
 export type {
   GroupByStep,
   PrismaStep,

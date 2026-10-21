@@ -51,6 +51,8 @@ export {
   type LensSelect,
   type LensSelectOptions,
   type LensValue,
+  type LensWhereSql,
+  type LensWhereSqlOptions,
   lensVisit,
   listLensBindings,
   type MaterializeSourceQueryOptions,
@@ -76,6 +78,7 @@ export {
   type StoredLens,
   storeLens,
   toLensSelect,
+  toLensWhereSql,
   toSourceQueries,
   validateNarrowing,
   validateRuleInLens,
@@ -119,7 +122,14 @@ export {
   orWhere,
   toPrisma,
 } from './src/toPrisma';
-export { type ToSqlOptions, type ToSqlResult, toSql } from './src/toSql';
+export {
+  type ToSqlOptions,
+  type ToSqlResult,
+  toSql,
+  toWhereSql,
+  type WhereSqlDialect,
+  type WhereSqlOptions,
+} from './src/toSql';
 export {
   ConditionShape,
   type ConditionShapeKeys,

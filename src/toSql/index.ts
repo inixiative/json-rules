@@ -5,6 +5,7 @@ import { buildCondition } from './condition';
 import type { BuilderState, ToSqlOptions, ToSqlResult } from './types';
 
 export type { ToSqlOptions, ToSqlResult } from './types';
+export { toWhereSql, type WhereSqlDialect, type WhereSqlOptions } from './whereSql';
 
 /** A fresh compile: the root alias (`t0` with a map), parameters, and the join registry every
  *  field resolved against it shares. */

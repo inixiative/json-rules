@@ -1,4 +1,5 @@
 import { compileFieldLiteral } from '../compileLiteral';
+import { DEFAULT_ZONE } from '../dateExpr';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { pastScalarError, relationNotValue, toManyHopError, UsageError } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
@@ -8,7 +9,7 @@ import type { FieldMap, FieldMapSet } from '../fieldMap/types';
 import { type MapWalkResult, walkFieldPath } from '../fieldMap/walk';
 import { splitNull } from '../number';
 import { Operator } from '../operator';
-import { NEGATED_OPERATORS } from '../operatorCatalog';
+import { NEGATED_OPERATORS, WHERE_SQL_OPERATORS } from '../operatorCatalog';
 import { parseScopeRef } from '../scope';
 import { relationKeys } from '../toPrisma/relationUtils';
 import { conditionShape } from '../traverse';
@@ -30,16 +31,6 @@ export type WhereSqlOptions = {
   model?: string;
 };
 
-/** The operators a `toWhereSql` predicate writes; anything else throws, naming it. */
-const SUPPORTED: readonly string[] = [
-  Operator.equals,
-  Operator.notEquals,
-  Operator.in,
-  Operator.notIn,
-  Operator.exists,
-  Operator.notExists,
-];
-
 type Context = {
   dialect: WhereSqlDialect;
   column: (path: string) => string;
@@ -49,7 +40,7 @@ type Context = {
 
 const refuse = (what: string): Error =>
   new Error(
-    `toWhereSql: ${what} has no SQL form here — it writes ${SUPPORTED.join(', ')}, all and any.`,
+    `toWhereSql: ${what} has no SQL form here — it writes ${WHERE_SQL_OPERATORS.join(', ')}, all and any.`,
   );
 
 /**
@@ -115,7 +106,7 @@ const buildWhere = (condition: Condition, ctx: Context): string => {
 };
 
 const buildField = (rule: Rule, ctx: Context): string => {
-  if (!SUPPORTED.includes(rule.operator)) throw refuse(`operator '${rule.operator}'`);
+  if (!WHERE_SQL_OPERATORS.includes(rule.operator)) throw refuse(`operator '${rule.operator}'`);
   if (rule.bind !== undefined) throw refuse(`bind '${rule.bind}' on '${rule.field}'`);
   if (rule.path !== undefined)
     throw refuse(`comparing '${rule.field}' with the column '${rule.path}'`);
@@ -130,7 +121,7 @@ const buildField = (rule: Rule, ctx: Context): string => {
   if (rule.operator === Operator.exists) return `${field} IS NOT NULL`;
   if (rule.operator === Operator.notExists) return `${field} IS NULL`;
   // A missing value reads as null, as check() reads it.
-  const value = compileFieldLiteral(rule, rule.value ?? null, walk, 'toSql', () => 'UTC');
+  const value = compileFieldLiteral(rule, rule.value ?? null, walk, 'toSql', () => DEFAULT_ZONE);
   if (hasNoOperand(rule, value))
     return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator));
   const lit = (v: unknown): string => literal(v, rule.field);

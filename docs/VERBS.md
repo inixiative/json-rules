@@ -11,6 +11,7 @@ modules allowed to implement it, and every exported function must appear in this
 | evaluate | `check` | Evaluate a rule against data. |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
 | compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s. |
+| compile | `toWhereSql`, `toLensWhereSql` | Compile a condition, or a lens's `where`s keyed by the relation path each visit is reached by, to a MySQL predicate: values inline, columns from the caller's `columns` map, no joins. Equality, membership and existence inside `all` / `any`; anything else throws. |
 | compile | `toSourceQueries` | Compile a lens's sources to option queries (Prisma and SQL). |
 | execute | `executePrismaPlan` | Run a Prisma query plan's steps and return its final WHERE. |
 | compose | `andWhere`, `orWhere`, `matchAll`, `matchNothing` | AND / OR compiled WHEREs with a consumer's own filters, folding the boolean constants the way the compiler does — a hand-written `AND: [x, { OR: [] }]` matches everything in Prisma. |

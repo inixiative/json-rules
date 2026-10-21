@@ -365,6 +365,15 @@ export const RANGE_OPERATORS = withShape('range', 'dateRange', 'dateWindow');
 export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'array');
 /** Containment — of a substring, or of a list's member: `contains` / `notContains`. */
 export const CONTAINS_OPERATORS: readonly string[] = [Operator.contains, Operator.notContains];
+/** The field operators `toWhereSql` writes: equality, membership and existence. */
+export const WHERE_SQL_OPERATORS: readonly string[] = [
+  Operator.equals,
+  Operator.notEquals,
+  Operator.in,
+  Operator.notIn,
+  Operator.exists,
+  Operator.notExists,
+];
 /** The threshold comparisons an aggregate takes — equality, order and ranges; every target
  *  compiles all of them. */
 export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];

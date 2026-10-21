@@ -86,6 +86,20 @@ A relation list (a to-many relation) takes no array or aggregate rule in `toSql(
 - `all` (AND), `any` (OR)
 - `if` / `then` / `else`
 
+## MySQL predicates (`whereSql.ts`)
+
+`toWhereSql(condition, { columns, dialect: 'mysql' })` writes a condition as a MySQL predicate
+with values inline and every field read from the caller's `columns` map — no parameters, no
+identifiers, no joins. It is a separate, deliberately small compiler, not a dialect of `toSql`
+(which stays PostgreSQL): `equals`, `notEquals`, `in` (`IN (…)`), `notIn`, `exists`,
+`notExists`, inside `all` / `any`. Every other operator or node throws, naming it, as do binds,
+column `path`s, offsets, `coerceType`, case-insensitivity, bridges, to-many hops and DateTime /
+Json / list fields. Strings escape `\` and `'`; negations carry `IS NULL`. A path missing from
+`columns` throws. `toLensWhereSql` (`src/lens/toLensWhereSql.ts`) runs it over each visit of a
+lens that has `where`s, keyed by relation path; see the root README for the absent-vs-hidden
+semantics and the collation caveat. `test/whereSql.mysql.test.ts` checks it against a real
+`mysqld` (mysql-memory-server).
+
 ## Security
 
 - Identifiers quoted inline (no `pg` runtime dependency)

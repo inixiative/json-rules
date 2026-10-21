@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: Omni names a column ${view.dimension}, as plain text.
 import { describe, expect, it } from 'bun:test';
 import type { Condition, FieldMapSet, Lens, LensNarrowing } from '../index';
 import { DateOperator, Operator, toLensWhereSql, toWhereSql } from '../index';

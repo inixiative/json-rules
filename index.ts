@@ -120,6 +120,11 @@ export {
   toPrisma,
 } from './src/toPrisma';
 export { type ToSqlOptions, type ToSqlResult, toSql } from './src/toSql';
+export {
+  ConditionShape,
+  type ConditionShapeKeys,
+  getConditionShapeKeys,
+} from './src/traverse';
 export type {
   AggregateMode,
   AggregateRule,

@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.6.0 — the condition shapes and their keys are public
+
+- **`ConditionShape`** is now a const object like `ValueShape` (`all`, `any`, `if`, `field`,
+  `aggregate`, `array`, `date`), the names `conditionShape` already classified nodes by.
+- **`getConditionShapeKeys(shape)`** returns `{ required, optional }`: the keys a node of that shape
+  must have and the keys it may. Each list is checked against its rule type at compile time, so a
+  key added to a type can't be left out. With `getOperatorsForKind` and `getValueShape`, a caller can
+  publish the whole grammar without restating it. First consumer: template's `GET /segment/info`.
+  `test/conditionShape.keys.test.ts`.
+
 ## 3.5.4 — SourceOptionOrder is a named constant
 
 - **`SourceOptionOrder`** is now a const object like `Operator`, so the choices read at the call

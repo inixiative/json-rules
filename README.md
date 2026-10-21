@@ -875,7 +875,7 @@ const lens = composeLens('delegate-7', { user, 'org-acme': orgAcme, 'delegate-7'
 ### Operator Catalog
 
 What a rule builder can offer for a field. The catalog's constants are `FieldKind`,
-`RuleTarget`, `ValueShape`, `NUMERIC_KINDS` and `ALL_KINDS`; `getValueShape(operator, family)` takes an
+`RuleTarget`, `ValueShape`, `ConditionShape`, `NUMERIC_KINDS` and `ALL_KINDS`; `getValueShape(operator, family)` takes an
 `OperatorFamily` (`'field' | 'date' | 'array'`).
 
 ```ts
@@ -902,6 +902,7 @@ getValueShape('between', 'date'); // 'dateRange'
 | `getArrayOperators(target?)` | The array operators, narrowed to one target when given. |
 | `getAggregateOperators()` | The comparisons an aggregate rule takes. Every target compiles all of them. |
 | `getValueShape(operator, family)` | The operand an operator takes (`'scalar'`, `'range'`, `'dayList'`, …). `family` is `'field'`, `'date'` or `'array'`, since `between` is both a field and a date operator. Throws on an operator the family doesn't have. |
+| `getConditionShapeKeys(shape)` | `{ required, optional }`: the keys a node of a `ConditionShape` (`'all'`, `'any'`, `'if'`, `'field'`, `'aggregate'`, `'array'`, `'date'`) must have and the keys it may. A literal `true` / `false` is a condition too. |
 
 To ask whether a whole rule runs on a target (windows, scope refs and operators together), use
 `validateRule(rule, { target })`.

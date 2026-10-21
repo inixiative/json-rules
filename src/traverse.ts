@@ -1,7 +1,18 @@
 import { isPlainObject } from 'lodash-es';
 import { isDateExpr, rollingExpr, rollingShift } from './dateExpr';
 import { isCalendarUnit } from './operatorCatalog';
-import type { Condition, RelativeUnits, ValueSourceOf } from './types';
+import type {
+  AggregateRule,
+  All,
+  Any,
+  ArrayRule,
+  Condition,
+  DateRule,
+  IfThenElse,
+  RelativeUnits,
+  Rule,
+  ValueSourceOf,
+} from './types';
 import { hasPath, isValueSource } from './valueSource';
 
 export type ConditionNode = Record<string, unknown>;
@@ -211,7 +222,87 @@ export const elementRefs = (node: Record<string, unknown>): string[] => [
     : []),
 ];
 
-export type ConditionShape = 'all' | 'any' | 'if' | 'field' | 'aggregate' | 'array' | 'date';
+export const ConditionShape = {
+  all: 'all',
+  any: 'any',
+  if: 'if',
+  field: 'field',
+  aggregate: 'aggregate',
+  array: 'array',
+  date: 'date',
+} as const;
+
+export type ConditionShape = (typeof ConditionShape)[keyof typeof ConditionShape];
+
+type RequiredKey<T> = { [K in keyof T]-?: object extends Pick<T, K> ? never : K }[keyof T];
+type OptionalKey<T> = Exclude<keyof T, RequiredKey<T>>;
+type Exhaustive<Listed extends readonly unknown[], Key> = [Exclude<Key, Listed[number]>] extends [
+  never,
+]
+  ? unknown
+  : { missing: Exclude<Key, Listed[number]> };
+
+export type ConditionShapeKeys = { required: string[]; optional: string[] };
+
+const shapeKeys =
+  <T>() =>
+  <const R extends readonly RequiredKey<T>[], const O extends readonly OptionalKey<T>[]>(
+    required: R & Exhaustive<R, RequiredKey<T>>,
+    optional: O & Exhaustive<O, OptionalKey<T>>,
+  ): ConditionShapeKeys => ({
+    required: [...required] as string[],
+    optional: [...optional] as string[],
+  });
+
+// Each list must name exactly its shape type's keys, so a key added to a type fails the build here.
+const CONDITION_SHAPE_KEYS: Record<ConditionShape, ConditionShapeKeys> = {
+  all: shapeKeys<All>()(['all'], ['error']),
+  any: shapeKeys<Any>()(['any'], ['error']),
+  if: shapeKeys<IfThenElse>()(['if', 'then'], ['else', 'error']),
+  field: shapeKeys<Rule>()(
+    ['field', 'operator'],
+    [
+      'value',
+      'path',
+      'bind',
+      'bindOptional',
+      'offset',
+      'caseInsensitive',
+      'fuzzy',
+      'coerceType',
+      'error',
+    ],
+  ),
+  aggregate: shapeKeys<AggregateRule>()(
+    ['field', 'aggregate', 'operator'],
+    [
+      'value',
+      'path',
+      'bind',
+      'bindOptional',
+      'condition',
+      'filter',
+      'orderBy',
+      'take',
+      'skip',
+      'error',
+    ],
+  ),
+  array: shapeKeys<ArrayRule>()(
+    ['arrayOperator'],
+    ['field', 'condition', 'count', 'filter', 'orderBy', 'take', 'skip', 'error'],
+  ),
+  date: shapeKeys<DateRule>()(
+    ['field', 'dateOperator'],
+    ['value', 'path', 'bind', 'bindOptional', 'offset', 'error'],
+  ),
+};
+
+/** The keys a node of one shape takes: those it must have and those it may. */
+export const getConditionShapeKeys = (shape: ConditionShape): ConditionShapeKeys => ({
+  required: [...CONDITION_SHAPE_KEYS[shape].required],
+  optional: [...CONDITION_SHAPE_KEYS[shape].optional],
+});
 
 /** What a condition node is — exactly one of the grammar's node kinds — or null when its keys
  *  name more than one (a node every rail would read differently). */

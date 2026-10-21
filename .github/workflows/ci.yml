@@ -4,5 +4,20 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  ci:
-    uses: inixiative/config/.github/workflows/lib-ci.yml@main
+  # inixiative/config's lib-ci.yml, inlined to cache the mysqld binary the MySQL differential
+  # tests (test/whereSql.mysql.test.ts) download through mysql-memory-server.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/mysqlmsn/binaries
+          # In step with MYSQL_VERSION in test/whereSql.mysql.test.ts.
+          key: mysqlmsn-${{ runner.os }}-${{ runner.arch }}-mysql-8.4.11
+      - run: bun install --frozen-lockfile
+      - run: bunx inixiative-config check .
+      - run: bun run check

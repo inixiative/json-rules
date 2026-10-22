@@ -23,6 +23,10 @@ export type VisitEffect = {
   omits: Set<string>;
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
+  /** The subset of `whereClauses` the visited model's own default wrote
+   *  (`mapDefaults[map].models[model].where`, every layer): the same objects, so a consumer that
+   *  reports a lens's wheres where the lens wrote them can tell them from the path's. */
+  modelWheres: Condition[];
   sources: Map<string, Condition[]>;
   /** Per-field source eligibility wheres as each layer wrote them, unnarrowed: what a source plan
    *  narrows under the whole lens, as a rule is. */
@@ -256,11 +260,14 @@ const accumulateInto = (
   vet: (condition: Condition, source?: boolean) => void,
   clamps: boolean,
   hiding: boolean,
+  ownDefault: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined && clamps) {
     vet(n.where);
-    out.whereClauses.push(narrow(n.where));
+    const clause = narrow(n.where);
+    out.whereClauses.push(clause);
+    if (ownDefault) out.modelWheres.push(clause);
   }
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
@@ -534,6 +541,7 @@ export const resolveVisit = (
     omits: new Set(),
     enumValuesByField: new Map(),
     whereClauses: [],
+    modelWheres: [],
     sources: new Map(),
     sourceWheres: new Map(),
     sourceLabels: new Map(),
@@ -576,8 +584,8 @@ export const resolveVisit = (
   let vet: (condition: Condition, source?: boolean) => void = () => {};
   let clamps = true;
   let hiding = true;
-  const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow, current, vet, clamps, hiding);
+  const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing, ownDefault = false): void => {
+    accumulateInto(out, n, narrow, current, vet, clamps, hiding, ownDefault);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
@@ -630,7 +638,8 @@ export const resolveVisit = (
         else check();
       };
     vet = vetClamp(false);
-    for (const node of defaults) applyNode(node);
+    const ownDefault = own(own(narrowing.mapDefaults, mapName)?.models, modelName);
+    for (const node of defaults) applyNode(node, node === ownDefault);
     if (path) {
       vet = vetClamp(relPath.length === 0 && trail !== null);
       applyNode(path);

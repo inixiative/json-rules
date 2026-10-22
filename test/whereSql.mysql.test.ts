@@ -127,19 +127,21 @@ describe('toLensWhereSql (mysql) — check() and mysqld agree', () => {
     root: { where: rootWhere, relations: { form: {} } },
     mapDefaults: { app: { models: { Form: { where: formWhere } } } },
   };
+  const lensColumns = { ...columns, 'Form.status': 'f.status' };
 
   it('the root where returns the rows check() keeps', async () => {
-    const { root } = toLensWhereSql(narrowing, { columns });
+    const { root } = toLensWhereSql(narrowing, { columns: lensColumns });
     const viaSql = await ids(
       `SELECT u.id FROM fan_users u LEFT JOIN forms f ON f.id = u.form_id WHERE ${root} ORDER BY u.id`,
     );
     expect(viaSql).toEqual(checkedIds(rootWhere));
   });
 
-  it('the mapDefaults where, keyed by the relation, returns the rows check() keeps', async () => {
-    const { relations } = toLensWhereSql(narrowing, { columns });
-    expect(Object.keys(relations)).toEqual(['form']);
-    const viaSql = await ids(`SELECT f.id FROM forms f WHERE ${relations.form} ORDER BY f.id`);
+  it('a model default, keyed by map and model, returns the rows check() keeps', async () => {
+    const { relations, mapDefaults } = toLensWhereSql(narrowing, { columns: lensColumns });
+    expect(relations).toEqual({});
+    const where = mapDefaults.app.models.Form;
+    const viaSql = await ids(`SELECT f.id FROM forms f WHERE ${where} ORDER BY f.id`);
     const inMemory = forms.filter((f) => check(formWhere, f) === true).map((f) => f.id);
     expect(viaSql).toEqual(inMemory);
   });

@@ -30,10 +30,19 @@ export type WhereSqlOptions = {
 };
 
 type Context = {
-  dialect: SqlDialect;
   column: (path: string) => string;
   map: FieldMap;
   model: string;
+};
+
+/** The engine's `sql.dialect`, refused when it names none. */
+const sqlDialect = (): SqlDialect => {
+  const dialect = engineGlobals.get('sql.dialect');
+  if (!isSqlDialect(dialect))
+    throw new UsageError(
+      `toWhereSql: sql.dialect '${String(dialect)}' is not a SQL dialect — ${Object.values(SqlDialect).join(', ')} are`,
+    );
+  return dialect;
 };
 
 const refuse = (what: string): Error =>
@@ -57,11 +66,7 @@ export const whereSql = (
   options: WhereSqlOptions,
   prefix: string,
 ): string => {
-  const dialect = engineGlobals.get('sql.dialect');
-  if (!isSqlDialect(dialect))
-    throw new UsageError(
-      `toWhereSql: sql.dialect '${String(dialect)}' is not a SQL dialect — ${Object.values(SqlDialect).join(', ')} are`,
-    );
+  sqlDialect();
   const { columns, map: given, mapName, model } = options ?? ({} as WhereSqlOptions);
   if (typeof columns !== 'object' || columns === null)
     throw new UsageError('toWhereSql: `columns` maps each field path to its SQL');
@@ -72,7 +77,6 @@ export const whereSql = (
   const map = resolveFieldMap(given, mapName, 'toWhereSql') as FieldMap;
   if (!modelOf(map, model)) throw new UsageError(`toWhereSql: the map has no model '${model}'`);
   return buildWhere(condition, {
-    dialect,
     map,
     model,
     column: (field) => {
@@ -135,7 +139,7 @@ const buildField = (rule: Rule, ctx: Context): string => {
   const value = compileFieldLiteral(rule, rule.value, walk, 'toWhereSql', () => DEFAULT_ZONE);
   if (hasNoOperand(rule, value))
     return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator));
-  const lit = (v: unknown): string => literal(v, rule.field, ctx.dialect);
+  const lit = (v: unknown): string => literal(v, rule.field);
 
   switch (rule.operator) {
     case Operator.equals:
@@ -193,12 +197,12 @@ const listOperand = (rule: Rule, value: unknown): unknown[] => {
   return value;
 };
 
-/** A value as a SQL literal in `dialect`. A string doubles `'` everywhere; MySQL's default mode
- *  also reads a backslash as an escape, so it is doubled there. */
-const literal = (value: unknown, field: string, dialect: SqlDialect): string => {
+/** A value as a SQL literal in the engine's `sql.dialect`. A string doubles `'` everywhere;
+ *  MySQL's default mode also reads a backslash as an escape, so it is doubled there. */
+const literal = (value: unknown, field: string): string => {
   if (typeof value === 'string') {
     const quoted = value.replace(/'/g, "''");
-    return `'${dialect === SqlDialect.mysql ? quoted.replace(/\\/g, '\\\\') : quoted}'`;
+    return `'${sqlDialect() === SqlDialect.mysql ? quoted.replace(/\\/g, '\\\\') : quoted}'`;
   }
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   if (typeof value === 'bigint') return String(value);

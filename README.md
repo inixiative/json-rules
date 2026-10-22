@@ -714,7 +714,7 @@ toWhereSql(
 // => "${fan_user.affiliation} IN ('advocate', 'consultant')"
 
 toLensWhereSql(lens, { columns });
-// => { root: '…' | null, relations: { brandReferenceRequestFanUsers: "${brand_reference_request_fan_user.affiliation} = 'advocate'" } }
+// => { root: '…' | null, relations: {}, mapDefaults: { prisma: { models: { BrandReferenceRequestFanUser: "${brand_reference_request_fan_user.affiliation} = 'advocate'" } } } }
 ```
 
 - **Operators:** `equals`, `notEquals`, `in`, `notIn`, `exists`, `notExists`, inside `all` / `any`
@@ -743,13 +743,14 @@ toLensWhereSql(lens, { columns });
   exactly, so a `_ci` column (MySQL's default) also matches `'Advocate'` for `'advocate'`; compare a
   binary-collated column where that matters.
 
-`toLensWhereSql(lens, { columns })` compiles each visit the lens shows that has `where`s
-— its own and its model's `mapDefaults` — through `toWhereSql`. The root's are under `root` (null
-when it has none); every other visit's are under `relations`, keyed by the relation path that
-reaches it, so a `mapDefaults.models.X.where` reports under each path that reaches `X`. A field
-reads `columns` by its path from the lens model: `status` at the root,
-`brandReferenceRequestFanUsers.affiliation` below it. It does not compile through `toSql`'s
-`{ lens }` path, which would fold the lens's `where`s into the predicate a second time.
+`toLensWhereSql(lens, { columns })` mirrors the lens: the root path's `where`s under `root` (null
+when it has none), each relation path's own under `relations`, keyed by the path, and each model
+default's (`mapDefaults[map].models[model].where`) under `mapDefaults`, keyed the same way — one
+predicate per model however many paths reach it, compiled at the first visit the lens shows of
+it. A path `where` reads `columns` by its path from the lens model (`status` at the root,
+`brandReferenceRequestFanUsers.id` below it); a model default by `'<Model>.<field>'`
+(`BrandReferenceRequestFanUser.affiliation`). It does not compile through `toSql`'s `{ lens }`
+path, which would fold the lens's `where`s into the predicate a second time.
 
 **Absent, not hidden.** A row a relation's `where` filters out is absent from the SQL join, so a
 negation through that relation holds for it; `check()` under the lens treats the row as hidden.

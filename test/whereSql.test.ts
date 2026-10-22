@@ -374,7 +374,8 @@ describe('toWhereSql — refusals', () => {
   });
 });
 
-describe('toLensWhereSql', () => {
+describe('toLensWhereSql — mirrors the lens', () => {
+  const participantWhere = { field: 'affiliation', operator: Operator.equals, value: 'advocate' };
   const narrowing: LensNarrowing = {
     parent: lens,
     root: {
@@ -384,14 +385,18 @@ describe('toLensWhereSql', () => {
           { field: 'deletedAt', operator: Operator.notExists },
         ],
       },
-      relations: { brandReferenceRequestFanUsers: { relations: { request: {} } } },
+      relations: {
+        brandReferenceRequestFanUsers: {
+          where: { field: 'id', operator: Operator.exists },
+          relations: { request: {} },
+        },
+      },
     },
     mapDefaults: {
       app: {
         models: {
-          BrandReferenceRequestFanUser: {
-            where: { field: 'affiliation', operator: Operator.equals, value: 'advocate' },
-          },
+          BrandReferenceRequest: { where: { field: 'id', operator: Operator.exists } },
+          BrandReferenceRequestFanUser: { where: participantWhere },
         },
       },
     },
@@ -399,23 +404,69 @@ describe('toLensWhereSql', () => {
   const columns = {
     status: '${brand_reference_request.status}',
     deletedAt: '${brand_reference_request.deleted_at}',
-    'brandReferenceRequestFanUsers.affiliation': affiliation,
+    'brandReferenceRequestFanUsers.id': '${brand_reference_request_fan_user.id}',
+    'BrandReferenceRequest.id': '${brand_reference_request.id}',
+    'BrandReferenceRequestFanUser.affiliation': affiliation,
   };
 
-  it('keys the root where under root and a mapDefaults where by the relation reaching it', () => {
+  it('reports root, relation and mapDefaults wheres each where the lens wrote them', () => {
     expect(onMysql(() => toLensWhereSql(narrowing, { columns }))).toEqual({
       root: "((${brand_reference_request.status} <> 'draft' OR ${brand_reference_request.status} IS NULL) AND ${brand_reference_request.deleted_at} IS NULL)",
-      relations: { brandReferenceRequestFanUsers: `${affiliation} = 'advocate'` },
+      relations: {
+        brandReferenceRequestFanUsers: '${brand_reference_request_fan_user.id} IS NOT NULL',
+      },
+      mapDefaults: {
+        app: {
+          models: {
+            BrandReferenceRequest: '${brand_reference_request.id} IS NOT NULL',
+            BrandReferenceRequestFanUser: `${affiliation} = 'advocate'`,
+          },
+        },
+      },
+    });
+  });
+
+  it('compiles a model default once, however many paths reach the model', () => {
+    const twice: LensNarrowing = {
+      parent: { maps, mapName: 'app', model: 'BrandReferenceRequestFanUser' },
+      root: {
+        relations: { request: { relations: { brandReferenceRequestFanUsers: {} } } },
+      },
+      mapDefaults: {
+        app: { models: { BrandReferenceRequestFanUser: { where: participantWhere } } },
+      },
+    };
+    expect(toLensWhereSql(twice, { columns })).toEqual({
+      root: null,
+      relations: {},
+      mapDefaults: {
+        app: { models: { BrandReferenceRequestFanUser: `${affiliation} = 'advocate'` } },
+      },
     });
   });
 
   it('reports a lens with no wheres as nothing', () => {
-    expect(toLensWhereSql(lens, { columns: {} })).toEqual({ root: null, relations: {} });
+    expect(toLensWhereSql(lens, { columns: {} })).toEqual({
+      root: null,
+      relations: {},
+      mapDefaults: {},
+    });
   });
 
-  it('names the full path of a column missing below the root', () => {
+  it('names a missing column by relation path, or by model for a model default', () => {
     expect(() =>
-      onMysql(() => toLensWhereSql(narrowing, { columns: { status: 's', deletedAt: 'd' } })),
-    ).toThrow("no column for 'brandReferenceRequestFanUsers.affiliation'");
+      onMysql(() =>
+        toLensWhereSql(narrowing, {
+          columns: { ...columns, 'brandReferenceRequestFanUsers.id': '' },
+        }),
+      ),
+    ).toThrow("no column for 'brandReferenceRequestFanUsers.id'");
+    expect(() =>
+      onMysql(() =>
+        toLensWhereSql(narrowing, {
+          columns: { ...columns, 'BrandReferenceRequestFanUser.affiliation': '' },
+        }),
+      ),
+    ).toThrow("no column for 'BrandReferenceRequestFanUser.affiliation'");
   });
 });

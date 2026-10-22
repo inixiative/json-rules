@@ -100,7 +100,8 @@ kind with `leafFitViolations`, as `validateNarrowing` checks it, and an undeclar
 MySQL casts a mistyped literal instead of erroring.
 Strings double `'`, and `\` on MySQL; negations carry `IS NULL`. A path missing from `columns`
 throws. `toLensWhereSql` (`src/lens/toLensWhereSql.ts`) runs it over each visit of a lens that has
-`where`s, keyed by relation path; see the root README for the absent-vs-hidden semantics and the
+`where`s and reports them where the lens wrote them — `root`, `relations` by path, `mapDefaults`
+by map and model (`VisitEffect.modelWheres` tells a model default's clauses from the path's); see the root README for the absent-vs-hidden semantics and the
 collation caveat. `test/whereSql.mysql.test.ts` and `test/whereSql.postgres.test.ts` run one
 matrix against a real `mysqld` (mysql-memory-server) and PGlite.
 

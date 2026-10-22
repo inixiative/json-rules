@@ -1,17 +1,26 @@
 # Changelog
 
-## Unreleased — toWhereSql / toLensWhereSql: a lens's row filters as MySQL predicates
+## 3.7.0 — toWhereSql / toLensWhereSql: a lens's row filters as SQL predicates
 
-- **`toWhereSql(condition, { columns, dialect: 'mysql', map, model })`** writes `equals`, `notEquals`, `in`,
-  `notIn`, `exists` and `notExists` inside `all` / `any` as a MySQL predicate: values inline (`\`
-  and `'` escaped), every field read from the caller's `columns` map (a missing path throws), no
-  joins, negations keeping NULL rows. Everything else throws, naming it, as does a value that
-  doesn't fit its field's declared type (MySQL would cast it); `map` and `model` are required. First consumers: the Omni
-  model generator (ZLT-5302, ZLT-5932).
-- **`toLensWhereSql(lens, { columns, dialect: 'mysql' })`** returns the lens's `where`s as
-  `{ root, relations }`, a `mapDefaults` model's under the relation path that reaches it.
-- `test/whereSql.mysql.test.ts`: differential against a real `mysqld` (`mysql-memory-server`, a
-  dev dependency); CI caches the binary. `toSql` / `toPrisma` output is unchanged.
+- **`SqlDialect`** (`postgres`, `mysql`) and the engine global **`sql.dialect`**, default
+  `postgres`: the dialect the functions below write. `toSql` still writes PostgreSQL only.
+- **`toWhereSql(condition, { columns, map, mapName?, model })`** writes `equals`, `notEquals`,
+  `in`, `notIn`, `exists` and `notExists` inside `all` / `any` as a predicate in `sql.dialect`:
+  values inline (`'` doubled; `\` too on MySQL), every field read from the caller's `columns` map
+  (a missing path throws), no joins, negations keeping NULL rows. The map is required: it types
+  each value by its column, refuses an undeclared path, anything Json (a stored JSON null is not a
+  SQL NULL) and a date or list *value*; a date's or list's existence compiles (`deletedAt
+  notExists` is a lens's soft-delete `where`). A rule with no value throws, as on every rail,
+  instead of writing a NULL test. Everything else throws, naming
+  it. First consumers: the Omni model generator (ZLT-5302, ZLT-5932).
+- **`toLensWhereSql(lens, { columns })`** returns the lens's `where`s as `{ root, relations }`, a
+  `mapDefaults` model's under the relation path that reaches it.
+- A value that does not fit its column's kind (`score = TRUE`, `affiliation = 1`, `name = 0`) is
+  refused through `leafFitViolations`, as `validateNarrowing` checks it: MySQL would cast it and
+  match rows `check()` never does. An undeclared path is refused for the same reason.
+- `test/whereSql.mysql.test.ts` / `test/whereSql.postgres.test.ts`: the same matrix, differential
+  against a real `mysqld` (`mysql-memory-server`, a dev dependency; CI caches the binary through
+  `lib-ci`'s new `cache-path` / `cache-key` inputs) and against PGlite.
 
 ## 3.6.0 — the condition shapes and their keys are public
 

@@ -366,7 +366,7 @@ export const OPERAND_OPERATORS = withShape('ordered', 'string', 'pattern', 'arra
 /** Containment — of a substring, or of a list's member: `contains` / `notContains`. */
 export const CONTAINS_OPERATORS: readonly string[] = [Operator.contains, Operator.notContains];
 /** The field operators `toWhereSql` writes: equality, membership and existence. */
-export const WHERE_SQL_OPERATORS: readonly string[] = [
+export const WHERE_SQL_OPERATORS: readonly Operator[] = [
   Operator.equals,
   Operator.notEquals,
   Operator.in,

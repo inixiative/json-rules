@@ -1,7 +1,14 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: Omni names a column ${view.dimension}, as plain text.
 import { describe, expect, it } from 'bun:test';
 import type { Condition, FieldMapSet, Lens, LensNarrowing } from '../index';
-import { DateOperator, Operator, toLensWhereSql, toWhereSql } from '../index';
+import {
+  DateOperator,
+  engineGlobals,
+  Operator,
+  SqlDialect,
+  toLensWhereSql,
+  toWhereSql,
+} from '../index';
 
 const maps: FieldMapSet['maps'] = {
   app: {
@@ -10,9 +17,14 @@ const maps: FieldMapSet['maps'] = {
         fields: {
           id: { kind: 'scalar', type: 'Int' },
           status: { kind: 'scalar', type: 'String' },
+          score: { kind: 'scalar', type: 'Int' },
+          num: { kind: 'scalar', type: 'Float' },
+          active: { kind: 'scalar', type: 'Boolean' },
           createdAt: { kind: 'scalar', type: 'DateTime' },
+          deletedAt: { kind: 'scalar', type: 'DateTime' },
           meta: { kind: 'scalar', type: 'Json' },
           tags: { kind: 'scalar', type: 'String', isList: true },
+          toString: { kind: 'scalar' as const, type: 'String' },
           brandReferenceRequestFanUsers: {
             kind: 'object',
             type: 'BrandReferenceRequestFanUser',
@@ -21,15 +33,6 @@ const maps: FieldMapSet['maps'] = {
             fromFields: [],
             toFields: [],
           },
-        },
-      },
-      Probe: {
-        fields: {
-          field: { kind: 'scalar', type: 'String' },
-          num: { kind: 'scalar', type: 'Float' },
-          score: { kind: 'scalar', type: 'Int' },
-          flag: { kind: 'scalar', type: 'Boolean' },
-          toString: { kind: 'scalar' as const, type: 'String' },
         },
       },
       BrandReferenceRequestFanUser: {
@@ -53,70 +56,96 @@ const maps: FieldMapSet['maps'] = {
 
 const lens: Lens = { maps, mapName: 'app', model: 'BrandReferenceRequest' };
 const set = { map: { maps }, mapName: 'app' };
+const request = { ...set, model: 'BrandReferenceRequest' };
+const participant = { ...set, model: 'BrandReferenceRequestFanUser' };
 const affiliation = '${brand_reference_request_fan_user.affiliation}';
 
-const mysql = (
-  condition: Condition,
-  columns: Record<string, string> = { field: 'c', num: 'c', score: 'c', flag: 'c' },
-) => toWhereSql(condition, { columns, dialect: 'mysql', ...set, model: 'Probe' });
+const onMysql = <T>(fn: () => T): T =>
+  engineGlobals.with({ sql: { dialect: SqlDialect.mysql } }, fn);
+
+/** A rule on the request's `status`, read as column `c`, under the MySQL dialect. */
+const mysql = (condition: Condition, columns: Record<string, string> = { status: 'c' }) =>
+  onMysql(() => toWhereSql(condition, { columns, ...request }));
+
+describe('SqlDialect', () => {
+  it('names the SQL dialects, shared by every SQL-writing function', () => {
+    expect(SqlDialect).toEqual({ postgres: 'postgres', mysql: 'mysql' });
+  });
+
+  it('is an engine global that defaults to postgres', () => {
+    expect(engineGlobals.get('sql.dialect')).toBe(SqlDialect.postgres);
+  });
+
+  it('refuses a dialect the engine does not know', () => {
+    expect(() =>
+      engineGlobals.with({ sql: { dialect: 'oracle' as never } }, () =>
+        toWhereSql(true, { columns: {}, ...request }),
+      ),
+    ).toThrow("sql.dialect 'oracle'");
+  });
+});
 
 describe('toWhereSql — MySQL forms', () => {
   it('writes equals against the caller column, value inline, no joins', () => {
     expect(
-      toWhereSql(
-        { field: 'affiliation', operator: Operator.equals, value: 'advocate' },
-        {
-          columns: { affiliation },
-          dialect: 'mysql',
-          ...set,
-          model: 'BrandReferenceRequestFanUser',
-        },
+      onMysql(() =>
+        toWhereSql(
+          { field: 'affiliation', operator: Operator.equals, value: 'advocate' },
+          { columns: { affiliation }, ...participant },
+        ),
       ),
     ).toBe(`${affiliation} = 'advocate'`);
   });
 
   it('writes in as IN (…) and keeps NULL rows on negations', () => {
-    expect(mysql({ field: 'field', operator: Operator.in, value: ['a', 'b'] })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.in, value: ['a', 'b'] })).toBe(
       "c IN ('a', 'b')",
     );
-    expect(mysql({ field: 'field', operator: Operator.notIn, value: ['a', 'b'] })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.notIn, value: ['a', 'b'] })).toBe(
       "(c NOT IN ('a', 'b') OR c IS NULL)",
     );
-    expect(mysql({ field: 'field', operator: Operator.notEquals, value: 'a' })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.notEquals, value: 'a' })).toBe(
       "(c <> 'a' OR c IS NULL)",
     );
   });
 
   it('reads a null member and an empty list as check() does', () => {
-    expect(mysql({ field: 'field', operator: Operator.in, value: ['a', null] })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.in, value: ['a', null] })).toBe(
       "(c IN ('a') OR c IS NULL)",
     );
-    expect(mysql({ field: 'field', operator: Operator.notIn, value: ['a', null] })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.notIn, value: ['a', null] })).toBe(
       "(c NOT IN ('a') AND c IS NOT NULL)",
     );
-    expect(mysql({ field: 'field', operator: Operator.in, value: [] })).toBe('FALSE');
-    expect(mysql({ field: 'field', operator: Operator.notIn, value: [] })).toBe('TRUE');
-    expect(mysql({ field: 'field', operator: Operator.equals, value: null })).toBe('c IS NULL');
-    expect(mysql({ field: 'field', operator: Operator.notEquals, value: null })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.in, value: [] })).toBe('FALSE');
+    expect(mysql({ field: 'status', operator: Operator.notIn, value: [] })).toBe('TRUE');
+    expect(mysql({ field: 'status', operator: Operator.equals, value: null })).toBe('c IS NULL');
+    expect(mysql({ field: 'status', operator: Operator.notEquals, value: null })).toBe(
       'c IS NOT NULL',
     );
   });
 
   it('writes numbers and booleans as literals', () => {
-    expect(mysql({ field: 'num', operator: Operator.in, value: [1, 2.5] })).toBe('c IN (1, 2.5)');
-    expect(mysql({ field: 'flag', operator: Operator.equals, value: true })).toBe('c = TRUE');
+    const columns = { num: 'c', active: 'c' };
+    expect(mysql({ field: 'num', operator: Operator.in, value: [1, 2.5] }, columns)).toBe(
+      'c IN (1, 2.5)',
+    );
+    expect(mysql({ field: 'active', operator: Operator.equals, value: true }, columns)).toBe(
+      'c = TRUE',
+    );
   });
 
   it('writes no ::text cast on an enum', () => {
-    const sql = toWhereSql(
-      { field: 'affiliation', operator: Operator.in, value: ['advocate', 'consultant'] },
-      { columns: { affiliation }, dialect: 'mysql', ...set, model: 'BrandReferenceRequestFanUser' },
+    const sql = onMysql(() =>
+      toWhereSql(
+        { field: 'affiliation', operator: Operator.in, value: ['advocate', 'consultant'] },
+        { columns: { affiliation }, ...participant },
+      ),
     );
     expect(sql).toBe(`${affiliation} IN ('advocate', 'consultant')`);
   });
 
   it('escapes backslash and single quote', () => {
-    expect(mysql({ field: 'field', operator: Operator.equals, value: "O'Brien \\ x\\'" })).toBe(
+    expect(mysql({ field: 'status', operator: Operator.equals, value: "O'Brien \\ x\\'" })).toBe(
       "c = 'O''Brien \\\\ x\\\\'''",
     );
   });
@@ -125,8 +154,8 @@ describe('toWhereSql — MySQL forms', () => {
     expect(
       mysql({
         any: [
-          { field: 'field', operator: Operator.exists },
-          { all: [{ field: 'field', operator: Operator.notExists }, true] },
+          { field: 'status', operator: Operator.exists },
+          { all: [{ field: 'status', operator: Operator.notExists }, true] },
         ],
       }),
     ).toBe('(c IS NOT NULL OR (c IS NULL AND TRUE))');
@@ -135,46 +164,173 @@ describe('toWhereSql — MySQL forms', () => {
   });
 
   it('reads a to-one relation’s existence from columns[<rel>.<key>]', () => {
-    const options = {
-      columns: { 'request.id': '${brand_reference_request.id}' },
-      dialect: 'mysql' as const,
-      ...set,
-      model: 'BrandReferenceRequestFanUser',
-    };
-    expect(toWhereSql({ field: 'request', operator: Operator.exists }, options)).toBe(
-      '${brand_reference_request.id} IS NOT NULL',
-    );
-    expect(toWhereSql({ field: 'request', operator: Operator.notExists }, options)).toBe(
-      '${brand_reference_request.id} IS NULL',
-    );
+    const options = { columns: { 'request.id': '${brand_reference_request.id}' }, ...participant };
+    expect(
+      onMysql(() => toWhereSql({ field: 'request', operator: Operator.exists }, options)),
+    ).toBe('${brand_reference_request.id} IS NOT NULL');
+    expect(
+      onMysql(() => toWhereSql({ field: 'request', operator: Operator.notExists }, options)),
+    ).toBe('${brand_reference_request.id} IS NULL');
     expect(() =>
-      toWhereSql({ field: 'request', operator: Operator.equals, value: 'x' }, options),
+      onMysql(() =>
+        toWhereSql({ field: 'request', operator: Operator.equals, value: 'x' }, options),
+      ),
     ).toThrow("'request' is a relation");
   });
 
   it('reads a path through a to-one relation from columns as written', () => {
     expect(
-      toWhereSql(
-        { field: 'request.status', operator: Operator.equals, value: 'open' },
-        {
-          columns: { 'request.status': 'r.status' },
-          dialect: 'mysql',
-          ...set,
-          model: 'BrandReferenceRequestFanUser',
-        },
+      onMysql(() =>
+        toWhereSql(
+          { field: 'request.status', operator: Operator.equals, value: 'open' },
+          { columns: { 'request.status': 'r.status' }, ...participant },
+        ),
       ),
     ).toBe("r.status = 'open'");
   });
 });
 
-describe('toWhereSql — refusals', () => {
-  it('throws for a path missing from columns, naming it', () => {
+describe('toWhereSql — the Postgres default', () => {
+  it('writes the same predicate, escaping only the quote', () => {
+    expect(
+      toWhereSql(
+        { field: 'status', operator: Operator.equals, value: "O'Brien \\ x" },
+        { columns: { status: 'c' }, ...request },
+      ),
+    ).toBe("c = 'O''Brien \\ x'");
+    expect(
+      toWhereSql(
+        { field: 'status', operator: Operator.notIn, value: ['a', 'b'] },
+        { columns: { status: 'c' }, ...request },
+      ),
+    ).toBe("(c NOT IN ('a', 'b') OR c IS NULL)");
+  });
+});
+
+describe('toWhereSql — existence on every column', () => {
+  const columns = {
+    deletedAt: '${brand_reference_request.deleted_at}',
+    meta: 'm',
+    tags: 't',
+    'brandReferenceRequestFanUsers.id': 'x',
+  };
+
+  it('writes a DateTime’s existence: the lens soft-delete where', () => {
+    expect(mysql({ field: 'deletedAt', operator: Operator.notExists }, columns)).toBe(
+      '${brand_reference_request.deleted_at} IS NULL',
+    );
+    expect(mysql({ field: 'deletedAt', operator: Operator.exists }, columns)).toBe(
+      '${brand_reference_request.deleted_at} IS NOT NULL',
+    );
+    expect(mysql({ field: 'deletedAt', operator: Operator.equals, value: null }, columns)).toBe(
+      '${brand_reference_request.deleted_at} IS NULL',
+    );
+  });
+
+  it('writes a list’s existence, and refuses a Json column’s: a JSON null is not a SQL NULL', () => {
+    expect(mysql({ field: 'tags', operator: Operator.notExists }, columns)).toBe('t IS NULL');
+    expect(() => mysql({ field: 'meta', operator: Operator.exists }, columns)).toThrow(
+      "the Json value 'meta'",
+    );
+    expect(() => mysql({ field: 'meta', operator: Operator.notExists }, columns)).toThrow(
+      "the Json value 'meta'",
+    );
+  });
+
+  it('throws for a rule with no value, as check() does, instead of a NULL test', () => {
+    for (const operator of [Operator.equals, Operator.notEquals, Operator.in, Operator.notIn])
+      expect(() => mysql({ field: 'status', operator } as Condition)).toThrow(
+        'No value, path or bind specified',
+      );
+  });
+
+  it('still refuses a value compare on a date, Json or list, and any to-many hop', () => {
     expect(() =>
-      mysql({ field: 'field', operator: Operator.equals, value: 'a' }, { num: 'c' }),
-    ).toThrow("no column for 'field'");
+      mysql({ field: 'deletedAt', operator: Operator.equals, value: '2026-01-01' }, columns),
+    ).toThrow("the date 'deletedAt'");
+    expect(() => mysql({ field: 'meta', operator: Operator.equals, value: 'x' }, columns)).toThrow(
+      "the Json value 'meta'",
+    );
+    expect(() => mysql({ field: 'tags', operator: Operator.in, value: ['x'] }, columns)).toThrow(
+      "the list 'tags'",
+    );
+    expect(() =>
+      mysql({ field: 'brandReferenceRequestFanUsers', operator: Operator.exists }, columns),
+    ).toThrow("the list 'brandReferenceRequestFanUsers'");
+    expect(() =>
+      mysql(
+        { field: 'brandReferenceRequestFanUsers.id', operator: Operator.equals, value: 1 },
+        columns,
+      ),
+    ).toThrow('to-many');
+    expect(() => mysql({ field: 'meta.a', operator: Operator.exists }, { 'meta.a': 'x' })).toThrow(
+      "the Json value 'meta.a'",
+    );
+  });
+});
+
+describe('toWhereSql — a value of another type is refused, not cast', () => {
+  const columns = { score: 'c', active: 'c', status: 'c', affiliation: 'c' };
+
+  it('refuses a boolean on an Int and a number on a Boolean', () => {
+    expect(() =>
+      mysql({ field: 'score', operator: Operator.equals, value: true }, columns),
+    ).toThrow("value true does not fit Int field 'score'");
+    expect(() =>
+      mysql({ field: 'score', operator: Operator.in, value: [1, true] }, columns),
+    ).toThrow("value true does not fit Int field 'score'");
+    expect(() => mysql({ field: 'active', operator: Operator.in, value: [1] }, columns)).toThrow(
+      "value 1 does not fit Boolean field 'active'",
+    );
+  });
+
+  it('refuses a number on an enum and on a String', () => {
+    expect(() =>
+      onMysql(() =>
+        toWhereSql(
+          { field: 'affiliation', operator: Operator.equals, value: 1 },
+          { columns, ...participant },
+        ),
+      ),
+    ).toThrow("value 1 does not fit Enum field 'affiliation'");
+    expect(() => mysql({ field: 'status', operator: Operator.equals, value: 0 }, columns)).toThrow(
+      "value 0 does not fit String field 'status'",
+    );
+  });
+});
+
+describe('toWhereSql — refusals', () => {
+  it('requires the map and the model, and a model the map declares', () => {
+    expect(() => toWhereSql(true, { columns: {} } as never)).toThrow(
+      'toWhereSql: `map` and `model` are required',
+    );
+    expect(() => toWhereSql(true, { columns: {}, ...set } as never)).toThrow(
+      'toWhereSql: `map` and `model` are required',
+    );
+    expect(() => toWhereSql(true, { columns: {}, ...set, model: 'Nope' })).toThrow(
+      "toWhereSql: the map has no model 'Nope'",
+    );
+  });
+
+  it('names itself in the map errors', () => {
+    expect(() => toWhereSql(true, { columns: {}, map: { maps }, model: 'X' })).toThrow(
+      "toWhereSql: 'map' is a FieldMapSet",
+    );
+  });
+
+  it('throws for a path missing from columns, naming it', () => {
+    expect(() => mysql({ field: 'score', operator: Operator.equals, value: 1 })).toThrow(
+      "no column for 'score'",
+    );
     // An inherited key is not a column.
     expect(() => mysql({ field: 'toString', operator: Operator.exists })).toThrow(
       "no column for 'toString'",
+    );
+  });
+
+  it('refuses a path the map does not declare', () => {
+    expect(() => mysql({ field: 'other', operator: Operator.equals, value: 'a' })).toThrow(
+      "'other' is not a field the map declares on BrandReferenceRequest",
     );
   });
 
@@ -191,117 +347,30 @@ describe('toWhereSql — refusals', () => {
       Operator.between,
       Operator.isEmpty,
     ])
-      expect(() => mysql({ field: 'field', operator, value: 'a' } as Condition)).toThrow(
+      expect(() => mysql({ field: 'status', operator, value: 'a' } as Condition)).toThrow(
         `operator '${operator}'`,
       );
     expect(() =>
-      mysql({ field: 'field', dateOperator: DateOperator.before, value: '2026-01-01' }),
+      mysql({ field: 'createdAt', dateOperator: DateOperator.before, value: '2026-01-01' }),
     ).toThrow("dateOperator 'before'");
     expect(() =>
-      mysql({ field: 'field', arrayOperator: 'any', condition: true } as Condition),
+      mysql({ field: 'status', arrayOperator: 'any', condition: true } as Condition),
     ).toThrow("arrayOperator 'any'");
     expect(() =>
-      mysql({ if: true, then: { field: 'field', operator: Operator.exists } } as Condition),
+      mysql({ if: true, then: { field: 'status', operator: Operator.exists } } as Condition),
     ).toThrow('if / then / else');
   });
 
   it('refuses binds, column paths, case-insensitivity and offsets', () => {
-    expect(() => mysql({ field: 'field', operator: Operator.equals, bind: 'x' })).toThrow(
+    expect(() => mysql({ field: 'status', operator: Operator.equals, bind: 'x' })).toThrow(
       "bind 'x'",
     );
-    expect(() => mysql({ field: 'field', operator: Operator.equals, path: 'other' })).toThrow(
+    expect(() => mysql({ field: 'status', operator: Operator.equals, path: 'other' })).toThrow(
       "the column 'other'",
     );
     expect(() =>
-      mysql({ field: 'field', operator: Operator.equals, value: 'a', caseInsensitive: true }),
+      mysql({ field: 'status', operator: Operator.equals, value: 'a', caseInsensitive: true }),
     ).toThrow('case-insensitive');
-  });
-
-  it('refuses dates, Json, lists and to-many hops', () => {
-    const options = {
-      columns: {
-        createdAt: 'x',
-        'meta.a': 'x',
-        tags: 'x',
-        'brandReferenceRequestFanUsers.id': 'x',
-      },
-      dialect: 'mysql' as const,
-      ...set,
-      model: 'BrandReferenceRequest',
-    };
-    expect(() =>
-      toWhereSql({ field: 'createdAt', operator: Operator.equals, value: '2026-01-01' }, options),
-    ).toThrow("the date 'createdAt'");
-    expect(() =>
-      toWhereSql({ field: 'meta.a', operator: Operator.equals, value: 'x' }, options),
-    ).toThrow("the Json value 'meta.a'");
-    expect(() => toWhereSql({ field: 'tags', operator: Operator.exists }, options)).toThrow(
-      "the list 'tags'",
-    );
-    expect(() =>
-      toWhereSql(
-        { field: 'brandReferenceRequestFanUsers.id', operator: Operator.equals, value: 1 },
-        options,
-      ),
-    ).toThrow('to-many');
-  });
-
-  it('refuses a value that does not fit its field’s type, which MySQL would cast', () => {
-    const fanUser = { columns: { affiliation }, dialect: 'mysql' as const, ...set };
-    expect(() => mysql({ field: 'score', operator: Operator.equals, value: true })).toThrow(
-      "value true does not fit Int field 'score'",
-    );
-    expect(() => mysql({ field: 'flag', operator: Operator.equals, value: 1 })).toThrow(
-      "value 1 does not fit Boolean field 'flag'",
-    );
-    expect(() => mysql({ field: 'score', operator: Operator.in, value: [1, true] })).toThrow(
-      "value true does not fit Int field 'score'",
-    );
-    expect(() => mysql({ field: 'field', operator: Operator.equals, value: 0 })).toThrow(
-      "value 0 does not fit String field 'field'",
-    );
-    expect(() =>
-      toWhereSql(
-        { field: 'affiliation', operator: Operator.equals, value: 1 },
-        { ...fanUser, model: 'BrandReferenceRequestFanUser' },
-      ),
-    ).toThrow("value 1 does not fit Enum field 'affiliation'");
-  });
-
-  it('refuses a path the map does not declare', () => {
-    expect(() => mysql({ field: 'other', operator: Operator.equals, value: 'a' })).toThrow(
-      "'other' is not a field the map declares on Probe",
-    );
-  });
-
-  it('requires map and model', () => {
-    const bare = { columns: { field: 'c' }, dialect: 'mysql' as const };
-    const rule: Condition = { field: 'field', operator: Operator.equals, value: 'a' };
-    expect(() => toWhereSql(rule, bare as never)).toThrow('`map` and `model` are required');
-    expect(() => toWhereSql(rule, { ...bare, ...set } as never)).toThrow(
-      '`map` and `model` are required',
-    );
-    expect(() => toWhereSql(rule, { ...bare, model: 'Probe' } as never)).toThrow(
-      '`map` and `model` are required',
-    );
-    expect(() => toWhereSql(rule, { ...bare, ...set, model: 'Nope' })).toThrow(
-      "the map has no model 'Nope'",
-    );
-    // Its own name on a shared error.
-    expect(() => toWhereSql(rule, { ...bare, map: { maps }, model: 'Probe' })).toThrow(
-      /^toWhereSql: 'map' is a FieldMapSet/,
-    );
-  });
-
-  it('refuses a dialect other than mysql', () => {
-    expect(() =>
-      toWhereSql(true, {
-        columns: {},
-        dialect: 'postgres' as unknown as 'mysql',
-        ...set,
-        model: 'Probe',
-      }),
-    ).toThrow("dialect 'postgres'");
   });
 });
 
@@ -309,7 +378,12 @@ describe('toLensWhereSql', () => {
   const narrowing: LensNarrowing = {
     parent: lens,
     root: {
-      where: { field: 'status', operator: Operator.notEquals, value: 'draft' },
+      where: {
+        all: [
+          { field: 'status', operator: Operator.notEquals, value: 'draft' },
+          { field: 'deletedAt', operator: Operator.notExists },
+        ],
+      },
       relations: { brandReferenceRequestFanUsers: { relations: { request: {} } } },
     },
     mapDefaults: {
@@ -324,26 +398,24 @@ describe('toLensWhereSql', () => {
   };
   const columns = {
     status: '${brand_reference_request.status}',
+    deletedAt: '${brand_reference_request.deleted_at}',
     'brandReferenceRequestFanUsers.affiliation': affiliation,
   };
 
   it('keys the root where under root and a mapDefaults where by the relation reaching it', () => {
-    expect(toLensWhereSql(narrowing, { columns, dialect: 'mysql' })).toEqual({
-      root: "(${brand_reference_request.status} <> 'draft' OR ${brand_reference_request.status} IS NULL)",
+    expect(onMysql(() => toLensWhereSql(narrowing, { columns }))).toEqual({
+      root: "((${brand_reference_request.status} <> 'draft' OR ${brand_reference_request.status} IS NULL) AND ${brand_reference_request.deleted_at} IS NULL)",
       relations: { brandReferenceRequestFanUsers: `${affiliation} = 'advocate'` },
     });
   });
 
   it('reports a lens with no wheres as nothing', () => {
-    expect(toLensWhereSql(lens, { columns: {}, dialect: 'mysql' })).toEqual({
-      root: null,
-      relations: {},
-    });
+    expect(toLensWhereSql(lens, { columns: {} })).toEqual({ root: null, relations: {} });
   });
 
   it('names the full path of a column missing below the root', () => {
-    expect(() => toLensWhereSql(narrowing, { columns: { status: 's' }, dialect: 'mysql' })).toThrow(
-      "no column for 'brandReferenceRequestFanUsers.affiliation'",
-    );
+    expect(() =>
+      onMysql(() => toLensWhereSql(narrowing, { columns: { status: 's', deletedAt: 'd' } })),
+    ).toThrow("no column for 'brandReferenceRequestFanUsers.affiliation'");
   });
 });

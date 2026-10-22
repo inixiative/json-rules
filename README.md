@@ -645,6 +645,7 @@ import { engineGlobals } from '@inixiative/json-rules';
 engineGlobals.set('string.caseInsensitive', true);
 engineGlobals.get('string.caseInsensitive'); // true
 engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
+engineGlobals.set('sql.dialect', SqlDialect.mysql); // what toWhereSql / toLensWhereSql write
 engineGlobals.reset(); // back to the defaults
 
 // A scoped override: merged over the current state for the duration of a synchronous callback.
@@ -694,48 +695,55 @@ as `toPrisma()` takes it. A set without `mapName` throws.
 toSql(rule, { map: lens, mapName: 'prisma', model: 'Post' });
 ```
 
-## MySQL Predicates — `toWhereSql`, `toLensWhereSql`
+## Inline Predicates — `toWhereSql`, `toLensWhereSql`
 
-Two small helpers write a condition, or a lens's row filters, as a MySQL predicate for a caller
-that names its own columns and writes its own joins (an Omni topic, for one). They are not a MySQL
-`toSql`: `toSql` and `toPrisma` are unchanged.
+Two small helpers write a condition, or a lens's row filters, as a SQL predicate for a caller
+that names its own columns and writes its own joins (an Omni topic, for one). They write the
+engine's `sql.dialect` — `SqlDialect.postgres` by default, `SqlDialect.mysql` the other — and
+are not a second `toSql`: `toSql` and `toPrisma` are unchanged.
 
 ```ts
-import { Operator, toLensWhereSql, toWhereSql } from '@inixiative/json-rules';
+import { engineGlobals, Operator, SqlDialect, toLensWhereSql, toWhereSql } from '@inixiative/json-rules';
+
+engineGlobals.set('sql.dialect', SqlDialect.mysql);
 
 toWhereSql(
   { field: 'affiliation', operator: Operator.in, value: ['advocate', 'consultant'] },
-  { columns: { affiliation: '${fan_user.affiliation}' }, dialect: 'mysql', map, model: 'FanUser' },
+  { columns: { affiliation: '${fan_user.affiliation}' }, map, mapName: 'prisma', model: 'FanUser' },
 );
 // => "${fan_user.affiliation} IN ('advocate', 'consultant')"
 
-toLensWhereSql(lens, { columns, dialect: 'mysql' });
+toLensWhereSql(lens, { columns });
 // => { root: '…' | null, relations: { brandReferenceRequestFanUsers: "${brand_reference_request_fan_user.affiliation} = 'advocate'" } }
 ```
 
 - **Operators:** `equals`, `notEquals`, `in`, `notIn`, `exists`, `notExists`, inside `all` / `any`
   (and `true` / `false`). Anything else — another operator, a date, array or aggregate rule,
   `if` / `then` / `else` — throws, naming it. So do binds, `path` (column-to-column), offsets,
-  `coerceType`, case-insensitivity, a path across a bridge or through a to-many relation, a path
-  the map doesn't declare, and a DateTime, Json or list field.
-- **`map` and `model` are required** (`mapName` too for a `FieldMapSet`): a value is checked
-  against its column's declared type and refused when it doesn't fit — MySQL would cast it
-  (`score = TRUE`, `enum = 1`, `name = 0`) and match rows `check()` doesn't. `toLensWhereSql`
-  passes the lens's own.
+  `coerceType`, case-insensitivity, a path across a bridge or through a to-many relation, anything
+  Json (a stored JSON null is a value to SQL and null to `check()`), and a DateTime or list
+  *value*. A DateTime's or list's existence compiles: `deletedAt notExists`, a lens's soft-delete
+  `where`, is `… IS NULL`. A rule with no `value` throws, as on every rail.
+- **Map:** `map` / `mapName` / `model` are required. A value is checked against its column's
+  kind (`leafFitViolations`, as `validateNarrowing` checks it) and an undeclared path is refused —
+  MySQL casts a mistyped literal instead of erroring, so `score = TRUE` would match 1 where
+  `check()` matches nothing. The map also finds a to-one relation's key for its `exists`
+  (`columns['<relation>.<key>']`: the related row's key, NULL when there is none), and says which
+  values have no form here.
 - **Columns:** `columns` maps a field path to the caller's SQL, used as written; the engine writes
   no joins and no identifiers. A path missing from it throws, naming the path — it never falls back
-  to a quoted name, which MySQL's default mode reads as a string literal. A to-one relation's
-  `exists` reads `columns['<relation>.<key>']`: the related row's key, NULL when there is none.
-- **Values** are written inline — there are no placeholders to fill — strings escaping both `\`
-  and `'` (MySQL's default mode reads a backslash as an escape; `NO_BACKSLASH_ESCAPES` is not
-  supported). `in` is `IN (…)`; an enum compares as written, with no cast.
+  to a quoted name, which MySQL's default mode reads as a string literal.
+- **Values** are written inline — there are no placeholders to fill. A string doubles `'`; on
+  MySQL it doubles `\` too (MySQL's default mode reads a backslash as an escape;
+  `NO_BACKSLASH_ESCAPES` is not supported). `in` is `IN (…)`; an enum compares as written, with no
+  cast.
 - **NULL rows:** negations keep them, as on every rail: `notEquals` / `notIn` are ORed with
   `IS NULL`; `in [x, null]` matches NULL, `notIn [x, null]` doesn't.
 - **Collation:** `=` and `IN` compare under the column's collation. check() compares strings
   exactly, so a `_ci` column (MySQL's default) also matches `'Advocate'` for `'advocate'`; compare a
   binary-collated column where that matters.
 
-`toLensWhereSql(lens, { columns, dialect })` compiles each visit the lens shows that has `where`s
+`toLensWhereSql(lens, { columns })` compiles each visit the lens shows that has `where`s
 — its own and its model's `mapDefaults` — through `toWhereSql`. The root's are under `root` (null
 when it has none); every other visit's are under `relations`, keyed by the relation path that
 reaches it, so a `mapDefaults.models.X.where` reports under each path that reaches `X`. A field

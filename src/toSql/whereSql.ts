@@ -1,6 +1,6 @@
 import { compileFieldLiteral } from '../compileLiteral';
 import { DEFAULT_ZONE } from '../dateExpr';
-import { resolveCaseInsensitive } from '../engineGlobals';
+import { engineGlobals, isSqlDialect, resolveCaseInsensitive, SqlDialect } from '../engineGlobals';
 import { pastScalarError, relationNotValue, toManyHopError, UsageError } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
@@ -18,25 +18,19 @@ import { conditionShape } from '../traverse';
 import type { Condition, Rule } from '../types';
 import { noOperandSql, orNull } from './compare';
 
-/** The SQL a `toWhereSql` predicate is written in. MySQL only, for now. */
-export type WhereSqlDialect = 'mysql';
-
 export type WhereSqlOptions = {
   /** Field path → the caller's SQL for that column, used as written. A to-one relation's
    *  existence reads `'<relation>.<key>'`. */
   columns: Record<string, string>;
-  dialect: WhereSqlDialect;
-  /** The schema the condition reads, and the model it is anchored at. Required: a value is
-   *  checked against its column's declared type — MySQL would cast a mismatched one and match rows
-   *  check() doesn't — and what has no form here (dates, Json, lists, bridges) is refused. */
+  /** The schema the condition reads: it types each literal by its column, finds a relation's key,
+   *  and refuses what has no form here (a date, Json or list value, a bridge, a to-many hop). */
   map: FieldMap | FieldMapSet;
-  /** Which map in a FieldMapSet. */
   mapName?: string;
   model: string;
 };
 
 type Context = {
-  dialect: WhereSqlDialect;
+  dialect: SqlDialect;
   column: (path: string) => string;
   map: FieldMap;
   model: string;
@@ -48,11 +42,11 @@ const refuse = (what: string): Error =>
   );
 
 /**
- * A condition as a SQL predicate in `dialect`, with every value written inline and every field
- * read from `columns` — no parameters to fill, no joins. Negations keep NULL rows, as on every
- * rail. Throws for any operator but equals / notEquals / in / notIn / exists / notExists inside
- * all / any, for binds, bridges, column-to-column `path`s, dates and Json, and for a value that
- * doesn't fit its field's declared type.
+ * A condition as a SQL predicate in the engine's `sql.dialect`, with every value written inline
+ * and every field read from `columns` — no parameters to fill, no joins. Negations keep NULL rows,
+ * as on every rail. Throws for any operator but equals / notEquals / in / notIn / exists /
+ * notExists inside all / any, and for binds, bridges, column-to-column `path`s, a Json value or
+ * existence, and a date or list value (their existence is fine: `IS NULL` compares no value).
  */
 export const toWhereSql = (condition: Condition, options: WhereSqlOptions): string =>
   whereSql(condition, options, '');
@@ -63,22 +57,24 @@ export const whereSql = (
   options: WhereSqlOptions,
   prefix: string,
 ): string => {
-  const { columns, dialect } = options ?? ({} as WhereSqlOptions);
-  if (dialect !== 'mysql')
-    throw new UsageError(`toWhereSql: dialect '${String(dialect)}' is not supported — 'mysql' is`);
+  const dialect = engineGlobals.get('sql.dialect');
+  if (!isSqlDialect(dialect))
+    throw new UsageError(
+      `toWhereSql: sql.dialect '${String(dialect)}' is not a SQL dialect — ${Object.values(SqlDialect).join(', ')} are`,
+    );
+  const { columns, map: given, mapName, model } = options ?? ({} as WhereSqlOptions);
   if (typeof columns !== 'object' || columns === null)
     throw new UsageError('toWhereSql: `columns` maps each field path to its SQL');
-  if (options.map === undefined || options.model === undefined)
+  if (!given || !model)
     throw new UsageError(
-      "toWhereSql: `map` and `model` are required — a value is checked against its column's type",
+      'toWhereSql: `map` and `model` are required — a literal is typed by its column, and a date, Json or list value is refused by it',
     );
-  const map = resolveFieldMap(options.map, options.mapName, 'toWhereSql') as FieldMap;
-  if (!modelOf(map, options.model))
-    throw new UsageError(`toWhereSql: the map has no model '${options.model}'`);
+  const map = resolveFieldMap(given, mapName, 'toWhereSql') as FieldMap;
+  if (!modelOf(map, model)) throw new UsageError(`toWhereSql: the map has no model '${model}'`);
   return buildWhere(condition, {
     dialect,
     map,
-    model: options.model,
+    model,
     column: (field) => {
       const path = `${prefix}${field}`;
       const sql = Object.hasOwn(columns, path) ? columns[path] : undefined;
@@ -134,17 +130,12 @@ const buildField = (rule: Rule, ctx: Context): string => {
   if (misfit) throw new Error(`toWhereSql: ${misfit.message}`);
   if (rule.operator === Operator.exists) return `${field} IS NOT NULL`;
   if (rule.operator === Operator.notExists) return `${field} IS NULL`;
-  // A missing value reads as null, as check() reads it.
-  const value = compileFieldLiteral(
-    rule,
-    rule.value ?? null,
-    walk,
-    'toWhereSql',
-    () => DEFAULT_ZONE,
-  );
+  // No operand at all is an authoring error on every rail, never a NULL test.
+  if (rule.value === undefined) throw new Error('No value, path or bind specified');
+  const value = compileFieldLiteral(rule, rule.value, walk, 'toWhereSql', () => DEFAULT_ZONE);
   if (hasNoOperand(rule, value))
     return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator));
-  const lit = (v: unknown): string => literal(v, rule.field);
+  const lit = (v: unknown): string => literal(v, rule.field, ctx.dialect);
 
   switch (rule.operator) {
     case Operator.equals:
@@ -168,7 +159,8 @@ const buildField = (rule: Rule, ctx: Context): string => {
 };
 
 /** The caller's SQL for a rule's field: its column, or for a to-one relation, the related row's
- *  key — NULL when there is no row. */
+ *  key — NULL when there is no row. A date's or list's existence compiles (`IS NULL` compares no
+ *  value); their VALUE, and anything Json, has no form here. */
 const columnOf = (rule: Rule, walk: MapWalkResult, ctx: Context): string => {
   // An undeclared path has no type to check a value against.
   if (walk.kind === 'fallback')
@@ -178,14 +170,21 @@ const columnOf = (rule: Rule, walk: MapWalkResult, ctx: Context): string => {
   const toMany = walk.hops.find((hop) => hop.entry.isList);
   if (toMany) throw toManyHopError(rule.field, toMany);
   const shape = fieldShape(walk);
+  const existence = isExistenceTest(rule);
+  if (shape === 'relation' && walk.kind === 'direct') {
+    if (!existence) throw relationNotValue(rule.field);
+    const keys = relationKeys(ctx.map, walk.model, walk.entry);
+    if (!keys) throw refuse(`'${rule.field}', whose relation keys the map does not declare`);
+    return ctx.column(`${rule.field}.${keys[0].there}`);
+  }
+  if (shape === 'relations') throw refuse(`the list '${rule.field}'`);
+  // A Json column's existence is not `IS NULL` either: a stored JSON null is a value to SQL and
+  // null to check() (toSql writes NULLIF(col, 'null'::jsonb); toPrisma, AnyNull).
   if (shape === 'json' || shape === 'json-path') throw refuse(`the Json value '${rule.field}'`);
+  if (existence) return ctx.column(rule.field);
   if (shape === 'instant') throw refuse(`the date '${rule.field}'`);
-  if (shape === 'list' || shape === 'relations') throw refuse(`the list '${rule.field}'`);
-  if (shape !== 'relation' || walk.kind !== 'direct') return ctx.column(rule.field);
-  if (!isExistenceTest(rule)) throw relationNotValue(rule.field);
-  const keys = relationKeys(ctx.map, walk.model, walk.entry);
-  if (!keys) throw refuse(`'${rule.field}', whose relation keys the map does not declare`);
-  return ctx.column(`${rule.field}.${keys[0].there}`);
+  if (shape === 'list') throw refuse(`the list '${rule.field}'`);
+  return ctx.column(rule.field);
 };
 
 const listOperand = (rule: Rule, value: unknown): unknown[] => {
@@ -194,10 +193,13 @@ const listOperand = (rule: Rule, value: unknown): unknown[] => {
   return value;
 };
 
-/** A value as a MySQL literal. A string escapes `\` and `'`: MySQL's default mode reads a
- *  backslash in a string as an escape. */
-const literal = (value: unknown, field: string): string => {
-  if (typeof value === 'string') return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+/** A value as a SQL literal in `dialect`. A string doubles `'` everywhere; MySQL's default mode
+ *  also reads a backslash as an escape, so it is doubled there. */
+const literal = (value: unknown, field: string, dialect: SqlDialect): string => {
+  if (typeof value === 'string') {
+    const quoted = value.replace(/'/g, "''");
+    return `'${dialect === SqlDialect.mysql ? quoted.replace(/\\/g, '\\\\') : quoted}'`;
+  }
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   if (typeof value === 'bigint') return String(value);
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';

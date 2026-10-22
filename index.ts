@@ -6,6 +6,7 @@ export {
   type EngineGlobalsState,
   engineGlobals,
   type PrismaProvider,
+  SqlDialect,
 } from './src/engineGlobals';
 export { UsageError } from './src/errors';
 export {
@@ -127,7 +128,6 @@ export {
   type ToSqlResult,
   toSql,
   toWhereSql,
-  type WhereSqlDialect,
   type WhereSqlOptions,
 } from './src/toSql';
 export {

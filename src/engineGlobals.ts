@@ -10,6 +10,18 @@ export type PrismaProvider =
   | 'cockroachdb'
   | 'mongodb';
 
+/** The SQL dialects the engine writes. `toSql` writes PostgreSQL; `toWhereSql` writes the
+ *  engine's `sql.dialect`. */
+export const SqlDialect = {
+  postgres: 'postgres',
+  mysql: 'mysql',
+} as const;
+
+export type SqlDialect = (typeof SqlDialect)[keyof typeof SqlDialect];
+
+export const isSqlDialect = (value: unknown): value is SqlDialect =>
+  Object.values(SqlDialect).includes(value as SqlDialect);
+
 export type EngineGlobalsState = {
   // Defaults for string operators; a rule's own `caseInsensitive` / `fuzzy` overrides them.
   string: {
@@ -23,6 +35,10 @@ export type EngineGlobalsState = {
     /** Prisma's `AnyNull` — matches a DB NULL, a JSON null and an absent Json path. Defaults to
      *  your installed @prisma/client's; set it only to use another. */
     anyNull?: unknown;
+  };
+  sql: {
+    /** The dialect SQL-writing functions that take one emit (`toWhereSql`, `toLensWhereSql`). */
+    dialect: SqlDialect;
   };
 };
 
@@ -40,6 +56,9 @@ const DEFAULTS: EngineGlobalsState = {
       provider: 'postgresql',
     },
   },
+  sql: {
+    dialect: SqlDialect.postgres,
+  },
 };
 
 let store: EngineGlobalsState = cloneDeep(DEFAULTS);
@@ -55,7 +74,7 @@ const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
 
 /** Process-wide defaults, read and written by dotted path (`string.caseInsensitive`,
- *  `string.fuzzy`, `prismaOptions.datasource.provider`, `prismaOptions.anyNull`). */
+ *  `string.fuzzy`, `prismaOptions.datasource.provider`, `prismaOptions.anyNull`, `sql.dialect`). */
 export const engineGlobals = {
   set: (path: string, value: unknown): void => {
     set(store, path, copy(value));

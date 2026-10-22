@@ -1,4 +1,4 @@
-import { type WhereSqlDialect, whereSql } from '../toSql/whereSql.ts';
+import { whereSql } from '../toSql/whereSql.ts';
 import { allOf } from '../traverse';
 import { resolvePolicy, shownVisits } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -7,7 +7,6 @@ export type LensWhereSqlOptions = {
   /** Path from the lens model → the caller's SQL for that column, used as written: `'name'` at the
    *  root, `'<relation path>.<field>'` below it. */
   columns: Record<string, string>;
-  dialect: WhereSqlDialect;
 };
 
 export type LensWhereSql = {
@@ -19,14 +18,15 @@ export type LensWhereSql = {
 };
 
 /**
- * A lens's row filters as SQL predicates (see `toWhereSql`), one per visit the lens shows: the
- * root's, and each relation path's — a `mapDefaults` model's `where` reports under every path that
- * reaches the model. A field reads `columns` by its path from the lens model. The rows a relation's
- * `where` filters out are absent in SQL, where check() treats them as hidden.
+ * A lens's row filters as SQL predicates in the engine's `sql.dialect` (see `toWhereSql`), one
+ * per visit the lens shows: the root's, and each relation path's — a `mapDefaults` model's
+ * `where` reports under every path that reaches the model. A field reads `columns` by its path
+ * from the lens model. The rows a relation's `where` filters out are absent in SQL, where check()
+ * treats them as hidden.
  */
 export const toLensWhereSql = (
   lens: Lens | LensNarrowing,
-  { columns, dialect }: LensWhereSqlOptions,
+  { columns }: LensWhereSqlOptions,
 ): LensWhereSql => {
   const policy = resolvePolicy(lens);
   let root: string | null = null;
@@ -36,7 +36,7 @@ export const toLensWhereSql = (
     const prefix = at.relPath.join('.');
     const sql = whereSql(
       allOf(effect.whereClauses),
-      { dialect, columns, map: policy.lens, mapName: at.mapName, model: at.modelName },
+      { columns, map: policy.lens, mapName: at.mapName, model: at.modelName },
       prefix ? `${prefix}.` : '',
     );
     if (prefix) relations.push([prefix, sql]);

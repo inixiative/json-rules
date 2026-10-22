@@ -18,9 +18,6 @@ The CORE evaluates ONE rule against data; rules are blind to each other at evalu
   ordering, cycle detection, and what to do about an unmappable reference in a clone are
   decisions of the system that authors the rules — the engine/lens can report what a rule
   names; it never orders, freezes, or remaps on anyone's behalf.
-- **No new API without its first consumer named in the PR.** A plausible story is not a
-  consumer. Speculative surface gets polished instead of challenged, and that is how the
-  messes happen.
 
 ## One structural walk
 

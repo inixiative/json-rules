@@ -7,8 +7,7 @@
 - **`getConditionShapeKeys(shape)`** returns `{ required, optional }`: the keys a node of that shape
   must have and the keys it may. Each list is checked against its rule type at compile time, so a
   key added to a type can't be left out. With `getOperatorsForKind` and `getValueShape`, a caller can
-  publish the whole grammar without restating it. First consumer: template's `GET /segment/info`.
-  `test/conditionShape.keys.test.ts`.
+  publish the whole grammar without restating it. `test/conditionShape.keys.test.ts`.
 
 ## 3.5.4 — SourceOptionOrder is a named constant
 

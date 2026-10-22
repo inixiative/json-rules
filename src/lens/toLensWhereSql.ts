@@ -1,7 +1,9 @@
+import type { MapVisit } from '../fieldMap/walk';
 import { own, ownEntry } from '../own';
 import { whereSql } from '../toSql/whereSql.ts';
-import { allOf } from '../traverse';
-import { resolvePolicy, shownVisits } from './policy.ts';
+import { allOf, visitCondition } from '../traverse';
+import type { Condition } from '../types';
+import { hiddenHop, type Policy, resolvePolicy, shownVisits } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 export type LensWhereSqlOptions = {
@@ -31,6 +33,21 @@ export type LensWhereSql = {
  * them by its path from the lens model. The rows a `where` filters out are absent in SQL, where
  * check() treats them as hidden.
  */
+/** A where as its layer wrote it may read through a relation a later layer hides — check() still
+ *  carries that hop's clamps, narrowed in — but the mirror reports a hop's clamps at its own path,
+ *  which a hidden hop has none of. Refused rather than reported without them. */
+const refuseHiddenHops = (policy: Policy, at: MapVisit, condition: Condition): void => {
+  visitCondition(condition, (node) => {
+    if (typeof node.field !== 'string') return;
+    const hidden = hiddenHop(policy, at, node.field);
+    if (hidden !== null)
+      throw new Error(
+        `toLensWhereSql: '${node.field}' at ${at.relPath.length ? `'${at.relPath.join('.')}'` : 'the root'} crosses '${hidden}', a relation the lens hides — a hop's clamps are reported at its own path, so a where may only cross hops the lens shows`,
+      );
+    return undefined;
+  });
+};
+
 export const toLensWhereSql = (
   lens: Lens | LensNarrowing,
   { columns }: LensWhereSqlOptions,
@@ -39,6 +56,8 @@ export const toLensWhereSql = (
   const out: LensWhereSql = { root: null, relations: {}, mapDefaults: {} };
   for (const { at, effect } of shownVisits(policy)) {
     const options = { columns, map: policy.lens, mapName: at.mapName, model: at.modelName };
+    for (const clause of [...effect.pathWheres, ...effect.modelWheres])
+      refuseHiddenHops(policy, at, clause);
     if (effect.pathWheres.length) {
       const prefix = at.relPath.join('.');
       const sql = whereSql(allOf(effect.pathWheres), options, prefix ? `${prefix}.` : '');

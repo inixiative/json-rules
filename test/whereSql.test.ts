@@ -501,6 +501,40 @@ describe('toLensWhereSql — mirrors the lens', () => {
     });
   });
 
+  it('refuses a where that crosses a relation the lens hides: its clamps have no path to report at', () => {
+    // Layer 1 shows `request` and clamps its model; layer 2 hides `request` yet reads through it.
+    // check() still carries the hidden hop's clamp (narrowed in); SQL could only drop it.
+    const participant: Lens = { maps, mapName: 'app', model: 'BrandReferenceRequestFanUser' };
+    const layer1: LensNarrowing = {
+      parent: participant,
+      root: { relations: { request: {} } },
+      mapDefaults: {
+        app: {
+          models: {
+            BrandReferenceRequest: {
+              where: { field: 'status', operator: Operator.equals, value: 'open' },
+            },
+          },
+        },
+      },
+    };
+    const columns = { 'BrandReferenceRequestFanUser.request.id': 'r.id', 'request.id': 'r.id' };
+    const throughHidden = { field: 'request', operator: Operator.exists };
+    const asDefault: LensNarrowing = {
+      parent: layer1,
+      root: { omits: ['request'] },
+      mapDefaults: { app: { models: { BrandReferenceRequestFanUser: { where: throughHidden } } } },
+    };
+    const asPath: LensNarrowing = {
+      parent: layer1,
+      root: { omits: ['request'], where: throughHidden },
+    };
+    for (const narrowing of [asDefault, asPath])
+      expect(() => toLensWhereSql(narrowing, { columns })).toThrow(
+        "crosses 'request', a relation the lens hides",
+      );
+  });
+
   it('reports a lens with no wheres as nothing', () => {
     expect(toLensWhereSql(lens, { columns: {} })).toEqual({
       root: null,

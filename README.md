@@ -748,8 +748,9 @@ when it has none), each relation path's own under `relations`, keyed by the path
 default's (`mapDefaults[map].models[model].where`) under `mapDefaults`, keyed the same way — one
 predicate per model however many paths reach it. Each is the `where` as its layer wrote it: a
 parent layer's clamp on a hop is reported at that hop's path, never folded into what a later
-layer wrote through it. A lens that spans maps reports every map's defaults; a caller writing one
-database reads its own map's. A path `where` reads `columns` by its path from the lens model (`status` at the root,
+layer wrote through it. A `where` that reads through a relation the lens hides throws — that
+hop's clamps have no path to report at, and `check()` still carries them. A lens that spans maps
+reports every map's defaults; a caller writing one database reads its own map's. A path `where` reads `columns` by its path from the lens model (`status` at the root,
 `brandReferenceRequestFanUsers.id` below it); a model default by `'<Model>.<field>'`
 (`BrandReferenceRequestFanUser.affiliation`). It does not compile through `toSql`'s `{ lens }`
 path, which would fold the lens's `where`s into the predicate a second time.

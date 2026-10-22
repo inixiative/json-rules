@@ -19,7 +19,8 @@
   a path `where` reads them by its path. Each is the `where` as its layer wrote it: a parent's
   clamp on a hop is reported at that hop's path, never inside a later layer's clause.
   `VisitEffect.pathWheres` / `modelWheres` (the lens policy) hold them that way, beside the
-  narrowed `whereClauses`.
+  narrowed `whereClauses`. A where that reads through a relation the lens hides is refused: its
+  hop's clamps have no path to report at, and `check()` still carries them.
 - A value that does not fit its column's kind (`score = TRUE`, `affiliation = 1`, `name = 0`) is
   refused through `leafFitViolations`, as `validateNarrowing` checks it: MySQL would cast it and
   match rows `check()` never does. An undeclared path is refused for the same reason.

@@ -6,7 +6,7 @@ import type { FieldMap, FieldMapSet } from './types';
 export const resolveFieldMap = (
   map: FieldMap | FieldMapSet | undefined,
   mapName: string | undefined,
-  target: 'toSql' | 'toPrisma',
+  target: 'toSql' | 'toPrisma' | 'toWhereSql',
 ): FieldMap | undefined => {
   if (!map || !('maps' in map)) return map;
   if (!mapName)

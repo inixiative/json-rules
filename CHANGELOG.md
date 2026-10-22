@@ -2,10 +2,11 @@
 
 ## Unreleased — toWhereSql / toLensWhereSql: a lens's row filters as MySQL predicates
 
-- **`toWhereSql(condition, { columns, dialect: 'mysql' })`** writes `equals`, `notEquals`, `in`,
+- **`toWhereSql(condition, { columns, dialect: 'mysql', map, model })`** writes `equals`, `notEquals`, `in`,
   `notIn`, `exists` and `notExists` inside `all` / `any` as a MySQL predicate: values inline (`\`
   and `'` escaped), every field read from the caller's `columns` map (a missing path throws), no
-  joins, negations keeping NULL rows. Everything else throws, naming it. First consumers: the Omni
+  joins, negations keeping NULL rows. Everything else throws, naming it, as does a value that
+  doesn't fit its field's declared type (MySQL would cast it); `map` and `model` are required. First consumers: the Omni
   model generator (ZLT-5302, ZLT-5932).
 - **`toLensWhereSql(lens, { columns, dialect: 'mysql' })`** returns the lens's `where`s as
   `{ root, relations }`, a `mapDefaults` model's under the relation path that reaches it.

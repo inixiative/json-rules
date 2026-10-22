@@ -4,12 +4,14 @@ import { resolveCaseInsensitive } from '../engineGlobals';
 import { pastScalarError, relationNotValue, toManyHopError, UsageError } from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import { fieldShape } from '../fieldMap/shape';
+import { entryKind, fieldShape } from '../fieldMap/shape';
 import type { FieldMap, FieldMapSet } from '../fieldMap/types';
 import { type MapWalkResult, walkFieldPath } from '../fieldMap/walk';
+import { leafFitViolations } from '../lens/fieldFit';
 import { splitNull } from '../number';
 import { Operator } from '../operator';
 import { NEGATED_OPERATORS, WHERE_SQL_OPERATORS } from '../operatorCatalog';
+import { modelOf } from '../own';
 import { parseScopeRef } from '../scope';
 import { relationKeys } from '../toPrisma/relationUtils';
 import { conditionShape } from '../traverse';
@@ -24,18 +26,20 @@ export type WhereSqlOptions = {
    *  existence reads `'<relation>.<key>'`. */
   columns: Record<string, string>;
   dialect: WhereSqlDialect;
-  /** The schema the condition reads, to refuse what has no form here (dates, Json, lists,
-   *  bridges) and to find a relation's key. Without it, every path is a column. */
-  map?: FieldMap | FieldMapSet;
+  /** The schema the condition reads, and the model it is anchored at. Required: a value is
+   *  checked against its column's declared type — MySQL would cast a mismatched one and match rows
+   *  check() doesn't — and what has no form here (dates, Json, lists, bridges) is refused. */
+  map: FieldMap | FieldMapSet;
+  /** Which map in a FieldMapSet. */
   mapName?: string;
-  model?: string;
+  model: string;
 };
 
 type Context = {
   dialect: WhereSqlDialect;
   column: (path: string) => string;
-  map?: FieldMap;
-  model?: string;
+  map: FieldMap;
+  model: string;
 };
 
 const refuse = (what: string): Error =>
@@ -47,7 +51,8 @@ const refuse = (what: string): Error =>
  * A condition as a SQL predicate in `dialect`, with every value written inline and every field
  * read from `columns` — no parameters to fill, no joins. Negations keep NULL rows, as on every
  * rail. Throws for any operator but equals / notEquals / in / notIn / exists / notExists inside
- * all / any, and for binds, bridges, column-to-column `path`s, dates and Json.
+ * all / any, for binds, bridges, column-to-column `path`s, dates and Json, and for a value that
+ * doesn't fit its field's declared type.
  */
 export const toWhereSql = (condition: Condition, options: WhereSqlOptions): string =>
   whereSql(condition, options, '');
@@ -63,7 +68,13 @@ export const whereSql = (
     throw new UsageError(`toWhereSql: dialect '${String(dialect)}' is not supported — 'mysql' is`);
   if (typeof columns !== 'object' || columns === null)
     throw new UsageError('toWhereSql: `columns` maps each field path to its SQL');
-  const map = resolveFieldMap(options.map, options.mapName, 'toSql');
+  if (options.map === undefined || options.model === undefined)
+    throw new UsageError(
+      "toWhereSql: `map` and `model` are required — a value is checked against its column's type",
+    );
+  const map = resolveFieldMap(options.map, options.mapName, 'toWhereSql') as FieldMap;
+  if (!modelOf(map, options.model))
+    throw new UsageError(`toWhereSql: the map has no model '${options.model}'`);
   return buildWhere(condition, {
     dialect,
     map,
@@ -116,12 +127,21 @@ const buildField = (rule: Rule, ctx: Context): string => {
     throw refuse(`a case-insensitive comparison on '${rule.field}'`);
   if (parseScopeRef(rule.field)) throw refuse(`the scoped field '${rule.field}'`);
 
-  const walk = ctx.map && ctx.model ? walkFieldPath(rule.field, ctx.map, ctx.model) : undefined;
+  const walk = walkFieldPath(rule.field, ctx.map, ctx.model);
   const field = columnOf(rule, walk, ctx);
+  // MySQL casts a value of another type (`score = TRUE`, `enum = 1`), matching rows check() doesn't.
+  const [misfit] = walk.kind === 'direct' ? leafFitViolations(rule, entryKind(walk.entry)) : [];
+  if (misfit) throw new Error(`toWhereSql: ${misfit.message}`);
   if (rule.operator === Operator.exists) return `${field} IS NOT NULL`;
   if (rule.operator === Operator.notExists) return `${field} IS NULL`;
   // A missing value reads as null, as check() reads it.
-  const value = compileFieldLiteral(rule, rule.value ?? null, walk, 'toSql', () => DEFAULT_ZONE);
+  const value = compileFieldLiteral(
+    rule,
+    rule.value ?? null,
+    walk,
+    'toWhereSql',
+    () => DEFAULT_ZONE,
+  );
   if (hasNoOperand(rule, value))
     return noOperandSql(field, NEGATED_OPERATORS.includes(rule.operator));
   const lit = (v: unknown): string => literal(v, rule.field);
@@ -149,8 +169,10 @@ const buildField = (rule: Rule, ctx: Context): string => {
 
 /** The caller's SQL for a rule's field: its column, or for a to-one relation, the related row's
  *  key — NULL when there is no row. */
-const columnOf = (rule: Rule, walk: MapWalkResult | undefined, ctx: Context): string => {
-  if (!walk || walk.kind === 'fallback') return ctx.column(rule.field);
+const columnOf = (rule: Rule, walk: MapWalkResult, ctx: Context): string => {
+  // An undeclared path has no type to check a value against.
+  if (walk.kind === 'fallback')
+    throw new Error(`toWhereSql: '${rule.field}' is not a field the map declares on ${ctx.model}`);
   if (walk.kind === 'past-scalar') throw pastScalarError(rule.field, walk.column);
   if (walk.kind === 'bridge') throw refuse(`'${rule.field}', which crosses a bridge`);
   const toMany = walk.hops.find((hop) => hop.entry.isList);
@@ -161,7 +183,7 @@ const columnOf = (rule: Rule, walk: MapWalkResult | undefined, ctx: Context): st
   if (shape === 'list' || shape === 'relations') throw refuse(`the list '${rule.field}'`);
   if (shape !== 'relation' || walk.kind !== 'direct') return ctx.column(rule.field);
   if (!isExistenceTest(rule)) throw relationNotValue(rule.field);
-  const keys = relationKeys(ctx.map as FieldMap, walk.model, walk.entry);
+  const keys = relationKeys(ctx.map, walk.model, walk.entry);
   if (!keys) throw refuse(`'${rule.field}', whose relation keys the map does not declare`);
   return ctx.column(`${rule.field}.${keys[0].there}`);
 };

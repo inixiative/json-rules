@@ -23,6 +23,15 @@ const maps: FieldMapSet['maps'] = {
           },
         },
       },
+      Probe: {
+        fields: {
+          field: { kind: 'scalar', type: 'String' },
+          num: { kind: 'scalar', type: 'Float' },
+          score: { kind: 'scalar', type: 'Int' },
+          flag: { kind: 'scalar', type: 'Boolean' },
+          toString: { kind: 'scalar' as const, type: 'String' },
+        },
+      },
       BrandReferenceRequestFanUser: {
         fields: {
           id: { kind: 'scalar', type: 'Int' },
@@ -46,8 +55,10 @@ const lens: Lens = { maps, mapName: 'app', model: 'BrandReferenceRequest' };
 const set = { map: { maps }, mapName: 'app' };
 const affiliation = '${brand_reference_request_fan_user.affiliation}';
 
-const mysql = (condition: Condition, columns: Record<string, string> = { field: 'c' }) =>
-  toWhereSql(condition, { columns, dialect: 'mysql' });
+const mysql = (
+  condition: Condition,
+  columns: Record<string, string> = { field: 'c', num: 'c', score: 'c', flag: 'c' },
+) => toWhereSql(condition, { columns, dialect: 'mysql', ...set, model: 'Probe' });
 
 describe('toWhereSql — MySQL forms', () => {
   it('writes equals against the caller column, value inline, no joins', () => {
@@ -92,8 +103,8 @@ describe('toWhereSql — MySQL forms', () => {
   });
 
   it('writes numbers and booleans as literals', () => {
-    expect(mysql({ field: 'field', operator: Operator.in, value: [1, 2.5] })).toBe('c IN (1, 2.5)');
-    expect(mysql({ field: 'field', operator: Operator.equals, value: true })).toBe('c = TRUE');
+    expect(mysql({ field: 'num', operator: Operator.in, value: [1, 2.5] })).toBe('c IN (1, 2.5)');
+    expect(mysql({ field: 'flag', operator: Operator.equals, value: true })).toBe('c = TRUE');
   });
 
   it('writes no ::text cast on an enum', () => {
@@ -158,9 +169,9 @@ describe('toWhereSql — MySQL forms', () => {
 
 describe('toWhereSql — refusals', () => {
   it('throws for a path missing from columns, naming it', () => {
-    expect(() => mysql({ field: 'other', operator: Operator.equals, value: 'a' })).toThrow(
-      "no column for 'other'",
-    );
+    expect(() =>
+      mysql({ field: 'field', operator: Operator.equals, value: 'a' }, { num: 'c' }),
+    ).toThrow("no column for 'field'");
     // An inherited key is not a column.
     expect(() => mysql({ field: 'toString', operator: Operator.exists })).toThrow(
       "no column for 'toString'",
@@ -235,9 +246,61 @@ describe('toWhereSql — refusals', () => {
     ).toThrow('to-many');
   });
 
+  it('refuses a value that does not fit its field’s type, which MySQL would cast', () => {
+    const fanUser = { columns: { affiliation }, dialect: 'mysql' as const, ...set };
+    expect(() => mysql({ field: 'score', operator: Operator.equals, value: true })).toThrow(
+      "value true does not fit Int field 'score'",
+    );
+    expect(() => mysql({ field: 'flag', operator: Operator.equals, value: 1 })).toThrow(
+      "value 1 does not fit Boolean field 'flag'",
+    );
+    expect(() => mysql({ field: 'score', operator: Operator.in, value: [1, true] })).toThrow(
+      "value true does not fit Int field 'score'",
+    );
+    expect(() => mysql({ field: 'field', operator: Operator.equals, value: 0 })).toThrow(
+      "value 0 does not fit String field 'field'",
+    );
+    expect(() =>
+      toWhereSql(
+        { field: 'affiliation', operator: Operator.equals, value: 1 },
+        { ...fanUser, model: 'BrandReferenceRequestFanUser' },
+      ),
+    ).toThrow("value 1 does not fit Enum field 'affiliation'");
+  });
+
+  it('refuses a path the map does not declare', () => {
+    expect(() => mysql({ field: 'other', operator: Operator.equals, value: 'a' })).toThrow(
+      "'other' is not a field the map declares on Probe",
+    );
+  });
+
+  it('requires map and model', () => {
+    const bare = { columns: { field: 'c' }, dialect: 'mysql' as const };
+    const rule: Condition = { field: 'field', operator: Operator.equals, value: 'a' };
+    expect(() => toWhereSql(rule, bare as never)).toThrow('`map` and `model` are required');
+    expect(() => toWhereSql(rule, { ...bare, ...set } as never)).toThrow(
+      '`map` and `model` are required',
+    );
+    expect(() => toWhereSql(rule, { ...bare, model: 'Probe' } as never)).toThrow(
+      '`map` and `model` are required',
+    );
+    expect(() => toWhereSql(rule, { ...bare, ...set, model: 'Nope' })).toThrow(
+      "the map has no model 'Nope'",
+    );
+    // Its own name on a shared error.
+    expect(() => toWhereSql(rule, { ...bare, map: { maps }, model: 'Probe' })).toThrow(
+      /^toWhereSql: 'map' is a FieldMapSet/,
+    );
+  });
+
   it('refuses a dialect other than mysql', () => {
     expect(() =>
-      toWhereSql(true, { columns: {}, dialect: 'postgres' as unknown as 'mysql' }),
+      toWhereSql(true, {
+        columns: {},
+        dialect: 'postgres' as unknown as 'mysql',
+        ...set,
+        model: 'Probe',
+      }),
     ).toThrow("dialect 'postgres'");
   });
 });

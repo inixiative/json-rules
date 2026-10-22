@@ -705,7 +705,7 @@ import { Operator, toLensWhereSql, toWhereSql } from '@inixiative/json-rules';
 
 toWhereSql(
   { field: 'affiliation', operator: Operator.in, value: ['advocate', 'consultant'] },
-  { columns: { affiliation: '${fan_user.affiliation}' }, dialect: 'mysql' },
+  { columns: { affiliation: '${fan_user.affiliation}' }, dialect: 'mysql', map, model: 'FanUser' },
 );
 // => "${fan_user.affiliation} IN ('advocate', 'consultant')"
 
@@ -716,13 +716,16 @@ toLensWhereSql(lens, { columns, dialect: 'mysql' });
 - **Operators:** `equals`, `notEquals`, `in`, `notIn`, `exists`, `notExists`, inside `all` / `any`
   (and `true` / `false`). Anything else — another operator, a date, array or aggregate rule,
   `if` / `then` / `else` — throws, naming it. So do binds, `path` (column-to-column), offsets,
-  `coerceType`, case-insensitivity, a path across a bridge or through a to-many relation, and a
-  DateTime, Json or list field (with a map to say so).
+  `coerceType`, case-insensitivity, a path across a bridge or through a to-many relation, a path
+  the map doesn't declare, and a DateTime, Json or list field.
+- **`map` and `model` are required** (`mapName` too for a `FieldMapSet`): a value is checked
+  against its column's declared type and refused when it doesn't fit — MySQL would cast it
+  (`score = TRUE`, `enum = 1`, `name = 0`) and match rows `check()` doesn't. `toLensWhereSql`
+  passes the lens's own.
 - **Columns:** `columns` maps a field path to the caller's SQL, used as written; the engine writes
   no joins and no identifiers. A path missing from it throws, naming the path — it never falls back
-  to a quoted name, which MySQL's default mode reads as a string literal. With `map` / `mapName` /
-  `model`, a to-one relation's `exists` reads `columns['<relation>.<key>']`: the related row's key,
-  NULL when there is none.
+  to a quoted name, which MySQL's default mode reads as a string literal. A to-one relation's
+  `exists` reads `columns['<relation>.<key>']`: the related row's key, NULL when there is none.
 - **Values** are written inline — there are no placeholders to fill — strings escaping both `\`
   and `'` (MySQL's default mode reads a backslash as an escape; `NO_BACKSLASH_ESCAPES` is not
   supported). `in` is `IN (…)`; an enum compares as written, with no cast.

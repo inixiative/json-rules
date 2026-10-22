@@ -77,6 +77,8 @@ const columns = {
   'form.status': 'f.status',
 };
 
+const fanUser = { map: { maps }, mapName: 'app', model: 'FanUser' };
+
 const eq = (field: string, value: unknown): Condition =>
   ({ field, operator: Operator.equals, value }) as Condition;
 
@@ -189,13 +191,7 @@ afterAll(async () => {
 describe('toWhereSql (mysql) — check() and mysqld agree', () => {
   for (const [label, rule] of Object.entries(rules)) {
     it(label, async () => {
-      const where = toWhereSql(rule, {
-        columns,
-        dialect: 'mysql',
-        map: { maps },
-        mapName: 'app',
-        model: 'FanUser',
-      });
+      const where = toWhereSql(rule, { columns, dialect: 'mysql', ...fanUser });
       const viaSql = await ids(
         `SELECT u.id FROM fan_users u LEFT JOIN forms f ON f.id = u.form_id WHERE ${where} ORDER BY u.id`,
       );
@@ -205,7 +201,7 @@ describe('toWhereSql (mysql) — check() and mysqld agree', () => {
   }
 
   it('the quote-and-backslash value matches exactly its own row', async () => {
-    const where = toWhereSql(eq('affiliation', tricky), { columns, dialect: 'mysql' });
+    const where = toWhereSql(eq('affiliation', tricky), { columns, dialect: 'mysql', ...fanUser });
     expect(await ids(`SELECT u.id FROM fan_users u WHERE ${where}`)).toEqual([4]);
   });
 
@@ -214,9 +210,29 @@ describe('toWhereSql (mysql) — check() and mysqld agree', () => {
     const where = toWhereSql(eq('affiliation', 'advocate'), {
       columns: { affiliation: 'u.affiliation COLLATE utf8mb4_0900_ai_ci' },
       dialect: 'mysql',
+      ...fanUser,
     });
     expect(await ids(`SELECT u.id FROM fan_users u WHERE ${where} ORDER BY u.id`)).toEqual([1, 5]);
   });
+});
+
+describe('toWhereSql (mysql) — a value of another type is refused, not cast', () => {
+  // MySQL casts it (`score = FALSE` is `score = 0`, a string = 0 is every non-numeric string) and
+  // matches rows check() doesn't.
+  const misfits: [string, Condition, string][] = [
+    ['false on an Int', eq('score', false), 'u.score = FALSE'],
+    ['1 on a Boolean', eq('active', 1), 'u.active = 1'],
+    ['0 on a String', eq('affiliation', 0), 'u.affiliation = 0'],
+  ];
+  for (const [label, rule, cast] of misfits)
+    it(label, async () => {
+      const inMemory = fanUsers.filter((u) => check(rule, asChecked(u)) === true);
+      expect(inMemory).toEqual([]);
+      expect((await ids(`SELECT u.id FROM fan_users u WHERE ${cast}`)).length).toBeGreaterThan(0);
+      expect(() => toWhereSql(rule, { columns, dialect: 'mysql', ...fanUser })).toThrow(
+        'does not fit',
+      );
+    });
 });
 
 describe('toLensWhereSql (mysql) — check() and mysqld agree', () => {

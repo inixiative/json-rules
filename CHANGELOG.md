@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.7.0 — toWhereSql / toLensWhereSql: a lens's row filters as SQL predicates
+
+- **`SqlDialect`** (`postgres`, `mysql`) and the engine global **`sql.dialect`**, default
+  `postgres`: the dialect the functions below write. `toSql` still writes PostgreSQL only.
+- **`toWhereSql(condition, { columns, map, mapName?, model })`** writes `equals`, `notEquals`,
+  `in`, `notIn`, `exists` and `notExists` inside `all` / `any` as a predicate in `sql.dialect`:
+  values inline (`'` doubled; `\` too on MySQL), every field read from the caller's `columns` map
+  (a missing path throws), no joins, negations keeping NULL rows. The map is required: it types
+  each value by its column, refuses an undeclared path, anything Json (a stored JSON null is not a
+  SQL NULL) and a date or list *value*; a date's or list's existence compiles (`deletedAt
+  notExists` is a lens's soft-delete `where`). A rule with no value throws, as on every rail,
+  instead of writing a NULL test. Everything else throws, naming
+  it. First consumers: the Omni model generator (ZLT-5302, ZLT-5932).
+- **`toLensWhereSql(lens, { columns })`** returns the lens's `where`s where the lens wrote them:
+  `{ root, relations: { [path] }, mapDefaults: { [map]: { models: { [model] } } } }`. A model
+  default compiles once however many paths reach its model and reads `columns['<Model>.<field>']`;
+  a path `where` reads them by its path. Each is the `where` as its layer wrote it: a parent's
+  clamp on a hop is reported at that hop's path, never inside a later layer's clause.
+  `VisitEffect.pathWheres` / `modelWheres` (the lens policy) hold them that way, beside the
+  narrowed `whereClauses`. A where that reads through a relation the lens hides is refused: its
+  hop's clamps have no path to report at, and `check()` still carries them.
+- A value that does not fit its column's kind (`score = TRUE`, `affiliation = 1`, `name = 0`) is
+  refused through `leafFitViolations`, as `validateNarrowing` checks it: MySQL would cast it and
+  match rows `check()` never does. An undeclared path is refused for the same reason.
+- `test/whereSql.mysql.test.ts` / `test/whereSql.postgres.test.ts`: the same matrix, differential
+  against a real `mysqld` (`mysql-memory-server`, a dev dependency; CI caches the binary through
+  `lib-ci`'s new `cache-path` / `cache-key` inputs) and against PGlite.
+
 ## 3.6.0 — the condition shapes and their keys are public
 
 - **`ConditionShape`** is now a const object like `ValueShape` (`all`, `any`, `if`, `field`,

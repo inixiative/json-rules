@@ -25,7 +25,7 @@ const toInstant =
     return target === 'toPrisma' ? new Date(ms) : new Date(ms).toISOString();
   };
 
-type CompileTarget = 'toPrisma' | 'toSql';
+type CompileTarget = 'toPrisma' | 'toSql' | 'toWhereSql';
 
 /**
  * A field rule's comparison value as a compiler must emit it for the column `walk` reached. The

@@ -23,6 +23,12 @@ export type VisitEffect = {
   omits: Set<string>;
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
+  /** The visit's `where`s as each layer wrote them, unnarrowed — a narrowed clause carries the
+   *  parent's clamps on the hops it crosses, which a mirror of the lens reports at their own
+   *  path. `pathWheres` are the path's (`root`, a relation object, every layer); `modelWheres`
+   *  the visited model's own default's (`mapDefaults[map].models[model].where`, every layer). */
+  pathWheres: Condition[];
+  modelWheres: Condition[];
   sources: Map<string, Condition[]>;
   /** Per-field source eligibility wheres as each layer wrote them, unnarrowed: what a source plan
    *  narrows under the whole lens, as a rule is. */
@@ -256,11 +262,13 @@ const accumulateInto = (
   vet: (condition: Condition, source?: boolean) => void,
   clamps: boolean,
   hiding: boolean,
+  ownDefault: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
+    (ownDefault ? out.modelWheres : out.pathWheres).push(n.where);
   }
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
@@ -534,6 +542,8 @@ export const resolveVisit = (
     omits: new Set(),
     enumValuesByField: new Map(),
     whereClauses: [],
+    pathWheres: [],
+    modelWheres: [],
     sources: new Map(),
     sourceWheres: new Map(),
     sourceLabels: new Map(),
@@ -576,8 +586,8 @@ export const resolveVisit = (
   let vet: (condition: Condition, source?: boolean) => void = () => {};
   let clamps = true;
   let hiding = true;
-  const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing): void => {
-    accumulateInto(out, n, narrow, current, vet, clamps, hiding);
+  const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing, ownDefault = false): void => {
+    accumulateInto(out, n, narrow, current, vet, clamps, hiding, ownDefault);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
@@ -630,7 +640,8 @@ export const resolveVisit = (
         else check();
       };
     vet = vetClamp(false);
-    for (const node of defaults) applyNode(node);
+    const ownDefault = own(own(narrowing.mapDefaults, mapName)?.models, modelName);
+    for (const node of defaults) applyNode(node, node === ownDefault);
     if (path) {
       vet = vetClamp(relPath.length === 0 && trail !== null);
       applyNode(path);

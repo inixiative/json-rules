@@ -34,6 +34,7 @@ export {
 export { type LensValue, readLensValue } from './readLensValue.ts';
 export type { StoredLens } from './storedLens';
 export { composeLens, storeLens } from './storedLens';
+export { type LensWhereSql, type LensWhereSqlOptions, toLensWhereSql } from './toLensWhereSql';
 export type {
   SourcePrismaQuery,
   SourceQuery,

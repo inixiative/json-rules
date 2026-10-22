@@ -6,6 +6,7 @@ export {
   type EngineGlobalsState,
   engineGlobals,
   type PrismaProvider,
+  SqlDialect,
 } from './src/engineGlobals';
 export { UsageError } from './src/errors';
 export {
@@ -51,6 +52,8 @@ export {
   type LensSelect,
   type LensSelectOptions,
   type LensValue,
+  type LensWhereSql,
+  type LensWhereSqlOptions,
   lensVisit,
   listLensBindings,
   type MaterializeSourceQueryOptions,
@@ -76,6 +79,7 @@ export {
   type StoredLens,
   storeLens,
   toLensSelect,
+  toLensWhereSql,
   toSourceQueries,
   validateNarrowing,
   validateRuleInLens,
@@ -119,7 +123,13 @@ export {
   orWhere,
   toPrisma,
 } from './src/toPrisma';
-export { type ToSqlOptions, type ToSqlResult, toSql } from './src/toSql';
+export {
+  type ToSqlOptions,
+  type ToSqlResult,
+  toSql,
+  toWhereSql,
+  type WhereSqlOptions,
+} from './src/toSql';
 export {
   ConditionShape,
   type ConditionShapeKeys,

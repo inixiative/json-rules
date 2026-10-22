@@ -16,8 +16,10 @@
 - **`toLensWhereSql(lens, { columns })`** returns the lens's `where`s where the lens wrote them:
   `{ root, relations: { [path] }, mapDefaults: { [map]: { models: { [model] } } } }`. A model
   default compiles once however many paths reach its model and reads `columns['<Model>.<field>']`;
-  a path `where` reads them by its path. `VisitEffect.modelWheres` (the lens policy) is the
-  subset of `whereClauses` a visited model's own default wrote.
+  a path `where` reads them by its path. Each is the `where` as its layer wrote it: a parent's
+  clamp on a hop is reported at that hop's path, never inside a later layer's clause.
+  `VisitEffect.pathWheres` / `modelWheres` (the lens policy) hold them that way, beside the
+  narrowed `whereClauses`.
 - A value that does not fit its column's kind (`score = TRUE`, `affiliation = 1`, `name = 0`) is
   refused through `leafFitViolations`, as `validateNarrowing` checks it: MySQL would cast it and
   match rows `check()` never does. An undeclared path is refused for the same reason.

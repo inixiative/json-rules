@@ -23,9 +23,11 @@ export type VisitEffect = {
   omits: Set<string>;
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
-  /** The subset of `whereClauses` the visited model's own default wrote
-   *  (`mapDefaults[map].models[model].where`, every layer): the same objects, so a consumer that
-   *  reports a lens's wheres where the lens wrote them can tell them from the path's. */
+  /** The visit's `where`s as each layer wrote them, unnarrowed — a narrowed clause carries the
+   *  parent's clamps on the hops it crosses, which a mirror of the lens reports at their own
+   *  path. `pathWheres` are the path's (`root`, a relation object, every layer); `modelWheres`
+   *  the visited model's own default's (`mapDefaults[map].models[model].where`, every layer). */
+  pathWheres: Condition[];
   modelWheres: Condition[];
   sources: Map<string, Condition[]>;
   /** Per-field source eligibility wheres as each layer wrote them, unnarrowed: what a source plan
@@ -265,9 +267,8 @@ const accumulateInto = (
   if (hiding) accumulatePicksOmitsInto(out, n);
   if (n.where !== undefined && clamps) {
     vet(n.where);
-    const clause = narrow(n.where);
-    out.whereClauses.push(clause);
-    if (ownDefault) out.modelWheres.push(clause);
+    out.whereClauses.push(narrow(n.where));
+    (ownDefault ? out.modelWheres : out.pathWheres).push(n.where);
   }
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {
@@ -541,6 +542,7 @@ export const resolveVisit = (
     omits: new Set(),
     enumValuesByField: new Map(),
     whereClauses: [],
+    pathWheres: [],
     modelWheres: [],
     sources: new Map(),
     sourceWheres: new Map(),

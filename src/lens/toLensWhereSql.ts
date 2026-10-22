@@ -25,8 +25,9 @@ export type LensWhereSql = {
 /**
  * A lens's row filters as SQL predicates in the engine's `sql.dialect` (see `toWhereSql`),
  * mirroring the lens: the root's `where`s under `root`, each relation path's under `relations`,
- * and each model default's under `mapDefaults`. A model default compiles once, at the first visit
- * the lens shows of its model, and reads `columns` by `'<Model>.<field>'`; a path `where` reads
+ * and each model default's under `mapDefaults` — each as its layer wrote it, so a parent's clamp
+ * on a hop is reported at that hop's path, never inside what a later layer wrote through it. A
+ * model default compiles once and reads `columns` by `'<Model>.<field>'`; a path `where` reads
  * them by its path from the lens model. The rows a `where` filters out are absent in SQL, where
  * check() treats them as hidden.
  */
@@ -38,10 +39,9 @@ export const toLensWhereSql = (
   const out: LensWhereSql = { root: null, relations: {}, mapDefaults: {} };
   for (const { at, effect } of shownVisits(policy)) {
     const options = { columns, map: policy.lens, mapName: at.mapName, model: at.modelName };
-    const path = effect.whereClauses.filter((clause) => !effect.modelWheres.includes(clause));
-    if (path.length) {
+    if (effect.pathWheres.length) {
       const prefix = at.relPath.join('.');
-      const sql = whereSql(allOf(path), options, prefix ? `${prefix}.` : '');
+      const sql = whereSql(allOf(effect.pathWheres), options, prefix ? `${prefix}.` : '');
       if (prefix) out.relations[prefix] = sql;
       else out.root = sql;
     }

@@ -445,6 +445,62 @@ describe('toLensWhereSql — mirrors the lens', () => {
     });
   });
 
+  it('reports each layer’s where as written: a parent’s path clamp never rides inside a model default', () => {
+    // Layer 1 clamps `request` differently on two paths; layer 2 adds a model default on the
+    // participant. Narrowed under layer 1, that default would carry the clamp of whichever path
+    // compiled it first — the mirror reports the clamp under its own path instead.
+    const participant: Lens = { maps, mapName: 'app', model: 'BrandReferenceRequestFanUser' };
+    const layer1: LensNarrowing = {
+      parent: participant,
+      root: {
+        relations: {
+          request: {
+            where: { field: 'status', operator: Operator.equals, value: 'open' },
+            relations: {
+              brandReferenceRequestFanUsers: {
+                relations: {
+                  request: {
+                    where: { field: 'status', operator: Operator.equals, value: 'closed' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const layer2: LensNarrowing = {
+      parent: layer1,
+      mapDefaults: {
+        app: {
+          models: {
+            BrandReferenceRequestFanUser: {
+              where: { field: 'request', operator: Operator.exists },
+            },
+          },
+        },
+      },
+    };
+    expect(
+      toLensWhereSql(layer2, {
+        columns: {
+          'request.status': 'r1.status',
+          'request.brandReferenceRequestFanUsers.request.status': 'r2.status',
+          'BrandReferenceRequestFanUser.request.id': 'p.request_id',
+        },
+      }),
+    ).toEqual({
+      root: null,
+      relations: {
+        request: "r1.status = 'open'",
+        'request.brandReferenceRequestFanUsers.request': "r2.status = 'closed'",
+      },
+      mapDefaults: {
+        app: { models: { BrandReferenceRequestFanUser: 'p.request_id IS NOT NULL' } },
+      },
+    });
+  });
+
   it('reports a lens with no wheres as nothing', () => {
     expect(toLensWhereSql(lens, { columns: {} })).toEqual({
       root: null,

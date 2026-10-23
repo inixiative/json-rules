@@ -45,11 +45,11 @@
     "@biomejs/biome": "2.5.2",
     "@electric-sql/pglite": "^0.4.1",
     "@electric-sql/pglite-socket": "0.1.1",
-    "@inixiative/config": "^0.5.122",
+    "@inixiative/config": "^0.5.124",
     "@inixiative/prisma-map": "^0.3.1",
     "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "7.8.0",
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.4",
     "@types/lodash-es": "^4.17.12",
     "lefthook": "2.1.9",
     "lodash-es": "^4.17.21",
@@ -87,5 +87,5 @@
       }
     }
   },
-  "packageManager": "bun@1.4.2"
+  "packageManager": "bun@1.4.4"
 }

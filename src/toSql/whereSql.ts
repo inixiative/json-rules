@@ -48,7 +48,11 @@ export type WhereSqlOptions = {
 
 /** The clamps a to-many relation's rows carry, by the relation's path from where the compile
  *  started: what `check()` reads through that hop under a lens. A bare condition has none. */
-export type RelationClamps = (relationPath: string) => Condition[];
+export type RelationClamps = (relationPath: string) => RelationClamp[];
+
+/** One clamp on a relation's rows, and the clamps it reads its own to-many relations through —
+ *  from the relation's model. */
+export type RelationClamp = { where: Condition; clamps: RelationClamps };
 
 type Context = {
   column: (path: string) => string;
@@ -184,7 +188,7 @@ const buildArray = (rule: ArrayRule, ctx: Context): string => {
   };
   const scope = [
     ...keys.map(({ here, there }) => `${rows.column(there)} = ${ctx.column(here)}`),
-    ...ctx.clamps(field).map((clamp) => `(${buildWhere(clamp, rows)})`),
+    ...ctx.clamps(field).map(({ where, clamps }) => `(${buildWhere(where, { ...rows, clamps })})`),
   ];
   const subquery = (test?: string): string =>
     `(SELECT 1 FROM ${ctx.table(field)} WHERE ${[...scope, ...(test ? [test] : [])].join(' AND ')})`;

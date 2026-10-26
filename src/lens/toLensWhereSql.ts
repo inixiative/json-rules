@@ -1,10 +1,11 @@
 import type { MapVisit } from '../fieldMap/walk';
 import { own, ownEntry } from '../own';
-import { type RelationClamps, whereSql } from '../toSql/whereSql.ts';
-import { allOf, isRelationNode, visitCondition } from '../traverse';
+import { type RelationClamps, type WhereSqlOptions, whereSql } from '../toSql/whereSql.ts';
+import { isRelationNode, visitCondition } from '../traverse';
 import type { Condition } from '../types';
 import {
   hiddenHop,
+  type LayeredWhere,
   type Policy,
   relationHops,
   resolvePolicy,
@@ -65,16 +66,34 @@ const refuseHiddenHops = (policy: Policy, from: MapVisit, condition: Condition):
   );
 };
 
-/** The clamps a to-many relation's rows carry, read from a visit: the relation path's own `where`s
- *  and its model's default, as each layer wrote them — what check() reads through that hop. */
+/** The clamps a to-many relation's rows carry for a `where` written in `layer`, read from a visit:
+ *  the relation path's own `where`s and its model's default written in the layers above — what
+ *  check() reads that `where` through. A layer's clamps narrow the layers after it, never its own
+ *  conditions. Each clamp reads its own relations through the layers above its own layer. */
 const clampsFrom =
-  (policy: Policy, from: MapVisit): RelationClamps =>
+  (policy: Policy, from: MapVisit, layer: number): RelationClamps =>
   (relationPath) => {
     const { end } = relationHops(policy.lens.maps, from, relationPath);
     if (!end) return [];
     const effect = resolveVisit(policy, end.mapName, end.modelName, end.relPath);
-    return [...effect.pathWheres, ...effect.modelWheres];
+    return [...effect.pathWheres, ...effect.modelWheres]
+      .filter((clamp) => clamp.layer < layer)
+      .map((clamp) => ({ where: clamp.where, clamps: clampsFrom(policy, end, clamp.layer) }));
   };
+
+/** A visit's `where`s as one predicate, each read through the clamps of the layers above its own. */
+const layeredSql = (
+  policy: Policy,
+  at: MapVisit,
+  wheres: LayeredWhere[],
+  options: WhereSqlOptions,
+  prefix: string,
+): string => {
+  const parts = wheres.map(({ where, layer }) =>
+    whereSql(where, options, prefix, clampsFrom(policy, at, layer)),
+  );
+  return parts.length === 1 ? parts[0] : `(${parts.join(' AND ')})`;
+};
 
 export const toLensWhereSql = (
   lens: Lens | LensNarrowing,
@@ -84,12 +103,11 @@ export const toLensWhereSql = (
   const out: LensWhereSql = { root: null, relations: {}, mapDefaults: {} };
   for (const { at, effect } of shownVisits(policy)) {
     const options = { columns, tables, map: policy.lens, mapName: at.mapName, model: at.modelName };
-    const clamps = clampsFrom(policy, at);
-    for (const clause of [...effect.pathWheres, ...effect.modelWheres])
-      refuseHiddenHops(policy, at, clause);
+    for (const { where } of [...effect.pathWheres, ...effect.modelWheres])
+      refuseHiddenHops(policy, at, where);
     if (effect.pathWheres.length) {
       const prefix = at.relPath.join('.');
-      const sql = whereSql(allOf(effect.pathWheres), options, prefix ? `${prefix}.` : '', clamps);
+      const sql = layeredSql(policy, at, effect.pathWheres, options, prefix ? `${prefix}.` : '');
       if (prefix) out.relations[prefix] = sql;
       else out.root = sql;
     }
@@ -99,7 +117,7 @@ export const toLensWhereSql = (
         at.mapName,
         (): LensWhereSql['mapDefaults'][string] => ({ models: {} }),
       );
-      const sql = whereSql(allOf(effect.modelWheres), options, `${at.modelName}.`, clamps);
+      const sql = layeredSql(policy, at, effect.modelWheres, options, `${at.modelName}.`);
       const known = own(byMap.models, at.modelName);
       // A subquery carries the clamps of the path it is reached on: one predicate serves them all
       // only when they agree.

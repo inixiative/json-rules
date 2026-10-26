@@ -789,7 +789,11 @@ path, which would fold the lens's `where`s into the predicate a second time.
 An array rule on a to-many relation has no join to put that relation's clamps on, so its subquery
 carries them: the relation path's own `where` and the related model's default, ANDed beside the
 key (outside the `IS NOT TRUE` of an `all`, as `check()` filters the rows before it tests them).
-They are still reported at their own path and model. `tables` reads like `columns`: by the
+It carries only the clamps of the layers above the layer that wrote the `where`, which is what
+`check()` reads it through: a layer's clamps narrow the layers after it, never its own conditions.
+A clamp in the same layer or a later one stays out, so a later layer can't widen what a `none` or
+an `empty` admitted. Each clamp reads its own relations through the layers above its own. The
+clamps are still reported at their own path and model. `tables` reads like `columns`: by the
 relation's path from the lens model in a path `where` (`affiliations`), by
 `'<Model>.<relation>'` in a model default (`FanUser.affiliations`). An array rule on a relation
 the lens hides throws, and its condition's fields are checked from the relation, not from the

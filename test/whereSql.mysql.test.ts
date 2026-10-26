@@ -166,15 +166,22 @@ describe('toLensWhereSql (mysql) — check() and mysqld agree', () => {
 });
 
 describe('toLensWhereSql (mysql) — a to-many relation read through its clamps', () => {
-  for (const [label, { lens, read }] of Object.entries(lensCases)) {
+  const keptViaSql = (lens: LensNarrowing, read: 'root' | 'FanUser'): Promise<number[]> => {
+    const sqlOf = toLensWhereSql(lens, {
+      columns: whereSqlLensColumns,
+      tables: whereSqlLensTables,
+    });
+    const where = read === 'root' ? sqlOf.root : sqlOf.mapDefaults.app.models.FanUser;
+    return ids(`SELECT u.id FROM fan_users u WHERE ${where ?? 'TRUE'} ORDER BY u.id`);
+  };
+  for (const [label, { lens, read, darkerThan }] of Object.entries(lensCases)) {
     it(label, async () => {
-      const sqlOf = toLensWhereSql(lens, {
-        columns: whereSqlLensColumns,
-        tables: whereSqlLensTables,
-      });
-      const where = read === 'root' ? sqlOf.root : sqlOf.mapDefaults.app.models.FanUser;
-      const viaSql = await ids(`SELECT u.id FROM fan_users u WHERE ${where} ORDER BY u.id`);
+      const viaSql = await keptViaSql(lens, read);
       expect(viaSql).toEqual(lensKeptIds(lens));
+      if (darkerThan) {
+        const above = await keptViaSql(darkerThan, read);
+        expect(viaSql.filter((id) => !above.includes(id))).toEqual([]);
+      }
     });
   }
 });

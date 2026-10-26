@@ -283,84 +283,82 @@ const notDeleted: Condition = { field: 'deletedAt', operator: Operator.notExists
 const softDelete = { app: { models: { FanUserAffiliation: { where: notDeleted } } } };
 const base = { maps: whereSqlMaps, mapName: 'app', model: 'FanUser' };
 
-/** Lenses whose `where`s read the to-many `affiliations`, each through its clamps. `root` is read
- *  from the root's where; `FanUser`, from the FanUser model default. */
-export const whereSqlLensCases: Record<string, { lens: LensNarrowing; read: 'root' | 'FanUser' }> =
-  {
-    'the advocate condition, a soft-deleted row hidden by its model default': {
-      lens: {
-        parent: base,
-        root: { where: advocateCondition, relations: { affiliations: {} } },
-        mapDefaults: softDelete,
-      },
-      read: 'root',
+/** The first narrowing: `affiliations` turned on, under the clamps `root` and `mapDefaults` set. */
+const clamped = (
+  root: LensNarrowing['root'] = {},
+  mapDefaults?: LensNarrowing['mapDefaults'],
+): LensNarrowing => ({
+  parent: base,
+  root: { relations: { affiliations: {} }, ...root },
+  mapDefaults,
+});
+const endedHidden = {
+  relations: { affiliations: { where: { field: 'endedAt', operator: Operator.notExists } } },
+};
+const noneAdvocate = overAffiliations(ArrayOperator.none, eq('affiliation', 'advocate'));
+
+/** Lenses whose `where`s read the to-many `affiliations`. A `where` reads through the clamps of the
+ *  layers above its own, never its own layer's or a later one's. `root` is read from the root's
+ *  where; `FanUser`, from the FanUser model default. With `darkerThan`, the lens may keep no parent
+ *  that lens excludes. */
+export const whereSqlLensCases: Record<
+  string,
+  { lens: LensNarrowing; read: 'root' | 'FanUser'; darkerThan?: LensNarrowing }
+> = {
+  'the advocate condition, the model default a layer above: a soft-deleted row is invisible': {
+    lens: { parent: clamped({}, softDelete), root: { where: advocateCondition } },
+    read: 'root',
+  },
+  'all, the path where a layer above': {
+    lens: {
+      parent: clamped(endedHidden),
+      root: { where: overAffiliations(ArrayOperator.all, eq('affiliation', 'advocate')) },
     },
-    'all, under the relation path where': {
-      lens: {
-        parent: base,
-        root: {
-          where: overAffiliations(ArrayOperator.all, eq('affiliation', 'advocate')),
-          relations: {
-            affiliations: { where: { field: 'endedAt', operator: Operator.notExists } },
+    read: 'root',
+  },
+  'all, a NULL row hidden by the path where a layer above': {
+    lens: {
+      parent: clamped({
+        relations: { affiliations: { where: { field: 'affiliation', operator: Operator.exists } } },
+      }),
+      root: { where: overAffiliations(ArrayOperator.all, eq('affiliation', 'advocate')) },
+    },
+    read: 'root',
+  },
+  'empty, both clamps a layer above': {
+    lens: {
+      parent: clamped(endedHidden, softDelete),
+      root: { where: overAffiliations(ArrayOperator.empty) },
+    },
+    read: 'root',
+  },
+  'none, the model default a layer above: a soft-deleted row is invisible': {
+    lens: { parent: clamped({}, softDelete), root: { where: noneAdvocate } },
+    read: 'root',
+  },
+  'none, the model default in the same layer: a soft-deleted row is visible': {
+    lens: clamped({ where: noneAdvocate }, softDelete),
+    read: 'root',
+  },
+  'none, the model default a layer below: it adds no parent the none excluded': {
+    lens: { parent: clamped({ where: noneAdvocate }), mapDefaults: softDelete },
+    read: 'root',
+    darkerThan: clamped({ where: noneAdvocate }),
+  },
+  'a FanUser model default reading the relation, its clamp a layer above': {
+    lens: {
+      parent: clamped({}, softDelete),
+      mapDefaults: {
+        app: {
+          models: {
+            FanUser: { where: overAffiliations(ArrayOperator.any, eq('affiliation', 'advocate')) },
           },
         },
       },
-      read: 'root',
     },
-    'all, a NULL row hidden by the path where': {
-      lens: {
-        parent: base,
-        root: {
-          where: overAffiliations(ArrayOperator.all, eq('affiliation', 'advocate')),
-          relations: {
-            affiliations: { where: { field: 'affiliation', operator: Operator.exists } },
-          },
-        },
-      },
-      read: 'root',
-    },
-    'empty, under both clamps': {
-      lens: {
-        parent: base,
-        root: {
-          where: overAffiliations(ArrayOperator.empty),
-          relations: {
-            affiliations: { where: { field: 'endedAt', operator: Operator.notExists } },
-          },
-        },
-        mapDefaults: softDelete,
-      },
-      read: 'root',
-    },
-    'none, under the model default': {
-      lens: {
-        parent: base,
-        root: {
-          where: overAffiliations(ArrayOperator.none, eq('affiliation', 'advocate')),
-          relations: { affiliations: {} },
-        },
-        mapDefaults: softDelete,
-      },
-      read: 'root',
-    },
-    'a FanUser model default reading the relation': {
-      lens: {
-        parent: base,
-        root: { relations: { affiliations: {} } },
-        mapDefaults: {
-          app: {
-            models: {
-              FanUser: {
-                where: overAffiliations(ArrayOperator.any, eq('affiliation', 'advocate')),
-              },
-              FanUserAffiliation: { where: notDeleted },
-            },
-          },
-        },
-      },
-      read: 'FanUser',
-    },
-  };
+    read: 'FanUser',
+  },
+};
 
 /** The columns and tables the lens cases read: paths from the root, and the FanUser default's. */
 export const whereSqlLensColumns = {

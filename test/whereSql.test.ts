@@ -374,6 +374,50 @@ describe('toWhereSql — refusals', () => {
   });
 });
 
+/** Orders whose lines carry notes: a composite key, and a to-many relation below a to-many one. */
+const orders: FieldMapSet['maps'] = {
+  app: {
+    models: {
+      Order: {
+        fields: {
+          tenantId: { kind: 'scalar', type: 'Int' },
+          id: { kind: 'scalar', type: 'Int' },
+          lines: { kind: 'object', type: 'Line', isList: true, relationName: 'OrderLines' },
+        },
+      },
+      Line: {
+        fields: {
+          tenantId: { kind: 'scalar', type: 'Int' },
+          id: { kind: 'scalar', type: 'Int' },
+          orderId: { kind: 'scalar', type: 'Int' },
+          sku: { kind: 'scalar', type: 'String' },
+          order: {
+            kind: 'object',
+            type: 'Order',
+            relationName: 'OrderLines',
+            fromFields: ['tenantId', 'orderId'],
+            toFields: ['tenantId', 'id'],
+          },
+          notes: { kind: 'object', type: 'Note', isList: true, relationName: 'LineNotes' },
+        },
+      },
+      Note: {
+        fields: {
+          lineId: { kind: 'scalar', type: 'Int' },
+          text: { kind: 'scalar', type: 'String' },
+          line: {
+            kind: 'object',
+            type: 'Line',
+            relationName: 'LineNotes',
+            fromFields: ['lineId'],
+            toFields: ['id'],
+          },
+        },
+      },
+    },
+  },
+};
+
 describe('toWhereSql — an array rule on a to-many relation', () => {
   const columns = {
     id: 'r.id',
@@ -426,48 +470,6 @@ describe('toWhereSql — an array rule on a to-many relation', () => {
   });
 
   it('ANDs every pair of a composite key, and nests a relation of the related rows', () => {
-    const orders: FieldMapSet['maps'] = {
-      app: {
-        models: {
-          Order: {
-            fields: {
-              tenantId: { kind: 'scalar', type: 'Int' },
-              id: { kind: 'scalar', type: 'Int' },
-              lines: { kind: 'object', type: 'Line', isList: true, relationName: 'OrderLines' },
-            },
-          },
-          Line: {
-            fields: {
-              tenantId: { kind: 'scalar', type: 'Int' },
-              id: { kind: 'scalar', type: 'Int' },
-              orderId: { kind: 'scalar', type: 'Int' },
-              sku: { kind: 'scalar', type: 'String' },
-              order: {
-                kind: 'object',
-                type: 'Order',
-                relationName: 'OrderLines',
-                fromFields: ['tenantId', 'orderId'],
-                toFields: ['tenantId', 'id'],
-              },
-              notes: { kind: 'object', type: 'Note', isList: true, relationName: 'LineNotes' },
-            },
-          },
-          Note: {
-            fields: {
-              lineId: { kind: 'scalar', type: 'Int' },
-              text: { kind: 'scalar', type: 'String' },
-              line: {
-                kind: 'object',
-                type: 'Line',
-                relationName: 'LineNotes',
-                fromFields: ['lineId'],
-                toFields: ['id'],
-              },
-            },
-          },
-        },
-      },
-    };
     const sql = onMysql(() =>
       toWhereSql(
         {
@@ -603,6 +605,57 @@ describe('toLensWhereSql — an array rule on a to-many relation', () => {
       relations: { brandReferenceRequestFanUsers: 'p.affiliation IS NOT NULL' },
       mapDefaults: { app: { models: { BrandReferenceRequestFanUser: 'p.id IS NOT NULL' } } },
     });
+  });
+
+  it("reads a clamp's own relations through the layers above the clamp's", () => {
+    // The Line default (layer 0) reads its notes; the Note default comes a layer later, so it
+    // narrows the where of layer 2 only where that where reads notes itself.
+    const lineDefault: LensNarrowing = {
+      parent: { maps: orders, mapName: 'app', model: 'Order' },
+      root: { relations: { lines: { relations: { notes: {} } } } },
+      mapDefaults: {
+        app: {
+          models: { Line: { where: { field: 'notes', arrayOperator: 'notEmpty' } as Condition } },
+        },
+      },
+    };
+    const noteDefault: LensNarrowing = {
+      parent: lineDefault,
+      mapDefaults: {
+        app: { models: { Note: { where: { field: 'text', operator: Operator.exists } } } },
+      },
+    };
+    const narrowing: LensNarrowing = {
+      parent: noteDefault,
+      root: {
+        where: {
+          field: 'lines',
+          arrayOperator: 'any',
+          condition: { field: 'sku', operator: Operator.equals, value: 'x' },
+        } as Condition,
+      },
+    };
+    expect(
+      onMysql(() =>
+        toLensWhereSql(narrowing, {
+          columns: {
+            tenantId: 'o.tenant_id',
+            id: 'o.id',
+            'lines.tenantId': 'l.tenant_id',
+            'lines.orderId': 'l.order_id',
+            'lines.id': 'l.id',
+            'lines.sku': 'l.sku',
+            'lines.notes.lineId': 'n.line_id',
+            'Line.id': 'l.id',
+            'Line.notes.lineId': 'n.line_id',
+            'Note.text': 'n.text',
+          },
+          tables: { lines: 'line AS l', 'lines.notes': 'note AS n', 'Line.notes': 'note AS n' },
+        }),
+      ).root,
+    ).toBe(
+      "EXISTS (SELECT 1 FROM line AS l WHERE l.tenant_id = o.tenant_id AND l.order_id = o.id AND (EXISTS (SELECT 1 FROM note AS n WHERE n.line_id = l.id)) AND (l.sku = 'x'))",
+    );
   });
 
   it('refuses an array rule on a relation the lens hides', () => {

@@ -105,7 +105,7 @@ MySQL casts a mistyped literal instead of erroring.
 Strings double `'`, and `\` on MySQL; negations carry `IS NULL`. A path missing from `columns`
 throws. `toLensWhereSql` (`src/lens/toLensWhereSql.ts`) runs it over each visit of a lens that has
 `where`s and reports them where the lens wrote them — `root`, `relations` by path, `mapDefaults`
-by map and model, each as its layer wrote it (`VisitEffect.pathWheres` / `modelWheres`, beside the narrowed `whereClauses`); an array rule's subquery carries its relation's clamps, which have no join to sit on (`RelationClamps`). See the root README for the absent-vs-hidden semantics and the
+by map and model, each as its layer wrote it (`VisitEffect.pathWheres` / `modelWheres`, beside the narrowed `whereClauses`); an array rule's subquery carries its relation's clamps, which have no join to sit on (`RelationClamps`): those of the layers above the `where`'s own, as `check()` reads it. See the root README for the absent-vs-hidden semantics and the
 collation caveat. `test/whereSql.mysql.test.ts` and `test/whereSql.postgres.test.ts` run one
 matrix against a real `mysqld` (mysql-memory-server) and PGlite.
 

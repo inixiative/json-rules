@@ -13,14 +13,17 @@
   fieldless array rule, and a relation behind another one (`profile.affiliations`).
   `WHERE_SQL_ARRAY_OPERATORS` lists the five, and the refusal message names them.
 - **`toLensWhereSql`** takes `tables` too. The subquery carries the relation's clamps (its path
-  `where` and the related model's default), which have no join to sit on; they are still reported
-  at their own path and model. An array rule on a relation the lens hides throws, and its
+  `where` and the related model's default), which have no join to sit on: those of the layers
+  above the layer that wrote the `where`, as `check()` reads it, never its own layer's or a later
+  one's. They are still reported at their own path and model. `VisitEffect.pathWheres` /
+  `modelWheres` now hold `{ where, layer }`. An array rule on a relation the lens hides throws, and its
   condition's fields are checked from the relation. A model default compiles to one predicate, so
   it throws when a to-many relation it reads carries different clamps on two paths to its model.
 - `test/whereSql.mysql.test.ts` / `test/whereSql.postgres.test.ts`: a `FanUserAffiliation` table
   (no rows, an ended advocate row, prospect-only, advocate and prospect, a soft-deleted row, a NULL
   affiliation) under the same matrix and under lenses, `check()` (`projectRows`) against the
-  executed SQL on mysqld and PGlite. First consumer: the Omni Advocates topic (ZLT-5969).
+  executed SQL on mysqld and PGlite: a clamp a layer above the `where` (the row is invisible to
+  it), in the same layer (visible), and a layer below a `none` (it adds no parent). First consumer: the Omni Advocates topic (ZLT-5969).
 
 ## 3.7.0 — toWhereSql / toLensWhereSql: a lens's row filters as SQL predicates
 

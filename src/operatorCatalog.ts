@@ -405,6 +405,14 @@ const arrayWithShape = (...shapes: ValueShape[]): readonly string[] =>
 export const ARRAY_COUNT_OPERATORS = arrayWithShape('count');
 /** Array operators that test each element against a condition. */
 export const ARRAY_CONDITION_OPERATORS = arrayWithShape('predicate', 'count');
+/** The array operators `toWhereSql` writes over a to-many relation, each one `EXISTS` subquery. */
+export const WHERE_SQL_ARRAY_OPERATORS: readonly string[] = [
+  ArrayOperator.any,
+  ArrayOperator.all,
+  ArrayOperator.none,
+  ArrayOperator.empty,
+  ArrayOperator.notEmpty,
+];
 /** Array operators a broader condition only widens: more matching elements never make them false. */
 export const ARRAY_MONOTONE_OPERATORS: readonly string[] = [
   ArrayOperator.any,

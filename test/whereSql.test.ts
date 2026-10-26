@@ -374,6 +374,398 @@ describe('toWhereSql — refusals', () => {
   });
 });
 
+/** Orders whose lines carry notes: a composite key, and a to-many relation below a to-many one. */
+const orders: FieldMapSet['maps'] = {
+  app: {
+    models: {
+      Order: {
+        fields: {
+          tenantId: { kind: 'scalar', type: 'Int' },
+          id: { kind: 'scalar', type: 'Int' },
+          lines: { kind: 'object', type: 'Line', isList: true, relationName: 'OrderLines' },
+        },
+      },
+      Line: {
+        fields: {
+          tenantId: { kind: 'scalar', type: 'Int' },
+          id: { kind: 'scalar', type: 'Int' },
+          orderId: { kind: 'scalar', type: 'Int' },
+          sku: { kind: 'scalar', type: 'String' },
+          order: {
+            kind: 'object',
+            type: 'Order',
+            relationName: 'OrderLines',
+            fromFields: ['tenantId', 'orderId'],
+            toFields: ['tenantId', 'id'],
+          },
+          notes: { kind: 'object', type: 'Note', isList: true, relationName: 'LineNotes' },
+        },
+      },
+      Note: {
+        fields: {
+          lineId: { kind: 'scalar', type: 'Int' },
+          text: { kind: 'scalar', type: 'String' },
+          line: {
+            kind: 'object',
+            type: 'Line',
+            relationName: 'LineNotes',
+            fromFields: ['lineId'],
+            toFields: ['id'],
+          },
+        },
+      },
+    },
+  },
+};
+
+describe('toWhereSql — an array rule on a to-many relation', () => {
+  const columns = {
+    id: 'r.id',
+    status: 'r.status',
+    'brandReferenceRequestFanUsers.id': 'p.id',
+    'brandReferenceRequestFanUsers.requestId': 'p.request_id',
+    'brandReferenceRequestFanUsers.affiliation': 'p.affiliation',
+  };
+  const tables = { brandReferenceRequestFanUsers: 'brand_reference_request_fan_user AS p' };
+  const over = (arrayOperator: string, condition?: Condition, extra = {}): Condition =>
+    ({ field: 'brandReferenceRequestFanUsers', arrayOperator, condition, ...extra }) as Condition;
+  const advocate: Condition = {
+    field: 'affiliation',
+    operator: Operator.equals,
+    value: 'advocate',
+  };
+  const write = (condition: Condition, given: Partial<typeof request> = {}) =>
+    onMysql(() => toWhereSql(condition, { columns, tables, ...request, ...given }));
+  const rows = 'SELECT 1 FROM brand_reference_request_fan_user AS p WHERE p.request_id = r.id';
+
+  it('writes any, none, all, empty and notEmpty as one subquery each, keyed to the row', () => {
+    expect(write(over('any', advocate))).toBe(`EXISTS (${rows} AND (p.affiliation = 'advocate'))`);
+    expect(write(over('none', advocate))).toBe(
+      `NOT EXISTS (${rows} AND (p.affiliation = 'advocate'))`,
+    );
+    // A NULL result fails `all`, as in check().
+    expect(write(over('all', advocate))).toBe(
+      `NOT EXISTS (${rows} AND (p.affiliation = 'advocate') IS NOT TRUE)`,
+    );
+    expect(write(over('empty'))).toBe(`NOT EXISTS (${rows})`);
+    expect(write(over('notEmpty'))).toBe(`EXISTS (${rows})`);
+  });
+
+  it('compiles the condition with the same operators and NULL rules, beside the row', () => {
+    expect(
+      write({
+        all: [
+          { field: 'status', operator: Operator.notEquals, value: 'draft' },
+          over('any', {
+            any: [
+              { field: 'affiliation', operator: Operator.notIn, value: ['prospect'] },
+              { field: 'id', operator: Operator.notExists },
+            ],
+          }),
+        ],
+      }),
+    ).toBe(
+      `((r.status <> 'draft' OR r.status IS NULL) AND EXISTS (${rows} AND (((p.affiliation NOT IN ('prospect') OR p.affiliation IS NULL) OR p.id IS NULL))))`,
+    );
+  });
+
+  it('ANDs every pair of a composite key, and nests a relation of the related rows', () => {
+    const sql = onMysql(() =>
+      toWhereSql(
+        {
+          field: 'lines',
+          arrayOperator: 'any',
+          condition: {
+            all: [
+              { field: 'sku', operator: Operator.equals, value: 'x' },
+              {
+                field: 'notes',
+                arrayOperator: 'none',
+                condition: { field: 'text', operator: Operator.exists },
+              },
+            ],
+          },
+        } as Condition,
+        {
+          columns: {
+            tenantId: 'o.tenant_id',
+            id: 'o.id',
+            'lines.tenantId': 'l.tenant_id',
+            'lines.id': 'l.id',
+            'lines.orderId': 'l.order_id',
+            'lines.sku': 'l.sku',
+            'lines.notes.lineId': 'n.line_id',
+            'lines.notes.text': 'n.text',
+          },
+          tables: { lines: 'line AS l', 'lines.notes': 'note AS n' },
+          map: { maps: orders },
+          mapName: 'app',
+          model: 'Order',
+        },
+      ),
+    );
+    expect(sql).toBe(
+      "EXISTS (SELECT 1 FROM line AS l WHERE l.tenant_id = o.tenant_id AND l.order_id = o.id AND ((l.sku = 'x' AND NOT EXISTS (SELECT 1 FROM note AS n WHERE n.line_id = l.id AND (n.text IS NOT NULL)))))",
+    );
+  });
+
+  it('refuses the array rules it has no form for, naming each', () => {
+    for (const operator of ['atLeast', 'atMost', 'exactly'])
+      expect(() => write(over(operator, advocate, { count: 1 }))).toThrow(
+        `arrayOperator '${operator}'`,
+      );
+    expect(() => write(over('any', advocate, { take: 1 }))).toThrow('a window');
+    expect(() => write(over('all', advocate, { filter: advocate }))).toThrow('a window');
+    expect(() => write({ arrayOperator: 'any', condition: advocate } as Condition)).toThrow(
+      "the fieldless arrayOperator 'any'",
+    );
+    expect(() => write(over('any'))).toThrow('any requires a condition');
+    // An inner condition is refused as the outer one would be.
+    expect(() =>
+      write(over('any', { field: 'affiliation', operator: Operator.contains, value: 'a' })),
+    ).toThrow("operator 'contains'");
+  });
+
+  it('refuses an array rule on anything but a to-many relation directly on the model', () => {
+    expect(() =>
+      write({ ...(over('any', advocate) as object), field: 'tags' } as Condition),
+    ).toThrow("arrayOperator 'any' on 'tags', which is not a to-many relation");
+    expect(() =>
+      write({ ...(over('any', advocate) as object), field: 'nope' } as Condition),
+    ).toThrow("'nope' is not a field the map declares on BrandReferenceRequest");
+    const fromParticipant = (field: string) =>
+      onMysql(() =>
+        toWhereSql({ field, arrayOperator: 'any', condition: advocate } as Condition, {
+          columns: {},
+          tables: {},
+          ...participant,
+        }),
+      );
+    expect(() => fromParticipant('request')).toThrow(
+      "arrayOperator 'any' on 'request', which is not a to-many relation",
+    );
+    expect(() => fromParticipant('request.brandReferenceRequestFanUsers')).toThrow(
+      "arrayOperator 'any' on 'request.brandReferenceRequestFanUsers', behind the relation 'request'",
+    );
+  });
+
+  it('throws for a relation missing from tables, naming it', () => {
+    expect(() => write(over('any', advocate), { tables: {} } as never)).toThrow(
+      "no table for 'brandReferenceRequestFanUsers' in `tables`",
+    );
+  });
+});
+
+describe('toLensWhereSql — an array rule on a to-many relation', () => {
+  const advocate: Condition = {
+    field: 'affiliation',
+    operator: Operator.equals,
+    value: 'advocate',
+  };
+  const columns = {
+    id: 'r.id',
+    'brandReferenceRequestFanUsers.id': 'p.id',
+    'brandReferenceRequestFanUsers.requestId': 'p.request_id',
+    'brandReferenceRequestFanUsers.affiliation': 'p.affiliation',
+    'brandReferenceRequestFanUsers.request.id': 'pr.id',
+    'BrandReferenceRequestFanUser.id': 'p.id',
+  };
+  const tables = { brandReferenceRequestFanUsers: 'brand_reference_request_fan_user AS p' };
+
+  it("carries the relation's clamps from the layer above inside its subquery, and still reports them", () => {
+    const clamped: LensNarrowing = {
+      parent: lens,
+      root: {
+        relations: {
+          brandReferenceRequestFanUsers: {
+            where: { field: 'affiliation', operator: Operator.exists },
+          },
+        },
+      },
+      mapDefaults: {
+        app: {
+          models: {
+            BrandReferenceRequestFanUser: { where: { field: 'id', operator: Operator.exists } },
+          },
+        },
+      },
+    };
+    const narrowing: LensNarrowing = {
+      parent: clamped,
+      root: {
+        where: {
+          field: 'brandReferenceRequestFanUsers',
+          arrayOperator: 'none',
+          condition: advocate,
+        } as Condition,
+      },
+    };
+    expect(onMysql(() => toLensWhereSql(narrowing, { columns, tables }))).toEqual({
+      root: "NOT EXISTS (SELECT 1 FROM brand_reference_request_fan_user AS p WHERE p.request_id = r.id AND (p.affiliation IS NOT NULL) AND (p.id IS NOT NULL) AND (p.affiliation = 'advocate'))",
+      relations: { brandReferenceRequestFanUsers: 'p.affiliation IS NOT NULL' },
+      mapDefaults: { app: { models: { BrandReferenceRequestFanUser: 'p.id IS NOT NULL' } } },
+    });
+  });
+
+  it("reads a clamp's own relations through the layers above the clamp's", () => {
+    // The Line default (layer 0) reads its notes; the Note default comes a layer later, so it
+    // narrows the where of layer 2 only where that where reads notes itself.
+    const lineDefault: LensNarrowing = {
+      parent: { maps: orders, mapName: 'app', model: 'Order' },
+      root: { relations: { lines: { relations: { notes: {} } } } },
+      mapDefaults: {
+        app: {
+          models: { Line: { where: { field: 'notes', arrayOperator: 'notEmpty' } as Condition } },
+        },
+      },
+    };
+    const noteDefault: LensNarrowing = {
+      parent: lineDefault,
+      mapDefaults: {
+        app: { models: { Note: { where: { field: 'text', operator: Operator.exists } } } },
+      },
+    };
+    const narrowing: LensNarrowing = {
+      parent: noteDefault,
+      root: {
+        where: {
+          field: 'lines',
+          arrayOperator: 'any',
+          condition: { field: 'sku', operator: Operator.equals, value: 'x' },
+        } as Condition,
+      },
+    };
+    expect(
+      onMysql(() =>
+        toLensWhereSql(narrowing, {
+          columns: {
+            tenantId: 'o.tenant_id',
+            id: 'o.id',
+            'lines.tenantId': 'l.tenant_id',
+            'lines.orderId': 'l.order_id',
+            'lines.id': 'l.id',
+            'lines.sku': 'l.sku',
+            'lines.notes.lineId': 'n.line_id',
+            'Line.id': 'l.id',
+            'Line.notes.lineId': 'n.line_id',
+            'Note.text': 'n.text',
+          },
+          tables: { lines: 'line AS l', 'lines.notes': 'note AS n', 'Line.notes': 'note AS n' },
+        }),
+      ).root,
+    ).toBe(
+      "EXISTS (SELECT 1 FROM line AS l WHERE l.tenant_id = o.tenant_id AND l.order_id = o.id AND (EXISTS (SELECT 1 FROM note AS n WHERE n.line_id = l.id)) AND (l.sku = 'x'))",
+    );
+  });
+
+  it('refuses an array rule on a relation the lens hides', () => {
+    const hidden: LensNarrowing = {
+      parent: lens,
+      root: {
+        where: {
+          field: 'brandReferenceRequestFanUsers',
+          arrayOperator: 'any',
+          condition: advocate,
+        } as Condition,
+      },
+    };
+    expect(() => toLensWhereSql(hidden, { columns, tables })).toThrow(
+      "'brandReferenceRequestFanUsers' at the root crosses 'brandReferenceRequestFanUsers', a relation the lens hides",
+    );
+  });
+
+  it("checks an array rule's condition from the relation's rows", () => {
+    const readsRequest = (relations: LensNarrowing['root']): LensNarrowing => ({
+      parent: lens,
+      root: {
+        ...relations,
+        where: {
+          field: 'brandReferenceRequestFanUsers',
+          arrayOperator: 'any',
+          condition: { field: 'request', operator: Operator.exists },
+        } as Condition,
+      },
+    });
+    // `request` is a relation of the participant, not of the request: it is shown or hidden there.
+    expect(() =>
+      toLensWhereSql(readsRequest({ relations: { brandReferenceRequestFanUsers: {} } }), {
+        columns,
+        tables,
+      }),
+    ).toThrow("'request' at 'brandReferenceRequestFanUsers' crosses 'request'");
+    expect(
+      toLensWhereSql(
+        readsRequest({
+          relations: { brandReferenceRequestFanUsers: { relations: { request: {} } } },
+        }),
+        { columns, tables },
+      ).root,
+    ).toBe(
+      'EXISTS (SELECT 1 FROM brand_reference_request_fan_user AS p WHERE p.request_id = r.id AND (pr.id IS NOT NULL))',
+    );
+  });
+
+  it('reads a relation path where by its path, and refuses a model default whose clamps differ by path', () => {
+    // Anchored at the participant, the request is reached twice: at `request`, and again below
+    // the participants of that request, where a parent layer clamps the participants.
+    const participantLens: Lens = { maps, mapName: 'app', model: 'BrandReferenceRequestFanUser' };
+    const twoPaths: LensNarrowing = {
+      parent: participantLens,
+      root: {
+        relations: {
+          request: {
+            relations: {
+              brandReferenceRequestFanUsers: {
+                where: advocate,
+                relations: { request: { relations: { brandReferenceRequestFanUsers: {} } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    const anyParticipant = {
+      field: 'brandReferenceRequestFanUsers',
+      arrayOperator: 'notEmpty',
+    } as Condition;
+    const asPath: LensNarrowing = {
+      parent: twoPaths,
+      root: { relations: { request: { where: anyParticipant } } },
+    };
+    const sqlOf = toLensWhereSql(asPath, {
+      columns: {
+        'request.id': 'r.id',
+        'request.brandReferenceRequestFanUsers.requestId': 'p.request_id',
+        'request.brandReferenceRequestFanUsers.affiliation': 'p.affiliation',
+      },
+      tables: { 'request.brandReferenceRequestFanUsers': 'brand_reference_request_fan_user AS p' },
+    });
+    expect(sqlOf.relations.request).toBe(
+      "EXISTS (SELECT 1 FROM brand_reference_request_fan_user AS p WHERE p.request_id = r.id AND (p.affiliation = 'advocate'))",
+    );
+    const asDefault: LensNarrowing = {
+      parent: twoPaths,
+      mapDefaults: { app: { models: { BrandReferenceRequest: { where: anyParticipant } } } },
+    };
+    expect(() =>
+      toLensWhereSql(asDefault, {
+        columns: {
+          'BrandReferenceRequest.id': 'r.id',
+          'BrandReferenceRequest.brandReferenceRequestFanUsers.requestId': 'p.request_id',
+          'BrandReferenceRequest.brandReferenceRequestFanUsers.affiliation': 'p.affiliation',
+          'request.brandReferenceRequestFanUsers.affiliation': 'p.affiliation',
+        },
+        tables: {
+          'BrandReferenceRequest.brandReferenceRequestFanUsers':
+            'brand_reference_request_fan_user AS p',
+        },
+      }),
+    ).toThrow(
+      'the default where of BrandReferenceRequest reads a to-many relation whose clamps differ between the paths',
+    );
+  });
+});
+
 describe('toLensWhereSql — mirrors the lens', () => {
   const participantWhere = { field: 'affiliation', operator: Operator.equals, value: 'advocate' };
   const narrowing: LensNarrowing = {

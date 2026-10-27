@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.8.0 — prefixConditionFields is public
+
+- **`prefixConditionFields(condition, prefix)`** re-roots a condition onto a related record: a
+  parent's `where` read from its child (`name = X` on a space becomes `space.name = X` on the
+  space's integration). It refuses, rather than guesses, a shape it cannot move: a `path`
+  reference, a scope ref field, or a relation node that reads the row being re-rooted. It was
+  internal to `narrowRule`; `@inixiative/permissions` uses it to carry a writer's contributing
+  filters down to a child when granting.
+
 ## 3.7.0 — toWhereSql / toLensWhereSql: a lens's row filters as SQL predicates
 
 - **`SqlDialect`** (`postgres`, `mysql`) and the engine global **`sql.dialect`**, default

@@ -8,9 +8,11 @@ import {
   isLogicalNode,
   isRelationNode,
   mapCondition,
+  mapLeafSources,
   valueRefs,
 } from '../traverse';
 import type { Condition, WindowFields } from '../types.ts';
+import { hasPath } from '../valueSource';
 import { hasWindow } from '../window.ts';
 import type { Policy } from './policy.ts';
 import {
@@ -75,7 +77,11 @@ const underHopClamps = (node: Condition, hops: HopClamp[]): Condition => {
 // can't be re-rooted unambiguously — a `path` ref (root/current-element semantics don't survive
 // re-rooting), or a ref inside a relation node that climbs to the row being re-rooted — rather
 // than silently emitting a wrong or unenforced clamp.
-export const prefixConditionFields = (cond: Condition, prefix: string): Condition =>
+export const prefixConditionFields = (
+  cond: Condition,
+  prefix: string,
+  { paths = false }: { paths?: boolean } = {},
+): Condition =>
   mapCondition(cond, {
     rewrite: (node) => {
       if (isLogicalNode(node)) return node;
@@ -85,7 +91,13 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
           'unsupported_clamp',
         );
       const refs = valueRefs(node);
-      if (refs.length) {
+      const scoped = refs.find((ref) => parseScopeRef(ref));
+      if (paths && scoped)
+        throw new LensRefusal(
+          `prefixConditionFields: cannot re-root a scope ref ('${scoped}') under '${prefix}'`,
+          'unsupported_clamp',
+        );
+      if (refs.length && !paths) {
         throw new LensRefusal(
           `narrowRule: cannot re-root a relation clamp with a path reference ('${refs[0]}') ` +
             `under '${prefix}'. Author the clamp without 'path', or anchor it at the relation itself.`,
@@ -107,7 +119,12 @@ export const prefixConditionFields = (cond: Condition, prefix: string): Conditio
                 `'${clampRefs(inner).escaping}' inside it reads the row being re-rooted. Anchor such clamps at the relation's own model.`,
               'unsupported_clamp',
             );
-      return { ...node, field: `${prefix}.${node.field}` };
+      const moved = paths
+        ? mapLeafSources(node, (source) =>
+            hasPath(source) ? { ...source, path: `${prefix}.${source.path}` } : source,
+          )
+        : node;
+      return { ...moved, field: `${prefix}.${node.field}` };
     },
     // A relation node's `filter` is relative to its elements, not to the anchor.
     below: () => false,

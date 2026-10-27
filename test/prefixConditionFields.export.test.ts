@@ -14,3 +14,49 @@ describe('prefixConditionFields is public: a condition re-rooted onto a related 
     ).toThrow();
   });
 });
+
+describe('prefixConditionFields with paths: the condition whose root becomes the child', () => {
+  test('a plain record path moves with the field', () => {
+    expect(
+      prefixConditionFields(
+        { field: 'provider', operator: Operator.equals, path: 'defaultProvider' },
+        'space',
+        { paths: true },
+      ),
+    ).toEqual({
+      field: 'space.provider',
+      operator: Operator.equals,
+      path: 'space.defaultProvider',
+    });
+  });
+
+  test('inside all / any, every leaf moves', () => {
+    expect(
+      prefixConditionFields(
+        {
+          all: [
+            { field: 'name', operator: Operator.equals, value: 'X' },
+            { field: 'provider', operator: Operator.equals, path: 'defaultProvider' },
+          ],
+        },
+        'space',
+        { paths: true },
+      ),
+    ).toEqual({
+      all: [
+        { field: 'space.name', operator: Operator.equals, value: 'X' },
+        { field: 'space.provider', operator: Operator.equals, path: 'space.defaultProvider' },
+      ],
+    });
+  });
+
+  test('a scope ref is refused even with paths', () => {
+    expect(() =>
+      prefixConditionFields(
+        { field: 'provider', operator: Operator.equals, path: '$.provider' },
+        'space',
+        { paths: true },
+      ),
+    ).toThrow();
+  });
+});

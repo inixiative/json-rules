@@ -17,6 +17,7 @@ import {
 import { readField, readOwnPath, type Scopes } from './scope';
 import { conditionShape, visitCondition } from './traverse';
 import type {
+  Absent,
   AggregateRule,
   All,
   Any,
@@ -33,6 +34,7 @@ import { applyWindow } from './window';
 /** `bindings`: the caller's values, read by `{ bind }`. The rest is the clock and zone. */
 export type CheckOptions = {
   bindings?: Record<string, RuleValue>;
+  absent?: Absent;
 } & DateConfig;
 
 type EvalOptions = CheckOptions & { scopes: Scopes };

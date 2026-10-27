@@ -83,6 +83,10 @@ export type WeekStart = 'monday' | 'sunday';
 // the evaluation's `bindings`. ONE zone per evaluation; absolute instants
 // never consult it.
 export type TimeZoneConfig = string | ValueSourceOf<string>;
+/** How a value the row doesn't carry reads: as NULL (the default, as a column does on the compiled
+ *  rails), or as unknown, which fails every operator that doesn't hold on a missing value. */
+export type Absent = 'null' | 'unknown';
+
 export type DateConfig = {
   now?: DateInputValue;
   timeZone?: TimeZoneConfig;

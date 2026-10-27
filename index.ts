@@ -137,6 +137,7 @@ export {
   getConditionShapeKeys,
 } from './src/traverse';
 export type {
+  Absent,
   AggregateMode,
   AggregateRule,
   All,

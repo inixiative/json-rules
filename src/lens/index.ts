@@ -22,7 +22,7 @@ export {
 } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';
-export { narrowRule } from './narrowRule';
+export { narrowRule, prefixConditionFields } from './narrowRule';
 export { projectLens } from './projectLens';
 export {
   lensVisit,

@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.10.0 — prefixConditionFields is public
+
+- **`prefixConditionFields(condition, prefix, { paths? })`** re-roots a condition onto a related
+  record: a parent's `where` read from its child (`name = X` on a space becomes `space.name = X` on
+  the space's integration). With `paths: true` a plain record `path` moves too (`path:
+  'defaultProvider'` becomes `path: 'space.defaultProvider'`), for a condition whose root becomes the
+  child; without it a `path` is refused, as narrowRule needs. A scope ref (`$.`, `$$.`) and a
+  relation node that reads the row being re-rooted are always refused, never guessed. It was
+  internal to `narrowRule`; `@inixiative/permissions` uses it to carry a writer's contributing
+  filters down to a child when granting.
+
 ## 3.9.0 — toWhereSql / toLensWhereSql: an array rule on a to-many relation as EXISTS
 
 - **`toWhereSql`** writes `any`, `all`, `none`, `empty` and `notEmpty` on a to-many relation of the

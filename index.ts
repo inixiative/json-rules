@@ -64,6 +64,7 @@ export {
   type ProjectedVisit,
   type ProjectLensOptions,
   type ProjectRowsOptions,
+  prefixConditionFields,
   projectLens,
   projectRows,
   type RuleDescription,

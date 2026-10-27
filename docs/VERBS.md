@@ -20,6 +20,7 @@ modules allowed to implement it, and every exported function must appear in this
 | bind | `bindRule`, `bindLens` | Substitute supplied bindings into a rule, or a lens's narrowing conditions. |
 | bind | `listBindings`, `listLensBindings` | The bind names a rule or lens reads, sorted (`{ required }` drops `bindOptional`). |
 | narrow | `narrowRule` | Inject a lens's clamps into a rule at their anchors. |
+| re-root | `prefixConditionFields` | Move a condition onto a related record (a parent's where read from the child); refuse shapes it cannot move. |
 | clamp | `clampLens` | AND clamps into a lens's first narrowing over the base, where they read the whole schema; later layers kept. |
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
 | project | `projectLens` | What a lens exposes: by path along the relations turned on (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |

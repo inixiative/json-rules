@@ -425,6 +425,12 @@ export const NEGATED_OPERATORS: readonly string[] = [
   ...Object.entries(FIELD_OPERATOR_CATALOG),
   ...Object.entries(DATE_OPERATOR_CATALOG),
 ].flatMap(([operator, entry]) => (entry.negates ? [operator] : []));
+/** The operators that hold on a missing value: the negations, `isEmpty` and `notExists`. */
+export const HOLDS_ON_ABSENT_OPERATORS: readonly string[] = [
+  ...NEGATED_OPERATORS,
+  Operator.isEmpty,
+  Operator.notExists,
+];
 /** Negations of a string operator: `notContains`, `notStartsWith`, `notEndsWith`. */
 export const NEGATED_STRING_OPERATORS = NEGATED_OPERATORS.filter((op) =>
   withShape('string').includes(op),

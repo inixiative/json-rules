@@ -9,6 +9,7 @@ import { Operator } from './operator';
 import {
   EQUALITY_OPERATORS,
   type FieldKind,
+  HOLDS_ON_ABSENT_OPERATORS,
   NEGATED_OPERATORS,
   NO_VALUE_OPERATORS,
   NUMERIC_KINDS,
@@ -132,12 +133,6 @@ export const applyCoercion = (
   return coerceScalar(value, kind, zone);
 };
 
-const HOLDS_ON_ABSENT: readonly string[] = [
-  ...NEGATED_OPERATORS,
-  Operator.isEmpty,
-  Operator.notExists,
-];
-
 export const checkField = (
   condition: Rule,
   scopes: Scopes,
@@ -149,7 +144,7 @@ export const checkField = (
   const read = computed ? computed.value : readField(condition.field, scopes);
   if (
     config.absent === 'unknown' &&
-    !HOLDS_ON_ABSENT.includes(condition.operator) &&
+    !HOLDS_ON_ABSENT_OPERATORS.includes(condition.operator) &&
     (read === undefined || (hasPath(condition) && readPath(condition.path, scopes) === undefined))
   )
     return condition.error || `${condition.field} is unknown`;

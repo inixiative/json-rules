@@ -638,6 +638,11 @@ null` and `in [null]` included, except the ones that hold on a missing value (`i
 for real rows (a pseudo record a grant is checked against), so a rule passes only on what the row
 pins. `check()` only; the compilers read real columns.
 
+`validateRule(rule, { positive: true })` refuses every shape that can hold on a missing value —
+`if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists` — so a rule
+checked that way passes only on what the row carries. A rule that means "no value" says `equals
+null`.
+
 ## Engine Globals
 
 `engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object.

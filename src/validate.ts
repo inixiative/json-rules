@@ -37,6 +37,7 @@ import {
   DAY_NAMES,
   FieldKind,
   getValueShape,
+  HOLDS_ON_ABSENT_OPERATORS,
   isDayName,
   isFieldKind,
   isOperatorSupportedForTarget,
@@ -53,7 +54,7 @@ import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
-import { conditionShape } from './traverse';
+import { conditionShape, visitCondition } from './traverse';
 import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
@@ -99,6 +100,9 @@ export type ValidateRuleOptions = {
   map?: FieldMap | FieldMapSet;
   mapName?: string;
   model?: string;
+  /** Refuse every shape that can hold on a value the row doesn't carry: `if`/`then`/`else`,
+   *  array and aggregate rules, and the operators that hold on a missing value. */
+  positive?: boolean;
 };
 
 /** A rule's shape checked without data: every node well formed, and runnable on `target`
@@ -116,8 +120,28 @@ export const validateRule = (
   };
 
   validateCondition(condition, '$', context, 1);
+  if (options.positive) validatePositive(condition, context);
   return validationResult(context.errors);
 };
+
+const NOT_POSITIVE_SHAPES = ['if', 'array', 'aggregate'];
+
+const validatePositive = (condition: unknown, context: ValidationContext): void =>
+  visitCondition(condition as Condition, (node) => {
+    const shape = conditionShape(node);
+    const operator = node.operator ?? node.dateOperator;
+    if (
+      (shape && NOT_POSITIVE_SHAPES.includes(shape)) ||
+      (typeof operator === 'string' && HOLDS_ON_ABSENT_OPERATORS.includes(operator))
+    )
+      pushIssue(
+        context,
+        '$',
+        'notPositive',
+        `${shape === 'field' || shape === 'date' ? operator : shape} can hold on a missing value`,
+      );
+    return false;
+  });
 
 /** `validateRule`, throwing its issues; narrows the input to a `Condition`. */
 export const assertValidRule = (

@@ -628,6 +628,16 @@ declares: on Json, `contains` / `startsWith` / `endsWith` become `string_contain
 becomes one `equals` per value; on a scalar list, `contains` becomes `has` and emptiness
 `isEmpty`; `caseInsensitive` adds `mode: 'insensitive'` on text only.
 
+### A value the row doesn't carry
+
+By default `check()` reads an absent path as null, as a column is on the compiled rails.
+`check(rule, row, { absent: 'unknown' })` reads it as unknown instead: `null === null`, and
+`undefined` is not null. Every operator fails on an unknown field or compared `path`, `equals
+null` and `in [null]` included, except the ones that hold on a missing value (`isEmpty`,
+`notExists` and the negations), which keep their meaning. Use it when the row is a partial stand-in
+for real rows (a pseudo record a grant is checked against), so a rule passes only on what the row
+pins. `check()` only; the compilers read real columns.
+
 ## Engine Globals
 
 `engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object.

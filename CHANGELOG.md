@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.11.0 — absent: 'unknown'
+
+- **`check(rule, row, { absent: 'unknown' })`** reads a value the row doesn't carry as unknown,
+  not null: `null === null`, and `undefined` is not null. Every operator fails on an unknown field
+  or compared `path` (`equals null` and `in [null]` included), except `isEmpty`, `notExists` and
+  the negations, which hold on a missing value as before. The default stays `'null'`, as the
+  compiled rails read a column. `@inixiative/permissions` checks a grant against a pseudo record
+  this way, so a writer's rule passes only on what the requested `where` pins.
+
 ## 3.10.0 — prefixConditionFields is public
 
 - **`prefixConditionFields(condition, prefix, { paths? })`** re-roots a condition onto a related

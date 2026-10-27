@@ -16,10 +16,10 @@ import {
   RANGE_OPERATORS,
 } from './operatorCatalog';
 import { readPattern } from './pattern';
-import { readField, type Scopes } from './scope';
+import { readField, readPath, type Scopes } from './scope';
 import { allOf, anyOf } from './traverse';
-import type { Condition, DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
-import { readValueSource } from './valueSource';
+import type { Absent, Condition, DateConfig, OrderedRuleValue, Rule, RuleValue } from './types';
+import { hasPath, readValueSource } from './valueSource';
 
 // A value is "empty" iff it is null, undefined, the empty string, or an empty array — as the
 // compilers read a column, a Json value and a list. (lodash isEmpty would also treat Dates and
@@ -132,15 +132,28 @@ export const applyCoercion = (
   return coerceScalar(value, kind, zone);
 };
 
+const HOLDS_ON_ABSENT: readonly string[] = [
+  ...NEGATED_OPERATORS,
+  Operator.isEmpty,
+  Operator.notExists,
+];
+
 export const checkField = (
   condition: Rule,
   scopes: Scopes,
   bindings?: Record<string, RuleValue>,
-  config: DateConfig = {},
+  config: DateConfig & { absent?: Absent } = {},
   // A computed left-hand side (an aggregate) in place of the field's value.
   computed?: { value: unknown },
 ): boolean | string => {
-  const raw = computed ? computed.value : (readField(condition.field, scopes) ?? null);
+  const read = computed ? computed.value : readField(condition.field, scopes);
+  if (
+    config.absent === 'unknown' &&
+    !HOLDS_ON_ABSENT.includes(condition.operator) &&
+    (read === undefined || (hasPath(condition) && readPath(condition.path, scopes) === undefined))
+  )
+    return condition.error || `${condition.field} is unknown`;
+  const raw = read ?? null;
   // A Date compares as DateTime even unstamped, as the compilers read a DateTime column.
   const kind = condition.coerceType ?? (raw instanceof Date ? 'DateTime' : undefined);
   // Only a DateTime coercion reads the zone.

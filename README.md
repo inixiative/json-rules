@@ -703,7 +703,7 @@ engine's `sql.dialect` — `SqlDialect.postgres` by default, `SqlDialect.mysql` 
 are not a second `toSql`: `toSql` and `toPrisma` are unchanged.
 
 ```ts
-import { engineGlobals, Operator, SqlDialect, toLensWhereSql, toWhereSql } from '@inixiative/json-rules';
+import { ArrayOperator, engineGlobals, Operator, SqlDialect, toLensWhereSql, toWhereSql } from '@inixiative/json-rules';
 
 engineGlobals.set('sql.dialect', SqlDialect.mysql);
 
@@ -713,17 +713,48 @@ toWhereSql(
 );
 // => "${fan_user.affiliation} IN ('advocate', 'consultant')"
 
-toLensWhereSql(lens, { columns });
+toWhereSql(
+  {
+    field: 'affiliations',
+    arrayOperator: ArrayOperator.any,
+    condition: { field: 'affiliation', operator: Operator.equals, value: 'advocate' },
+  },
+  {
+    columns: {
+      uuid: '${fan_users.uuid}',
+      'affiliations.fanUserUuid': 'a.fanUserUuid',
+      'affiliations.affiliation': 'a.affiliation',
+    },
+    tables: { affiliations: 'FanUserAffiliation AS a' },
+    map,
+    mapName: 'prisma',
+    model: 'FanUser',
+  },
+);
+// => "EXISTS (SELECT 1 FROM FanUserAffiliation AS a WHERE a.fanUserUuid = ${fan_users.uuid} AND (a.affiliation = 'advocate'))"
+
+toLensWhereSql(lens, { columns, tables });
 // => { root: '…' | null, relations: {}, mapDefaults: { prisma: { models: { BrandReferenceRequestFanUser: "${brand_reference_request_fan_user.affiliation} = 'advocate'" } } } }
 ```
 
 - **Operators:** `equals`, `notEquals`, `in`, `notIn`, `exists`, `notExists`, inside `all` / `any`
-  (and `true` / `false`). Anything else — another operator, a date, array or aggregate rule,
-  `if` / `then` / `else` — throws, naming it. So do binds, `path` (column-to-column), offsets,
-  `coerceType`, case-insensitivity, a path across a bridge or through a to-many relation, anything
-  Json (a stored JSON null is a value to SQL and null to `check()`), and a DateTime or list
-  *value*. A DateTime's or list's existence compiles: `deletedAt notExists`, a lens's soft-delete
-  `where`, is `… IS NULL`. A rule with no `value` throws, as on every rail.
+  (and `true` / `false`), and `any` / `all` / `none` / `empty` / `notEmpty` over a to-many relation
+  (below). Anything else — another operator, a date rule, a count or windowed array rule, an
+  aggregate, `if` / `then` / `else` — throws, naming it. So do binds, `path` (column-to-column),
+  offsets, `coerceType`, case-insensitivity, a path across a bridge, a field rule through a to-many
+  relation, anything Json (a stored JSON null is a value to SQL and null to `check()`), and a
+  DateTime or list *value*. A DateTime's or list's existence compiles: `deletedAt notExists`, a
+  lens's soft-delete `where`, is `… IS NULL`. A rule with no `value` throws, as on every rail.
+- **To-many relations:** an array rule on a to-many relation of the model is one subquery on the
+  relation's table, keyed to the row: `any` / `notEmpty` is `EXISTS`, `none` / `empty` is
+  `NOT EXISTS`, and `all` is `NOT EXISTS` of a row whose condition `IS NOT TRUE` — a NULL result
+  fails, as in `check()`. The map gives the keys (`relationKeys`; a composite key ANDs every pair):
+  the row's side reads `columns['<key>']`, the related side `columns['<relation>.<key>']`.
+  `tables['<relation>']` is the table, written after `FROM` as given, with the alias its columns
+  read. The condition compiles as above and reads `columns['<relation>.<field>']`; a to-many
+  relation of the related rows nests (`tables['<relation>.<relation>']`). A relation behind
+  another one (`profile.affiliations`), a relation missing from `tables`, `atLeast` / `atMost` /
+  `exactly`, a window (`filter` / `orderBy` / `take` / `skip`) and a fieldless array rule throw.
 - **Map:** `map` / `mapName` / `model` are required. A value is checked against its column's
   kind (`leafFitViolations`, as `validateNarrowing` checks it) and an undeclared path is refused —
   MySQL casts a mistyped literal instead of erroring, so `score = TRUE` would match 1 where
@@ -743,7 +774,7 @@ toLensWhereSql(lens, { columns });
   exactly, so a `_ci` column (MySQL's default) also matches `'Advocate'` for `'advocate'`; compare a
   binary-collated column where that matters.
 
-`toLensWhereSql(lens, { columns })` mirrors the lens: the root path's `where`s under `root` (null
+`toLensWhereSql(lens, { columns, tables? })` mirrors the lens: the root path's `where`s under `root` (null
 when it has none), each relation path's own under `relations`, keyed by the path, and each model
 default's (`mapDefaults[map].models[model].where`) under `mapDefaults`, keyed the same way — one
 predicate per model however many paths reach it. Each is the `where` as its layer wrote it: a
@@ -754,6 +785,20 @@ reports every map's defaults; a caller writing one database reads its own map's.
 `brandReferenceRequestFanUsers.id` below it); a model default by `'<Model>.<field>'`
 (`BrandReferenceRequestFanUser.affiliation`). It does not compile through `toSql`'s `{ lens }`
 path, which would fold the lens's `where`s into the predicate a second time.
+
+An array rule on a to-many relation has no join to put that relation's clamps on, so its subquery
+carries them: the relation path's own `where` and the related model's default, ANDed beside the
+key (outside the `IS NOT TRUE` of an `all`, as `check()` filters the rows before it tests them).
+It carries only the clamps of the layers above the layer that wrote the `where`, which is what
+`check()` reads it through: a layer's clamps narrow the layers after it, never its own conditions.
+A clamp in the same layer or a later one stays out, so a later layer can't widen what a `none` or
+an `empty` admitted. Each clamp reads its own relations through the layers above its own. The
+clamps are still reported at their own path and model. `tables` reads like `columns`: by the
+relation's path from the lens model in a path `where` (`affiliations`), by
+`'<Model>.<relation>'` in a model default (`FanUser.affiliations`). An array rule on a relation
+the lens hides throws, and its condition's fields are checked from the relation, not from the
+model it sits on. A model default compiles to one predicate for every path that reaches its
+model, so it throws when a to-many relation it reads carries different clamps on two of them.
 
 **Absent, not hidden.** A row a relation's `where` filters out is absent from the SQL join, so a
 negation through that relation holds for it; `check()` under the lens treats the row as hidden.

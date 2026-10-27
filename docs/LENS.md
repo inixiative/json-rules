@@ -23,6 +23,12 @@ widen it, so layers compose and the result is monotonic: adding a layer can only
 Stacking layers is the point. A layer's `where` is a **clamp**: a row is hidden unless it
 holds, so a clamp only ever narrows; it never grants access.
 
+A layer's clamps narrow what the layers after it see, never the conditions it writes itself: layer
+k's `where` reads through the clamps of layers 1…k−1, as a user rule reads through every layer.
+A clamp means "the readers below me can't see these rows", not "I can't". Carrying a later clamp
+into an earlier `where` would break the rule above: hiding rows inside a `none` or an `empty` makes
+more parents pass, so the later layer would widen what the earlier one admitted.
+
 One stack answers every posture, and every layer filters every posture:
 
 | Posture | Calls |

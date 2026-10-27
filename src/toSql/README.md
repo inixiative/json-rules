@@ -88,20 +88,24 @@ A relation list (a to-many relation) takes no array or aggregate rule in `toSql(
 
 ## Inline predicates (`whereSql.ts`)
 
-`toWhereSql(condition, { columns, map, mapName?, model })` writes a condition as a predicate in
+`toWhereSql(condition, { columns, tables?, map, mapName?, model })` writes a condition as a predicate in
 the engine's `sql.dialect` (`SqlDialect.postgres` by default, `mysql` the other) with values
 inline and every field read from the caller's `columns` map — no parameters, no identifiers, no
 joins. It is a separate, deliberately small compiler, not a dialect of `toSql` (which stays
 PostgreSQL): `equals`, `notEquals`, `in` (`IN (…)`), `notIn`, `exists`, `notExists`, inside
-`all` / `any`. Every other operator or node throws, naming it, as do binds, column `path`s,
-offsets, `coerceType`, case-insensitivity, bridges, to-many hops, anything Json (a stored JSON
-null is not a SQL NULL) and a DateTime / list *value* (their existence compiles). The map is required: a value is checked against its column's
+`all` / `any`, and `any` / `all` / `none` / `empty` / `notEmpty` on a to-many relation of the
+model — one `EXISTS` / `NOT EXISTS` subquery on the table the caller gives in `tables`, keyed by
+the map's relation keys (`all` tests `IS NOT TRUE`, so a NULL result fails). Every other operator
+or node throws, naming it, as do binds, column `path`s, offsets, `coerceType`, case-insensitivity,
+bridges, a field rule through a to-many relation, an array rule behind another relation, counts,
+windows, anything Json (a stored JSON null is not a SQL NULL) and a DateTime / list *value* (their
+existence compiles). The map is required: a value is checked against its column's
 kind with `leafFitViolations`, as `validateNarrowing` checks it, and an undeclared path is refused —
 MySQL casts a mistyped literal instead of erroring.
 Strings double `'`, and `\` on MySQL; negations carry `IS NULL`. A path missing from `columns`
 throws. `toLensWhereSql` (`src/lens/toLensWhereSql.ts`) runs it over each visit of a lens that has
 `where`s and reports them where the lens wrote them — `root`, `relations` by path, `mapDefaults`
-by map and model, each as its layer wrote it (`VisitEffect.pathWheres` / `modelWheres`, beside the narrowed `whereClauses`); see the root README for the absent-vs-hidden semantics and the
+by map and model, each as its layer wrote it (`VisitEffect.pathWheres` / `modelWheres`, beside the narrowed `whereClauses`); an array rule's subquery carries its relation's clamps, which have no join to sit on (`RelationClamps`): those of the layers above the `where`'s own, as `check()` reads it. See the root README for the absent-vs-hidden semantics and the
 collation caveat. `test/whereSql.mysql.test.ts` and `test/whereSql.postgres.test.ts` run one
 matrix against a real `mysqld` (mysql-memory-server) and PGlite.
 

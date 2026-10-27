@@ -4,15 +4,21 @@ import { createDB } from 'mysql-memory-server';
 import type { Condition, Lens, LensNarrowing } from '../index';
 import { check, engineGlobals, Operator, SqlDialect, toLensWhereSql, toWhereSql } from '../index';
 import {
+  affiliations,
   asChecked,
   checkedIds,
   whereSqlColumns as columns,
   eq,
   fanUsers,
   forms,
+  whereSqlLensCases as lensCases,
+  lensKeptIds,
   whereSqlMaps as maps,
   whereSqlRules as rules,
+  whereSqlTables as tables,
   tricky,
+  whereSqlLensColumns,
+  whereSqlLensTables,
 } from './fixtures/whereSql';
 
 // Differential: check() and the predicate toWhereSql writes, run by a real mysqld, return the
@@ -20,7 +26,7 @@ import {
 // .github/workflows/ci.yml); keep the version in step with the cache key.
 const MYSQL_VERSION = '8.4.11';
 
-const options = { columns, map: { maps }, mapName: 'app', model: 'FanUser' };
+const options = { columns, tables, map: { maps }, mapName: 'app', model: 'FanUser' };
 
 const toBit = (b: boolean | null): string => (b === null ? 'NULL' : b ? '1' : '0');
 const str = (s: string | null): string =>
@@ -53,7 +59,19 @@ beforeAll(async () => {
       score INT NULL, active BOOLEAN NULL, verified_at DATETIME NULL, form_id INT NULL)`,
   );
   await sql.unsafe(
+    `CREATE TABLE fan_user_affiliations (id INT PRIMARY KEY, fan_user_id INT NULL,
+      affiliation VARCHAR(64) COLLATE utf8mb4_0900_bin NULL, ended_at DATETIME NULL, deleted_at DATETIME NULL)`,
+  );
+  await sql.unsafe(
     `INSERT INTO forms VALUES ${forms.map((f) => `(${f.id}, ${str(f.status)})`).join(', ')}`,
+  );
+  await sql.unsafe(
+    `INSERT INTO fan_user_affiliations VALUES ${affiliations
+      .map(
+        (a) =>
+          `(${a.id}, ${a.fanUserId}, ${str(a.affiliation)}, ${at(a.endedAt)}, ${at(a.deletedAt)})`,
+      )
+      .join(', ')}`,
   );
   await sql.unsafe(
     `INSERT INTO fan_users VALUES ${fanUsers
@@ -145,4 +163,25 @@ describe('toLensWhereSql (mysql) — check() and mysqld agree', () => {
     const inMemory = forms.filter((f) => check(formWhere, f) === true).map((f) => f.id);
     expect(viaSql).toEqual(inMemory);
   });
+});
+
+describe('toLensWhereSql (mysql) — a to-many relation read through its clamps', () => {
+  const keptViaSql = (lens: LensNarrowing, read: 'root' | 'FanUser'): Promise<number[]> => {
+    const sqlOf = toLensWhereSql(lens, {
+      columns: whereSqlLensColumns,
+      tables: whereSqlLensTables,
+    });
+    const where = read === 'root' ? sqlOf.root : sqlOf.mapDefaults.app.models.FanUser;
+    return ids(`SELECT u.id FROM fan_users u WHERE ${where ?? 'TRUE'} ORDER BY u.id`);
+  };
+  for (const [label, { lens, read, darkerThan }] of Object.entries(lensCases)) {
+    it(label, async () => {
+      const viaSql = await keptViaSql(lens, read);
+      expect(viaSql).toEqual(lensKeptIds(lens));
+      if (darkerThan) {
+        const above = await keptViaSql(darkerThan, read);
+        expect(viaSql.filter((id) => !above.includes(id))).toEqual([]);
+      }
+    });
+  }
 });

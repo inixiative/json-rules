@@ -1,7 +1,13 @@
 import { compileFieldLiteral } from '../compileLiteral';
 import { DEFAULT_ZONE } from '../dateExpr';
 import { engineGlobals, isSqlDialect, resolveCaseInsensitive, SqlDialect } from '../engineGlobals';
-import { pastScalarError, relationNotValue, toManyHopError, UsageError } from '../errors';
+import {
+  conditionRequired,
+  pastScalarError,
+  relationNotValue,
+  toManyHopError,
+  UsageError,
+} from '../errors';
 import { hasNoOperand, isExistenceTest } from '../field';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import { entryKind, fieldShape } from '../fieldMap/shape';
@@ -9,19 +15,30 @@ import type { FieldMap, FieldMapSet } from '../fieldMap/types';
 import { type MapWalkResult, walkFieldPath } from '../fieldMap/walk';
 import { leafFitViolations } from '../lens/fieldFit';
 import { splitNull } from '../number';
-import { Operator } from '../operator';
-import { NEGATED_OPERATORS, WHERE_SQL_OPERATORS } from '../operatorCatalog';
+import { ArrayOperator, Operator } from '../operator';
+import {
+  ARRAY_CONDITION_OPERATORS,
+  NEGATED_OPERATORS,
+  WHERE_SQL_ARRAY_OPERATORS,
+  WHERE_SQL_OPERATORS,
+} from '../operatorCatalog';
 import { modelOf } from '../own';
 import { parseScopeRef } from '../scope';
 import { relationKeys } from '../toPrisma/relationUtils';
 import { conditionShape } from '../traverse';
-import type { Condition, Rule } from '../types';
+import type { ArrayRule, Condition, Rule } from '../types';
+import { hasWindow } from '../window';
 import { noOperandSql, orNull } from './compare';
 
 export type WhereSqlOptions = {
   /** Field path → the caller's SQL for that column, used as written. A to-one relation's
-   *  existence reads `'<relation>.<key>'`. */
+   *  existence reads `'<relation>.<key>'`; a to-many relation's rows read
+   *  `'<relation>.<field>'`. */
   columns: Record<string, string>;
+  /** To-many relation path → the caller's SQL for its table, written after `FROM` as given, with
+   *  the alias its `columns` read (`{ affiliations: 'FanUserAffiliation AS a' }`). An array rule
+   *  on that relation reads it. */
+  tables?: Record<string, string>;
   /** The schema the condition reads: it types each literal by its column, finds a relation's key,
    *  and refuses what has no form here (a date, Json or list value, a bridge, a to-many hop). */
   map: FieldMap | FieldMapSet;
@@ -29,8 +46,18 @@ export type WhereSqlOptions = {
   model: string;
 };
 
+/** The clamps a to-many relation's rows carry, by the relation's path from where the compile
+ *  started: what `check()` reads through that hop under a lens. A bare condition has none. */
+export type RelationClamps = (relationPath: string) => RelationClamp[];
+
+/** One clamp on a relation's rows, and the clamps it reads its own to-many relations through —
+ *  from the relation's model. */
+export type RelationClamp = { where: Condition; clamps: RelationClamps };
+
 type Context = {
   column: (path: string) => string;
+  table: (path: string) => string;
+  clamps: RelationClamps;
   map: FieldMap;
   model: string;
 };
@@ -47,45 +74,54 @@ const sqlDialect = (): SqlDialect => {
 
 const refuse = (what: string): Error =>
   new Error(
-    `toWhereSql: ${what} has no SQL form here — it writes ${WHERE_SQL_OPERATORS.join(', ')}, all and any.`,
+    `toWhereSql: ${what} has no SQL form here — it writes ${WHERE_SQL_OPERATORS.join(', ')}, all and any, and ${WHERE_SQL_ARRAY_OPERATORS.join(', ')} over a to-many relation.`,
   );
 
 /**
  * A condition as a SQL predicate in the engine's `sql.dialect`, with every value written inline
  * and every field read from `columns` — no parameters to fill, no joins. Negations keep NULL rows,
- * as on every rail. Throws for any operator but equals / notEquals / in / notIn / exists /
- * notExists inside all / any, and for binds, bridges, column-to-column `path`s, a Json value or
- * existence, and a date or list value (their existence is fine: `IS NULL` compares no value).
+ * as on every rail. An array rule (any / all / none / empty / notEmpty) on a to-many relation of
+ * the model is an `EXISTS` subquery on its table from `tables`. Throws for any other operator or
+ * node, for binds, bridges, column-to-column `path`s, a Json value or existence, and a date or
+ * list value (their existence is fine: `IS NULL` compares no value).
  */
 export const toWhereSql = (condition: Condition, options: WhereSqlOptions): string =>
   whereSql(condition, options, '');
 
-/** toWhereSql reading `columns` under `prefix`: a relation path's visit, from the lens model. */
+/** The caller's SQL for `path` in one of its maps, refused when it gives none. */
+const given = (source: Record<string, string>, name: string, what: string, path: string) => {
+  const sql = Object.hasOwn(source, path) ? source[path] : undefined;
+  if (typeof sql !== 'string' || sql === '')
+    throw new UsageError(`toWhereSql: no ${what} for '${path}' in \`${name}\``);
+  return sql;
+};
+
+/** toWhereSql reading `columns` and `tables` under `prefix` (a relation path's visit, from the lens
+ *  model), each to-many relation's rows under `clamps`. */
 export const whereSql = (
   condition: Condition,
   options: WhereSqlOptions,
   prefix: string,
+  clamps: RelationClamps = () => [],
 ): string => {
   sqlDialect();
-  const { columns, map: given, mapName, model } = options ?? ({} as WhereSqlOptions);
+  const { columns, tables = {}, map: schema, mapName, model } = options ?? ({} as WhereSqlOptions);
   if (typeof columns !== 'object' || columns === null)
     throw new UsageError('toWhereSql: `columns` maps each field path to its SQL');
-  if (!given || !model)
+  if (typeof tables !== 'object' || tables === null)
+    throw new UsageError('toWhereSql: `tables` maps each to-many relation path to its table');
+  if (!schema || !model)
     throw new UsageError(
       'toWhereSql: `map` and `model` are required — a literal is typed by its column, and a date, Json or list value is refused by it',
     );
-  const map = resolveFieldMap(given, mapName, 'toWhereSql') as FieldMap;
+  const map = resolveFieldMap(schema, mapName, 'toWhereSql') as FieldMap;
   if (!modelOf(map, model)) throw new UsageError(`toWhereSql: the map has no model '${model}'`);
   return buildWhere(condition, {
     map,
     model,
-    column: (field) => {
-      const path = `${prefix}${field}`;
-      const sql = Object.hasOwn(columns, path) ? columns[path] : undefined;
-      if (typeof sql !== 'string' || sql === '')
-        throw new UsageError(`toWhereSql: no column for '${path}' in \`columns\``);
-      return sql;
-    },
+    column: (field) => given(columns, 'columns', 'column', `${prefix}${field}`),
+    table: (field) => given(tables, 'tables', 'table', `${prefix}${field}`),
+    clamps,
   });
 };
 
@@ -106,13 +142,68 @@ const buildWhere = (condition: Condition, ctx: Context): string => {
     case 'if':
       throw refuse('if / then / else');
     case 'array':
-      throw refuse(`arrayOperator '${String(node.arrayOperator)}'`);
+      return buildArray(condition as ArrayRule, ctx);
     case 'aggregate':
       throw refuse('aggregate');
     case 'date':
       throw refuse(`dateOperator '${String(node.dateOperator)}'`);
     default:
       throw refuse('a condition that is not exactly one node kind');
+  }
+};
+
+/**
+ * An array rule on a to-many relation of the model as one subquery on the relation's table: its
+ * rows keyed to this row and kept by the relation's clamps, as `check()` reads them under a lens.
+ * `any` / `notEmpty`: such a row exists; `none` / `empty`: none does; `all`: none fails the
+ * condition — `IS NOT TRUE`, so a NULL result fails, as in `check()`. A clamp stays outside it: a
+ * row the clamp hides is not there to fail.
+ */
+const buildArray = (rule: ArrayRule, ctx: Context): string => {
+  const { arrayOperator: operator, field } = rule;
+  if (!WHERE_SQL_ARRAY_OPERATORS.includes(operator)) throw refuse(`arrayOperator '${operator}'`);
+  if (hasWindow(rule)) throw refuse(`a window (filter / orderBy / take / skip) on '${field}'`);
+  if (!field) throw refuse(`the fieldless arrayOperator '${operator}'`);
+  const walk = walkFieldPath(field, ctx.map, ctx.model);
+  if (walk.kind === 'fallback')
+    throw new Error(`toWhereSql: '${field}' is not a field the map declares on ${ctx.model}`);
+  if (walk.kind === 'bridge') throw refuse(`'${field}', which crosses a bridge`);
+  if (walk.hops.length)
+    throw refuse(
+      `arrayOperator '${operator}' on '${field}', behind the relation '${walk.hops[0].prefix}'`,
+    );
+  if (walk.kind !== 'direct' || fieldShape(walk) !== 'relations')
+    throw refuse(`arrayOperator '${operator}' on '${field}', which is not a to-many relation`);
+  const keys = relationKeys(ctx.map, walk.model, walk.entry);
+  if (!keys) throw refuse(`'${field}', whose relation keys the map does not declare`);
+  if (ARRAY_CONDITION_OPERATORS.includes(operator) && rule.condition === undefined)
+    throw conditionRequired(operator);
+
+  const rows: Context = {
+    map: ctx.map,
+    model: walk.entry.type,
+    column: (path) => ctx.column(`${field}.${path}`),
+    table: (path) => ctx.table(`${field}.${path}`),
+    clamps: (path) => ctx.clamps(`${field}.${path}`),
+  };
+  const scope = [
+    ...keys.map(({ here, there }) => `${rows.column(there)} = ${ctx.column(here)}`),
+    ...ctx.clamps(field).map(({ where, clamps }) => `(${buildWhere(where, { ...rows, clamps })})`),
+  ];
+  const subquery = (test?: string): string =>
+    `(SELECT 1 FROM ${ctx.table(field)} WHERE ${[...scope, ...(test ? [test] : [])].join(' AND ')})`;
+  const each = (): string => `(${buildWhere(rule.condition as Condition, rows)})`;
+  switch (operator) {
+    case ArrayOperator.any:
+      return `EXISTS ${subquery(each())}`;
+    case ArrayOperator.none:
+      return `NOT EXISTS ${subquery(each())}`;
+    case ArrayOperator.all:
+      return `NOT EXISTS ${subquery(`${each()} IS NOT TRUE`)}`;
+    case ArrayOperator.empty:
+      return `NOT EXISTS ${subquery()}`;
+    default:
+      return `EXISTS ${subquery()}`;
   }
 };
 

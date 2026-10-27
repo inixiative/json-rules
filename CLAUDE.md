@@ -56,6 +56,11 @@ recursion — their descent IS their semantics — and are guarded by differenti
   path (`root.relations.org`) or always-on at the model default (`mapDefaults…models.Org.relations`),
   never through `picks`. Adding a hop's narrowing never hides another relation; hiding is `omits`.
   (Spec and tests for 3.4 must match this; see docs/LENS.md.)
+- **A layer's clamps narrow the layers after it, never its own conditions** (Aron, 2026-10-26).
+  Layer k's `where` reads through the clamps of layers 0…k−1 (`narrowAt(condition,
+  chain.slice(0, k))`): a clamp means "the readers below me can't see these rows". Every compile
+  carries that same set — a same-layer or later clamp inside a `none` / `empty` would widen what
+  an earlier layer admitted.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled
   in May 2026; 3.4's first cut contradicted it because nobody looked.

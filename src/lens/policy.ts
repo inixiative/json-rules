@@ -18,17 +18,21 @@ import type {
 } from './types.ts';
 import { checkConditionAtVisit } from './validateRuleInLens.ts';
 
+/** A `where` as its layer wrote it, and that layer's index in the chain. */
+export type LayeredWhere = { where: Condition; layer: number };
+
 export type VisitEffect = {
   picks: Set<string> | null;
   omits: Set<string>;
   enumValuesByField: Map<string, readonly string[]>;
   whereClauses: Condition[];
-  /** The visit's `where`s as each layer wrote them, unnarrowed — a narrowed clause carries the
-   *  parent's clamps on the hops it crosses, which a mirror of the lens reports at their own
-   *  path. `pathWheres` are the path's (`root`, a relation object, every layer); `modelWheres`
-   *  the visited model's own default's (`mapDefaults[map].models[model].where`, every layer). */
-  pathWheres: Condition[];
-  modelWheres: Condition[];
+  /** The visit's `where`s as each layer wrote them, unnarrowed, with the chain index of that
+   *  layer — a narrowed clause carries the parent's clamps on the hops it crosses, which a mirror
+   *  of the lens reports at their own path, and a `where` reads through the layers above its own
+   *  only. `pathWheres` are the path's (`root`, a relation object, every layer); `modelWheres` the
+   *  visited model's own default's (`mapDefaults[map].models[model].where`, every layer). */
+  pathWheres: LayeredWhere[];
+  modelWheres: LayeredWhere[];
   sources: Map<string, Condition[]>;
   /** Per-field source eligibility wheres as each layer wrote them, unnarrowed: what a source plan
    *  narrows under the whole lens, as a rule is. */
@@ -268,7 +272,7 @@ const accumulateInto = (
   if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
-    (ownDefault ? out.modelWheres : out.pathWheres).push(n.where);
+    (ownDefault ? out.modelWheres : out.pathWheres).push({ where: n.where, layer });
   }
   if (n.sources) {
     for (const [field, entry] of Object.entries(n.sources)) {

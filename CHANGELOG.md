@@ -9,9 +9,9 @@
   compiled rails read a column. `@inixiative/permissions` checks a grant against a pseudo record
   this way, so a writer's rule passes only on what the requested `where` pins.
 - **`validateRule(rule, { positive: true })`** refuses every shape that can hold on a missing
-  value: `if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists`
-. A rule that means "no value" says `equals null`. Permission rules
-  and entitlement `where`s are validated this way.
+  value: `if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists`.
+  A rule that means "no value" says `equals null`. Permission rules and entitlement `where`s are
+  validated this way.
 
 ## 3.10.0 — prefixConditionFields is public
 

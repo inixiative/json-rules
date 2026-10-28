@@ -403,6 +403,31 @@ const arrayWithShape = (...shapes: ValueShape[]): readonly string[] =>
   );
 /** Array operators that count matching elements. */
 export const ARRAY_COUNT_OPERATORS = arrayWithShape('count');
+/** A count of one or zero is presence: `atLeast 1` is `any`, `atMost 0` and `exactly 0` are
+ *  `none`. Every rail compiles it as that operator, so it needs no counting step. A boolean
+ *  condition keeps the count. */
+export const countPresenceOperator = (rule: {
+  arrayOperator?: unknown;
+  count?: unknown;
+  condition?: unknown;
+}): ArrayOperator | null => {
+  if (typeof rule.condition !== 'object' || rule.condition === null) return null;
+  if (rule.arrayOperator === ArrayOperator.atLeast && rule.count === 1) return ArrayOperator.any;
+  if (
+    (rule.arrayOperator === ArrayOperator.atMost || rule.arrayOperator === ArrayOperator.exactly) &&
+    rule.count === 0
+  )
+    return ArrayOperator.none;
+  return null;
+};
+/** Whether an array rule counts in a groupBy step: a count operator that is not presence. */
+export const countsInAStep = (rule: {
+  arrayOperator?: unknown;
+  count?: unknown;
+  condition?: unknown;
+}): boolean =>
+  ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator as string) &&
+  countPresenceOperator(rule) === null;
 /** Array operators that test each element against a condition. */
 export const ARRAY_CONDITION_OPERATORS = arrayWithShape('predicate', 'count');
 /** The array operators `toWhereSql` writes over a to-many relation, each one `EXISTS` subquery. */

@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.12.1 — a count of one or zero compiles as presence
+
+- **`toPrisma`** compiles `atLeast 1` as `any` and `atMost 0` / `exactly 0` as `none`: a relation
+  filter (`some` / `none`, an `EXISTS`), not a `groupBy` step whose matching parent ids
+  `executePrismaPlan` inlines into the WHERE as `id IN (...)`. That list grew with the table: a few
+  such rules in one query passed MySQL's 65,535 placeholders on a 9k-advocate brand. Results are
+  unchanged; `check()` already read them this way.
+- `countPresenceOperator` / `countsInAStep` (operator catalog) are the one definition: the
+  validator and the lens's clamp refusal use them too, so a column comparison inside `atLeast 1`
+  is supported on every rail that compiles it. A boolean `condition` keeps the count.
+
 ## 3.12.0 — projectRows reads a Decimal column as a number
 
 - **`projectRows`** converts the value of every column the map declares `Decimal` to a number: a

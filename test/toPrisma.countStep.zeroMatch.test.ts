@@ -97,7 +97,7 @@ describe('count-step rails agree on zero-match roots', () => {
     expect(await passing(rule)).toEqual(['u2', 'u3', 'u4']);
   });
 
-  it('exactly 0 matches exactly the roots with no matching children', async () => {
+  it('exactly 0 matches exactly the roots with no matching children, compiled as none', () => {
     const rule = {
       field: 'posts',
       arrayOperator: ArrayOperator.exactly,
@@ -105,7 +105,11 @@ describe('count-step rails agree on zero-match roots', () => {
       condition: publishedCond,
     };
     expect(checkPassing(rule)).toEqual(['u3', 'u4']);
-    expect(await passing(rule)).toEqual(['u3', 'u4']);
+    const plan = toPrisma(rule as never, { map, model: 'User' });
+    expect(plan.steps.filter((step) => step.operation === 'groupBy')).toEqual([]);
+    expect((plan.steps.at(-1) as WhereStep).where).toEqual({
+      posts: { none: { published: { equals: true } } },
+    });
   });
 
   it('exactly N>=1 keeps the direct IN form', async () => {
@@ -119,15 +123,15 @@ describe('count-step rails agree on zero-match roots', () => {
     expect(await passing(rule)).toEqual(['u1']);
   });
 
-  it('atLeast N>=1 is unchanged', async () => {
+  it('atLeast N>=2 is unchanged', async () => {
     const rule = {
       field: 'posts',
       arrayOperator: ArrayOperator.atLeast,
-      count: 1,
+      count: 2,
       condition: publishedCond,
     };
-    expect(checkPassing(rule)).toEqual(['u1', 'u2']);
-    expect(await passing(rule)).toEqual(['u1', 'u2']);
+    expect(checkPassing(rule)).toEqual(['u1']);
+    expect(await passing(rule)).toEqual(['u1']);
   });
 
   it('atLeast 0 matches everyone on both rails', async () => {

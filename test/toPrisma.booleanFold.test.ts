@@ -236,12 +236,12 @@ describe('toPrisma folding keeps groupBy step state coherent', () => {
   });
 
   it('a surviving step ref still points at its own step after a sibling folds away', () => {
-    const onePost = { ...twoPosts, count: 1 };
-    const plan = toPrisma({ all: [{ any: [twoPosts, false] }, { all: [onePost, true] }] }, opts);
+    const threePosts = { ...twoPosts, count: 3 };
+    const plan = toPrisma({ all: [{ any: [twoPosts, false] }, { all: [threePosts, true] }] }, opts);
     const steps = groupBySteps(plan);
     expect(steps).toHaveLength(2);
     expect(steps[0].args.having).toEqual({ authorId: { _count: { gte: 2 } } });
-    expect(steps[1].args.having).toEqual({ authorId: { _count: { gte: 1 } } });
+    expect(steps[1].args.having).toEqual({ authorId: { _count: { gte: 3 } } });
     expect(getWhere(plan)).toEqual({
       AND: [{ id: { in: { __step: 0 } } }, { id: { in: { __step: 1 } } }],
     });

@@ -31,9 +31,9 @@ import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
   AGGREGATE_OPERATORS,
-  ARRAY_COUNT_OPERATORS,
   CONTAINS_OPERATORS,
   catalogEntry,
+  countsInAStep,
   DAY_NAMES,
   FieldKind,
   getValueShape,
@@ -753,8 +753,7 @@ const validateArrayRule = (
   }
 
   const operator = rule.arrayOperator as ArrayOperator;
-  if (ARRAY_COUNT_OPERATORS.includes(operator))
-    validateGroupStep(rule, path, context, depth, 'Count operators');
+  if (countsInAStep(rule)) validateGroupStep(rule, path, context, depth, 'Count operators');
   // An array a column holds (a scalar list, a Json array) has no Prisma filter over its elements:
   // only its emptiness compiles.
   const held =
@@ -827,7 +826,7 @@ const validateArrayRule = (
         'count must be a non-negative whole number',
       );
     if (hasCondition) {
-      enterScope(context, depth, rule.field, true);
+      enterScope(context, depth, rule.field, countsInAStep(rule));
       validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
     } else
       pushIssue(

@@ -11,7 +11,11 @@ import type { FieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge, relationTarget } from '../fieldMap/walk';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
-import { ARRAY_COUNT_OPERATORS, ARRAY_MONOTONE_OPERATORS } from '../operatorCatalog';
+import {
+  ARRAY_COUNT_OPERATORS,
+  ARRAY_MONOTONE_OPERATORS,
+  countPresenceOperator,
+} from '../operatorCatalog';
 import type { AggregateRule, ArrayRule, Condition } from '../types';
 import { hasWindow, windowRewrite } from '../window';
 import { nestedScope } from './columnRef';
@@ -40,6 +44,13 @@ export const buildArrayRule = (
 export const holdsForEmpty = (rule: ArrayRule | AggregateRule): boolean =>
   check({ ...rule, field: 'items' } as Condition, { items: [] }) === true;
 
+const countPresence = (rule: ArrayRule): ArrayRule | null => {
+  const operator = countPresenceOperator(rule);
+  if (!operator) return null;
+  const { count: _count, ...rest } = rule;
+  return { ...rest, arrayOperator: operator } as ArrayRule;
+};
+
 const compileArrayRule = (
   rule: ArrayRule,
   options?: ToPrismaOptions,
@@ -63,6 +74,9 @@ const compileArrayRule = (
     )
   )
     return overFetch();
+
+  const presence = countPresence(rule);
+  if (presence) return compileArrayRule(presence, options, state);
 
   // Count operators generate a full WHERE clause (step ref) — skip the nested-filter wrapper
   if (ARRAY_COUNT_OPERATORS.includes(rule.arrayOperator)) {

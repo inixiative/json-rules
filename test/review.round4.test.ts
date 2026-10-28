@@ -294,7 +294,7 @@ describe('M2: a column comparison inside a counting step has no Prisma form', ()
       rule({
         field: 'posts',
         arrayOperator: 'atLeast',
-        count: 1,
+        count: 2,
         condition: { field: 'views', operator: 'greaterThan', path: '$.authorId' },
       }),
     ],
@@ -303,7 +303,7 @@ describe('M2: a column comparison inside a counting step has no Prisma form', ()
       rule({
         field: 'posts',
         arrayOperator: 'atLeast',
-        count: 1,
+        count: 2,
         condition: { field: 'views', operator: 'greaterThan', path: 'age' },
       }),
     ],

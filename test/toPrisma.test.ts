@@ -469,7 +469,7 @@ describe('executePrismaPlan', () => {
       {
         field: 'posts',
         arrayOperator: ArrayOperator.atLeast,
-        count: 1,
+        count: 2,
         condition: { field: 'published', operator: Operator.equals, value: true },
       },
       { map: blogMap, model: 'User' },
@@ -532,7 +532,7 @@ describe('executePrismaPlan', () => {
       {
         field: 'posts',
         arrayOperator: ArrayOperator.atLeast,
-        count: 1,
+        count: 2,
         condition: { field: 'published', operator: Operator.equals, value: true },
       },
       { map: blogMap, model: 'User' },
@@ -555,7 +555,7 @@ describe('executePrismaPlan', () => {
       {
         field: 'posts',
         arrayOperator: ArrayOperator.atLeast,
-        count: 1,
+        count: 2,
         condition: { field: 'published', operator: Operator.equals, value: true },
       },
       { map: blogMap, model: 'User' },
@@ -574,7 +574,7 @@ describe('executePrismaPlan', () => {
       {
         field: 'posts',
         arrayOperator: ArrayOperator.atLeast,
-        count: 1,
+        count: 2,
         condition: { field: 'published', operator: Operator.equals, value: true },
       },
       { map: blogMap, model: 'User' },
@@ -802,7 +802,7 @@ describe('toPrisma multiple relations between same two models', () => {
       {
         field: 'editedPosts',
         arrayOperator: ArrayOperator.atLeast,
-        count: 1,
+        count: 2,
         condition: { field: 'editorId', operator: Operator.exists },
       },
       { map: multiRelMap, model: 'User' },

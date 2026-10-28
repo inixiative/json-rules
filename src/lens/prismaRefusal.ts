@@ -1,5 +1,5 @@
 import { UsageError } from '../errors';
-import { ARRAY_COUNT_OPERATORS } from '../operatorCatalog';
+import { countsInAStep } from '../operatorCatalog';
 import { visitCondition } from '../traverse';
 import type { Condition } from '../types';
 import { validateRule } from '../validate';
@@ -38,8 +38,7 @@ export const prismaRefusal = (
   let counted = false;
   for (const condition of conditions)
     visitCondition(condition, (node) => {
-      if ('aggregate' in node || ARRAY_COUNT_OPERATORS.includes(node.arrayOperator as never))
-        counted = true;
+      if ('aggregate' in node || countsInAStep(node as never)) counted = true;
     });
   return counted
     ? new LensRefusal(

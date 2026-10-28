@@ -507,7 +507,7 @@ describe('R8-7: a source the option query cannot compile is refused by its shape
               where: rule({
                 field: 'comments',
                 arrayOperator: 'atLeast',
-                count: 1,
+                count: 2,
                 condition: { field: 'ok', operator: 'equals', value: true },
               }),
             },

@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.12.1 — a count of one or zero compiles as presence
+## 3.12.2 — a count of one or zero compiles as presence
 
 - **`toPrisma`** compiles `atLeast 1` as `any` and `atMost 0` / `exactly 0` as `none`: a relation
   filter (`some` / `none`, an `EXISTS`), not a `groupBy` step whose matching parent ids

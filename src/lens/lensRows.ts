@@ -8,6 +8,7 @@ import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
 import type { Row } from '../types';
+import { decimalValue } from './decimalValue.ts';
 import {
   isFieldVisible,
   type Policy,
@@ -268,7 +269,7 @@ const pickPaths = (policy: Policy, at: MapVisit, row: Row, tree: PathTree): Row 
     const target = entry ? relationTargetOf(entry, at.mapName) : null;
     out[field] = target
       ? mapRelation(row[field], (r) => pickPaths(policy, childVisit(at, field, target), r, below))
-      : row[field];
+      : decimalValue(entry, row[field]);
   }
   return out;
 };
@@ -294,7 +295,8 @@ const cutRow = (
     const below = own(keep, field);
     const target = relationTargetOf(entry, at.mapName);
     if (!target) {
-      if (isFieldVisible(effect, field) || below !== undefined) out[field] = row[field];
+      if (isFieldVisible(effect, field) || below !== undefined)
+        out[field] = decimalValue(entry, row[field]);
       continue;
     }
     const child = childVisit(at, field, target);
@@ -321,7 +323,8 @@ const cutRow = (
 /**
  * Rows cut to what a lens shows, recursively from its base model: hidden columns, and relations
  * hidden or off, removed, and every row a visit's `where` hides gone — a root or list row dropped, a to-one row
- * null. `keepClampColumns` also keeps the columns those `where`s read (hidden or not), and a hidden to-one row, or a hidden row of a list a clamp
+ * null. A `Decimal` column's value (a Decimal.js-like object or a numeric string) comes back a number.
+ * `keepClampColumns` also keeps the columns those `where`s read (hidden or not), and a hidden to-one row, or a hidden row of a list a clamp
  * reads, as those columns alone, so a later `check(narrowRule(rule, lens), row)` re-tests the
  * clamps as the database does for any rule the lens admits. Its output carries hidden values: it's for that re-check, never for
  * a viewer. The rest of `options` is what each

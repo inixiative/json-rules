@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.12.0 — projectRows reads a Decimal column as a number
+
+- **`projectRows`** converts the value of every column the map declares `Decimal` to a number: a
+  Decimal.js-like object (Prisma's `Decimal`, anything with `toNumber()`) or a numeric string, and a
+  list column element by element. Projected rows stay plain JSON, and `check()` compares the value
+  as the number it is, so a caller no longer converts a fetched row's Decimals before checking it.
+  A non-numeric value and every other column pass through as they are.
+
 ## 3.11.0 — absent: 'unknown', positive rules
 
 - **`check(rule, row, { absent: 'unknown' })`** reads a value the row doesn't carry as unknown,

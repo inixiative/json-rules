@@ -32,10 +32,13 @@ export type LensWhereSqlOptions = {
   tables?: Record<string, string>;
   /** What an array rule on a to-many relation reads. `'subquery'` (the default): an `EXISTS` on its
    *  table from `tables`, carrying its clamps. `'join'`: the row the caller's LEFT JOIN brings — the
-   *  caller joins every to-many relation the lens shows from the root, ON its keys AND
-   *  `relations[path]` AND the related model's `mapDefaults` entry. Only the root's `where` reads
-   *  one, with `notEmpty` (`<key> IS NOT NULL`) or one `any` (`(<key> IS NOT NULL AND cond)`), and
-   *  only when every clamp in that ON sits in a layer above the `where`'s. */
+   *  caller joins each to-many relation the root's `where` reads (a relation the lens declares), ON
+   *  its keys AND `relations[path]` AND the related model's `mapDefaults` entry; a join the `where`
+   *  does not read only fans the rows out (count distinct), and a read of one the caller did not
+   *  join fails loudly (a missing column). Only the root's `where` reads one, with `notEmpty`
+   *  (`<key> IS NOT NULL`) or one `any` (`(<key> IS NOT NULL AND cond)`), and only when every clamp
+   *  in that ON sits in a layer above the `where`'s, and the related model's default (if any) is
+   *  needed on that join alone — not on the root, not on another joined relation. */
   toMany?: 'subquery' | 'join';
 };
 
@@ -81,6 +84,28 @@ const refuseHiddenHops = (policy: Policy, from: MapVisit, condition: Condition):
   );
 };
 
+/** One clamp on a relation's rows: its path's own `where`, or its model's default (`isDefault`). */
+type RelationClampAt = LayeredWhere & { isDefault: boolean };
+
+/** Every clamp on a relation's rows, read from a visit, from every layer: the relation path's own
+ *  `where`s, then its model's default. Null when the path reaches no relation. */
+const relationClampsAt = (
+  policy: Policy,
+  from: MapVisit,
+  relationPath: string,
+): { end: MapVisit; clamps: RelationClampAt[] } | null => {
+  const { end } = relationHops(policy.lens.maps, from, relationPath);
+  if (!end) return null;
+  const { pathWheres, modelWheres } = resolveVisit(policy, end.mapName, end.modelName, end.relPath);
+  return {
+    end,
+    clamps: [
+      ...pathWheres.map((clamp) => ({ ...clamp, isDefault: false })),
+      ...modelWheres.map((clamp) => ({ ...clamp, isDefault: true })),
+    ],
+  };
+};
+
 /** The clamps a to-many relation's rows carry for a `where` written in `layer`, read from a visit:
  *  the relation path's own `where`s and its model's default written in the layers above — what
  *  check() reads that `where` through. A layer's clamps narrow the layers after it, never its own
@@ -88,12 +113,14 @@ const refuseHiddenHops = (policy: Policy, from: MapVisit, condition: Condition):
 const clampsFrom =
   (policy: Policy, from: MapVisit, layer: number): RelationClamps =>
   (relationPath) => {
-    const { end } = relationHops(policy.lens.maps, from, relationPath);
-    if (!end) return [];
-    const effect = resolveVisit(policy, end.mapName, end.modelName, end.relPath);
-    return [...effect.pathWheres, ...effect.modelWheres]
+    const relation = relationClampsAt(policy, from, relationPath);
+    if (!relation) return [];
+    return relation.clamps
       .filter((clamp) => clamp.layer < layer)
-      .map((clamp) => ({ where: clamp.where, clamps: clampsFrom(policy, end, clamp.layer) }));
+      .map((clamp) => ({
+        where: clamp.where,
+        clamps: clampsFrom(policy, relation.end, clamp.layer),
+      }));
   };
 
 /** How the `where`s of one layer read a to-many relation, by the layer's index in the chain. */
@@ -114,23 +141,38 @@ const layeredSql = (
  *  the relation, from every layer, where check() reads a `where` through the layers above its own:
  *  the two agree only when each clamp sits above the `where`'s layer. One joined row stands for the
  *  relation, so two `any`s on it would have to hold on the same row, where check() lets each find
- *  its own — the root reads it with one. */
+ *  its own — the root reads it with one. A model's default reaches the ON as one predicate per model
+ *  (`mapDefaults`), which reads one table alias: the root's `where` may need it on no other alias —
+ *  not the root's own (a to-many self-relation), not another joined relation that reaches the same
+ *  model. */
 const rootJoins = (policy: Policy, root: MapVisit): ToManyAt => {
   const readWithAny = new Set<string>();
+  /** Each model with a default the ON carries, by map and model → the joined path that reads it. */
+  const defaultJoinedAt = new Map<string, string>();
   return (layer) => ({
     joined: (relationPath, operator) => {
-      const { end } = relationHops(policy.lens.maps, root, relationPath);
-      if (!end) throw new Error(`toLensWhereSql: '${relationPath}' reaches no relation`);
-      const effect = resolveVisit(policy, end.mapName, end.modelName, end.relPath);
-      for (const [clamps, what] of [
-        [effect.pathWheres, 'its where'],
-        [effect.modelWheres, `${end.modelName}'s default where`],
-      ] as const) {
-        const late = clamps.find((clamp) => clamp.layer >= layer);
-        if (late)
+      const relation = relationClampsAt(policy, root, relationPath);
+      if (!relation) throw new Error(`toLensWhereSql: '${relationPath}' reaches no relation`);
+      const { end, clamps } = relation;
+      const late = clamps.find((clamp) => clamp.layer >= layer);
+      if (late)
+        throw new Error(
+          `toLensWhereSql: the root where of layer ${layer + 1} reads '${relationPath}' on the caller's join, whose ON carries a clamp of layer ${late.layer + 1} (${late.isDefault ? `${end.modelName}'s default where` : 'its where'}) — check() reads a where through the clamps of the layers above its own only. Move that clamp into a narrowing above layer ${layer + 1}, or compile with toMany: 'subquery'`,
+        );
+      if (clamps.some((clamp) => clamp.isDefault)) {
+        const model = `${end.mapName}.${end.modelName}`;
+        const seen = defaultJoinedAt.get(model);
+        const other =
+          end.mapName === root.mapName && end.modelName === root.modelName
+            ? `the root is a ${end.modelName} too`
+            : seen !== undefined && seen !== relationPath
+              ? `the root where also reads '${seen}', which reaches ${end.modelName} too`
+              : null;
+        if (other !== null)
           throw new Error(
-            `toLensWhereSql: the root where of layer ${layer + 1} reads '${relationPath}' on the caller's join, whose ON carries a clamp of layer ${late.layer + 1} (${what}) — check() reads a where through the clamps of the layers above its own only. Move that clamp into a narrowing above layer ${layer + 1}, or compile with toMany: 'subquery'`,
+            `toLensWhereSql: the root where reads '${relationPath}' on the caller's join, and ${end.modelName} has a default where, but ${other} — mapDefaults holds one predicate per model, which reads one table alias, and two aliases need it. Compile with toMany: 'subquery'`,
           );
+        defaultJoinedAt.set(model, relationPath);
       }
       if (operator !== ArrayOperator.any) return;
       if (readWithAny.has(relationPath))

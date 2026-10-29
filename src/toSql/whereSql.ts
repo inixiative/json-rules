@@ -317,7 +317,7 @@ const columnOf = (rule: Rule, walk: MapWalkResult, ctx: Context): string => {
   }
   if (shape === 'relations')
     throw new Error(
-      `toWhereSql: '${rule.field}' is a to-many relation — its rows take an arrayOperator rule: { field: '${rule.field}', arrayOperator: 'notEmpty' } for a row, 'empty' for none`,
+      `toWhereSql: '${rule.field}' is a to-many relation — its rows take an arrayOperator rule: { field: '${rule.field}', arrayOperator: 'notEmpty' } for a row${ctx.joined ? "; for no rows, compile with toMany: 'subquery'" : ", 'empty' for none"}`,
     );
   // A Json column's existence is not `IS NULL` either: a stored JSON null is a value to SQL and
   // null to check() (toSql writes NULLIF(col, 'null'::jsonb); toPrisma, AnyNull).

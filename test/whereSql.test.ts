@@ -9,6 +9,7 @@ import {
   toLensWhereSql,
   toWhereSql,
 } from '../index';
+import { whereSqlJoinCases, whereSqlLensColumns } from './fixtures/whereSql';
 
 const maps: FieldMapSet['maps'] = {
   app: {
@@ -878,10 +879,19 @@ describe("toLensWhereSql — toMany: 'join' reads the row the caller's join brin
       parent: lens,
       root: { where, relations: { brandReferenceRequestFanUsers: {} } },
     });
-    for (const operator of [Operator.exists, Operator.notExists])
+    // Join mode refuses 'empty', so its message names the subquery for no rows instead.
+    for (const operator of [Operator.exists, Operator.notExists]) {
       expect(() => join(first({ field: participants, operator }))).toThrow(
-        "'brandReferenceRequestFanUsers' is a to-many relation — its rows take an arrayOperator rule: { field: 'brandReferenceRequestFanUsers', arrayOperator: 'notEmpty' } for a row",
+        "'brandReferenceRequestFanUsers' is a to-many relation — its rows take an arrayOperator rule: { field: 'brandReferenceRequestFanUsers', arrayOperator: 'notEmpty' } for a row; for no rows, compile with toMany: 'subquery'",
       );
+      expect(() =>
+        onMysql(() =>
+          toLensWhereSql(first({ field: participants, operator }), { columns, tables }),
+        ),
+      ).toThrow(
+        "'brandReferenceRequestFanUsers' is a to-many relation — its rows take an arrayOperator rule: { field: 'brandReferenceRequestFanUsers', arrayOperator: 'notEmpty' } for a row, 'empty' for none",
+      );
+    }
     expect(() =>
       join(
         first({
@@ -1004,6 +1014,150 @@ describe("toLensWhereSql — toMany: 'join' reads the row the caller's join brin
     expect(join(reads(over('any', { any: [advocate, prospect] }))).root).toBe(
       "(p.request_id IS NOT NULL AND (p.affiliation = 'advocate' OR p.affiliation = 'prospect'))",
     );
+  });
+
+  it("refuses a joined relation whose model's default two aliases need: mapDefaults holds one per model", () => {
+    const notDeleted: Condition = { field: 'deletedAt', operator: Operator.notExists };
+    /** Layer 1 turns `relations` on, with `defaults` when given; layer 2 is the root where. */
+    const twoLayers = (
+      base: Lens,
+      relations: string[],
+      where: Condition,
+      defaults?: LensNarrowing['mapDefaults'],
+    ): LensNarrowing =>
+      reads(where, {
+        parent: base,
+        root: { relations: Object.fromEntries(relations.map((path) => [path, {}])) },
+        mapDefaults: defaults,
+      });
+    const notEmpty = (field: string) => ({ field, arrayOperator: 'notEmpty' }) as Condition;
+
+    // A to-many self-relation: the root's alias and the children's both need Category's default.
+    const tree: Lens = {
+      maps: {
+        app: {
+          models: {
+            Category: {
+              fields: {
+                id: { kind: 'scalar', type: 'Int' },
+                parentId: { kind: 'scalar', type: 'Int' },
+                deletedAt: { kind: 'scalar', type: 'DateTime' },
+                parent: {
+                  kind: 'object',
+                  type: 'Category',
+                  relationName: 'CategoryTree',
+                  fromFields: ['parentId'],
+                  toFields: ['id'],
+                },
+                children: {
+                  kind: 'object',
+                  type: 'Category',
+                  isList: true,
+                  relationName: 'CategoryTree',
+                  fromFields: [],
+                  toFields: [],
+                },
+              },
+            },
+          },
+        },
+      },
+      mapName: 'app',
+      model: 'Category',
+    };
+    const treeColumns = {
+      'children.parentId': 'c.parent_id',
+      'Category.deletedAt': 'x.deleted_at',
+    };
+    const categoryDefault = { app: { models: { Category: { where: notDeleted } } } };
+    expect(() =>
+      join(twoLayers(tree, ['children'], notEmpty('children'), categoryDefault), treeColumns),
+    ).toThrow(
+      "the root where reads 'children' on the caller's join, and Category has a default where, but the root is a Category too — mapDefaults holds one predicate per model, which reads one table alias, and two aliases need it. Compile with toMany: 'subquery'",
+    );
+    expect(join(twoLayers(tree, ['children'], notEmpty('children')), treeColumns).root).toBe(
+      'c.parent_id IS NOT NULL',
+    );
+
+    // Two to-many relations to one model: each join's alias needs Affiliation's default.
+    const person: Lens = {
+      maps: {
+        app: {
+          models: {
+            Person: {
+              fields: {
+                id: { kind: 'scalar', type: 'Int' },
+                affiliations: {
+                  kind: 'object',
+                  type: 'Affiliation',
+                  isList: true,
+                  relationName: 'Current',
+                  fromFields: [],
+                  toFields: [],
+                },
+                pastAffiliations: {
+                  kind: 'object',
+                  type: 'Affiliation',
+                  isList: true,
+                  relationName: 'Past',
+                  fromFields: [],
+                  toFields: [],
+                },
+              },
+            },
+            Affiliation: {
+              fields: {
+                id: { kind: 'scalar', type: 'Int' },
+                personId: { kind: 'scalar', type: 'Int' },
+                pastPersonId: { kind: 'scalar', type: 'Int' },
+                deletedAt: { kind: 'scalar', type: 'DateTime' },
+                person: {
+                  kind: 'object',
+                  type: 'Person',
+                  relationName: 'Current',
+                  fromFields: ['personId'],
+                  toFields: ['id'],
+                },
+                pastPerson: {
+                  kind: 'object',
+                  type: 'Person',
+                  relationName: 'Past',
+                  fromFields: ['pastPersonId'],
+                  toFields: ['id'],
+                },
+              },
+            },
+          },
+        },
+      },
+      mapName: 'app',
+      model: 'Person',
+    };
+    const personColumns = {
+      'affiliations.personId': 'a.person_id',
+      'pastAffiliations.pastPersonId': 'pa.past_person_id',
+      'Affiliation.deletedAt': 'x.deleted_at',
+    };
+    const both = ['affiliations', 'pastAffiliations'];
+    const readsBoth: Condition = { all: [notEmpty('affiliations'), notEmpty('pastAffiliations')] };
+    const affiliationDefault = { app: { models: { Affiliation: { where: notDeleted } } } };
+    expect(() =>
+      join(twoLayers(person, both, readsBoth, affiliationDefault), personColumns),
+    ).toThrow(
+      "the root where reads 'pastAffiliations' on the caller's join, and Affiliation has a default where, but the root where also reads 'affiliations', which reaches Affiliation too",
+    );
+    expect(join(twoLayers(person, both, readsBoth), personColumns).root).toBe(
+      '(a.person_id IS NOT NULL AND pa.past_person_id IS NOT NULL)',
+    );
+    // Both relations shown, one read: the default sits on the one join the where reads.
+    expect(
+      join(twoLayers(person, both, notEmpty('affiliations'), affiliationDefault), personColumns)
+        .mapDefaults,
+    ).toEqual({ app: { models: { Affiliation: 'x.deleted_at IS NULL' } } });
+
+    // The FanUser affiliations lenses, a model default on FanUserAffiliation, still compile.
+    for (const { lens: joinLens } of Object.values(whereSqlJoinCases))
+      expect(join(joinLens, whereSqlLensColumns).root).not.toBeNull();
   });
 });
 

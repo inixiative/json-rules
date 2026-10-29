@@ -5,9 +5,11 @@
 - **`toLensWhereSql(lens, { columns, toMany: 'join' })`**: the root's `where` reads a to-many
   relation on the row the caller's LEFT JOIN brings, not an `EXISTS` subquery — for a caller that
   can't run a correlated subquery (an Omni topic rebuilds one as its own query). The option only
-  switches what the predicate reads: the caller joins every to-many relation the lens shows, ON the
-  map's `relationKeys` AND `relations[path]` AND the related model's `mapDefaults` entry, and
-  `tables` is not read. `notEmpty` is the first key column `IS NOT NULL` (a matched row's key is
+  switches what the predicate reads: the caller joins each to-many relation the root's `where` reads
+  (a relation the lens declares), ON the map's `relationKeys` AND `relations[path]` AND the related
+  model's `mapDefaults` entry, and `tables` is not read. A join the `where` does not read only fans
+  the rows out (count distinct); a read of a relation the caller did not join fails loudly (a
+  missing column). `notEmpty` is the first key column `IS NOT NULL` (a matched row's key is
   never NULL, an unmatched row is all NULL); `any(cond)` is `(<key> IS NOT NULL AND cond)`, `cond`
   on the joined columns and free to hold on a missing value. `toMany: 'subquery'`, the default, is
   unchanged.
@@ -16,8 +18,12 @@
   read through it (a to-many relation keeps the one `arrayOperator` spelling); a to-many relation
   read by a relation path's `where` (it sits in that relation's ON, ahead of the joins below) or by
   a model default (one predicate for every path, joined only where the lens shows it); a relation
-  read inside a joined `any`; and two `any` rules on one joined relation, which would need one
-  joined row to meet both where `check()` lets each find its own.
+  read inside a joined `any`; two `any` rules on one joined relation, which would need one
+  joined row to meet both where `check()` lets each find its own; and a joined relation whose model
+  has a default `where` that a second alias in the root's `where` needs too — a to-many
+  self-relation, or two joined relations that reach one model — since `mapDefaults` holds one
+  predicate per model, on one alias. `exists` / `notExists` on the relation names `notEmpty` for a
+  row and `toMany: 'subquery'` for no rows, not `empty`, which join mode refuses.
 - **The layer guard.** The ON carries every clamp on a joined relation, from every layer, while
   `check()` reads a `where` through the layers above its own. A root `where` whose joined relation
   has a clamp (its path `where` or its model's default) in the same layer or a later one throws,

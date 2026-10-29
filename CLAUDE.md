@@ -71,9 +71,11 @@ recursion — their descent IS their semantics — and are guarded by differenti
   guard already dropped the all-NULL row.
 - **A joined relation's clamps sit in layers above the `where` that reads it** (Aron, 2026-10-29).
   The join's ON carries every clamp on the relation from every layer, while check() reads layer k's
-  `where` through layers 0…k−1 only — so a joined path with a clamp in the reading `where`'s layer
-  or later throws, rather than silently answer differently from check(). The fix is in the lens:
-  move the clamp up a layer.
+  `where` through layers 1…k−1 only (layers count from 1, as the error message and `docs/LENS.md`
+  count them) — so a joined to-many relation with a clamp in the reading `where`'s layer or later
+  throws, rather than silently answer differently from check(). The fix is in the lens: move the
+  clamp up a layer. The guard runs on to-many reads only; the same gap on a joined to-one relation
+  is older than join mode and out of this ruling's scope.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled
   in May 2026; 3.4's first cut contradicted it because nobody looked.

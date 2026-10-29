@@ -818,10 +818,12 @@ model, so it throws when a to-many relation it reads carries different clamps on
 **Join mode — `toMany: 'join'`.** For a caller that can't run a correlated subquery (an Omni
 topic rebuilds one as its own query and loses the correlation), the root's `where` reads a to-many
 relation on the row the caller's join brings instead. Nothing about the join is a new option: the
-caller LEFT JOINs every to-many relation the lens shows from the root, ON the map's relation keys
-(`relationKeys`, the same keys a to-one relation's existence reads) AND `relations['<path>']` AND
-the related model's `mapDefaults` entry, and reads the related columns as
-`columns['<path>.<field>']`. `tables` is not read.
+caller LEFT JOINs each to-many relation the root's `where` reads (a relation the lens declares),
+ON the map's relation keys (`relationKeys`, the same keys a to-one relation's existence reads) AND
+`relations['<path>']` AND the related model's `mapDefaults` entry, and reads the related columns as
+`columns['<path>.<field>']`. `tables` is not read. A join the `where` does not read only fans the
+rows out (count distinct); a read of a relation the caller did not join fails loudly (a missing
+column).
 
 ```ts
 toLensWhereSql(lens, { columns, toMany: 'join' });
@@ -848,6 +850,11 @@ toLensWhereSql(lens, { columns, toMany: 'join' });
   (`any advocate AND any prospect`, in one `where` or across layers) would need one row to meet
   both, where `check()` lets each find its own: it throws. Write one `any` whose condition says
   which row (`any: [advocate, prospect]` for either). `notEmpty` beside an `any` is fine.
+- **One alias per model default.** `mapDefaults` holds one predicate per model, on
+  `columns['<Model>.<field>']`, so it can sit on one table alias. A joined relation whose model has
+  a default `where` throws when the root's `where` needs that default on a second alias too: a
+  to-many self-relation (the root is that model as well), or two joined relations that reach one
+  model. Compile with `toMany: 'subquery'`, which carries the default inside each `EXISTS`.
 - **The layer guard.** The ON carries every clamp on the relation, from every layer, but `check()`
   reads a `where` through the clamps of the layers above its own only. So a root `where` that
   reads a joined relation throws when one of that relation's clamps (its path `where` or its

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { check } from '../src/check';
 import { ArrayOperator, DateOperator, Operator } from '../src/operator';
 import {
   ARRAY_OPERATOR_CATALOG,
@@ -7,6 +8,7 @@ import {
   FIELD_OPERATOR_CATALOG,
   getArrayOperators,
   getValueShape,
+  HOLDS_ON_NO_ROWS_OPERATORS,
   isOperatorSupportedForTarget,
   type OperatorFamily,
   RuleTarget,
@@ -80,6 +82,30 @@ describe('operator catalog integrity', () => {
     for (const op of Object.values(DateOperator)) {
       expect(typeof DATE_OPERATOR_CATALOG[op].acceptsExpr).toBe('boolean');
     }
+  });
+
+  test('every array operator declares whether it can hold with no rows, as check() reads it', () => {
+    for (const op of Object.values(ArrayOperator)) {
+      const shape = getValueShape(op, 'array');
+      // A count of 0 is the count that holds on nothing, when one does.
+      const rule = {
+        field: 'rows',
+        arrayOperator: op,
+        ...(shape === 'none' ? {} : { condition: { field: 'x', operator: Operator.exists } }),
+        ...(shape === 'count' ? { count: 0 } : {}),
+      };
+      expect(check(rule as never, { rows: [] }) === true).toBe(
+        ARRAY_OPERATOR_CATALOG[op].holdsOnNoRows,
+      );
+    }
+    expect(HOLDS_ON_NO_ROWS_OPERATORS).toEqual([
+      ArrayOperator.all,
+      ArrayOperator.none,
+      ArrayOperator.atLeast,
+      ArrayOperator.atMost,
+      ArrayOperator.exactly,
+      ArrayOperator.empty,
+    ]);
   });
 });
 

@@ -789,7 +789,7 @@ toLensWhereSql(lens, { columns, tables });
   exactly, so a `_ci` column (MySQL's default) also matches `'Advocate'` for `'advocate'`; compare a
   binary-collated column where that matters.
 
-`toLensWhereSql(lens, { columns, tables? })` mirrors the lens: the root path's `where`s under `root` (null
+`toLensWhereSql(lens, { columns, tables?, toMany? })` mirrors the lens: the root path's `where`s under `root` (null
 when it has none), each relation path's own under `relations`, keyed by the path, and each model
 default's (`mapDefaults[map].models[model].where`) under `mapDefaults`, keyed the same way — one
 predicate per model however many paths reach it. Each is the `where` as its layer wrote it: a
@@ -814,6 +814,49 @@ relation's path from the lens model in a path `where` (`affiliations`), by
 the lens hides throws, and its condition's fields are checked from the relation, not from the
 model it sits on. A model default compiles to one predicate for every path that reaches its
 model, so it throws when a to-many relation it reads carries different clamps on two of them.
+
+**Join mode — `toMany: 'join'`.** For a caller that can't run a correlated subquery (an Omni
+topic rebuilds one as its own query and loses the correlation), the root's `where` reads a to-many
+relation on the row the caller's join brings instead. Nothing about the join is a new option: the
+caller LEFT JOINs every to-many relation the lens shows from the root, ON the map's relation keys
+(`relationKeys`, the same keys a to-one relation's existence reads) AND `relations['<path>']` AND
+the related model's `mapDefaults` entry, and reads the related columns as
+`columns['<path>.<field>']`. `tables` is not read.
+
+```ts
+toLensWhereSql(lens, { columns, toMany: 'join' });
+// root: "(${fan_users.deleted_at} IS NULL AND ${fan_user_affiliation.fan_user_uuid} IS NOT NULL)"
+// relations: { affiliations: "(${fan_user_affiliation.affiliation} = 'advocate' AND ${fan_user_affiliation.ended_at} IS NULL)" }
+// the topic: LEFT JOIN fan_user_affiliation ON <keys> AND relations.affiliations [AND its model default]
+```
+
+- **What compiles:** `notEmpty` is `<key> IS NOT NULL`, and `any(cond)` is
+  `(<key> IS NOT NULL AND cond)`, with `cond` on the joined columns. The key is the first key
+  column: a matched row's key equals the parent's and is never NULL, an unmatched row is all NULL,
+  so one column decides. `cond` may hold on a missing value (`endedAt notExists`): the
+  `IS NOT NULL` guard has already dropped the all-NULL row of a parent with no rows.
+- **Positive operators only.** `empty`, `none` and `all` can hold with no rows (the catalog's
+  `holdsOnNoRows`), which takes an anti-join, not the topic's join — `all(cond)` is
+  `none(NOT cond)`, and the join drops the parents with no rows that `all` keeps. They throw, as do
+  the counts, `exists` / `notExists` on the relation (a to-many relation has one spelling, an
+  `arrayOperator` rule) and a field read through it (`affiliations.affiliation`).
+- **The root's `where` only.** A relation path's `where` sits in that relation's ON, ahead of the
+  joins below it, and a model default compiles once for every path that reaches its model, where
+  the join exists only on the paths the lens shows: either one reading a to-many relation throws.
+  So do a to-many relation, or any relation, read inside a joined `any`.
+- **One `any` per relation.** One joined row stands for the relation, so two `any` rules on it
+  (`any advocate AND any prospect`, in one `where` or across layers) would need one row to meet
+  both, where `check()` lets each find its own: it throws. Write one `any` whose condition says
+  which row (`any: [advocate, prospect]` for either). `notEmpty` beside an `any` is fine.
+- **The layer guard.** The ON carries every clamp on the relation, from every layer, but `check()`
+  reads a `where` through the clamps of the layers above its own only. So a root `where` that
+  reads a joined relation throws when one of that relation's clamps (its path `where` or its
+  model's default) sits in the `where`'s own layer or a later one, naming the path and both layers.
+  Move the clamp into an earlier narrowing: then the ON is exactly what `check()` reads.
+- **`any(cond)` hides rows.** The rows that fail `cond` are gone from the whole query, not only
+  from the filter; `check()` hides nothing. Where you can, write the condition as the relation's
+  `where` (in a layer above) and have the root read `notEmpty`.
+- **Fan-out.** A joined to-many relation repeats the parent once per related row: count distinct.
 
 **Absent, not hidden.** A row a relation's `where` filters out is absent from the SQL join, so a
 negation through that relation holds for it; `check()` under the lens treats the row as hidden.

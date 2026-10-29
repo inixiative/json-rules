@@ -1,5 +1,42 @@
 # Changelog
 
+## 3.13.0 — toLensWhereSql reads a to-many relation through the caller's join
+
+- **`toLensWhereSql(lens, { columns, toMany: 'join' })`**: the root's `where` reads a to-many
+  relation on the row the caller's LEFT JOIN brings, not an `EXISTS` subquery — for a caller that
+  can't run a correlated subquery (an Omni topic rebuilds one as its own query). The option only
+  switches what the predicate reads: the caller joins every to-many relation the lens shows, ON the
+  map's `relationKeys` AND `relations[path]` AND the related model's `mapDefaults` entry, and
+  `tables` is not read. `notEmpty` is the first key column `IS NOT NULL` (a matched row's key is
+  never NULL, an unmatched row is all NULL); `any(cond)` is `(<key> IS NOT NULL AND cond)`, `cond`
+  on the joined columns and free to hold on a missing value. `toMany: 'subquery'`, the default, is
+  unchanged.
+- Join mode refuses, each naming what to write instead: `empty`, `none` and `all`, which can hold
+  with no rows and take an anti-join; the counts; `exists` / `notExists` on the relation and a field
+  read through it (a to-many relation keeps the one `arrayOperator` spelling); a to-many relation
+  read by a relation path's `where` (it sits in that relation's ON, ahead of the joins below) or by
+  a model default (one predicate for every path, joined only where the lens shows it); a relation
+  read inside a joined `any`; and two `any` rules on one joined relation, which would need one
+  joined row to meet both where `check()` lets each find its own.
+- **The layer guard.** The ON carries every clamp on a joined relation, from every layer, while
+  `check()` reads a `where` through the layers above its own. A root `where` whose joined relation
+  has a clamp (its path `where` or its model's default) in the same layer or a later one throws,
+  naming the path and both layers; one layer up, the ON is exactly what `check()` reads.
+- **`any(cond)` hides rows.** The joined rows that fail `cond` are gone from the rest of the query,
+  which `check()` doesn't do; where you can, write the condition as the relation's `where` and read
+  `notEmpty`. A joined to-many relation fans the parent rows out: count distinct.
+- Operator catalog: every `ARRAY_OPERATOR_CATALOG` entry declares `holdsOnNoRows` (`all`, `none`,
+  `empty` and the counts, at a count of 0), checked against `check()` by the integrity test;
+  `HOLDS_ON_NO_ROWS_OPERATORS` is derived from it, beside `HOLDS_ON_ABSENT_OPERATORS` and apart from
+  it (`notEmpty` is a field operator too). `validateRule({ positive: true })` is unchanged.
+- `toWhereSql` names the spelling for a to-many relation read as a field
+  (`{ field, arrayOperator: 'notEmpty' }`) instead of "the list".
+- `test/whereSql.mysql.test.ts` / `test/whereSql.postgres.test.ts`: the join cases run `SELECT
+  DISTINCT … LEFT JOIN … ON <key> AND <relations[path]> AND <model default> WHERE <root>` on mysqld
+  and PGlite and match `projectRows` — a live advocate, prospect only, advocate and prospect, an
+  ended advocate, a soft-deleted row and no rows, the relation's clamps a layer above the root's
+  `where`.
+
 ## 3.12.2 — a count of one or zero compiles as presence
 
 - **`toPrisma`** compiles `atLeast 1` as `any` and `atMost 0` / `exactly 0` as `none`: a relation

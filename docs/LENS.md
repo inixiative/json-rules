@@ -29,6 +29,13 @@ A clamp means "the readers below me can't see these rows", not "I can't". Carryi
 into an earlier `where` would break the rule above: hiding rows inside a `none` or an `empty` makes
 more parents pass, so the later layer would widen what the earlier one admitted.
 
+A caller's SQL join has no layers: its ON holds every clamp on the relation at once. So
+`toLensWhereSql(lens, { toMany: 'join' })`, where the root's `where` reads a to-many relation on the
+caller's LEFT JOIN (`notEmpty` and `any` only — see the README), throws when one of that relation's
+clamps (its path `where` or its model's default) sits in the `where`'s own layer or a later one.
+Put the relation's clamps in a narrowing above the `where` that reads them; then the ON is exactly
+what `check()` reads that `where` through.
+
 One stack answers every posture, and every layer filters every posture:
 
 | Posture | Calls |

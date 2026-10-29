@@ -253,17 +253,35 @@ type ArrayCatalogEntry = {
   targets: readonly RuleTarget[];
   valueShape: ValueShape;
   comparator?: Comparator;
+  /** Whether it can hold on a relation (or list) with no rows: `all` and `none` vacuously,
+   *  `empty`, and a count of 0. A join that keeps only parents with a row can't read it. */
+  holdsOnNoRows: boolean;
 };
 
 export const ARRAY_OPERATOR_CATALOG: Record<ArrayOperator, ArrayCatalogEntry> = {
-  [ArrayOperator.all]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
-  [ArrayOperator.any]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
-  [ArrayOperator.none]: { targets: NON_SQL_TARGETS, valueShape: 'predicate' },
-  [ArrayOperator.atLeast]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'gte' },
-  [ArrayOperator.atMost]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'lte' },
-  [ArrayOperator.exactly]: { targets: NON_SQL_TARGETS, valueShape: 'count', comparator: 'equals' },
-  [ArrayOperator.empty]: { targets: ALL_TARGETS, valueShape: 'none' },
-  [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none' },
+  [ArrayOperator.all]: { targets: NON_SQL_TARGETS, valueShape: 'predicate', holdsOnNoRows: true },
+  [ArrayOperator.any]: { targets: NON_SQL_TARGETS, valueShape: 'predicate', holdsOnNoRows: false },
+  [ArrayOperator.none]: { targets: NON_SQL_TARGETS, valueShape: 'predicate', holdsOnNoRows: true },
+  [ArrayOperator.atLeast]: {
+    targets: NON_SQL_TARGETS,
+    valueShape: 'count',
+    comparator: 'gte',
+    holdsOnNoRows: true,
+  },
+  [ArrayOperator.atMost]: {
+    targets: NON_SQL_TARGETS,
+    valueShape: 'count',
+    comparator: 'lte',
+    holdsOnNoRows: true,
+  },
+  [ArrayOperator.exactly]: {
+    targets: NON_SQL_TARGETS,
+    valueShape: 'count',
+    comparator: 'equals',
+    holdsOnNoRows: true,
+  },
+  [ArrayOperator.empty]: { targets: ALL_TARGETS, valueShape: 'none', holdsOnNoRows: true },
+  [ArrayOperator.notEmpty]: { targets: ALL_TARGETS, valueShape: 'none', holdsOnNoRows: false },
 };
 
 /** Which catalog an operator belongs to — `between` is both a field and a date operator. */
@@ -456,6 +474,12 @@ export const HOLDS_ON_ABSENT_OPERATORS: readonly string[] = [
   Operator.isEmpty,
   Operator.notExists,
 ];
+/** The array operators that can hold on a relation with no rows (`holdsOnNoRows`): `all`, `none`,
+ *  `empty` and the counts. Kept apart from `HOLDS_ON_ABSENT_OPERATORS`, which field rules read:
+ *  `notEmpty` names a field operator too. */
+export const HOLDS_ON_NO_ROWS_OPERATORS: readonly string[] = Object.entries(
+  ARRAY_OPERATOR_CATALOG,
+).flatMap(([operator, entry]) => (entry.holdsOnNoRows ? [operator] : []));
 /** Negations of a string operator: `notContains`, `notStartsWith`, `notEndsWith`. */
 export const NEGATED_STRING_OPERATORS = NEGATED_OPERATORS.filter((op) =>
   withShape('string').includes(op),

@@ -61,6 +61,19 @@ recursion — their descent IS their semantics — and are guarded by differenti
   chain.slice(0, k))`): a clamp means "the readers below me can't see these rows". Every compile
   carries that same set — a same-layer or later clamp inside a `none` / `empty` would widen what
   an earlier layer admitted.
+- **A to-many relation on the caller's join reads positive operators only** (Aron, 2026-10-29).
+  `toLensWhereSql`'s `toMany: 'join'` only switches what the root's `where` reads — a subquery or
+  the joined row; which relations are joined, the key and the ON clamps all come from the lens and
+  the map (`relationKeys`, `relations[path]`, `mapDefaults`), never a second hand-kept list.
+  `notEmpty` / `any(cond)` compile; `empty`, `none` and `all` each mean "no row of some kind", which
+  takes an anti-join, and are refused — decided by the operator catalog's positive-only fact, never a
+  hand list. The positive rule covers the operator on the relation, not `cond`: the `IS NOT NULL`
+  guard already dropped the all-NULL row.
+- **A joined relation's clamps sit in layers above the `where` that reads it** (Aron, 2026-10-29).
+  The join's ON carries every clamp on the relation from every layer, while check() reads layer k's
+  `where` through layers 0…k−1 only — so a joined path with a clamp in the reading `where`'s layer
+  or later throws, rather than silently answer differently from check(). The fix is in the lens:
+  move the clamp up a layer.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled
   in May 2026; 3.4's first cut contradicted it because nobody looked.

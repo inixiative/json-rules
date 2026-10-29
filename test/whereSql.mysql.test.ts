@@ -11,12 +11,14 @@ import {
   eq,
   fanUsers,
   forms,
+  joinedQuery,
   whereSqlLensCases as lensCases,
   lensKeptIds,
   whereSqlMaps as maps,
   whereSqlRules as rules,
   whereSqlTables as tables,
   tricky,
+  whereSqlJoinCases,
   whereSqlLensColumns,
   whereSqlLensTables,
 } from './fixtures/whereSql';
@@ -182,6 +184,16 @@ describe('toLensWhereSql (mysql) — a to-many relation read through its clamps'
         const above = await keptViaSql(darkerThan, read);
         expect(viaSql.filter((id) => !above.includes(id))).toEqual([]);
       }
+    });
+  }
+});
+
+describe("toLensWhereSql (mysql) — toMany: 'join' on the caller's LEFT JOIN", () => {
+  for (const [label, { lens, kept }] of Object.entries(whereSqlJoinCases)) {
+    it(label, async () => {
+      const sqlOf = toLensWhereSql(lens, { columns: whereSqlLensColumns, toMany: 'join' });
+      expect(lensKeptIds(lens)).toEqual(kept);
+      expect(await ids(joinedQuery(sqlOf))).toEqual(kept);
     });
   }
 });

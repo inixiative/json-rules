@@ -256,7 +256,9 @@ describe('toWhereSql — existence on every column', () => {
     );
     expect(() =>
       mysql({ field: 'brandReferenceRequestFanUsers', operator: Operator.exists }, columns),
-    ).toThrow("the list 'brandReferenceRequestFanUsers'");
+    ).toThrow(
+      "'brandReferenceRequestFanUsers' is a to-many relation — its rows take an arrayOperator rule: { field: 'brandReferenceRequestFanUsers', arrayOperator: 'notEmpty' } for a row",
+    );
     expect(() =>
       mysql(
         { field: 'brandReferenceRequestFanUsers.id', operator: Operator.equals, value: 1 },
@@ -762,6 +764,245 @@ describe('toLensWhereSql — an array rule on a to-many relation', () => {
       }),
     ).toThrow(
       'the default where of BrandReferenceRequest reads a to-many relation whose clamps differ between the paths',
+    );
+  });
+});
+
+describe("toLensWhereSql — toMany: 'join' reads the row the caller's join brings", () => {
+  const participants = 'brandReferenceRequestFanUsers';
+  const advocate: Condition = {
+    field: 'affiliation',
+    operator: Operator.equals,
+    value: 'advocate',
+  };
+  const over = (arrayOperator: string, condition?: Condition, extra = {}): Condition =>
+    ({ field: participants, arrayOperator, condition, ...extra }) as Condition;
+  const columns = {
+    id: 'r.id',
+    status: 'r.status',
+    deletedAt: 'r.deleted_at',
+    'brandReferenceRequestFanUsers.id': 'p.id',
+    'brandReferenceRequestFanUsers.requestId': 'p.request_id',
+    'brandReferenceRequestFanUsers.affiliation': 'p.affiliation',
+    'BrandReferenceRequestFanUser.id': 'p.id',
+  };
+  const tables = { brandReferenceRequestFanUsers: 'brand_reference_request_fan_user AS p' };
+  const idExists: Condition = { field: 'id', operator: Operator.exists };
+  /** Layer 1: the participants turned on, clamped along the path and by their model's default. */
+  const clamped: LensNarrowing = {
+    parent: lens,
+    root: { relations: { brandReferenceRequestFanUsers: { where: advocate } } },
+    mapDefaults: { app: { models: { BrandReferenceRequestFanUser: { where: idExists } } } },
+  };
+  /** Layer 2 under `parent`: a root where. */
+  const reads = (where: Condition, parent: LensNarrowing = clamped): LensNarrowing => ({
+    parent,
+    root: { where },
+  });
+  const join = (narrowing: LensNarrowing, given: Record<string, string> = columns) =>
+    onMysql(() => toLensWhereSql(narrowing, { columns: given, toMany: 'join' }));
+
+  it('writes notEmpty as the joined key IS NOT NULL, the clamps a layer above in the ON', () => {
+    // The Omni shape: the topic LEFT JOINs the participants ON their keys AND `relations[path]`
+    // AND the participant's default. No `tables`: join mode reads none.
+    const omni = {
+      deletedAt: '${brand_reference_request.deleted_at}',
+      'brandReferenceRequestFanUsers.requestId': '${brand_reference_request_fan_user.request_id}',
+      'brandReferenceRequestFanUsers.affiliation': affiliation,
+      'BrandReferenceRequestFanUser.id': '${brand_reference_request_fan_user.id}',
+    };
+    const narrowing = reads({
+      all: [{ field: 'deletedAt', operator: Operator.notExists }, over('notEmpty')],
+    });
+    expect(join(narrowing, omni)).toEqual({
+      root: '(${brand_reference_request.deleted_at} IS NULL AND ${brand_reference_request_fan_user.request_id} IS NOT NULL)',
+      relations: { brandReferenceRequestFanUsers: `${affiliation} = 'advocate'` },
+      mapDefaults: {
+        app: {
+          models: {
+            BrandReferenceRequestFanUser: '${brand_reference_request_fan_user.id} IS NOT NULL',
+          },
+        },
+      },
+    });
+  });
+
+  it('writes any as the key IS NOT NULL and its condition on the joined columns, a negation too', () => {
+    expect(join(reads(over('any', { all: [advocate, idExists] }))).root).toBe(
+      "(p.request_id IS NOT NULL AND (p.affiliation = 'advocate' AND p.id IS NOT NULL))",
+    );
+    // The guard has dropped the all-NULL row of a parent with no participant, so the condition
+    // inside may hold on a missing value.
+    expect(
+      join(
+        reads(over('any', { field: 'affiliation', operator: Operator.notIn, value: ['prospect'] })),
+      ).root,
+    ).toBe(
+      "(p.request_id IS NOT NULL AND (p.affiliation NOT IN ('prospect') OR p.affiliation IS NULL))",
+    );
+    expect(join(reads({ all: [over('notEmpty'), over('any', advocate)] })).root).toBe(
+      "(p.request_id IS NOT NULL AND (p.request_id IS NOT NULL AND p.affiliation = 'advocate'))",
+    );
+  });
+
+  it('keeps the subquery by default, and refuses a mode it does not know', () => {
+    const narrowing = reads(over('notEmpty'));
+    const subquery =
+      "EXISTS (SELECT 1 FROM brand_reference_request_fan_user AS p WHERE p.request_id = r.id AND (p.affiliation = 'advocate') AND (p.id IS NOT NULL))";
+    expect(onMysql(() => toLensWhereSql(narrowing, { columns, tables })).root).toBe(subquery);
+    expect(
+      onMysql(() => toLensWhereSql(narrowing, { columns, tables, toMany: 'subquery' })).root,
+    ).toBe(subquery);
+    expect(() => toLensWhereSql(narrowing, { columns, toMany: 'joins' as 'join' })).toThrow(
+      "toMany 'joins' is neither 'subquery' nor 'join'",
+    );
+  });
+
+  it('refuses empty, none and all, which hold with no rows, and the counts', () => {
+    for (const operator of ['empty', 'none', 'all'])
+      expect(() =>
+        join(reads(over(operator, operator === 'empty' ? undefined : advocate))),
+      ).toThrow(
+        `arrayOperator '${operator}' on 'brandReferenceRequestFanUsers', a relation the caller joins, holds when it has no rows — that takes an anti-join, not the topic's join`,
+      );
+    for (const operator of ['atLeast', 'atMost', 'exactly'])
+      expect(() => join(reads(over(operator, advocate, { count: 1 })))).toThrow(
+        `arrayOperator '${operator}' has no SQL form here`,
+      );
+  });
+
+  it('refuses exists / notExists on the joined list and a field read through it: to-many relations keep the arrayOperator spelling', () => {
+    // In the first narrowing, which may read the whole schema: a later layer's clamp is refused by
+    // the lens before it compiles.
+    const first = (where: Condition): LensNarrowing => ({
+      parent: lens,
+      root: { where, relations: { brandReferenceRequestFanUsers: {} } },
+    });
+    for (const operator of [Operator.exists, Operator.notExists])
+      expect(() => join(first({ field: participants, operator }))).toThrow(
+        "'brandReferenceRequestFanUsers' is a to-many relation — its rows take an arrayOperator rule: { field: 'brandReferenceRequestFanUsers', arrayOperator: 'notEmpty' } for a row",
+      );
+    expect(() =>
+      join(
+        first({
+          field: 'brandReferenceRequestFanUsers.affiliation',
+          operator: Operator.equals,
+          value: 'advocate',
+        }),
+      ),
+    ).toThrow(
+      "reads through the to-many relation 'brandReferenceRequestFanUsers'; compare its rows with an arrayOperator rule",
+    );
+  });
+
+  it('reads a to-many relation from the root where only: not a model default, not a relation where', () => {
+    const asDefault: LensNarrowing = {
+      parent: clamped,
+      mapDefaults: { app: { models: { BrandReferenceRequest: { where: over('notEmpty') } } } },
+    };
+    expect(() =>
+      join(asDefault, {
+        ...columns,
+        'BrandReferenceRequest.brandReferenceRequestFanUsers.requestId': 'p.request_id',
+      }),
+    ).toThrow(
+      "the default where of BrandReferenceRequest reads the to-many relation 'brandReferenceRequestFanUsers' — with toMany: 'join' it compiles once for every path that reaches BrandReferenceRequest",
+    );
+    // A relation's where sits in that relation's ON, which the joins below it come after.
+    const participantLens: Lens = { maps, mapName: 'app', model: 'BrandReferenceRequestFanUser' };
+    const asRelationWhere: LensNarrowing = {
+      parent: participantLens,
+      root: {
+        relations: {
+          request: { where: over('notEmpty'), relations: { brandReferenceRequestFanUsers: {} } },
+        },
+      },
+    };
+    expect(() =>
+      join(asRelationWhere, {
+        'request.brandReferenceRequestFanUsers.requestId': 'p.request_id',
+      }),
+    ).toThrow(
+      "the where at 'request' reads the to-many relation 'brandReferenceRequestFanUsers' — with toMany: 'join' it sits in that relation's join ON, ahead of the joins below it",
+    );
+  });
+
+  it("refuses a relation read inside a joined any: the joined row's relations have no join here", () => {
+    const orderLens: LensNarrowing = {
+      parent: { maps: orders, mapName: 'app', model: 'Order' },
+      root: { relations: { lines: { relations: { notes: {} } } } },
+    };
+    expect(() =>
+      join(
+        reads(
+          {
+            field: 'lines',
+            arrayOperator: 'any',
+            condition: { field: 'notes', arrayOperator: 'notEmpty' },
+          } as Condition,
+          orderLens,
+        ),
+        { 'lines.tenantId': 'l.tenant_id', 'lines.notes.lineId': 'n.line_id' },
+      ),
+    ).toThrow("arrayOperator 'notEmpty' on 'notes' inside an any over the joined 'lines'");
+    const showsRequest: LensNarrowing = {
+      parent: lens,
+      root: { relations: { brandReferenceRequestFanUsers: { relations: { request: {} } } } },
+    };
+    expect(() =>
+      join(reads(over('any', { field: 'request', operator: Operator.exists }), showsRequest), {
+        ...columns,
+        'brandReferenceRequestFanUsers.request.id': 'pr.id',
+      }),
+    ).toThrow(
+      "'request' inside an any over the joined 'brandReferenceRequestFanUsers' reads the relation 'request'",
+    );
+  });
+
+  it('throws when a clamp in the ON sits in the where’s own layer or a later one, and passes one layer up', () => {
+    // check() reads a layer's where through the layers above it only: a same-layer or later clamp
+    // in the ON would hide rows the where still counts.
+    const sameLayer: LensNarrowing = {
+      parent: lens,
+      root: {
+        where: over('notEmpty'),
+        relations: { brandReferenceRequestFanUsers: { where: advocate } },
+      },
+    };
+    expect(() => join(sameLayer)).toThrow(
+      "the root where of layer 1 reads 'brandReferenceRequestFanUsers' on the caller's join, whose ON carries a clamp of layer 1 (its where) — check() reads a where through the clamps of the layers above its own only. Move that clamp into a narrowing above layer 1",
+    );
+    const unclamped: LensNarrowing = {
+      parent: lens,
+      root: { where: over('notEmpty'), relations: { brandReferenceRequestFanUsers: {} } },
+    };
+    const laterPath: LensNarrowing = {
+      parent: unclamped,
+      root: { relations: { brandReferenceRequestFanUsers: { where: advocate } } },
+    };
+    expect(() => join(laterPath)).toThrow('whose ON carries a clamp of layer 2 (its where)');
+    const laterDefault: LensNarrowing = {
+      parent: unclamped,
+      mapDefaults: { app: { models: { BrandReferenceRequestFanUser: { where: idExists } } } },
+    };
+    expect(() => join(laterDefault)).toThrow(
+      "whose ON carries a clamp of layer 2 (BrandReferenceRequestFanUser's default where)",
+    );
+    expect(join(reads(over('notEmpty'))).root).toBe('p.request_id IS NOT NULL');
+  });
+
+  it('refuses two any rules on one joined relation: one joined row would have to meet both', () => {
+    // A request with an advocate and a prospect participant holds `any advocate AND any prospect`
+    // in check(); on the join, no one row is both.
+    const prospect: Condition = { ...advocate, value: 'prospect' } as Condition;
+    const twoAnys = "the root reads 'brandReferenceRequestFanUsers' with two any rules";
+    expect(() => join(reads({ all: [over('any', advocate), over('any', prospect)] }))).toThrow(
+      twoAnys,
+    );
+    expect(() => join(reads(over('any', prospect), reads(over('any', advocate))))).toThrow(twoAnys);
+    // One any whose condition says which row reads the same thing exactly.
+    expect(join(reads(over('any', { any: [advocate, prospect] }))).root).toBe(
+      "(p.request_id IS NOT NULL AND (p.affiliation = 'advocate' OR p.affiliation = 'prospect'))",
     );
   });
 });

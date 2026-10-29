@@ -1,4 +1,4 @@
-import type { Condition, FieldMapSet, LensNarrowing } from '../../index';
+import type { Condition, FieldMapSet, LensNarrowing, LensWhereSql } from '../../index';
 import { ArrayOperator, check, Operator, projectRows } from '../../index';
 
 // The rows and rules both toWhereSql differential suites run: check() and the predicate a real
@@ -358,6 +358,60 @@ export const whereSqlLensCases: Record<
     },
     read: 'FanUser',
   },
+};
+
+const liveAdvocate: Condition = {
+  all: [eq('affiliation', 'advocate'), { field: 'endedAt', operator: Operator.notExists }],
+};
+
+/** Lenses whose root `where` reads `affiliations` on the caller's join (`toMany: 'join'`), every
+ *  clamp on it a layer above the `where`: the join keeps the parents check() keeps, `kept`. */
+export const whereSqlJoinCases: Record<string, { lens: LensNarrowing; kept: number[] }> = {
+  'notEmpty: a live advocate row, the relation where and the soft delete a layer above': {
+    lens: {
+      parent: clamped({ relations: { affiliations: { where: liveAdvocate } } }, softDelete),
+      root: { where: overAffiliations(ArrayOperator.notEmpty) },
+    },
+    kept: [1, 6],
+  },
+  'any of a negation, the soft delete a layer above': {
+    lens: {
+      parent: clamped({}, softDelete),
+      root: {
+        where: overAffiliations(ArrayOperator.any, {
+          field: 'endedAt',
+          operator: Operator.notExists,
+        }),
+      },
+    },
+    kept: [1, 2, 6],
+  },
+  'any beside a negated column, the ended rows hidden a layer above': {
+    lens: {
+      parent: clamped(endedHidden),
+      root: {
+        where: {
+          all: [
+            overAffiliations(ArrayOperator.any, eq('affiliation', 'advocate')),
+            { field: 'active', operator: Operator.notEquals, value: false },
+          ],
+        },
+      },
+    },
+    kept: [1, 5],
+  },
+};
+
+/** The parents a lens keeps on the caller's join: `affiliations` LEFT JOINed ON its key, its path
+ *  where and its model's default, the root where read on the joined rows. A joined to-many relation
+ *  fans the parents out, so DISTINCT. */
+export const joinedQuery = ({ root, relations, mapDefaults }: LensWhereSql): string => {
+  const on = [
+    'a.fan_user_id = u.id',
+    relations.affiliations,
+    mapDefaults.app?.models.FanUserAffiliation,
+  ].filter((part) => part !== undefined);
+  return `SELECT DISTINCT u.id FROM fan_users u LEFT JOIN fan_user_affiliations a ON ${on.join(' AND ')} WHERE ${root ?? 'TRUE'} ORDER BY u.id`;
 };
 
 /** The columns and tables the lens cases read: paths from the root, and the FanUser default's. */

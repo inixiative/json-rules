@@ -18,6 +18,7 @@ import { splitNull } from '../number';
 import { ArrayOperator, Operator } from '../operator';
 import {
   ARRAY_CONDITION_OPERATORS,
+  HOLDS_ON_NO_ROWS_OPERATORS,
   NEGATED_OPERATORS,
   WHERE_SQL_ARRAY_OPERATORS,
   WHERE_SQL_OPERATORS,
@@ -54,10 +55,23 @@ export type RelationClamps = (relationPath: string) => RelationClamp[];
  *  from the relation's model. */
 export type RelationClamp = { where: Condition; clamps: RelationClamps };
 
+/** Vets a read of a to-many relation on the caller's join, by the relation's path from where the
+ *  compile started, before it compiles: throws when the join can't give the rows check() reads. */
+export type JoinedRelation = (relationPath: string, operator: ArrayOperator) => void;
+
+/** How a compile reads a to-many relation's rows: in a subquery that carries their clamps, or on
+ *  the row the caller's LEFT JOIN brings, whose ON carries them (`toLensWhereSql`'s
+ *  `toMany: 'join'`). */
+export type ToManyRows = { clamps: RelationClamps } | { joined: JoinedRelation };
+
 type Context = {
   column: (path: string) => string;
   table: (path: string) => string;
   clamps: RelationClamps;
+  /** Join mode: vets each to-many relation read on the caller's join. Null: a subquery. */
+  joined: JoinedRelation | null;
+  /** Inside a joined `any`: the relation whose joined row this reads. */
+  joinedRow: string | null;
   map: FieldMap;
   model: string;
 };
@@ -97,12 +111,12 @@ const given = (source: Record<string, string>, name: string, what: string, path:
 };
 
 /** toWhereSql reading `columns` and `tables` under `prefix` (a relation path's visit, from the lens
- *  model), each to-many relation's rows under `clamps`. */
+ *  model), each to-many relation's rows as `toMany` says. */
 export const whereSql = (
   condition: Condition,
   options: WhereSqlOptions,
   prefix: string,
-  clamps: RelationClamps = () => [],
+  toMany: ToManyRows = { clamps: () => [] },
 ): string => {
   sqlDialect();
   const { columns, tables = {}, map: schema, mapName, model } = options ?? ({} as WhereSqlOptions);
@@ -121,7 +135,9 @@ export const whereSql = (
     model,
     column: (field) => given(columns, 'columns', 'column', `${prefix}${field}`),
     table: (field) => given(tables, 'tables', 'table', `${prefix}${field}`),
-    clamps,
+    clamps: 'clamps' in toMany ? toMany.clamps : () => [],
+    joined: 'joined' in toMany ? toMany.joined : null,
+    joinedRow: null,
   });
 };
 
@@ -158,6 +174,12 @@ const buildWhere = (condition: Condition, ctx: Context): string => {
  * `any` / `notEmpty`: such a row exists; `none` / `empty`: none does; `all`: none fails the
  * condition — `IS NOT TRUE`, so a NULL result fails, as in `check()`. A clamp stays outside it: a
  * row the clamp hides is not there to fail.
+ *
+ * In join mode it reads the row the caller's LEFT JOIN brings, its clamps in the ON: `notEmpty` is
+ * the key `IS NOT NULL`, `any` that and its condition on the joined columns. A matched row's key
+ * equals the parent's, never NULL, and an unmatched one is all NULL, so the first key column
+ * decides, as a to-one relation's existence reads it. What can hold with no rows takes an
+ * anti-join, and is refused.
  */
 const buildArray = (rule: ArrayRule, ctx: Context): string => {
   const { arrayOperator: operator, field } = rule;
@@ -178,6 +200,10 @@ const buildArray = (rule: ArrayRule, ctx: Context): string => {
   if (!keys) throw refuse(`'${field}', whose relation keys the map does not declare`);
   if (ARRAY_CONDITION_OPERATORS.includes(operator) && rule.condition === undefined)
     throw conditionRequired(operator);
+  if (ctx.joinedRow !== null)
+    throw new Error(
+      `toWhereSql: arrayOperator '${operator}' on '${field}' inside an any over the joined '${ctx.joinedRow}' — a joined row's own to-many relations have no join here; compile with toMany: 'subquery'`,
+    );
 
   const rows: Context = {
     map: ctx.map,
@@ -185,7 +211,19 @@ const buildArray = (rule: ArrayRule, ctx: Context): string => {
     column: (path) => ctx.column(`${field}.${path}`),
     table: (path) => ctx.table(`${field}.${path}`),
     clamps: (path) => ctx.clamps(`${field}.${path}`),
+    joined: ctx.joined,
+    joinedRow: null,
   };
+  if (ctx.joined) {
+    if (HOLDS_ON_NO_ROWS_OPERATORS.includes(operator))
+      throw new Error(
+        `toWhereSql: arrayOperator '${operator}' on '${field}', a relation the caller joins, holds when it has no rows — that takes an anti-join, not the topic's join. Only notEmpty and any(condition) read a joined relation; compile with toMany: 'subquery' for the rest`,
+      );
+    ctx.joined(field, operator);
+    const present = `${rows.column(keys[0].there)} IS NOT NULL`;
+    if (operator !== ArrayOperator.any) return present;
+    return `(${present} AND ${buildWhere(rule.condition as Condition, { ...rows, joinedRow: field })})`;
+  }
   const scope = [
     ...keys.map(({ here, there }) => `${rows.column(there)} = ${ctx.column(here)}`),
     ...ctx.clamps(field).map(({ where, clamps }) => `(${buildWhere(where, { ...rows, clamps })})`),
@@ -266,13 +304,21 @@ const columnOf = (rule: Rule, walk: MapWalkResult, ctx: Context): string => {
   if (toMany) throw toManyHopError(rule.field, toMany);
   const shape = fieldShape(walk);
   const existence = isExistenceTest(rule);
+  // A relation of a joined row needs a join of its own, with clamps nothing here has vetted.
+  if (ctx.joinedRow !== null && (walk.hops.length || shape === 'relation'))
+    throw new Error(
+      `toWhereSql: '${rule.field}' inside an any over the joined '${ctx.joinedRow}' reads the relation '${walk.hops[0]?.prefix ?? rule.field}' — a joined row's own relations have no join here; compile with toMany: 'subquery'`,
+    );
   if (shape === 'relation' && walk.kind === 'direct') {
     if (!existence) throw relationNotValue(rule.field);
     const keys = relationKeys(ctx.map, walk.model, walk.entry);
     if (!keys) throw refuse(`'${rule.field}', whose relation keys the map does not declare`);
     return ctx.column(`${rule.field}.${keys[0].there}`);
   }
-  if (shape === 'relations') throw refuse(`the list '${rule.field}'`);
+  if (shape === 'relations')
+    throw new Error(
+      `toWhereSql: '${rule.field}' is a to-many relation — its rows take an arrayOperator rule: { field: '${rule.field}', arrayOperator: 'notEmpty' } for a row, 'empty' for none`,
+    );
   // A Json column's existence is not `IS NULL` either: a stored JSON null is a value to SQL and
   // null to check() (toSql writes NULLIF(col, 'null'::jsonb); toPrisma, AnyNull).
   if (shape === 'json' || shape === 'json-path') throw refuse(`the Json value '${rule.field}'`);

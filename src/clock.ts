@@ -1,4 +1,5 @@
 import { isDateExpr, isEdgeExpr, namedPeriod, rollingShift } from './dateExpr';
+import { engineGlobals } from './engineGlobals';
 import {
   CLOCK_UNITS,
   type ClockUnit,
@@ -32,7 +33,7 @@ const exprClockUnits = (expr: DateExpr<unknown>): ClockUnit[] => {
  * unit any relative date in the tree names (`{ ago: { hours: 2 } }` → `hour`, `{ this: 'week' }`
  * → `week`), at any depth. Null when the rule reads no clock: absolute dates, column compares and
  * their offsets, weekday lists. A bound value (`{ bind }`) is read as written, not as what a
- * binding may supply.
+ * binding may supply. A unit finer than the engine's `clock.finestUnit` reads as that unit.
  */
 export const clockUnit = (condition: Condition): ClockUnit | null => {
   let finest: number | null = null;
@@ -47,5 +48,7 @@ export const clockUnit = (condition: Condition): ClockUnit | null => {
       }
     }
   });
-  return finest === null ? null : CLOCK_UNITS[finest];
+  if (finest === null) return null;
+  const floor = CLOCK_UNITS.indexOf(engineGlobals.get('clock.finestUnit') as ClockUnit);
+  return CLOCK_UNITS[Math.max(finest, floor)];
 };

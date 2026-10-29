@@ -9,6 +9,9 @@
   `week`, `{ start: { this: 'month' } }` reads `month`. It is `null` for a rule that reads no clock:
   absolute dates, column compares and their offsets, `dayIn`. A store of rules can re-evaluate each
   one on its tick without walking the tree itself.
+- **`engineGlobals` `clock.finestUnit`** (default `'second'`): the floor `clockUnit` reports at. A
+  finer unit reads as the floor, with no rounding, so a caller whose finest tick is an hour sets
+  `'hour'` once at boot instead of mapping the result itself.
 - **`CLOCK_UNITS`** (`second` … `year`, finest first) and the `ClockUnit` type are exported. The
   operator catalog owns which clock unit each relative and period unit moves by.
 

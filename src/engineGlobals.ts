@@ -1,5 +1,6 @@
 import { cloneDeep, cloneDeepWith, isPlainObject, merge, set } from 'lodash-es';
 import type { FuzzyConfig } from './fuzzy';
+import type { ClockUnit } from './operatorCatalog';
 import { readOwnPath } from './scope';
 
 export type PrismaProvider =
@@ -40,6 +41,10 @@ export type EngineGlobalsState = {
     /** The dialect SQL-writing functions that take one emit (`toWhereSql`, `toLensWhereSql`). */
     dialect: SqlDialect;
   };
+  clock: {
+    /** The finest clock unit `clockUnit` reports: a finer one reads as this one. */
+    finestUnit: ClockUnit;
+  };
 };
 
 type DeepPartial<T> = {
@@ -59,6 +64,9 @@ const DEFAULTS: EngineGlobalsState = {
   sql: {
     dialect: SqlDialect.postgres,
   },
+  clock: {
+    finestUnit: 'second',
+  },
 };
 
 let store: EngineGlobalsState = cloneDeep(DEFAULTS);
@@ -74,7 +82,8 @@ const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
 
 /** Process-wide defaults, read and written by dotted path (`string.caseInsensitive`,
- *  `string.fuzzy`, `prismaOptions.datasource.provider`, `prismaOptions.anyNull`, `sql.dialect`). */
+ *  `string.fuzzy`, `prismaOptions.datasource.provider`, `prismaOptions.anyNull`, `sql.dialect`,
+ *  `clock.finestUnit`). */
 export const engineGlobals = {
   set: (path: string, value: unknown): void => {
     set(store, path, copy(value));

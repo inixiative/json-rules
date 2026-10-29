@@ -2,6 +2,7 @@
 
 export { bindRule, type ListBindingsOptions, listBindings } from './src/bindings';
 export { type CheckOptions, check } from './src/check';
+export { clockUnit } from './src/clock';
 export {
   type EngineGlobalsState,
   engineGlobals,
@@ -90,6 +91,8 @@ export { LensRefusal } from './src/lens/policy';
 export { ArrayOperator, DateOperator, Operator } from './src/operator';
 export {
   ALL_KINDS,
+  CLOCK_UNITS,
+  type ClockUnit,
   FieldKind,
   getAggregateOperators,
   getArrayOperators,

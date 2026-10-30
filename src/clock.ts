@@ -29,14 +29,12 @@ const exprClockUnits = (expr: DateExpr<unknown>): ClockUnit[] => {
   return isPeriodUnit(unit) ? [PERIOD_CLOCK_UNITS[unit]] : [];
 };
 
-// A comparison reads the clock when its value, or an end of its range, is a clock-relative date;
-// then every unit it names counts, the offset moving it included. One that reads no clock (an
-// absolute date, a column) reads none, offset or not.
-const comparisonClockUnits = (value: unknown, offset: unknown): ClockUnit[] => {
-  const dates = castArray(value).filter(isDateExpr);
-  if (dates.length === 0) return [];
-  return [...dates, ...(isDateExpr(offset) ? [offset] : [])].flatMap(exprClockUnits);
-};
+// Every unit a comparison names: its relative dates (a range's ends included) and its offset.
+const comparisonUnits = (value: unknown, offset: unknown): ClockUnit[] =>
+  [...castArray(value), offset].filter(isDateExpr).flatMap(exprClockUnits);
+
+// A comparison reads the clock when its value, or an end of its range, is a relative date.
+const readsClock = (value: unknown): boolean => castArray(value).some(isDateExpr);
 
 const rank = (unit: ClockUnit): number => CLOCK_UNITS.indexOf(unit);
 
@@ -50,10 +48,10 @@ const clockFloor = (): ClockUnit => {
   );
 };
 
-/** The error a comparison raises when it reads the clock finer than the engine's
- *  `clock.finestUnit`, from its value and offset as read; null when it reads no finer unit. */
+/** The error a date comparison raises when any unit it names, in its value or its offset as
+ *  read, is finer than the engine's `clock.finestUnit`; null when none is. */
 export const clockFloorError = (value: unknown, offset?: unknown): Error | null => {
-  const units = comparisonClockUnits(value, offset);
+  const units = comparisonUnits(value, offset);
   if (units.length === 0) return null;
   const floor = clockFloor();
   const finer = units.find((unit) => rank(unit) < rank(floor));
@@ -69,8 +67,8 @@ export const writtenOffset = (offset: unknown): unknown =>
  * unit any relative date in the tree names, or the offset moving one (`{ ago: { hours: 2 } }` →
  * `hour`, `{ this: 'week' }` → `week`), at any depth. Null when the rule reads no clock: absolute
  * dates, column compares and their offsets, weekday lists. A bound value (`{ bind }`) is read as
- * written, not as what a binding may supply. Throws on a unit finer than the engine's
- * `clock.finestUnit`, as evaluating the rule does.
+ * written, not as what a binding may supply. Throws when any unit the rule names, offsets
+ * included, is finer than the engine's `clock.finestUnit`, as evaluating the rule does.
  */
 export const clockUnit = (condition: Condition): ClockUnit | null => {
   let finest: number | null = null;
@@ -79,7 +77,8 @@ export const clockUnit = (condition: Condition): ClockUnit | null => {
     const offset = writtenOffset(node.offset);
     const error = clockFloorError(node.value, offset);
     if (error) throw error;
-    for (const unit of comparisonClockUnits(node.value, offset))
+    if (!readsClock(node.value)) return;
+    for (const unit of comparisonUnits(node.value, offset))
       if (finest === null || rank(unit) < finest) finest = rank(unit);
   });
   return finest === null ? null : CLOCK_UNITS[finest];

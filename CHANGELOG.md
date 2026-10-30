@@ -1,3 +1,10 @@
+## 3.15.1 — every date comparison is held to the clock floor
+
+- **`clock.finestUnit` has no exemptions**: an offset finer than the floor fails on a row-to-row
+  compare (`{ path: 'createdAt', offset: { value: { ahead: { minutes: 10 } } } }`) and on an
+  absolute date too, not only on a relative one. `clockUnit` still returns null for a rule that
+  reads no clock, and throws on any finer unit the rule names.
+
 ## 3.15.0 — the clock floor holds on every rail; engineGlobals typed per path
 
 - **`clock.finestUnit` is checked on the rule as written**, where each rail first reads the

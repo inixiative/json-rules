@@ -70,17 +70,26 @@ describe('clock.finestUnit: a rule reading the clock finer than the floor fails 
     });
   });
 
-  test('a column compare offset reads no clock and is never refused', () => {
-    const rule = {
-      field: 'updatedAt',
-      dateOperator: DateOperator.after,
-      path: 'createdAt',
-      offset: { value: { ahead: { minutes: 10 } } },
-    } as Condition;
+  test('a row-to-row compare is held to the floor too: a finer offset fails, a coarser one runs', () => {
+    const compare = (offset: unknown) =>
+      ({
+        field: 'updatedAt',
+        dateOperator: DateOperator.after,
+        path: 'createdAt',
+        offset: { value: offset },
+      }) as Condition;
     hourly(() => {
-      expect(check(rule, row, config)).toBe(true);
-      expect(() => toSql(rule, config)).not.toThrow();
-      expect(validateRule(rule).ok).toBe(true);
+      const finer = compare({ ahead: { minutes: 10 } });
+      expect(() => check(finer, row, config)).toThrow(/finer than/);
+      expect(() => toSql(finer, config)).toThrow(/finer than/);
+      expect(validateRule(finer).errors.map((e) => e.code)).toContain('clock_unit_below_floor');
+      expect(() => clockUnit(finer)).toThrow(/finer than/);
+
+      const coarser = compare({ ago: { hours: 1 } });
+      expect(check(coarser, row, config)).toBe(true);
+      expect(() => toSql(coarser, config)).not.toThrow();
+      expect(validateRule(coarser).ok).toBe(true);
+      expect(clockUnit(coarser)).toBeNull();
     });
   });
 });
@@ -135,7 +144,7 @@ describe('clock.finestUnit: the rule as written decides, whatever the row or bin
   });
 });
 
-describe('clock.finestUnit: an offset on a clock-relative value is held to the floor', () => {
+describe('clock.finestUnit: an offset is held to the floor', () => {
   const shifted = (offset: unknown): Condition =>
     ({
       field: 'createdAt',
@@ -162,7 +171,7 @@ describe('clock.finestUnit: an offset on a clock-relative value is held to the f
     });
   });
 
-  test('a finer offset on an absolute date reads no clock', () => {
+  test('a finer offset on an absolute date fails too', () => {
     const rule = {
       field: 'createdAt',
       dateOperator: DateOperator.after,
@@ -170,8 +179,8 @@ describe('clock.finestUnit: an offset on a clock-relative value is held to the f
       offset: { value: { ago: { minutes: 5 } } },
     } as Condition;
     hourly(() => {
-      for (const run of rails(rule, row)) expect(run).not.toThrow();
-      expect(validateRule(rule).ok).toBe(true);
+      for (const run of rails(rule, row)) expect(run).toThrow(/finer than/);
+      expect(validateRule(rule).errors.map((e) => e.code)).toContain('clock_unit_below_floor');
     });
   });
 });

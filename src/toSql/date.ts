@@ -66,9 +66,12 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const operand = resolveSource(rule, state);
   if (operand.type === 'column' && !readsDate(operand.shape))
     throw notADate(String(rule.path ?? rule.field));
-  if (!isMissing(operand) && operand.type === 'value') {
+  if (!isMissing(operand)) {
     const by = rule.offset === undefined ? undefined : resolveSource(rule.offset, state);
-    const clockError = clockFloorError(operand.value, by?.type === 'value' ? by.value : undefined);
+    const clockError = clockFloorError(
+      operand.type === 'value' ? operand.value : undefined,
+      by?.type === 'value' ? by.value : undefined,
+    );
     if (clockError) throw clockError;
   }
   const ordered = orderedSql(rule.dateOperator, 'date');

@@ -103,28 +103,44 @@ describe('clockUnit: the finest clock unit a rule reads', () => {
   });
 });
 
-describe('clockUnit under clock.finestUnit: finer units read as the floor', () => {
-  test('the default floor is second: finer units come back as they are', () => {
+describe('clockUnit under clock.finestUnit: a finer unit fails', () => {
+  const hourly = <T>(fn: () => T): T => engineGlobals.with({ clock: { finestUnit: 'hour' } }, fn);
+
+  test('the default floor is second: every unit comes back as it is', () => {
     expect(engineGlobals.get('clock.finestUnit')).toBe('second');
     expect(clockUnit(created({ ago: { minutes: 30 } }))).toBe('minute');
     expect(clockUnit(created({ this: 'second' }))).toBe('second');
   });
 
-  test('an hour floor chops minutes and seconds to hour, and leaves coarser units alone', () => {
-    const hourly = <T>(fn: () => T): T => engineGlobals.with({ clock: { finestUnit: 'hour' } }, fn);
-    expect(hourly(() => clockUnit(created({ ago: { minutes: 30 } })))).toBe('hour');
-    expect(hourly(() => clockUnit(created({ this: 'minute' })))).toBe('hour');
-    expect(hourly(() => clockUnit(created({ ahead: { seconds: 90, days: 2 } })))).toBe('hour');
+  test('an hour floor refuses minutes and seconds anywhere in the tree', () => {
+    expect(() => hourly(() => clockUnit(created({ ago: { minutes: 30 } })))).toThrow(
+      /minute.*finer than.*clock\.finestUnit.*hour/,
+    );
+    expect(() => hourly(() => clockUnit(created({ this: 'minute' })))).toThrow(/finestUnit/);
+    expect(() => hourly(() => clockUnit(created({ ahead: { seconds: 90, days: 2 } })))).toThrow(
+      /second/,
+    );
+    expect(() =>
+      hourly(() =>
+        clockUnit({
+          all: [
+            created({ this: 'day' }),
+            created({ end: { this: 'minute' } }, DateOperator.before),
+          ],
+        } as Condition),
+      ),
+    ).toThrow(/finestUnit/);
+  });
+
+  test('an hour floor leaves the floor and coarser units alone', () => {
     expect(hourly(() => clockUnit(created({ ago: { hours: 2 } })))).toBe('hour');
     expect(hourly(() => clockUnit(created({ this: 'day' })))).toBe('day');
     expect(hourly(() => clockUnit(created({ last: 'quarter' })))).toBe('quarter');
   });
 
-  test('a floor never invents a clock for a rule that reads none', () => {
+  test('a rule that reads no clock is never refused', () => {
     expect(
-      engineGlobals.with({ clock: { finestUnit: 'hour' } }, () =>
-        clockUnit(created('2026-01-01T00:00:00.000Z', DateOperator.after)),
-      ),
+      hourly(() => clockUnit(created('2026-01-01T00:00:00.000Z', DateOperator.after))),
     ).toBeNull();
   });
 });

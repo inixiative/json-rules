@@ -1,3 +1,10 @@
+## 3.14.0 — a rule finer than clock.finestUnit fails
+
+- **`engineGlobals` `clock.finestUnit`** is now the finest clock unit a rule may read, not a unit
+  `clockUnit` chops to: a rule whose relative date names a finer unit fails to evaluate. `check`,
+  `toPrisma` and `toSql` throw, `validateRule` reports `clock_unit_below_floor` at the date
+  expression, and `clockUnit` throws. Column-compare offsets read no clock and are unaffected.
+
 # Changelog
 
 ## 3.13.0 — clockUnit: what clock a rule reads

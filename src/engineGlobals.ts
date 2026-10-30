@@ -42,7 +42,7 @@ export type EngineGlobalsState = {
     dialect: SqlDialect;
   };
   clock: {
-    /** The finest clock unit `clockUnit` reports: a finer one reads as this one. */
+    /** The finest clock unit a rule may read: a rule naming a finer one fails to evaluate. */
     finestUnit: ClockUnit;
   };
 };

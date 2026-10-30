@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.13.0 — clockUnit: what clock a rule reads
+
+- **`clockUnit(rule)`** returns the finest clock unit a rule's answer can change by while its
+  data stays the same: the smallest unit any relative date in the tree names, at any depth
+  (`all` / `any`, `if` / `then` / `else`, a relation's `condition` and `filter`, both ends of a
+  range). `{ ago: { hours: 2 } }` reads `hour`, `{ this: 'week' }` and `{ next: 'isoWeek' }` read
+  `week`, `{ start: { this: 'month' } }` reads `month`. It is `null` for a rule that reads no clock:
+  absolute dates, column compares and their offsets, `dayIn`. A store of rules can re-evaluate each
+  one on its tick without walking the tree itself.
+- **`engineGlobals` `clock.finestUnit`** (default `'second'`): the floor `clockUnit` reports at. A
+  finer unit reads as the floor, with no rounding, so a caller whose finest tick is an hour sets
+  `'hour'` once at boot instead of mapping the result itself.
+- **`CLOCK_UNITS`** (`second` … `year`, finest first) and the `ClockUnit` type are exported. The
+  operator catalog owns which clock unit each relative and period unit moves by.
+
 ## 3.12.2 — a count of one or zero compiles as presence
 
 - **`toPrisma`** compiles `atLeast 1` as `any` and `atMost 0` / `exactly 0` as `none`: a relation

@@ -30,6 +30,7 @@ modules allowed to implement it, and every exported function must appear in this
 | read | `readLensValue` | One value off a row, as a lens shows it: gated path, clamps checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |
 | describe | `describeRule` | A rule's sources, bridge crossings and compile targets under a lens. |
+| describe | `clockUnit` | The finest clock unit (`CLOCK_UNITS`) any relative date in a rule names, at any depth; null when it reads no clock. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |
 | materialize | `materializeSources`, `materializeSourceQuery` | Turn fetched rows into source option sets — sorted by value, or (`materializeSourceQuery` with `order: SourceOptionOrder.query`) in the order the query returned its rows. |
 | create | `createLens` | Build a lens from field maps and bridges. |

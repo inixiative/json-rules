@@ -1,6 +1,4 @@
-# Changelog
-
-## 3.13.0 — toLensWhereSql reads a to-many relation through the caller's join
+## 3.16.0 — toLensWhereSql reads a to-many relation through the caller's join
 
 - **`toLensWhereSql(lens, { columns, toMany: 'join' })`**: the root's `where` reads a to-many
   relation on the row the caller's LEFT JOIN brings, not an `EXISTS` subquery — for a caller that
@@ -42,6 +40,53 @@
   and PGlite and match `projectRows` — a live advocate, prospect only, advocate and prospect, an
   ended advocate, a soft-deleted row and no rows, the relation's clamps a layer above the root's
   `where`.
+
+## 3.15.1 — every date comparison is held to the clock floor
+
+- **`clock.finestUnit` has no exemptions**: an offset finer than the floor fails on a row-to-row
+  compare (`{ path: 'createdAt', offset: { value: { ahead: { minutes: 10 } } } }`) and on an
+  absolute date too, not only on a relative one. `clockUnit` still returns null for a rule that
+  reads no clock, and throws on any finer unit the rule names.
+
+## 3.15.0 — the clock floor holds on every rail; engineGlobals typed per path
+
+- **`clock.finestUnit` is checked on the rule as written**, where each rail first reads the
+  comparison, not after its amounts resolve: an amount read from the row or a binding
+  (`{ ago: { minutes: { path: 'n' } } }`) now fails on `toSql` / `toLensWhereSql` too, and on
+  every row, a null amount included. A bound whole expression is held to the floor once bound.
+- **An offset on a clock-relative value counts**: `{ ago: { days: 1 } }` offset by
+  `{ ago: { minutes: 5 } }` fails under `'hour'`, and `clockUnit` reads the offset's unit. A
+  comparison that reads no clock (an absolute date, a column compare) is still never refused.
+- **`clock.finestUnit` takes a unit singular or plural** (`'hours'` reads as `'hour'`); any other
+  value throws when a rule reads the clock instead of switching the floor off.
+- **`engineGlobals.set` / `get` are typed per path**: `EngineGlobalPath` and `EngineGlobalValues`
+  are exported, and so is `RelativeUnit`. A path outside the list, or a value its path doesn't
+  take, no longer typechecks.
+- `validateRule` reports `clock_unit_below_floor` once per comparison, at the rule's path.
+
+## 3.14.0 — a rule finer than clock.finestUnit fails
+
+- **`engineGlobals` `clock.finestUnit`** is now the finest clock unit a rule may read, not a unit
+  `clockUnit` chops to: a rule whose relative date names a finer unit fails to evaluate. `check`,
+  `toPrisma` and `toSql` throw, `validateRule` reports `clock_unit_below_floor` at the date
+  expression, and `clockUnit` throws. Column-compare offsets read no clock and are unaffected.
+
+# Changelog
+
+## 3.13.0 — clockUnit: what clock a rule reads
+
+- **`clockUnit(rule)`** returns the finest clock unit a rule's answer can change by while its
+  data stays the same: the smallest unit any relative date in the tree names, at any depth
+  (`all` / `any`, `if` / `then` / `else`, a relation's `condition` and `filter`, both ends of a
+  range). `{ ago: { hours: 2 } }` reads `hour`, `{ this: 'week' }` and `{ next: 'isoWeek' }` read
+  `week`, `{ start: { this: 'month' } }` reads `month`. It is `null` for a rule that reads no clock:
+  absolute dates, column compares and their offsets, `dayIn`. A store of rules can re-evaluate each
+  one on its tick without walking the tree itself.
+- **`engineGlobals` `clock.finestUnit`** (default `'second'`): the floor `clockUnit` reports at. A
+  finer unit reads as the floor, with no rounding, so a caller whose finest tick is an hour sets
+  `'hour'` once at boot instead of mapping the result itself.
+- **`CLOCK_UNITS`** (`second` … `year`, finest first) and the `ClockUnit` type are exported. The
+  operator catalog owns which clock unit each relative and period unit moves by.
 
 ## 3.12.2 — a count of one or zero compiles as presence
 

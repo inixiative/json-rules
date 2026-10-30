@@ -1,4 +1,5 @@
 import { resolveExpr } from '../amount';
+import { clockFloorError } from '../clock';
 import { coerceDateLiteral } from '../date';
 import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../dateExpr';
 import { noCompiledForm, rangeExprRequired, unknownOperator } from '../errors';
@@ -63,7 +64,14 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
     const expr = resolveExpr(value, read);
     return expr && resolvePointForOperator(expr, rule.dateOperator, config).toDate();
   };
-  const source = () => readSource(rule);
+  const source = () => {
+    const value = readSource(rule);
+    if (value === null || value === undefined) return value;
+    const offset = rule.offset === undefined ? undefined : readSource(rule.offset);
+    const clockError = clockFloorError(value, offset);
+    if (clockError) throw clockError;
+    return value;
+  };
   const point = (): Date | null => shift(instantOf(source()));
   const range = (): [Date, Date] | null => {
     const v = source();

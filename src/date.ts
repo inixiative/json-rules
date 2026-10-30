@@ -4,6 +4,7 @@ import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { resolveExpr, resolveUnits } from './amount';
+import { clockFloorError } from './clock';
 import {
   DEFAULT_ZONE,
   isDateExpr,
@@ -160,7 +161,10 @@ const parseCompareDates = (
   const read: ReadSource = (source) => readValueSource(source, scopes, bindings);
   const raw = readValueSource(condition, scopes, bindings);
   if (raw === null || raw === undefined) return null;
-  const move = condition.offset === undefined ? undefined : offsetShift(read(condition.offset));
+  const offset = condition.offset === undefined ? undefined : read(condition.offset);
+  const clockError = clockFloorError(raw, offset);
+  if (clockError) throw clockError;
+  const move = offset === undefined ? undefined : offsetShift(offset);
   if (move === null) return null;
   const shift = (point: dayjs.Dayjs): dayjs.Dayjs | null => {
     if (move === undefined) return point;

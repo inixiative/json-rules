@@ -528,18 +528,35 @@ export const SINGLE_VALUE_SHAPES: readonly ValueShape[] = ['scalar', 'ordered', 
 
 // --- Date units ------------------------------------------------------------------------------
 
-/** Each relative unit: the Postgres interval field it adds to, its size there, and whether it is
- *  a calendar unit (whole steps). Applied months, then days, then time, as Postgres does. */
+/** The steps a clock-relative date moves by, finest first. */
+export const CLOCK_UNITS = [
+  'second',
+  'minute',
+  'hour',
+  'day',
+  'week',
+  'month',
+  'quarter',
+  'year',
+] as const;
+export type ClockUnit = (typeof CLOCK_UNITS)[number];
+
+/** Each relative unit: the Postgres interval field it adds to, its size there, whether it is
+ *  a calendar unit (whole steps), and the clock unit it moves by. Applied months, then days,
+ *  then time, as Postgres does. */
 export const RELATIVE_UNITS = {
-  years: { interval: 'months', factor: 12, calendar: true },
-  quarters: { interval: 'months', factor: 3, calendar: true },
-  months: { interval: 'months', factor: 1, calendar: true },
-  weeks: { interval: 'days', factor: 7, calendar: true },
-  days: { interval: 'days', factor: 1, calendar: true },
-  hours: { interval: 'secs', factor: 3600, calendar: false },
-  minutes: { interval: 'secs', factor: 60, calendar: false },
-  seconds: { interval: 'secs', factor: 1, calendar: false },
-} as const;
+  years: { interval: 'months', factor: 12, calendar: true, clock: 'year' },
+  quarters: { interval: 'months', factor: 3, calendar: true, clock: 'quarter' },
+  months: { interval: 'months', factor: 1, calendar: true, clock: 'month' },
+  weeks: { interval: 'days', factor: 7, calendar: true, clock: 'week' },
+  days: { interval: 'days', factor: 1, calendar: true, clock: 'day' },
+  hours: { interval: 'secs', factor: 3600, calendar: false, clock: 'hour' },
+  minutes: { interval: 'secs', factor: 60, calendar: false, clock: 'minute' },
+  seconds: { interval: 'secs', factor: 1, calendar: false, clock: 'second' },
+} as const satisfies Record<
+  string,
+  { interval: string; factor: number; calendar: boolean; clock: ClockUnit }
+>;
 export type RelativeUnit = keyof typeof RELATIVE_UNITS;
 export const INTERVAL_FIELDS = ['months', 'days', 'secs'] as const;
 export const isRelativeUnit = (unit: string): unit is RelativeUnit =>
@@ -547,17 +564,23 @@ export const isRelativeUnit = (unit: string): unit is RelativeUnit =>
 export const isCalendarUnit = (unit: string): boolean =>
   isRelativeUnit(unit) && RELATIVE_UNITS[unit].calendar;
 
-export const PERIOD_UNITS: readonly string[] = [
-  'year',
-  'quarter',
-  'month',
-  'week',
-  'isoWeek',
-  'day',
-  'hour',
-  'minute',
-  'second',
-];
+/** Each period unit and the clock unit it turns over by: `week` and `isoWeek` differ only in
+ *  the day a week starts. */
+export const PERIOD_CLOCK_UNITS = {
+  year: 'year',
+  quarter: 'quarter',
+  month: 'month',
+  week: 'week',
+  isoWeek: 'week',
+  day: 'day',
+  hour: 'hour',
+  minute: 'minute',
+  second: 'second',
+} as const satisfies Record<string, ClockUnit>;
+
+export const PERIOD_UNITS: readonly string[] = Object.keys(PERIOD_CLOCK_UNITS);
+export const isPeriodUnit = (unit: unknown): unit is keyof typeof PERIOD_CLOCK_UNITS =>
+  typeof unit === 'string' && Object.hasOwn(PERIOD_CLOCK_UNITS, unit);
 
 // --- Weekdays -------------------------------------------------------------------------------
 

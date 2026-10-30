@@ -2,8 +2,11 @@
 
 export { bindRule, type ListBindingsOptions, listBindings } from './src/bindings';
 export { type CheckOptions, check } from './src/check';
+export { clockUnit } from './src/clock';
 export {
+  type EngineGlobalPath,
   type EngineGlobalsState,
+  type EngineGlobalValues,
   engineGlobals,
   type PrismaProvider,
   SqlDialect,
@@ -90,6 +93,8 @@ export { LensRefusal } from './src/lens/policy';
 export { ArrayOperator, DateOperator, Operator } from './src/operator';
 export {
   ALL_KINDS,
+  CLOCK_UNITS,
+  type ClockUnit,
   FieldKind,
   getAggregateOperators,
   getArrayOperators,
@@ -97,6 +102,7 @@ export {
   getValueShape,
   NUMERIC_KINDS,
   type OperatorFamily,
+  type RelativeUnit,
   RuleTarget,
   ValueShape,
 } from './src/operatorCatalog';

@@ -460,6 +460,7 @@ format grows a node type, and it goes blind silently.
 | `listBindings(rule, { required: true })` | Names a bindings map must cover — every `{ bind }` token not marked `bindOptional`, sorted. A name optional at one leaf and required at another is required. |
 | `listBindings(rule)` | Every `{ bind }` name in the tree, optional or not, sorted — what a lens declares. |
 | `bindRule(rule, bindings)` | Substitutes covered binds with their values, leaving uncovered tokens in place (partial resolution). |
+| `clockUnit(rule)` | The finest clock unit the rule's answer can change by while its data stays the same: the smallest unit any relative date in the tree names (`{ ago: { hours: 2 } }` → `hour`, `{ this: 'week' }` → `week`, `isoWeek` → `week`), one of `CLOCK_UNITS` (`second` … `year`); throws on a unit finer than the engine's `clock.finestUnit`, as evaluating the rule does. `null` when it reads no clock: absolute dates, column compares and their offsets, weekday lists. A caller re-evaluates a stored rule on that tick instead of guessing from its JSON. |
 
 A leaf may mark its bind optional: `{ field, operator, bind: 'region', bindOptional: true }`. An
 unsupplied required bind is a caller bug — `check()` throws, and both compilers refuse a
@@ -645,7 +646,7 @@ null`.
 
 ## Engine Globals
 
-`engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object.
+`engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object, and `set` / `get` are typed per path (`EngineGlobalPath`, `EngineGlobalValues`): each path takes only its own values.
 
 | Key | Default | Governs |
 | --- | --- | --- |
@@ -653,6 +654,7 @@ null`.
 | `string.fuzzy` | `false` | Default for a rule's `fuzzy` (`true` or a `FuzzyConfig` `{ maxDistance?, maxRatio? }`): typo-tolerant `contains` / `notContains` on strings. A rule's own flag wins. The compilers have no fuzzy form: they refuse `contains` / `notContains` whenever fuzzy is on, by the rule or by this default. |
 | `prismaOptions.datasource.provider` | `'postgresql'` | The Prisma connector. `toPrisma()` emits `mode: 'insensitive'` only for `postgresql`, `cockroachdb` and `mongodb`; the others are case-insensitive by collation and reject it. `toPrisma(rule, { datasource: { provider } })` overrides it per call. |
 | `prismaOptions.anyNull` | your `@prisma/client`'s | Prisma's `AnyNull` for Json null checks (see above); set it only to use another client's. |
+| `clock.finestUnit` | `'second'` | The finest unit a date rule may name: one of `CLOCK_UNITS`, or its plural (`'hours'` reads as `'hour'`); anything else throws when a date rule is evaluated. Every unit a date rule names counts, in its value (a relative date, either end of a range) and in its offset, whatever it compares against: a relative date, an absolute one or another column. A finer one fails: `check`, `toPrisma` and `toSql` throw and `validateRule` reports `clock_unit_below_floor`. The rule decides as written, so an amount read from the row or a binding (`{ minutes: { path } }`, a null one too) fails the same, and a bound whole expression is held to it once bound. Under `'hour'`, `{ ago: { minutes: 30 } }`, `{ this: 'minute' }`, and any compare offset by `{ ago: { minutes: 5 } }` fail. A caller whose finest tick is an hour sets it once at boot. |
 
 ```ts
 import { engineGlobals } from '@inixiative/json-rules';
@@ -661,6 +663,7 @@ engineGlobals.set('string.caseInsensitive', true);
 engineGlobals.get('string.caseInsensitive'); // true
 engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
 engineGlobals.set('sql.dialect', SqlDialect.mysql); // what toWhereSql / toLensWhereSql write
+engineGlobals.set('clock.finestUnit', 'hour'); // a rule reading minutes or seconds fails to evaluate
 engineGlobals.reset(); // back to the defaults
 
 // A scoped override: merged over the current state for the duration of a synchronous callback.

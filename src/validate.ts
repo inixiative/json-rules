@@ -1,5 +1,6 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { unitAmountProblem } from './amount';
+import { clockFloorError, writtenOffset } from './clock';
 import { columnCompareProblem } from './columnCompare';
 import { parseDateValue } from './date';
 import {
@@ -861,6 +862,8 @@ const validateDateRule = (
 
   const operator = rule.dateOperator as DateOperator;
   validateOffset(rule, 'date', operator, path, context, depth);
+  const clockError = clockFloorError(rule.value, writtenOffset(rule.offset));
+  if (clockError) pushIssue(context, path, 'clock_unit_below_floor', clockError.message);
 
   if (!isOperatorSupportedForTarget(operator, 'date', context.target)) {
     pushIssue(

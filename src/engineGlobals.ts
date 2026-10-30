@@ -1,6 +1,6 @@
 import { cloneDeep, cloneDeepWith, isPlainObject, merge, set } from 'lodash-es';
 import type { FuzzyConfig } from './fuzzy';
-import type { ClockUnit } from './operatorCatalog';
+import type { ClockUnit, RelativeUnit } from './operatorCatalog';
 import { readOwnPath } from './scope';
 
 export type PrismaProvider =
@@ -42,10 +42,22 @@ export type EngineGlobalsState = {
     dialect: SqlDialect;
   };
   clock: {
-    /** The finest clock unit a rule may read: a rule naming a finer one fails to evaluate. */
-    finestUnit: ClockUnit;
+    /** The finest clock unit a rule may read, singular or plural: a rule naming a finer one
+     *  fails to evaluate. */
+    finestUnit: ClockUnit | RelativeUnit;
   };
 };
+
+/** Each path `engineGlobals` reads and writes, and the values it takes. */
+export type EngineGlobalValues = {
+  'string.caseInsensitive': EngineGlobalsState['string']['caseInsensitive'];
+  'string.fuzzy': EngineGlobalsState['string']['fuzzy'];
+  'prismaOptions.datasource.provider': EngineGlobalsState['prismaOptions']['datasource']['provider'];
+  'prismaOptions.anyNull': EngineGlobalsState['prismaOptions']['anyNull'];
+  'sql.dialect': EngineGlobalsState['sql']['dialect'];
+  'clock.finestUnit': EngineGlobalsState['clock']['finestUnit'];
+};
+export type EngineGlobalPath = keyof EngineGlobalValues;
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
@@ -81,14 +93,13 @@ const copy = <T>(value: T): T =>
 const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
 
-/** Process-wide defaults, read and written by dotted path (`string.caseInsensitive`,
- *  `string.fuzzy`, `prismaOptions.datasource.provider`, `prismaOptions.anyNull`, `sql.dialect`,
- *  `clock.finestUnit`). */
+/** Process-wide defaults, read and written by dotted path (`EngineGlobalPath`). */
 export const engineGlobals = {
-  set: (path: string, value: unknown): void => {
+  set: <P extends EngineGlobalPath>(path: P, value: EngineGlobalValues[P]): void => {
     set(store, path, copy(value));
   },
-  get: (path: string): unknown => readOwnPath(store, path),
+  get: <P extends EngineGlobalPath>(path: P): EngineGlobalValues[P] =>
+    readOwnPath(store, path) as EngineGlobalValues[P],
   reset: (): void => {
     store = cloneDeep(DEFAULTS);
   },

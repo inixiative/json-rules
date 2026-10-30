@@ -4,16 +4,10 @@ import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { isPlainObject } from 'lodash-es';
-import { engineGlobals } from './engineGlobals';
-import { clockUnitBelowFloor, rangeExprRequired, UsageError } from './errors';
+import { rangeExprRequired, UsageError } from './errors';
 import {
-  CLOCK_UNITS,
-  type ClockUnit,
   type INTERVAL_FIELDS,
-  isPeriodUnit,
-  isRelativeUnit,
   leafCatalogEntry,
-  PERIOD_CLOCK_UNITS,
   PERIOD_UNITS,
   RELATIVE_UNITS,
   type RelativeUnit,
@@ -116,36 +110,6 @@ export const isEdgeExpr = <A>(e: DateExpr<A>): e is EdgeExpr => 'start' in e || 
 export const namedPeriod = (expr: PeriodExpr): unknown =>
   'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
 
-// The clock units one date expression reads: a rolling one each unit it names, a period or an
-// edge its period's unit. An unknown unit reads nothing here; validateRule reports it.
-export const exprClockUnits = (expr: DateExpr<unknown>): ClockUnit[] => {
-  const rolling = rollingShift(expr);
-  if (rolling)
-    return isPlainObject(rolling[0])
-      ? Object.keys(rolling[0]).flatMap((unit) =>
-          isRelativeUnit(unit) ? [RELATIVE_UNITS[unit].clock] : [],
-        )
-      : [];
-  const period = isEdgeExpr(expr) ? ('start' in expr ? expr.start : expr.end) : expr;
-  if (!isPlainObject(period)) return [];
-  const unit = namedPeriod(period as PeriodExpr);
-  return isPeriodUnit(unit) ? [PERIOD_CLOCK_UNITS[unit]] : [];
-};
-
-const clockFloor = (): ClockUnit => engineGlobals.get('clock.finestUnit') as ClockUnit;
-
-/** A unit `expr` reads that is finer than the engine's `clock.finestUnit`, or null. */
-export const finerThanClockFloor = (expr: DateExpr<unknown>): ClockUnit | null =>
-  exprClockUnits(expr).find(
-    (unit) => CLOCK_UNITS.indexOf(unit) < CLOCK_UNITS.indexOf(clockFloor()),
-  ) ?? null;
-
-/** Throws when `expr` reads the clock finer than the engine's `clock.finestUnit`. */
-export const assertClockFloor = (expr: DateExpr<unknown>): void => {
-  const unit = finerThanClockFloor(expr);
-  if (unit) throw clockUnitBelowFloor(unit, clockFloor());
-};
-
 /** A period expression's unit; an unknown one throws (dayjs would read it as a millisecond). */
 const periodUnit = (expr: PeriodExpr): PeriodUnit => {
   const unit = namedPeriod(expr);
@@ -185,7 +149,6 @@ export const resolveDateExpr = (
   expr: DateExpr<number>,
   config: ResolvedDateConfig,
 ): dayjs.Dayjs => {
-  assertClockFloor(expr);
   const rolling = rollingShift(expr);
   if (rolling) return shiftByUnits(requireNow(config), ...rolling, config.timeZone);
   if (isEdgeExpr(expr)) {
@@ -209,7 +172,6 @@ export const resolvePointForOperator = (
   config: ResolvedDateConfig,
 ): dayjs.Dayjs => {
   if (isPeriodExpr(expr)) {
-    assertClockFloor(expr);
     const [start, end] = resolvePeriodRange(expr, config);
     // An upper bound anchors at the start; a negation at its positive form's edge.
     const positive = leafCatalogEntry({ dateOperator: operator })?.negates ?? operator;
@@ -226,7 +188,6 @@ export const resolveDateExprRange = (
   expr: DateExpr<number>,
   config: ResolvedDateConfig,
 ): [dayjs.Dayjs, dayjs.Dayjs] => {
-  assertClockFloor(expr);
   if (isPeriodExpr(expr)) return resolvePeriodRange(expr, config);
   const rolling = rollingShift(expr);
   if (rolling) {

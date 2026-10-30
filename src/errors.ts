@@ -3,6 +3,7 @@ import type { MapHop } from './fieldMap/walk';
 import type { FuzzyConfig } from './fuzzy';
 import {
   AGGREGATE_MODES,
+  type ClockUnit,
   CONTAINS_OPERATORS,
   ORDERED_OPERATORS,
   RANGE_OPERATORS,
@@ -18,7 +19,7 @@ export const unknownOperator = (operator: unknown, family: string): Error =>
   new Error(`Unknown ${family} operator: ${String(operator)}`);
 
 /** A clock-relative date finer than the engine's `clock.finestUnit`: nothing ticks that fine. */
-export const clockUnitBelowFloor = (unit: string, floor: string): Error =>
+export const clockUnitBelowFloor = (unit: ClockUnit, floor: ClockUnit): Error =>
   new Error(`'${unit}' is finer than the engine's clock.finestUnit '${floor}'`);
 
 /** A counting array operator with no count. */

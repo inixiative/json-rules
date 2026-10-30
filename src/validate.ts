@@ -1,20 +1,19 @@
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { unitAmountProblem } from './amount';
+import { clockFloorError, writtenOffset } from './clock';
 import { columnCompareProblem } from './columnCompare';
 import { parseDateValue } from './date';
 import {
   DEFAULT_ZONE,
-  finerThanClockFloor,
   isDateExpr,
   isEdgeExpr,
   isPeriodExpr,
   namedPeriod,
   rollingShift,
 } from './dateExpr';
-import { engineGlobals, resolveCaseInsensitive } from './engineGlobals';
+import { resolveCaseInsensitive } from './engineGlobals';
 import {
   ambiguousCondition,
-  clockUnitBelowFloor,
   conditionRequired,
   countRequired,
   noCompiledForm,
@@ -863,6 +862,8 @@ const validateDateRule = (
 
   const operator = rule.dateOperator as DateOperator;
   validateOffset(rule, 'date', operator, path, context, depth);
+  const clockError = clockFloorError(rule.value, writtenOffset(rule.offset));
+  if (clockError) pushIssue(context, path, 'clock_unit_below_floor', clockError.message);
 
   if (!isOperatorSupportedForTarget(operator, 'date', context.target)) {
     pushIssue(
@@ -1002,15 +1003,6 @@ const validateDateExpr = (
   depth: number,
 ): void => {
   const isRange = WINDOW_OPERATORS.includes(operator);
-
-  const finer = finerThanClockFloor(expr);
-  if (finer)
-    pushIssue(
-      context,
-      path,
-      'clock_unit_below_floor',
-      clockUnitBelowFloor(finer, engineGlobals.get('clock.finestUnit') as string).message,
-    );
 
   const rolling = rollingShift(expr);
   if (rolling) {

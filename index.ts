@@ -4,7 +4,9 @@ export { bindRule, type ListBindingsOptions, listBindings } from './src/bindings
 export { type CheckOptions, check } from './src/check';
 export { clockUnit } from './src/clock';
 export {
+  type EngineGlobalPath,
   type EngineGlobalsState,
+  type EngineGlobalValues,
   engineGlobals,
   type PrismaProvider,
   SqlDialect,
@@ -100,6 +102,7 @@ export {
   getValueShape,
   NUMERIC_KINDS,
   type OperatorFamily,
+  type RelativeUnit,
   RuleTarget,
   ValueShape,
 } from './src/operatorCatalog';

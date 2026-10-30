@@ -646,7 +646,7 @@ null`.
 
 ## Engine Globals
 
-`engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object.
+`engineGlobals` holds process-wide defaults. Keys are dotted paths into one state object, and `set` / `get` are typed per path (`EngineGlobalPath`, `EngineGlobalValues`): each path takes only its own values.
 
 | Key | Default | Governs |
 | --- | --- | --- |
@@ -654,7 +654,7 @@ null`.
 | `string.fuzzy` | `false` | Default for a rule's `fuzzy` (`true` or a `FuzzyConfig` `{ maxDistance?, maxRatio? }`): typo-tolerant `contains` / `notContains` on strings. A rule's own flag wins. The compilers have no fuzzy form: they refuse `contains` / `notContains` whenever fuzzy is on, by the rule or by this default. |
 | `prismaOptions.datasource.provider` | `'postgresql'` | The Prisma connector. `toPrisma()` emits `mode: 'insensitive'` only for `postgresql`, `cockroachdb` and `mongodb`; the others are case-insensitive by collation and reject it. `toPrisma(rule, { datasource: { provider } })` overrides it per call. |
 | `prismaOptions.anyNull` | your `@prisma/client`'s | Prisma's `AnyNull` for Json null checks (see above); set it only to use another client's. |
-| `clock.finestUnit` | `'second'` | The finest clock unit a rule may read (one of `CLOCK_UNITS`). A rule reading a finer one fails to evaluate: `check`, `toPrisma` and `toSql` throw and `validateRule` reports `clock_unit_below_floor`. Under `'hour'`, `{ ago: { minutes: 30 } }` and `{ this: 'minute' }` fail; offsets on a column compare read no clock and are unaffected. A caller whose finest tick is an hour sets it once at boot. |
+| `clock.finestUnit` | `'second'` | The finest clock unit a rule may read: one of `CLOCK_UNITS`, or its plural (`'hours'` reads as `'hour'`); anything else throws when a rule reads the clock. A comparison that reads the clock (its value, or an end of its range, is a relative date) fails when any unit it names is finer, the offset moving it included: `check`, `toPrisma` and `toSql` throw and `validateRule` reports `clock_unit_below_floor`. The rule decides as written, so an amount read from the row or a binding (`{ minutes: { path } }`, a null one too) fails the same, and a bound whole expression is held to it once bound. Under `'hour'`, `{ ago: { minutes: 30 } }`, `{ this: 'minute' }` and `{ ago: { days: 1 } }` offset by `{ ago: { minutes: 5 } }` fail. A comparison that reads no clock (an absolute date, a column compare) is never refused, offset or not. A caller whose finest tick is an hour sets it once at boot. |
 
 ```ts
 import { engineGlobals } from '@inixiative/json-rules';

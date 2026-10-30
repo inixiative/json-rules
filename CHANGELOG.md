@@ -1,3 +1,19 @@
+## 3.15.0 — the clock floor holds on every rail; engineGlobals typed per path
+
+- **`clock.finestUnit` is checked on the rule as written**, where each rail first reads the
+  comparison, not after its amounts resolve: an amount read from the row or a binding
+  (`{ ago: { minutes: { path: 'n' } } }`) now fails on `toSql` / `toLensWhereSql` too, and on
+  every row, a null amount included. A bound whole expression is held to the floor once bound.
+- **An offset on a clock-relative value counts**: `{ ago: { days: 1 } }` offset by
+  `{ ago: { minutes: 5 } }` fails under `'hour'`, and `clockUnit` reads the offset's unit. A
+  comparison that reads no clock (an absolute date, a column compare) is still never refused.
+- **`clock.finestUnit` takes a unit singular or plural** (`'hours'` reads as `'hour'`); any other
+  value throws when a rule reads the clock instead of switching the floor off.
+- **`engineGlobals.set` / `get` are typed per path**: `EngineGlobalPath` and `EngineGlobalValues`
+  are exported, and so is `RelativeUnit`. A path outside the list, or a value its path doesn't
+  take, no longer typechecks.
+- `validateRule` reports `clock_unit_below_floor` once per comparison, at the rule's path.
+
 ## 3.14.0 — a rule finer than clock.finestUnit fails
 
 - **`engineGlobals` `clock.finestUnit`** is now the finest clock unit a rule may read, not a unit

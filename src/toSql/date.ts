@@ -1,4 +1,5 @@
 import { resolveExpr } from '../amount';
+import { clockFloorError } from '../clock';
 import { coerceDateLiteral, dayNumbers } from '../date';
 import {
   isDateExpr,
@@ -65,6 +66,11 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
   const operand = resolveSource(rule, state);
   if (operand.type === 'column' && !readsDate(operand.shape))
     throw notADate(String(rule.path ?? rule.field));
+  if (!isMissing(operand) && operand.type === 'value') {
+    const by = rule.offset === undefined ? undefined : resolveSource(rule.offset, state);
+    const clockError = clockFloorError(operand.value, by?.type === 'value' ? by.value : undefined);
+    if (clockError) throw clockError;
+  }
   const ordered = orderedSql(rule.dateOperator, 'date');
   if (ordered) {
     const { lhs, ends } = sides(field, [resolvePoint(rule, state)], state);

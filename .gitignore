@@ -179,3 +179,4 @@ dist
 
 # Prisma client and DDL generated for the rail tests (bun run generate:rails)
 test/rails/generated/
+/tmp/*

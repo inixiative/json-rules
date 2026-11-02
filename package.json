@@ -56,7 +56,8 @@
     "mysql-memory-server": "1.17.0",
     "prisma": "7.8.0",
     "tsup": "8.5.1",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@prisma/client": ">=6.0.0",

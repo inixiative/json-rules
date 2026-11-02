@@ -7,6 +7,7 @@ export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
 export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
+export { type JsonSchema, type JsonSchemaNode, lensFromJsonSchema } from './lensFromJsonSchema';
 export type {
   LensRelationSelect,
   LensSelect,

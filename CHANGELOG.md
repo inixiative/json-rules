@@ -1,3 +1,16 @@
+## Unreleased — a lens from a JSON Schema
+
+- **`lensFromJsonSchema(schema, { mapName, model })`** builds a base lens from a JSON Schema
+  (`z.toJSONSchema` output, draft 2020-12 / draft-07 / OpenAPI 3.x), so an integration's base lens
+  comes from the schema that already describes its data instead of a hand-written FieldMap (Aron,
+  2026-11-02: base lenses "doesn't have to be hand-shaped"). The map is prisma-map shaped
+  (`{ models, enums }`, `isList` / `isRequired` on every field). Nested objects are models
+  `<parent>.<field>`, arrays of objects to-many relations, `$ref`s one model named after their
+  `$defs` key (recursion relates to the model already built), nullable shapes resolve to the
+  non-null type, and records, multi-shape unions, `allOf` of several members and tuples are Json. Ported from the
+  sdk's `lensFromSchema` in template and Kingdom, which this replaces.
+- `JsonSchema` / `JsonSchemaNode`: the schema slice it reads.
+
 ## 3.16.0 — toLensWhereSql reads a to-many relation through the caller's join
 
 - **`toLensWhereSql(lens, { columns, toMany: 'join' })`**: the root's `where` reads a to-many

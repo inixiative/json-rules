@@ -1259,6 +1259,27 @@ const lens = createLens({
 
 The lens is **schema only** — no data lives on it. Runtime data (rows, foreign tables, FE picker sources) is passed alongside, separately, when you need it.
 
+### A lens from a JSON Schema
+
+Data that isn't in Prisma (an integration's events, an API response) usually already has a schema. `lensFromJsonSchema` derives the base lens from it, so nobody hand-writes a FieldMap that drifts from the data:
+
+```ts
+import { z } from 'zod';
+import { lensFromJsonSchema } from '@inixiative/json-rules';
+
+const lens = lensFromJsonSchema(z.toJSONSchema(EventEnvelope), { mapName: 'github', model: 'Event' });
+```
+
+The map is prisma-map shaped (`{ models, enums }`, every field with `isList`/`isRequired`), so everything that reads a Prisma lens reads this one:
+
+- `string` / `date-time` / `integer` / `number` / `boolean` → `String` / `DateTime` / `Int` / `Float` / `Boolean`; a string `enum`, `const` or union of string literals → an enum, registered in `enums`.
+- A property in `required` is `isRequired`; a nullable one (`anyOf` with `{ type: 'null' }`, `type: [X, 'null']`, `nullable: true`) is X, not required.
+- A nested object is the model `<parent>.<field>`; an array of objects is a to-many relation. Relations are off by default, as everywhere: a narrowing turns them on.
+- A `$ref` into `$defs` / `definitions` is one model named after its key (`'#'` is the root model), built once, so a reused or recursive shape is a relation to it. Give a reused zod schema `.meta({ id })` to choose that name.
+- Json, still readable by dotted path: a record (`additionalProperties` only), an object without properties, a union of several shapes, an `allOf` of several members (one member is that member), tuples, anything untyped.
+
+It throws when the root isn't an object with properties (or an array of one), on a non-local `$ref`, on two shapes that would share a model name, and on a property name a path can't address.
+
 ### Relations
 
 Relations are fields, off by default. A bare lens reads its anchor model's columns and nothing

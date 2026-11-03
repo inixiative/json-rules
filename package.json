@@ -1,7 +1,7 @@
 {
   "name": "@inixiative/json-rules",
   "version": "3.16.0",
-  "description": "TypeScript-first JSON rules engine with intuitive syntax and detailed error messages",
+  "description": "Serializable JSON rules engine for TypeScript: one rule AST runs in memory (check), as a Prisma query (toPrisma) and as SQL WHERE (toSql)",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

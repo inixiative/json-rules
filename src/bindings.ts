@@ -1,8 +1,10 @@
 import {
   type ConditionNode,
+  isRelationNode,
   leafSources,
   mapCondition,
   mapLeafSources,
+  valueRefRoles,
   visitCondition,
 } from './traverse';
 import type { Condition, RuleValue, ValueSourceOf } from './types';
@@ -34,6 +36,22 @@ export const listBindings = (
       if (!required || token.bindOptional !== true) names.add(token.bind);
   });
   return [...names].sort();
+};
+
+/**
+ * The paths a rule reads from the row it is checked on, sorted: each leaf's `field` and each
+ * `{ path }` on its value side. A relation node (`arrayOperator`, `aggregate`) contributes its own
+ * field; what its `condition` / `filter` read is relative to the related rows, so it is not listed.
+ * For a caller that must load what a rule reads before checking it (a hydrator).
+ */
+export const listFields = (condition: Condition): string[] => {
+  const paths = new Set<string>();
+  visitCondition(condition, (node) => {
+    if (typeof node.field === 'string') paths.add(node.field);
+    for (const { ref } of valueRefRoles(node)) paths.add(ref);
+    return isRelationNode(node) ? false : undefined;
+  });
+  return [...paths].sort();
 };
 
 /**

@@ -19,6 +19,7 @@ modules allowed to implement it, and every exported function must appear in this
 | validate | `assertValidRule`, `assertValidNarrowing`, `assertValidFieldMaps` | The throwing form of each validator. |
 | bind | `bindRule`, `bindLens` | Substitute supplied bindings into a rule, or a lens's narrowing conditions. |
 | bind | `listBindings`, `listLensBindings` | The bind names a rule or lens reads, sorted (`{ required }` drops `bindOptional`). |
+| list fields | `listFields` | The paths a rule reads from the row it is checked on, sorted: leaf fields and value-side `{ path }`s; a relation node's inner rule is relative to its rows and not listed. |
 | narrow | `narrowRule` | Inject a lens's clamps into a rule at their anchors. |
 | re-root | `prefixConditionFields` | Move a condition onto a related record (a parent's where read from the child); refuse shapes it cannot move. |
 | clamp | `clampLens` | AND clamps into a lens's first narrowing over the base, where they read the whole schema; later layers kept. |

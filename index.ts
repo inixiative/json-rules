@@ -1,6 +1,6 @@
 // The public API: one name per operation, grouped by verb in docs/VERBS.md.
 
-export { bindRule, type ListBindingsOptions, listBindings } from './src/bindings';
+export { bindRule, type ListBindingsOptions, listBindings, listFields } from './src/bindings';
 export { type CheckOptions, check } from './src/check';
 export { clockUnit } from './src/clock';
 export {

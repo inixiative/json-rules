@@ -1,3 +1,11 @@
+## 3.18.0 — listFields
+
+- **`listFields(rule)`**: the paths a rule reads from the row it is checked on, sorted — each
+  leaf's `field` and each value-side `{ path }`. A relation node (`arrayOperator`, `aggregate`)
+  contributes its own field and not its inner rule, which reads the related rows. Built on the one
+  structural walk; for a caller that loads what a rule reads before checking it (permissions'
+  hydrator).
+
 ## 3.17.0 — one engine interaction point
 
 - **`registerEngineGlobals(namespace, defaults)`**: a library built on the engine (permissions,

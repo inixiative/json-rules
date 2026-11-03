@@ -664,15 +664,42 @@ engineGlobals.get('string.caseInsensitive'); // true
 engineGlobals.set('prismaOptions.datasource.provider', 'mysql');
 engineGlobals.set('sql.dialect', SqlDialect.mysql); // what toWhereSql / toLensWhereSql write
 engineGlobals.set('clock.finestUnit', 'hour'); // a rule reading minutes or seconds fails to evaluate
-engineGlobals.reset(); // back to the defaults
+engineGlobals.reset(); // back to the defaults, registered namespaces' included
 
 // A scoped override: merged over the current state for the duration of a synchronous callback.
-const result = engineGlobals.with({ string: { caseInsensitive: true } }, () => check(rule, data));
+// Flat paths or the nested shape.
+const result = engineGlobals.with({ 'string.caseInsensitive': true }, () => check(rule, data));
 ```
 
 `with()` restores the previous state when the callback returns or throws. The callback must be
 synchronous: one that returns a Promise throws. `set()` copies plain data and keeps a class
 instance (like `AnyNull`) as given, since Prisma recognizes it by identity.
+
+### One engine interaction point for the libraries built on it
+
+`engineGlobals` is the settings store for every engine built on json-rules (permissions,
+transitions, rules-builder). A library registers its own namespace, once, at the top of the module
+that reads it, and adds its paths to the types by augmentation:
+
+```ts
+import { engineGlobals, registerEngineGlobals } from '@inixiative/json-rules';
+
+declare module '@inixiative/json-rules' {
+  interface EngineGlobalValues { 'permissions.idField': string }
+}
+registerEngineGlobals('permissions', { idField: 'id' });
+
+engineGlobals.set('permissions.idField', 'uuid'); // the app, at boot
+```
+
+- A namespace is one segment and never one of json-rules' own roots (`string`, `prismaOptions`,
+  `sql`, `clock`). A library registers only its own, and reads its own and those of the engines
+  below it.
+- Defaults go in under a value already set, so an app may configure a library before importing it.
+  Registering the same defaults again is a no-op; different ones throw.
+- The store lives on `globalThis` under `Symbol.for('@inixiative/json-rules/engineGlobals@3')`:
+  every 3.x copy in the process (a nested install, an ESM and a CJS build) reads and writes the same
+  settings.
 
 ## PostgreSQL SQL Generation
 

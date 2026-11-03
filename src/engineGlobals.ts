@@ -1,4 +1,4 @@
-import { cloneDeep, cloneDeepWith, isPlainObject, merge, set } from 'lodash-es';
+import { cloneDeep, cloneDeepWith, isEqual, isPlainObject, merge, set } from 'lodash-es';
 import type { FuzzyConfig } from './fuzzy';
 import type { ClockUnit, RelativeUnit } from './operatorCatalog';
 import { readOwnPath } from './scope';
@@ -48,20 +48,36 @@ export type EngineGlobalsState = {
   };
 };
 
-/** Each path `engineGlobals` reads and writes, and the values it takes. */
-export type EngineGlobalValues = {
+/**
+ * Each path `engineGlobals` reads and writes, and the values it takes. An interface, so a library
+ * built on the engine adds its own namespace's paths by module augmentation:
+ *
+ * ```ts
+ * declare module '@inixiative/json-rules' {
+ *   interface EngineGlobalValues { 'permissions.idField': string }
+ * }
+ * ```
+ */
+export interface EngineGlobalValues {
   'string.caseInsensitive': EngineGlobalsState['string']['caseInsensitive'];
   'string.fuzzy': EngineGlobalsState['string']['fuzzy'];
   'prismaOptions.datasource.provider': EngineGlobalsState['prismaOptions']['datasource']['provider'];
   'prismaOptions.anyNull': EngineGlobalsState['prismaOptions']['anyNull'];
   'sql.dialect': EngineGlobalsState['sql']['dialect'];
   'clock.finestUnit': EngineGlobalsState['clock']['finestUnit'];
-};
+}
 export type EngineGlobalPath = keyof EngineGlobalValues;
+
+/** The defaults a namespace registers: its paths, relative to the namespace. */
+export type EngineGlobalDefaults<N extends string> = {
+  [P in EngineGlobalPath as P extends `${N}.${infer K}` ? K : never]: EngineGlobalValues[P];
+};
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
 };
+
+type Overrides = Partial<EngineGlobalValues> | DeepPartial<EngineGlobalsState>;
 
 const DEFAULTS: EngineGlobalsState = {
   string: {
@@ -81,7 +97,7 @@ const DEFAULTS: EngineGlobalsState = {
   },
 };
 
-let store: EngineGlobalsState = cloneDeep(DEFAULTS);
+const RESERVED = new Set(Object.keys(DEFAULTS));
 
 // Plain data is copied; an instance (Prisma's AnyNull) is held as given — Prisma knows it by
 // identity.
@@ -90,25 +106,88 @@ const copy = <T>(value: T): T =>
     typeof v === 'object' && v !== null && !Array.isArray(v) && !isPlainObject(v) ? v : undefined,
   );
 
+type Holder = {
+  store: Record<string, unknown>;
+  registry: Map<string, Record<string, unknown>>;
+};
+
+// One store per process, whatever number of json-rules copies are loaded (a nested install, or
+// a bundler loading both the ESM and the CJS build): every 3.x copy finds the same holder.
+const HOLDER = Symbol.for('@inixiative/json-rules/engineGlobals@3');
+
+const holder = (): Holder => {
+  const root = globalThis as typeof globalThis & { [HOLDER]?: Holder };
+  root[HOLDER] ??= { store: cloneDeep(DEFAULTS), registry: new Map() };
+  return root[HOLDER];
+};
+
+// A flat override (`{ 'sql.dialect': 'mysql' }`) as the nested shape the store holds.
+const nested = (overrides: Overrides): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key.includes('.')) set(out, key, copy(value));
+    else out[key] = merge(out[key] ?? {}, copy(value));
+  }
+  return out;
+};
+
+const applyUnder = (store: Record<string, unknown>, namespace: string, defaults: object) => {
+  for (const [key, value] of Object.entries(defaults)) {
+    const path = `${namespace}.${key}`;
+    if (readOwnPath(store, path) === undefined) set(store, path, copy(value));
+  }
+};
+
 const isThenable = (v: unknown): boolean =>
   v != null && typeof (v as { then?: unknown }).then === 'function';
+
+/**
+ * Register a library's namespace of engine globals and its defaults. A library built on the
+ * engine calls this at the top of the module that reads the setting, for its own namespace only.
+ * Defaults go in under any value already set (an app may configure a library before importing
+ * it). Registering the same defaults again is a no-op (a second installed copy of the library);
+ * different defaults, a dotted namespace or one of the engine's own roots throw.
+ */
+export const registerEngineGlobals = <N extends string>(
+  namespace: N,
+  defaults: EngineGlobalDefaults<N>,
+): void => {
+  if (!namespace || namespace.includes('.'))
+    throw new Error(`engine globals namespace "${namespace}" must be one non-empty segment`);
+  if (RESERVED.has(namespace))
+    throw new Error(`engine globals namespace "${namespace}" belongs to json-rules`);
+  const { store, registry } = holder();
+  const known = registry.get(namespace);
+  if (known) {
+    if (isEqual(known, defaults)) return;
+    throw new Error(`engine globals namespace "${namespace}" is registered with other defaults`);
+  }
+  registry.set(namespace, copy(defaults as Record<string, unknown>));
+  applyUnder(store, namespace, defaults);
+};
 
 /** Process-wide defaults, read and written by dotted path (`EngineGlobalPath`). */
 export const engineGlobals = {
   set: <P extends EngineGlobalPath>(path: P, value: EngineGlobalValues[P]): void => {
-    set(store, path, copy(value));
+    set(holder().store, path, copy(value));
   },
   get: <P extends EngineGlobalPath>(path: P): EngineGlobalValues[P] =>
-    readOwnPath(store, path) as EngineGlobalValues[P],
+    readOwnPath(holder().store, path) as EngineGlobalValues[P],
+  // Back to the engine's defaults and every registered namespace's.
   reset: (): void => {
-    store = cloneDeep(DEFAULTS);
+    const target = holder();
+    target.store = cloneDeep(DEFAULTS);
+    for (const [namespace, defaults] of target.registry)
+      applyUnder(target.store, namespace, defaults);
   },
-  // Scoped override: merge `partial` over the current state, run `fn`, restore. SYNCHRONOUS
-  // ONLY — JS run-to-completion makes a sync `fn` atomic, so overlapping evaluations never
-  // observe the override. An async `fn` would yield mid-scope and leak/collide, so it throws.
-  with: <T>(partial: DeepPartial<EngineGlobalsState>, fn: () => T): T => {
-    const prev = store;
-    store = merge(copy(prev), copy(partial));
+  // Scoped override: merge `overrides` (flat paths, or the nested shape) over the current state,
+  // run `fn`, restore. SYNCHRONOUS ONLY — JS run-to-completion makes a sync `fn` atomic, so
+  // overlapping evaluations never observe the override. An async `fn` would yield mid-scope and
+  // leak/collide, so it throws. A `set` inside `fn` is discarded on restore.
+  with: <T>(overrides: Overrides, fn: () => T): T => {
+    const target = holder();
+    const prev = target.store;
+    target.store = merge(copy(prev), nested(overrides));
     try {
       const result = fn();
       if (isThenable(result))
@@ -117,7 +196,7 @@ export const engineGlobals = {
         );
       return result;
     } finally {
-      store = prev;
+      target.store = prev;
     }
   },
 };

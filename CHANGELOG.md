@@ -1,3 +1,16 @@
+## 3.17.0 — one engine interaction point
+
+- **`registerEngineGlobals(namespace, defaults)`**: a library built on the engine (permissions,
+  transitions, rules-builder) registers its own namespace of settings in `engineGlobals`, and adds
+  its paths to `EngineGlobalValues` by module augmentation — now an `interface`. Defaults go in
+  under any value already set; the same defaults again are a no-op, different ones throw, as do a
+  dotted namespace and json-rules' own roots.
+- **One store per process.** The store and the registry live on `globalThis` under
+  `Symbol.for('@inixiative/json-rules/engineGlobals@3')`, so a second installed copy, or the CJS
+  and ESM builds side by side, no longer hold separate settings.
+- **`reset()`** restores every registered namespace's defaults with the engine's.
+- **`with()`** takes flat paths (`{ 'sql.dialect': 'mysql' }`) as well as the nested shape.
+
 ## 3.16.0 — toLensWhereSql reads a to-many relation through the caller's join
 
 - **`toLensWhereSql(lens, { columns, toMany: 'join' })`**: the root's `where` reads a to-many

@@ -106,6 +106,7 @@ export {
   type OperatorFamily,
   type RelativeUnit,
   RuleTarget,
+  VALUE_AGGREGATE_MODES,
   ValueShape,
 } from './src/operatorCatalog';
 export {
@@ -148,6 +149,7 @@ export type {
   Absent,
   AggregateMode,
   AggregateRule,
+  AggregateValue,
   All,
   Any,
   ArrayRule,
@@ -163,6 +165,8 @@ export type {
   DateRuleValue,
   EdgeExpr,
   IfThenElse,
+  IfThenElseValue,
+  ListValue,
   Magnitude,
   NumberOffset,
   OrderBy,
@@ -199,8 +203,11 @@ export type {
   StrictRule,
   StrictStringBoundaryRule,
   TimeZoneConfig,
+  ValueAggregateMode,
+  ValueExpression,
   ValueSourceFields,
   ValueSourceOf,
+  ValueType,
   WeekStart,
   WindowFields,
 } from './src/types';
@@ -211,4 +218,13 @@ export {
   type ValidationResult,
   validateRule,
 } from './src/validate';
+export {
+  assertValidValue,
+  describeValue,
+  evaluateValue,
+  inferValueType,
+  type ValueDescription,
+  validateValue,
+  valueClockUnit,
+} from './src/value';
 export { orderRecords } from './src/window';

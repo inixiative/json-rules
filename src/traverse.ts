@@ -339,3 +339,66 @@ export const anyOf = (conditions: readonly Condition[]): Condition =>
     : conditions.length === 1
       ? conditions[0]
       : { any: [...conditions] };
+
+export const ValueExpressionShape = {
+  list: 'list',
+  if: 'if',
+  aggregate: 'aggregate',
+  source: 'source',
+} as const;
+
+export type ValueExpressionShape = (typeof ValueExpressionShape)[keyof typeof ValueExpressionShape];
+
+/** What a value expression node is — a list, if / then / else, an aggregate, or a value source —
+ *  or null when it is none of them or names more than one. */
+export const valueExpressionShape = (expr: unknown): ValueExpressionShape | null => {
+  if (Array.isArray(expr)) return 'list';
+  if (!isPlainObject(expr)) return null;
+  const node = expr as ConditionNode;
+  const shapes: ValueExpressionShape[] = [];
+  if (isIfNode(node)) shapes.push('if');
+  if ('aggregate' in node) shapes.push('aggregate');
+  if ('value' in node || 'path' in node || 'bind' in node) shapes.push('source');
+  return shapes.length === 1 ? shapes[0] : null;
+};
+
+/**
+ * Everything a value expression reads, as one condition reading the same things — the one
+ * structural walk over a value expression's slots (list items, `if` / `then` / `else`, an
+ * aggregate's `filter` / `condition` / `orderBy` / `aggregate.field`). A path read is an `exists`
+ * on its field; an aggregate is an aggregate rule over the same rows and window (its mode and
+ * comparison stand in: they read nothing); a literal or a binding reads nothing (`true`). For the
+ * walkers that describe what a rule reads — `clockUnit`, `readPaths`, `validateRuleInLens` —
+ * never to evaluate.
+ */
+export const valueReads = (expr: unknown): Condition => {
+  const node = expr as ConditionNode;
+  switch (valueExpressionShape(expr)) {
+    case 'list':
+      return allOf((expr as unknown[]).map(valueReads));
+    case 'if':
+      return allOf([
+        node.if as Condition,
+        valueReads(node.then),
+        ...(node.else === undefined ? [] : [valueReads(node.else)]),
+      ]);
+    case 'aggregate': {
+      const { aggregate, ...rest } = node as { aggregate: { field?: unknown } };
+      return {
+        ...rest,
+        aggregate: {
+          mode: 'sum',
+          ...(aggregate.field !== undefined && { field: aggregate.field }),
+        },
+        operator: 'equals',
+        value: 0,
+      } as Condition;
+    }
+    case 'source':
+      return hasPath(node as never)
+        ? ({ field: node.path, operator: 'exists' } as Condition)
+        : true;
+    default:
+      return true;
+  }
+};

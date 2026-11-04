@@ -43,6 +43,7 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - `if` / `then` / `else`
 - array validation against nested object elements
 - array aggregates: `sum` and `avg` across numeric arrays or relation lists
+- value expressions: compute a value (`count`, `sum`, `avg`, `min`, `max`, a path, if / else) from a row with `evaluateValue`
 - ordered windowing: first/last `N` with `orderBy` / `take` / `skip` (`check()`; `toPrisma()` compiles the extremal case and a `filter` alone)
 - date comparisons with timezone-aware runtime evaluation
 - relative & calendar date expressions ("last 30 days", "this month") via `within` and `ago`/`ahead`/`this`/`last`/`next`
@@ -208,6 +209,67 @@ Computes `sum` or `avg` of an array and compares the result to a value.
 
 Empty-array semantics: `sum([]) = 0` and `avg([]) = 0`. A NULL or absent array is empty, and
 NULL items are skipped, as SQL's `SUM` / `AVG` skip them.
+
+### Value Expressions
+
+A value expression computes a value from a row instead of testing it, in the grammar rules
+already use. `evaluateValue(expression, row, options)` takes what `check()` takes (`bindings`,
+`now`, `timeZone`, `weekStart`) and evaluates in memory.
+
+| Shape | Returns |
+| --- | --- |
+| `{ value }` | the literal |
+| `{ path }` | the value at the path (`$.` for the row), null when absent |
+| `{ bind }` | the bound value |
+| `{ field, aggregate: { mode, field? }, filter?, orderBy?, take?, skip?, condition? }` | the aggregate rule's shape without `operator` / `value`: the aggregate itself |
+| `{ if, then, else? }` | `then` when the condition holds, else `else` (null with no `else`) |
+| `[item, …]` *(experimental)* | a list: each item's value; an `if` with no `else` that doesn't hold adds nothing |
+
+`aggregate.mode` is one of `VALUE_AGGREGATE_MODES`: `sum`, `avg` (0 over no rows, as the aggregate
+rule reads them), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
+`min` and `max` (numbers, strings or dates, the value as stored; null over no rows). The window
+runs first (filter → order → skip → take), then `condition`. An aggregate rule still compares
+`sum` / `avg` only.
+
+```ts
+// How many reference asks in the last 90 days
+const asksLast90Days = {
+  field: 'brandReferenceRequestFanUsers',
+  aggregate: { mode: 'count' },
+  filter: {
+    all: [
+      { field: 'affiliation', operator: Operator.equals, value: 'advocate' },
+      { field: 'activatedAt', dateOperator: DateOperator.onOrAfter, value: { ago: { days: 90 } } },
+    ],
+  },
+};
+evaluateValue(asksLast90Days, advocate, { now }); // 2
+
+// The date of the last ask
+const lastAskAt = {
+  field: 'brandReferenceRequestFanUsers',
+  aggregate: { mode: 'max', field: 'activatedAt' },
+  filter: { field: 'activatedAt', operator: Operator.exists },
+};
+
+// First match is an if / else chain; the last else is the default
+const tier = {
+  if: { field: 'fanMissions', arrayOperator: ArrayOperator.atLeast, count: 3, condition: true },
+  then: { value: 'gold' },
+  else: { value: 'none' },
+};
+```
+
+What a consumer checks before saving one:
+
+| Function | Purpose |
+| --- | --- |
+| `validateValue(expr)` / `assertValidValue(expr)` | The shape, without data: each node exactly one kind, known keys, a known mode, and every condition it holds valid as `validateRule` sees it. |
+| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float`, `min` / `max` → the column's kind (nullable). Branches and list items must agree. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
+| `valueClockUnit(expr)` | `clockUnit` over every condition the expression holds: a 90-day window reads `day`. |
+| `describeValue(expr, lens)` | Its type, the dotted paths it reads (`brandReferenceRequestFanUsers.activatedAt`), its clock unit, and every issue (shape, lens gate, type) as `{ path, code, message }`, without throwing. |
+
+Value expressions evaluate in memory only; `toPrisma` / `toSql` do not compile them.
 
 ### Date Rule
 

@@ -7,6 +7,7 @@ import {
   CONTAINS_OPERATORS,
   ORDERED_OPERATORS,
   RANGE_OPERATORS,
+  VALUE_AGGREGATE_MODES,
 } from './operatorCatalog';
 // Error texts every rail raises the same way.
 
@@ -74,6 +75,24 @@ export const unorderedOperand = (operator: string, value: unknown): Error | null
 /** An aggregate mode outside AGGREGATE_MODES. */
 export const unknownAggregateMode = (mode: unknown): Error =>
   new Error(`aggregate.mode must be one of ${AGGREGATE_MODES.join(' / ')}, not '${String(mode)}'`);
+
+/** A value expression's aggregate mode outside VALUE_AGGREGATE_MODES. */
+export const unknownValueAggregateMode = (mode: unknown): Error =>
+  new Error(
+    `aggregate.mode must be one of ${VALUE_AGGREGATE_MODES.join(' / ')}, not '${String(mode)}'`,
+  );
+
+/** A node that is not exactly one kind of value expression. */
+export const invalidValueExpression = (path: string): Error =>
+  new Error(
+    `${path}: a value expression is exactly one of: { value }, { path }, { bind }, an aggregate ({ field, aggregate }), if / then [/ else], or a list`,
+  );
+
+/** An aggregate value written with a comparison: the aggregate itself is the value. */
+export const valueTakesNoComparison = (path: string): Error =>
+  new Error(
+    `${path}: an aggregate value is the aggregate itself and takes no operator or value; compare it in a rule`,
+  );
 
 /** A node that is not exactly one kind of condition. */
 export const ambiguousCondition = (): Error =>

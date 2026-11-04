@@ -1,6 +1,6 @@
 import { unknownOperator } from './errors';
 import { ArrayOperator, DateOperator, Operator } from './operator';
-import type { AggregateMode } from './types';
+import type { AggregateMode, ValueAggregateMode } from './types';
 
 export const FieldKind = {
   String: 'String',
@@ -396,8 +396,37 @@ export const WHERE_SQL_OPERATORS: readonly Operator[] = [
  *  compiles all of them. */
 export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];
 
-/** What an aggregate computes over its items. */
-export const AGGREGATE_MODES: readonly AggregateMode[] = ['sum', 'avg'];
+/** What an aggregate computes over its items, and what it gives back: a number, a count, or one
+ *  of the items' own values (the least or greatest; null over no items). `comparable` modes are the
+ *  ones an aggregate rule compares against a threshold on every rail; the rest are value
+ *  expressions only (`evaluateValue`), evaluated in memory. */
+export const AGGREGATE_MODE_CATALOG: Record<
+  ValueAggregateMode,
+  { result: 'number' | 'count' | 'element'; comparable: boolean }
+> = {
+  sum: { result: 'number', comparable: true },
+  avg: { result: 'number', comparable: true },
+  count: { result: 'count', comparable: false },
+  min: { result: 'element', comparable: false },
+  max: { result: 'element', comparable: false },
+};
+
+/** The modes an aggregate rule compares (`sum`, `avg`). */
+export const AGGREGATE_MODES = Object.keys(AGGREGATE_MODE_CATALOG).filter(
+  (mode) => AGGREGATE_MODE_CATALOG[mode as ValueAggregateMode].comparable,
+) as readonly AggregateMode[];
+
+/** Every mode a value expression's aggregate takes. */
+export const VALUE_AGGREGATE_MODES = Object.keys(
+  AGGREGATE_MODE_CATALOG,
+) as readonly ValueAggregateMode[];
+
+/** Whether a name is a value expression's aggregate mode (own-property: `toString` is not). */
+export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode =>
+  typeof mode === 'string' && Object.hasOwn(AGGREGATE_MODE_CATALOG, mode);
+
+/** The kinds `min` / `max` order: numbers, strings and dates. */
+export const ORDERED_VALUE_KINDS: readonly FieldKind[] = ORDERABLE_KINDS;
 
 /** The comparisons an aggregate rule takes; every target compiles all of them. */
 export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;

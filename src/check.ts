@@ -28,6 +28,7 @@ import type {
   Row,
   Rule,
   RuleValue,
+  WindowFields,
 } from './types';
 import { applyWindow } from './window';
 
@@ -37,7 +38,8 @@ export type CheckOptions = {
   absent?: Absent;
 } & DateConfig;
 
-type EvalOptions = CheckOptions & { scopes: Scopes };
+/** check()'s options plus the scopes it is at, innermost last. Internal. */
+export type EvalOptions = CheckOptions & { scopes: Scopes };
 
 // Over a root array, every leaf is a fieldless array rule, composed with all / any only.
 const validateRootArrayShape = (rule: Condition): void =>
@@ -158,43 +160,73 @@ const readArray = (value: unknown, field: string): unknown[] => {
   return value;
 };
 
-const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
-  const rawArray = readArray(readField(condition.field, opts.scopes), condition.field);
-  const windowFilter = condition.filter;
+/** check() in the scopes an evaluation is at: whether a condition holds there. Internal: the value
+ *  evaluator reads an `if` with it. */
+export const holdsIn = (condition: Condition, opts: EvalOptions): boolean =>
+  evaluate(condition, opts.scopes[opts.scopes.length - 1] as Row, opts) === true;
+
+type AggregateNode = WindowFields & { field: string; condition?: Condition };
+
+/** The items an aggregate reads: its field's rows through the window (filter → order → skip →
+ *  take), then its `condition`. Shared by the aggregate rule and the aggregate value. */
+export const aggregateItems = (node: AggregateNode, opts: EvalOptions): unknown[] => {
+  const rawArray = readArray(readField(node.field, opts.scopes), node.field);
+  const windowFilter = node.filter;
   const arrayValue = applyWindow(
     rawArray,
-    condition,
+    node,
     windowFilter
       ? (item) => evaluate(windowFilter, item as Row, enter(opts, item)) === true
       : undefined,
   );
-
-  const { mode, field: itemField } = condition.aggregate;
-  // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
-  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
-
-  const nestedCondition = condition.condition;
-  const filtered = nestedCondition
+  const nestedCondition = node.condition;
+  return nestedCondition
     ? arrayValue.filter(
         (item) => evaluate(nestedCondition, item as Row, enter(opts, item)) === true,
       )
     : arrayValue;
+};
 
-  // NULL items are skipped, as SQL's SUM and AVG skip them.
-  const numbers: number[] = filtered.flatMap((item, index) => {
+/** Each item's value an aggregate reads: `aggregate.field` on it, or the item itself. NULL
+ *  values are skipped, as SQL's aggregates skip them; `read` vets each of the rest. */
+export const aggregateValues = <T>(
+  items: unknown[],
+  field: string,
+  itemField: string | undefined,
+  read: (raw: unknown, loc: string) => T,
+): T[] =>
+  items.flatMap((item, index) => {
     const raw = itemField ? readOwnPath(item, itemField) : item;
     if (raw === null || raw === undefined) return [];
-    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
-      const loc = `${condition.field}[${index}]${itemField ? `.${itemField}` : ''}`;
-      throw new Error(`${loc} must be a finite number`);
-    }
-    return [raw];
+    return [read(raw, `${field}[${index}]${itemField ? `.${itemField}` : ''}`)];
   });
 
-  // An aggregate compares like a field whose value it computes; the sum and the average of
-  // nothing are 0 (the compilers coalesce to match).
+const finiteNumber = (raw: unknown, loc: string): number => {
+  if (typeof raw !== 'number' || !Number.isFinite(raw))
+    throw new Error(`${loc} must be a finite number`);
+  return raw;
+};
+
+/** The sum or the average of an aggregate's numbers; of nothing, 0 (the compilers coalesce to
+ *  match). */
+export const sumOrAverage = (
+  mode: 'sum' | 'avg',
+  items: unknown[],
+  field: string,
+  itemField: string | undefined,
+): number => {
+  const numbers = aggregateValues(items, field, itemField, finiteNumber);
   const sum = numbers.reduce((total, n) => total + n, 0);
-  const result = mode === 'sum' || numbers.length === 0 ? sum : sum / numbers.length;
+  return mode === 'sum' || numbers.length === 0 ? sum : sum / numbers.length;
+};
+
+const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
+  const { mode, field: itemField } = condition.aggregate;
+  // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
+  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
+  const items = aggregateItems(condition, opts);
+  // An aggregate compares like a field whose value it computes.
+  const result = sumOrAverage(mode, items, condition.field, itemField);
   const labelled = { ...condition, field: `${condition.field} ${mode}` } as unknown as Rule;
   return checkField(labelled, opts.scopes, opts.bindings, opts, { value: result });
 };

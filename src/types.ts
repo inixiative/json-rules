@@ -11,6 +11,9 @@ type DateOperatorValues = typeof import('./operator.ts').DateOperator;
 export type RuleScalar = string | number | boolean | null | undefined;
 
 export type AggregateMode = 'sum' | 'avg';
+/** What a value expression's aggregate computes: an aggregate rule's modes, plus `count` and the
+ *  least / greatest item value. */
+export type ValueAggregateMode = AggregateMode | 'count' | 'min' | 'max';
 
 export type RuleValue = RuleScalar | Date | RegExp | RuleValue[] | { [key: string]: RuleValue };
 export type OrderedRuleValue = string | number | Date;
@@ -373,3 +376,43 @@ export type CompileOptions = {
 
 /** What check() evaluates: one row, or a root array of them. */
 export type CheckData = Row | unknown[];
+
+// --- Value expressions (3.19.0) ---
+// What a value is computed from, in the grammar a rule already has: a value source, an aggregate
+// rule without its comparison (the aggregate itself is the value), if / then / else picking a
+// value, and a list of values.
+
+/** An aggregate rule's shape without `operator` and value: the aggregate is the value. */
+export type AggregateValue<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields & {
+  field: string;
+  aggregate: { mode: ValueAggregateMode; field?: string };
+  condition?: Condition<TRuleValue, TDateValue>;
+  operator?: never;
+  value?: never;
+  path?: never;
+  bind?: never;
+};
+
+/** First match as if / else: `then` when `if` holds, else `else` — null when there is none (in a
+ *  list, nothing). */
+export type IfThenElseValue = {
+  if: Condition;
+  then: ValueExpression;
+  else?: ValueExpression;
+};
+
+/** Experimental. A list of values, each item evaluated in turn; an `if` with no `else` that does not
+ *  hold adds nothing — match-all, for a multiselect. Items are single values, not lists. */
+export type ListValue = ValueExpression[];
+
+/** A value computed from a row: a literal (`{ value }`), a path read (`{ path }`), a binding
+ *  (`{ bind }`), an aggregate over a relation's rows, if / then / else, or a list. */
+export type ValueExpression =
+  | ValueSourceOf<RuleValue>
+  | AggregateValue
+  | IfThenElseValue
+  | ListValue;
+
+/** What a value expression returns: its kind (null when it can only be null), whether it is a
+ *  list, and whether it can be null. */
+export type ValueType = { kind: FieldKind | null; isList: boolean; nullable: boolean };

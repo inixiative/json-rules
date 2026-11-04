@@ -299,7 +299,7 @@ describe('aggregate modes', () => {
     for (const row of [rows(), {}, { fanMissions: null }]) {
       expect(evaluateValue(over('count'), row)).toBe(0);
       expect(evaluateValue(over('sum', 'points'), row)).toBe(0);
-      expect(evaluateValue(over('avg', 'points'), row)).toBe(0);
+      expect(evaluateValue(over('avg', 'points'), row)).toBeNull();
       expect(evaluateValue(over('min', 'points'), row)).toBeNull();
       expect(evaluateValue(over('max', 'points'), row)).toBeNull();
     }
@@ -544,15 +544,23 @@ describe('inferValueType', () => {
     expect(inferValueType(over('count'))).toEqual(type('Int'));
     expect(inferValueType(over('sum', 'points'), lens)).toEqual(type('Int'));
     expect(inferValueType(over('sum', 'weight'), lens)).toEqual(type('Decimal'));
-    expect(inferValueType(over('avg', 'points'), lens)).toEqual(type('Float'));
+    expect(inferValueType(over('avg', 'points'), lens)).toEqual(type('Float', true));
+    expect(inferValueType(over('avg', 'weight'), lens)).toEqual(type('Decimal', true));
     expect(inferValueType(over('min', 'title'), lens)).toEqual(type('String', true));
     expect(inferValueType(over('max', 'approvedAt'), lens)).toEqual(type('DateTime', true));
   });
 
-  test('branches unify: two numbers read as Float, a mismatch is refused', () => {
+  test('branches unify: two numbers read as Decimal when either is, else Float; a mismatch is refused', () => {
     expect(
       inferValueType({ if: true, then: over('count'), else: over('avg', 'points') }, lens),
-    ).toEqual(type('Float'));
+    ).toEqual(type('Float', true));
+    expect(
+      inferValueType({ if: true, then: over('count'), else: over('sum', 'weight') }, lens),
+    ).toEqual(type('Decimal'));
+    expect(inferValueType({ if: true, then: 1.5, else: over('sum', 'weight') }, lens)).toEqual(
+      type('Decimal'),
+    );
+    expect(inferValueType({ if: true, then: 1, else: 2.5 })).toEqual(type('Float'));
     expect(() => inferValueType({ if: true, then: { value: 1 }, else: { value: 'x' } })).toThrow(
       'inferValueType: $: the values here are Int and String',
     );
@@ -682,7 +690,12 @@ describe('invalid expressions', () => {
   test('validateValue reports each problem at its node', () => {
     expect(codes({ value: 1 })).toEqual([]);
     expect(codes(lastReferenceAskAt)).toEqual([]);
-    expect(codes(3)).toEqual(['$ invalid_value_expression']);
+    expect(codes(3)).toEqual([]);
+    expect(codes(undefined)).toEqual(['$ invalid_value_expression']);
+    expect(codes({ list: 'a' })).toEqual(['$.list invalid_list']);
+    expect(codes({ list: [], distinct: 'yes' })).toEqual(['$.distinct invalid_distinct']);
+    expect(codes({ list: [], unique: true })).toEqual(['$.unique unknown_key']);
+    expect(codes([{ list: [1] }])).toEqual(['$[0] nested_list']);
     expect(codes({})).toEqual(['$ invalid_value_expression']);
     expect(codes({ value: 1, path: 'x' })).toEqual(['$ invalid_value_source']);
     expect(codes({ value: 1, offset: 2 })).toEqual(['$.offset unknown_key']);
@@ -745,5 +758,45 @@ describe('invalid expressions', () => {
     expect(() => evaluateValue([[{ value: 1 }]] as never, {})).toThrow(
       "$[0]: a list's items are single values",
     );
+  });
+});
+
+// ─── Bare literals and distinct lists ───────────────────────────────────────
+
+describe('bare literals and distinct lists', () => {
+  test('a stored value written as itself is its own literal', () => {
+    for (const value of [5, 2.5, 'gold', true, false, null, new Date('2026-01-01T00:00:00Z')])
+      expect(evaluateValue(value, {})).toEqual(value);
+    expect(evaluateValue(['a', 'b'], {})).toEqual(['a', 'b']);
+    expect(
+      evaluateValue(
+        { if: { field: 'tier', operator: 'equals', value: 'gold' }, then: 10, else: 0 },
+        { tier: 'gold' },
+      ),
+    ).toBe(10);
+  });
+
+  test('a bare literal has the same type as its { value } form', () => {
+    expect(inferValueType(5)).toEqual(inferValueType({ value: 5 }));
+    expect(inferValueType('gold')).toEqual(inferValueType({ value: 'gold' }));
+    expect(inferValueType(null)).toEqual(inferValueType({ value: null }));
+    expect(inferValueType(['a', 'b'])).toEqual({ kind: 'String', isList: true, nullable: false });
+    expect(valueClockUnit(5)).toBeNull();
+  });
+
+  test('distinct keeps the first of equal items; a bare array keeps them all', () => {
+    const items = ['a', 'b', 'a', { value: 'b' }, 'c'];
+    expect(evaluateValue(items, {})).toEqual(['a', 'b', 'a', 'b', 'c']);
+    expect(evaluateValue({ list: items }, {})).toEqual(['a', 'b', 'a', 'b', 'c']);
+    expect(evaluateValue({ list: items, distinct: true }, {})).toEqual(['a', 'b', 'c']);
+    const day = (iso: string) => new Date(iso);
+    expect(
+      evaluateValue({ list: [day('2026-01-01'), day('2026-01-01'), 1, '1'], distinct: true }, {}),
+    ).toEqual([day('2026-01-01'), 1, '1']);
+    expect(inferValueType({ list: items, distinct: true })).toEqual({
+      kind: 'String',
+      isList: true,
+      nullable: false,
+    });
   });
 });

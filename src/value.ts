@@ -30,7 +30,7 @@ import {
   ORDERED_VALUE_KINDS,
 } from './operatorCatalog';
 import { parseScopeRef } from './scope';
-import { valueExpressionShape, valueReads } from './traverse';
+import { listItems, valueExpressionShape, valueReads } from './traverse';
 import type {
   AggregateValue,
   Condition,
@@ -54,7 +54,33 @@ type Node = Record<string, unknown>;
 const SOURCE_KEYS = ['value', 'path', 'bind', 'bindOptional'];
 const IF_KEYS = ['if', 'then', 'else'];
 const AGGREGATE_KEYS = ['field', 'aggregate', 'condition', 'filter', 'orderBy', 'take', 'skip'];
-const SHAPE_KEYS = { source: SOURCE_KEYS, if: IF_KEYS, aggregate: AGGREGATE_KEYS } as const;
+const LIST_KEYS = ['list', 'distinct'];
+const SHAPE_KEYS = {
+  source: SOURCE_KEYS,
+  if: IF_KEYS,
+  aggregate: AGGREGATE_KEYS,
+  list: LIST_KEYS,
+} as const;
+
+// `{ list, distinct: true }` keeps the first of equal items.
+const isDistinct = (expr: unknown): boolean =>
+  !Array.isArray(expr) && (expr as { distinct?: unknown }).distinct === true;
+
+const sameValueKey = (value: unknown): string => {
+  if (value instanceof Date) return `d:${value.getTime()}`;
+  if (typeof value === 'object' && value !== null) return `j:${JSON.stringify(value)}`;
+  return `p:${typeof value}:${String(value)}`;
+};
+
+const distinctValues = (values: unknown[]): unknown[] => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = sameValueKey(value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 // An aggregate value written as an aggregate rule: it names a comparison.
 const namesComparison = (node: Node): boolean =>
@@ -66,9 +92,10 @@ const namesComparison = (node: Node): boolean =>
 
 /**
  * The value an expression computes from a row, in memory, with what check() takes (`bindings`,
- * `now`, `timeZone`, `weekStart`, `absent`): a literal, a path read (null when absent), a bound
+ * `now`, `timeZone`, `weekStart`, `absent`): a literal (bare or `{ value }`), a path read (null when absent), a bound
  * value, an aggregate over a relation's rows (`count`, `sum`, `avg`, `min`, `max`, through its
- * window and condition), the branch an `if` picks, or a list. Throws on a malformed expression,
+ * window and condition; `avg` and `min` / `max` over no values are null), the branch an `if` picks,
+ * or a list (`distinct: true` drops repeats). Throws on a malformed expression,
  * as check() throws on a malformed rule; `validateValue` reports every problem without data.
  */
 export const evaluateValue = (
@@ -80,6 +107,8 @@ export const evaluateValue = (
 const evaluateAt = (expr: unknown, opts: EvalOptions, path: string): unknown => {
   const node = expr as Node;
   switch (valueExpressionShape(expr)) {
+    case 'literal':
+      return expr;
     case 'source':
       return readValueSource(node, opts.scopes, opts.bindings);
     case 'aggregate':
@@ -88,8 +117,10 @@ const evaluateAt = (expr: unknown, opts: EvalOptions, path: string): unknown => 
       const branch = pickBranch(node as IfThenElseValue, opts, path);
       return branch === undefined ? null : evaluateAt(branch.expr, opts, branch.path);
     }
-    case 'list':
-      return (expr as unknown[]).flatMap((item, index) => {
+    case 'list': {
+      if (!Array.isArray(expr) && !Array.isArray(node.list))
+        throw new Error(`${path}.list must be an array`);
+      const values = listItems(expr).flatMap((item, index) => {
         const at = `${path}[${index}]`;
         if (valueExpressionShape(item) === 'list')
           throw new Error(`${at}: a list's items are single values`);
@@ -98,6 +129,8 @@ const evaluateAt = (expr: unknown, opts: EvalOptions, path: string): unknown => 
         const branch = pickBranch(item as IfThenElseValue, opts, at);
         return branch === undefined ? [] : [evaluateAt(branch.expr, opts, branch.path)];
       });
+      return isDistinct(expr) ? distinctValues(values) : values;
+    }
     default:
       throw namesComparison(node) ? valueTakesNoComparison(path) : invalidValueExpression(path);
   }
@@ -153,8 +186,12 @@ const aggregateValue = (node: AggregateValue, opts: EvalOptions, path: string): 
         ? items.length
         : aggregateValues(items, node.field, itemField, () => true).length;
     case 'sum':
-    case 'avg':
       return sumOrAverage(mode, items, node.field, itemField);
+    case 'avg':
+      // No values have no average: null, as SQL's AVG over none.
+      return aggregateValues(items, node.field, itemField, () => true).length === 0
+        ? null
+        : sumOrAverage(mode, items, node.field, itemField);
     default:
       return extreme(aggregateValues(items, node.field, itemField, orderedValue), mode, node.field);
   }
@@ -178,12 +215,7 @@ const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIss
     const code = namesComparison(node) ? 'unexpected_comparison' : 'invalid_value_expression';
     return [{ path, code, message: error.message.slice(path.length + 2) }];
   }
-  if (shape === 'list') {
-    if (inList) return [{ path, code: 'nested_list', message: "a list's items are single values" }];
-    return (expr as unknown[]).flatMap((item, index) =>
-      validateAt(item, `${path}[${index}]`, true),
-    );
-  }
+  if (shape === 'literal') return [];
   const unknownKeys = Object.keys(node)
     .filter((key) => !(SHAPE_KEYS[shape] as readonly string[]).includes(key))
     .map((key) => ({
@@ -191,6 +223,24 @@ const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIss
       code: 'unknown_key',
       message: `a ${shape === 'source' ? 'value source' : `${shape} value`} takes ${SHAPE_KEYS[shape].join(', ')}, not '${key}'`,
     }));
+  if (shape === 'list') {
+    if (inList) return [{ path, code: 'nested_list', message: "a list's items are single values" }];
+    if (Array.isArray(expr))
+      return expr.flatMap((item, index) => validateAt(item, `${path}[${index}]`, true));
+    const issues = [...unknownKeys];
+    if (!Array.isArray(node.list))
+      issues.push({ path: `${path}.list`, code: 'invalid_list', message: 'list must be an array' });
+    if (node.distinct !== undefined && typeof node.distinct !== 'boolean')
+      issues.push({
+        path: `${path}.distinct`,
+        code: 'invalid_distinct',
+        message: 'distinct must be a boolean',
+      });
+    return [
+      ...issues,
+      ...listItems(expr).flatMap((item, index) => validateAt(item, `${path}[${index}]`, true)),
+    ];
+  }
   if (shape === 'if') {
     const issues = [...unknownKeys];
     if (node.if === undefined)
@@ -298,7 +348,8 @@ const isNumeric = (kind: FieldKind | null): boolean =>
 const describeType = (type: ValueType): string =>
   `${type.kind ?? 'null'}${type.isList ? '[]' : ''}`;
 
-// One type both of two values fit: null fits any, two numeric kinds read as Float.
+// One type both of two values fit: null fits any; two numeric kinds read as Decimal when either is
+// Decimal (it holds the other exactly), else as Float.
 const unify = (a: ValueType, b: ValueType, path: string): ValueType => {
   const nullable = a.nullable || b.nullable;
   if (a.kind === null && a.isList === b.isList) return { ...b, nullable };
@@ -307,8 +358,10 @@ const unify = (a: ValueType, b: ValueType, path: string): ValueType => {
   if (b.kind === null && !b.isList) return { ...a, nullable: true };
   if (a.isList === b.isList) {
     if (a.kind === b.kind) return { ...a, nullable };
-    if (isNumeric(a.kind) && isNumeric(b.kind))
-      return { kind: FieldKind.Float, isList: a.isList, nullable };
+    if (isNumeric(a.kind) && isNumeric(b.kind)) {
+      const isDecimal = a.kind === FieldKind.Decimal || b.kind === FieldKind.Decimal;
+      return { kind: isDecimal ? FieldKind.Decimal : FieldKind.Float, isList: a.isList, nullable };
+    }
   }
   return refuse(
     path,
@@ -473,7 +526,8 @@ const aggregateType = (
         `${mode} adds numbers, not ${kind ?? 'untyped'} values`,
       );
     const sumKind = mode === 'sum' || kind === FieldKind.Decimal ? kind : FieldKind.Float;
-    return { kind: sumKind, isList: false, nullable: false };
+    // sum over no rows is 0; avg over none is null.
+    return { kind: sumKind, isList: false, nullable: mode === 'avg' };
   }
   if (kind === null || !ORDERED_VALUE_KINDS.includes(kind))
     refuse(
@@ -492,6 +546,8 @@ const inferAt = (
 ): ValueType => {
   const node = expr as Node;
   switch (valueExpressionShape(expr)) {
+    case 'literal':
+      return literalType(expr, path);
     case 'source':
       if (node.value !== undefined) return literalType(node.value, `${path}.value`);
       if (typeof node.bind === 'string')
@@ -510,7 +566,7 @@ const inferAt = (
       return unify(then, inferAt(node.else, lens, `${path}.else`, inList), path);
     }
     case 'list': {
-      const items = (expr as unknown[]).map((item, index) => {
+      const items = listItems(expr).map((item, index) => {
         const at = `${path}[${index}]`;
         const type = inferAt(item, lens, at, true);
         if (type.isList) refuse(at, 'nested_list', "a list's items are single values");
@@ -530,12 +586,13 @@ const inferAt = (
 
 /**
  * The type a value expression returns, worked out without data — for a consumer to check against
- * the type it stores before saving the expression. A literal has its value's kind (a whole number
- * `Int`, any other `Float`); a path its column's kind through the lens (nullable unless the map
- * declares it required); `count` an `Int`; `sum` its column's numeric kind and `avg` a `Float`
- * (`Decimal` stays `Decimal`), never null (0 over no rows); `min` / `max` their column's kind,
- * nullable (no rows). An `if`'s branches and a list's items must agree (two numeric kinds read as
- * `Float`; a missing `else` is null). `lens` is needed wherever a path's kind is read. Throws on
+ * the type it stores before saving the expression. A literal, bare or `{ value }`, has its value's
+ * kind (a whole number `Int`, any other `Float`); a path its column's kind through the lens
+ * (nullable unless the map declares it required); `count` an `Int`; `sum` its column's numeric
+ * kind, never null (0 over no rows); `avg` a `Float` (`Decimal` stays `Decimal`), null over no
+ * rows; `min` / `max` their column's kind, nullable (no rows). An `if`'s branches and a list's
+ * items must agree (two numeric kinds read as `Decimal` when either is, else `Float`; a missing
+ * `else` is null). `lens` is needed wherever a path's kind is read. Throws on
  * an expression that has no type: a path that does not resolve, reads through a to-many relation
  * or names rows, an aggregate over something that isn't a list, branches that disagree, a binding.
  */

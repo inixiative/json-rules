@@ -1,20 +1,23 @@
 ## 3.19.0 — value expressions
 
 - **`evaluateValue(expression, row, options)`**: a value computed from a row, in memory, with
-  check()'s options. An expression is a value source (`{ value }`, `{ path }`, `{ bind }`), an
+  check()'s options. An expression is a bare literal (`5`, `'gold'`, `true`, `null`, a Date: a
+  stored value reads as itself), a value source (`{ value }`, `{ path }`, `{ bind }`), an
   aggregate rule's shape without its comparison (`{ field, aggregate: { mode, field? }, filter,
   orderBy, take, skip, condition }`: the aggregate is the value), `{ if, then, else? }` (first
   match as if / else; no `else` is null), or a list of them (experimental, match-all: an `if` with
-  no `else` that doesn't hold adds nothing). Relative dates in a filter need `now` and are held to
+  no `else` that doesn't hold adds nothing; `{ list, distinct: true }` drops repeats). Relative dates in a filter need `now` and are held to
   `clock.finestUnit`, as in check().
 - **Aggregate modes `count`, `min`, `max`** for value expressions (`VALUE_AGGREGATE_MODES`, the
   catalog's `AGGREGATE_MODE_CATALOG`). `count` counts the rows, or with `aggregate.field` the rows
   whose field has a value; `min` / `max` order numbers, strings or dates and return the value as
-  stored, null over no rows. `sum` / `avg` read as they do in an aggregate rule (0 over no rows).
+  stored, null over no rows. `sum` is 0 over no rows; `avg` is null over no values (an aggregate
+  rule still compares `avg` as 0).
   An aggregate rule still compares `sum` / `avg` only (`AGGREGATE_MODES` is unchanged).
 - **`inferValueType(expression, lens?)`**: `{ kind, isList, nullable }` without data — a path's
   column kind through the lens, `count` `Int`, `sum` the column's numeric kind, `avg` `Float`,
-  `min` / `max` the column's kind. Branches and list items must agree; a path that doesn't
+  `min` / `max` the column's kind; `avg` and `min` / `max` nullable. Branches and list items must
+  agree (two numeric kinds read as `Decimal` when either is, else `Float`); a path that doesn't
   resolve, reads through a to-many relation or names rows, a binding, and an aggregate over a
   non-list are refused.
 - **`valueClockUnit(expression)`**: `clockUnit` over every condition an expression holds.
@@ -22,7 +25,7 @@
   under the relation), its clock unit and every issue, without throwing.
 - **`validateValue` / `assertValidValue`**: the shape check, each condition it holds checked by
   `validateRule`.
-- Types: `ValueExpression`, `AggregateValue`, `IfThenElseValue`, `ListValue`, `ValueAggregateMode`,
+- Types: `ValueExpression`, `BareLiteral`, `AggregateValue`, `IfThenElseValue`, `ListValue`, `ValueAggregateMode`,
   `ValueType`, `ValueDescription`. The aggregate rule and the aggregate value share one item
   selection in `check.ts`.
 

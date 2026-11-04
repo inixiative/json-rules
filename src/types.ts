@@ -402,12 +402,18 @@ export type IfThenElseValue = {
 };
 
 /** Experimental. A list of values, each item evaluated in turn; an `if` with no `else` that does not
- *  hold adds nothing — match-all, for a multiselect. Items are single values, not lists. */
-export type ListValue = ValueExpression[];
+ *  hold adds nothing — match-all, for a multiselect. Items are single values, not lists. A bare
+ *  array keeps every item; `{ list, distinct: true }` keeps the first of equal items. */
+export type ListValue = ValueExpression[] | { list: ValueExpression[]; distinct?: boolean };
 
-/** A value computed from a row: a literal (`{ value }`), a path read (`{ path }`), a binding
- *  (`{ bind }`), an aggregate over a relation's rows, if / then / else, or a list. */
+/** A scalar written as itself, as a stored value is: `5`, `'gold'`, `true`, `null`, a Date. */
+export type BareLiteral = string | number | boolean | bigint | Date | null;
+
+/** A value computed from a row: a literal (bare, or `{ value }` — an object literal needs the
+ *  wrapper), a path read (`{ path }`), a binding (`{ bind }`), an aggregate over a relation's rows,
+ *  if / then / else, or a list. */
 export type ValueExpression =
+  | BareLiteral
   | ValueSourceOf<RuleValue>
   | AggregateValue
   | IfThenElseValue

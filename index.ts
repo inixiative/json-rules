@@ -153,6 +153,7 @@ export type {
   All,
   Any,
   ArrayRule,
+  BareLiteral,
   CheckData,
   CompileOptions,
   Condition,

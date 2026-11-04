@@ -341,6 +341,7 @@ export const anyOf = (conditions: readonly Condition[]): Condition =>
       : { any: [...conditions] };
 
 export const ValueExpressionShape = {
+  literal: 'literal',
   list: 'list',
   if: 'if',
   aggregate: 'aggregate',
@@ -349,13 +350,29 @@ export const ValueExpressionShape = {
 
 export type ValueExpressionShape = (typeof ValueExpressionShape)[keyof typeof ValueExpressionShape];
 
-/** What a value expression node is — a list, if / then / else, an aggregate, or a value source —
- *  or null when it is none of them or names more than one. */
+/** A scalar written as itself, the shape a stored value already has: `5`, `'gold'`, `true`, `null`,
+ *  a Date. An object literal still takes `{ value }`, since a bare object reads as an expression. */
+const isBareLiteral = (expr: unknown): boolean =>
+  expr === null ||
+  expr instanceof Date ||
+  ['string', 'number', 'boolean', 'bigint'].includes(typeof expr);
+
+/** A list's items: a bare array, or the `list` of `{ list, distinct }`. */
+export const listItems = (expr: unknown): unknown[] => {
+  if (Array.isArray(expr)) return expr;
+  const items = (expr as { list?: unknown }).list;
+  return Array.isArray(items) ? items : [];
+};
+
+/** What a value expression node is — a bare literal, a list, if / then / else, an aggregate, or a
+ *  value source — or null when it is none of them or names more than one. */
 export const valueExpressionShape = (expr: unknown): ValueExpressionShape | null => {
   if (Array.isArray(expr)) return 'list';
+  if (isBareLiteral(expr)) return 'literal';
   if (!isPlainObject(expr)) return null;
   const node = expr as ConditionNode;
   const shapes: ValueExpressionShape[] = [];
+  if ('list' in node) shapes.push('list');
   if (isIfNode(node)) shapes.push('if');
   if ('aggregate' in node) shapes.push('aggregate');
   if ('value' in node || 'path' in node || 'bind' in node) shapes.push('source');
@@ -375,7 +392,7 @@ export const valueReads = (expr: unknown): Condition => {
   const node = expr as ConditionNode;
   switch (valueExpressionShape(expr)) {
     case 'list':
-      return allOf((expr as unknown[]).map(valueReads));
+      return allOf(listItems(expr).map(valueReads));
     case 'if':
       return allOf([
         node.if as Condition,

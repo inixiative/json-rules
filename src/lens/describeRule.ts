@@ -2,6 +2,7 @@ import { ALL_TARGETS, type RuleTarget } from '../operatorCatalog';
 import { isLogicalNode, visitCondition } from '../traverse';
 import type { Condition } from '../types';
 import { type ValidationIssue, validateRule } from '../validate';
+import { type LensRead, lensReads } from './lensReads';
 import type { Policy } from './policy.ts';
 import { lensRootScope, resolvePolicy, stepIntoField, type VisitScope } from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
@@ -11,6 +12,9 @@ export type RuleDescription = {
   sources: string[];
   bridgesCrossed: boolean;
   supportedTargets: RuleTarget[];
+  /** Every model the rule reads and the relation path that reaches it, sorted by path — the
+   *  rows whose change can change the rule's answer. `invertLensPath` turns one back. */
+  reads: LensRead[];
   /** What the lens refuses in the rule — validateRuleInLens's issues. */
   errors: ValidationIssue[];
 };
@@ -65,6 +69,7 @@ export const describeRule = (
           model: acc.policy.lens.model,
         }).ok,
     ),
+    reads: lensReads(policy, rule),
     errors: validateRuleInLens(rule, lensOrNarrowing).errors,
   };
 };

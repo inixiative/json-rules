@@ -1,4 +1,6 @@
 import { clockUnit } from '../clock';
+import { type LensRead, lensReads } from '../lens/lensReads';
+import { resolvePolicy } from '../lens/policy';
 import { readPaths } from '../lens/readPaths';
 import type { Lens, LensNarrowing } from '../lens/types';
 import { validateRuleInLens } from '../lens/validateRuleInLens';
@@ -16,6 +18,8 @@ import { ValueTypeIssue } from './valueTypeIssue';
 export type ValueDescription = {
   type: ValueType | null;
   paths: string[];
+  /** The models it reads, as `describeRule` gives them. */
+  reads: LensRead[];
   clockUnit: ClockUnit | null;
   errors: ValidationIssue[];
 };
@@ -26,7 +30,7 @@ export const describeValue = (
 ): ValueDescription => {
   const shapeErrors = validateValue(expression).errors;
   if (shapeErrors.length > 0)
-    return { type: null, paths: [], clockUnit: null, errors: shapeErrors };
+    return { type: null, paths: [], reads: [], clockUnit: null, errors: shapeErrors };
   const reads = valueReads(expression);
   const errors = [...validateRuleInLens(reads, lensOrNarrowing).errors];
   let type: ValueType | null = null;
@@ -42,5 +46,11 @@ export const describeValue = (
   } catch (error) {
     errors.push({ path: '$', code: 'clock_unit_below_floor', message: (error as Error).message });
   }
-  return { type, paths: readPaths(reads).sort(), clockUnit: unit, errors };
+  return {
+    type,
+    paths: readPaths(reads).sort(),
+    reads: lensReads(resolvePolicy(lensOrNarrowing), reads),
+    clockUnit: unit,
+    errors,
+  };
 };

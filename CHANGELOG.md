@@ -1,3 +1,8 @@
+## Unreleased — what a rule reads, and its inverse
+
+- **`describeRule(...).reads`**, **`describeValue(...).reads`** and **`describeCategorization(...).reads`**: every model a rule, value expression or categorization reads through the lens, with the relation path from the anchor that reaches it (`{ model, path }`, `''` for the anchor itself), sorted by path. Each relation crossed is a read of the model it leads to, so a rule on `memberships.org.name` reads `Membership` at `memberships` and `Org` at `memberships.org`; a column is a read of the model it sits on. These are the rows whose change can change the rule's answer.
+- **`invertLensPath(lens, path, rows)`**: the condition on the lens anchor that selects the anchor rows whose relation `path` reaches any of `rows`. The last hop binds through the join key the rows carry (a post's `authorId`, or the key a to-one relation points at), so a one-hop path needs no related row and a deleted row's last image works; each earlier hop wraps it, with `any` over a to-many relation or the relation's prefix over a to-one. Null when no row carries the key. Refused (`LensRefusal`) for the anchor itself, a column, a relation the lens doesn't turn on, a bridge, or a relation the map gives no single join key for.
+
 ## 4.7.0 — a supplied bridge may start from every model of a map
 
 Why: permissions kept a second group of field maps (the "supplied" ones) only so it could invent a

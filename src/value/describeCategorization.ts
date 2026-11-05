@@ -1,4 +1,6 @@
 import { clockUnit } from '../clock';
+import { lensReads } from '../lens/lensReads';
+import { resolvePolicy } from '../lens/policy';
 import { readPaths } from '../lens/readPaths';
 import type { Lens, LensNarrowing } from '../lens/types';
 import { validateRuleInLens } from '../lens/validateRuleInLens';
@@ -54,7 +56,7 @@ export const describeCategorization = (
 ): CategorizationDescription => {
   const shapeErrors = validateCategorization(categorization).errors;
   if (shapeErrors.length > 0)
-    return { type: null, paths: [], clockUnit: null, errors: shapeErrors };
+    return { type: null, paths: [], reads: [], clockUnit: null, errors: shapeErrors };
 
   const errors: ValidationIssue[] = [];
   const values: TypedValue[] = [];
@@ -94,5 +96,11 @@ export const describeCategorization = (
   } catch (error) {
     errors.push({ path: '$', code: 'clock_unit_below_floor', message: (error as Error).message });
   }
-  return { type, paths: readPaths(reads).sort(), clockUnit: unit, errors };
+  return {
+    type,
+    paths: readPaths(reads).sort(),
+    reads: lensReads(resolvePolicy(lensOrNarrowing), reads),
+    clockUnit: unit,
+    errors,
+  };
 };

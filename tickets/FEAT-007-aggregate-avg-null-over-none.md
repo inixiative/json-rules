@@ -1,6 +1,6 @@
 # FEAT-007: An aggregate rule's `avg` over no values is NULL, not 0
 
-**Status**: 📝 Spec — needs Aron's agreement before code (a semantic change on every rail)
+**Status**: ✅ Approved (Aron, 2026-11-05) — `negate()` section still proposed
 **Priority**: Medium
 **Created**: 2026-11-05
 **Target**: 4.0.0 (changes what existing rules match)
@@ -81,8 +81,31 @@ affected.
 `sum` (0 is correct), the value expression's `avg` (already null), and `min` / `max` (value
 expressions only, already null).
 
-## Open
+## `negate()` over `avg` (proposed 2026-11-05 — not yet agreed)
 
-- How `negate()` treats an aggregate `avg` comparison over no values (it rewrites the operator;
-  the table above covers the operators directly, not their negated rewrites). To settle with a
-  test case per operator before code.
+`negate()` must return the condition that holds exactly where the rule doesn't. Today it flips an
+aggregate's operator (`lessThan` → `greaterThanEquals`, `equals` → `notEquals`) with no NULL arm,
+because `avg` is never NULL. Under this spec it can be, and then the opposite-operator flip is wrong:
+`avg lessThan 5` and `avg greaterThanEquals 5` are both false for a row with no values, so that row
+satisfies neither the rule nor its "negation".
+
+Proposal: negate an `avg` comparison the way `negateLeaf` already negates a field rule.
+
+- **Complement pairs stay a plain flip.** `equals` ↔ `notEquals` and `between` ↔ `notBetween`
+  already split NULL correctly (the negated operator keeps it).
+- **Opposite pairs gain a "no values" arm.** `lessThan` / `greaterThanEquals` and
+  `greaterThan` / `lessThanEquals` become `any: [opposite, noValues]`. Here `noValues` is the array
+  rule over the same rows and window that finds no item with a value:
+  `{ field, arrayOperator: 'none', filter, orderBy, take, skip, condition: all [condition, aggregate.field exists] }`.
+  It is the field rule's `notExists` arm, spelled for a relation.
+- **`sum` is unchanged.** It is never NULL.
+
+| Rule | its negation | a (avg 3) | c (no values) |
+| --- | --- | --- | --- |
+| `avg lessThan 5` | `any: [avg greaterThanEquals 5, noValues]` | ✗ | ✓ |
+| `avg greaterThan 1` | `any: [avg lessThanEquals 1, noValues]` | ✗ | ✓ |
+| `avg notEquals 0` | `avg equals 0` | ✗ | ✗ |
+| `avg notBetween [0, 10]` | `avg between [0, 10]` | ✓ | ✗ |
+
+Each negation must hold exactly where its rule fails, on all three rails. toPrisma's `holdsEmpty`
+check (`toPrisma/aggregate.ts`) uses the same reasoning and moves with it.

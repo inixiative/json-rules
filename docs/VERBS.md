@@ -32,11 +32,12 @@ modules allowed to implement it, and every exported function must appear in this
 | walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop; it crosses only relations turned on. |
 | read | `readLensValue` | One value off a row, as a lens shows it: gated path, clamps checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |
-| describe | `describeRule` | A rule's sources, bridge crossings and compile targets under a lens. |
+| describe | `describeRule` | A rule's sources, bridge crossings, compile targets and `reads` under a lens: every model it reads with the relation path that reaches it. |
 | describe | `clockUnit` | The finest clock unit (`CLOCK_UNITS`) any relative date in a rule names, at any depth; null when it reads no clock. |
 | describe | `inferValueType` | The type a value expression returns (`{ kind, isList, nullable }`), from the lens where it reads a column; throws when it has none. |
 | describe | `valueClockUnit` | `clockUnit` over every condition a value expression holds. |
-| describe | `describeValue` | A value expression under a lens: its type, the dotted paths it reads, its clock unit, and every issue (shape, lens gate, type), without throwing. |
+| describe | `describeValue` | A value expression under a lens: its type, the dotted paths and the models (`reads`) it reads, its clock unit, and every issue (shape, lens gate, type), without throwing. |
+| invert | `invertLensPath` | The condition on the lens anchor that selects the anchor rows whose relation path reaches any of the given rows, bound through the join key each row carries; null when none carries it. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |
 | materialize | `materializeSources`, `materializeSourceQuery` | Turn fetched rows into source option sets — sorted by value, or (`materializeSourceQuery` with `order: SourceOptionOrder.query`) in the order the query returned its rows. |
 | create | `createLens` | Build a lens from field maps and bridges. |

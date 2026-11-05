@@ -5,6 +5,7 @@ import {
   assertValidValue,
   type Condition,
   check,
+  coerceValue,
   createLens,
   DateOperator,
   describeValue,
@@ -1078,5 +1079,56 @@ describe('the distinct aggregate', () => {
     expect(validateRule(distinctRule).errors.map((e) => e.code)).toEqual([
       'invalid_aggregate_mode',
     ]);
+  });
+});
+
+// ─── coerceValue ────────────────────────────────────────────────────────────
+
+describe('coerceValue', () => {
+  const lastAsk = {
+    field: 'brandReferenceRequestFanUsers',
+    aggregate: { mode: 'max', field: 'activatedAt' },
+  } as ValueExpression;
+
+  test('stamps a DateTime column so ISO strings read as dates', () => {
+    const json = {
+      brandReferenceRequestFanUsers: [
+        { activatedAt: '2026-01-02T00:00:00Z' },
+        { activatedAt: '2026-03-04T00:00:00Z' },
+      ],
+    };
+    expect(() => evaluateValue(lastAsk, json)).toThrow('must be a finite number or a valid date');
+    const stamped = coerceValue(lastAsk, lens);
+    expect(stamped).toEqual({ ...(lastAsk as object), coerceType: 'DateTime' } as ValueExpression);
+    expect(evaluateValue(stamped, json)).toEqual(new Date('2026-03-04T00:00:00Z'));
+    expect(inferValueType(stamped, lens)).toEqual(inferValueType(lastAsk, lens));
+  });
+
+  test('leaves other kinds, an explicit coercion, and what the lens cannot type alone', () => {
+    for (const expr of [
+      over('max', 'points'),
+      over('distinct', 'title'),
+      over('count'),
+      { ...(over('max', 'title') as object), coerceType: 'Int' } as ValueExpression,
+      over('max', 'nope'),
+    ])
+      expect(coerceValue(expr, lens)).toEqual(expr);
+  });
+
+  test('reaches aggregates inside if / else and lists, without mutating', () => {
+    const expr = {
+      if: { field: 'name', operator: Operator.exists },
+      then: lastAsk,
+      else: { list: [over('max', 'approvedAt'), new Date(0)], distinct: true },
+    } as ValueExpression;
+    const before = JSON.stringify(expr);
+    const stamped = coerceValue(expr, lens) as unknown as {
+      then: { coerceType?: string };
+      else: { list: { coerceType?: string }[] };
+    };
+    expect(stamped.then.coerceType).toBe('DateTime');
+    expect(stamped.else.list[0].coerceType).toBe('DateTime');
+    expect(JSON.stringify(expr)).toBe(before);
+    expect(() => coerceValue({} as never, lens)).toThrow('Invalid value expression');
   });
 });

@@ -26,6 +26,7 @@ modules allowed to implement it, and every exported function must appear in this
 | re-root | `prefixConditionFields` | Move a condition onto a related record (a parent's where read from the child); refuse shapes it cannot move. |
 | clamp | `clampLens` | AND clamps into a lens's first narrowing over the base, where they read the whole schema; later layers kept. |
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
+| coerce | `coerceValue` | Stamp each `distinct` / `min` / `max` over a DateTime column with `coerceType: 'DateTime'` from the lens, so ISO date strings read as dates. |
 | project | `projectLens` | What a lens exposes: by path along the relations turned on (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
 | project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations that are off or omitted, and hidden rows removed. |
 | project | `lensVisit` | One visit as `projectLens` (by path) gives it, at a relation path from the anchor, resolved on demand (nothing enumerated); null when a relation on the path isn't shown. |

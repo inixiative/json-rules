@@ -1,3 +1,4 @@
+export { coerceValue } from './coerceValue';
 export { describeValue, type ValueDescription } from './describeValue';
 export { evaluateValue } from './evaluateValue';
 export { inferValueType } from './inferValueType';

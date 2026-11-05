@@ -1,3 +1,12 @@
+## 3.20.0 — coerceValue
+
+- **`coerceValue(expression, lens)`**: stamps each `distinct` / `min` / `max` over a DateTime column
+  with `coerceType: 'DateTime'` from the lens (through `inferValueType`), so rows that carry dates
+  as ISO strings — plain JSON rather than Date objects — order and dedupe as dates instead of
+  throwing. The value-expression counterpart of `coerceRule`. Other kinds are left alone (a
+  Decimal `min` / `max` still returns the value as stored), as is an aggregate that names its own
+  `coerceType` or that the lens can't type.
+
 ## 3.19.1 — one join per to-one relation
 
 - **`toPrisma` folds sibling filters on one to-one relation** under the same AND into a single

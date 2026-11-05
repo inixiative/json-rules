@@ -221,6 +221,7 @@ export {
 } from './src/validate';
 export {
   assertValidValue,
+  coerceValue,
   describeValue,
   evaluateValue,
   inferValueType,

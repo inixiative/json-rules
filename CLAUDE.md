@@ -42,6 +42,26 @@ recursion — their descent IS their semantics — and are guarded by differenti
 - **Everything serializable.** Public API inputs and outputs are plain JSON data — no
   Sets, no callbacks, no functions in results.
 
+## Value-expression rulings (Aron, 2026-11-04 / 05)
+
+- **Rules are predicates; values are computed.** A value expression (`evaluateValue`) uses the
+  rule grammar's own shapes — a value source, an aggregate rule without its comparison, `if` /
+  `then` / `else`, a list — never new keys. Long term the rule evaluator should dogfood it: an
+  aggregate rule computes its number with the value evaluator, then compares.
+- **Values compare as stored, kind by kind.** `1`, `Decimal('1')`, `1n` and `'1'` are four values to
+  `distinct`: mixed kinds are data to see and fix, not to hide. `coerceType` (the field rule's own
+  key) is the parsed mode that reads them as one kind. A value `coerceType` can't read stays as it
+  is — `distinct` shows it, `min` / `max` throw.
+- **`min` / `max` order numbers and dates only**, never raw strings (character-code order would
+  disagree with a database collation); a string column orders through `coerceType`. A Decimal
+  orders by value and comes back as stored. A DateTime column is stamped `coerceType: 'DateTime'`
+  by `coerceValue`, from the lens, never guessed from values at evaluation.
+- **`distinct`** lists strings, enums, dates, booleans and numbers; it skips NULLs as every
+  aggregate mode does, and `[]` is no rows. `caseInsensitive` folds strings, defaulting to the
+  engine's `string.caseInsensitive`. It is a value, never a comparison.
+- **`avg` over no values is `null` in a value.** An aggregate rule comparing it as 0 is the wart;
+  `tickets/FEAT-007` (approved 2026-11-05) makes it NULL on every rail as a major release.
+
 ## Lens rulings (Aron, 2026-10-08)
 
 - **Layers only get darker.** A lens is a stack of filters: each layer can only narrow what the

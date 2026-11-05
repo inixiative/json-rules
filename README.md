@@ -229,11 +229,25 @@ already use. `evaluateValue(expression, row, options)` takes what `check()` take
 
 `aggregate.mode` is one of `VALUE_AGGREGATE_MODES`: `sum` (0 over no rows), `avg` (null over no
 values, as SQL's `AVG`; an aggregate rule still compares 0), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
-`min` and `max` (numbers, strings or dates, the value as stored; null over no rows), and `distinct`
-(strings, enums, dates or booleans: the values without repeats, first seen first, NULLs skipped;
-`[]` over no rows). The window
+`min` and `max` (numbers or dates, the value as stored; null over no rows), and `distinct`
+(strings, enums, dates, booleans or numbers: the values without repeats, first seen first, NULLs
+skipped; `[]` over no rows). The window
 runs first (filter → order → skip → take), then `condition`. An aggregate rule still compares
 `sum` / `avg` only.
+
+Values compare as stored, kind by kind: `distinct` keeps `1`, `Decimal('1')`, `1n` and `'1'` as
+four values, which shows mixed data rather than hiding it. To read them as one kind, give
+`distinct`, `min` or `max` a `coerceType` (as on a field rule): `coerceType: 'Decimal'` reads all four
+as 1, `'Int'` lets `min` / `max` order a string column of numbers (`'9'` before `'10'`), and
+`'DateTime'` reads date strings as dates (a zoneless one in the evaluation's `timeZone`). A coercion
+must be one the column can become, checked at save: a string reads as anything it parses to, a
+number or date as another number, date or string, a boolean or enum as a string; Json and Bytes
+read as nothing, and nothing reads as an enum. A numeric object read as a number throws past 15
+significant digits, as a bigint past the safe range does. A value that won't coerce stays as it is. `min` / `max` never order raw strings: character-code order
+(`'Zebra'` before `'apple'`) would disagree with a database collation. `distinct` over strings
+takes `caseInsensitive` (default: the engine's `string.caseInsensitive`), keeping the first spelling
+seen; it lowers strings, which is close to, not the same as, a case- and accent-insensitive
+collation such as MySQL's default.
 
 ```ts
 // How many reference asks in the last 90 days
@@ -269,7 +283,7 @@ What a consumer checks before saving one:
 | Function | Purpose |
 | --- | --- |
 | `validateValue(expr)` / `assertValidValue(expr)` | The shape, without data: each node exactly one kind, known keys, a known mode, and every condition it holds valid as `validateRule` sees it. |
-| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null). Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
+| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null); with `coerceType`, that kind. Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
 | `valueClockUnit(expr)` | `clockUnit` over every condition the expression holds: a 90-day window reads `day`. |
 | `describeValue(expr, lens)` | Its type, the dotted paths it reads (`brandReferenceRequestFanUsers.activatedAt`), its clock unit, and every issue (shape, lens gate, type) as `{ path, code, message }`, without throwing. |
 
@@ -716,7 +730,7 @@ null`.
 
 | Key | Default | Governs |
 | --- | --- | --- |
-| `string.caseInsensitive` | `false` | Default for a rule's `caseInsensitive`. A rule's own flag wins. Read by `check()`, `toSql()` and `toPrisma()`. |
+| `string.caseInsensitive` | `false` | Default for a rule's `caseInsensitive`, and for a `distinct` value's. A rule's own flag wins. Read by `check()`, `toSql()`, `toPrisma()` and `evaluateValue()`. |
 | `string.fuzzy` | `false` | Default for a rule's `fuzzy` (`true` or a `FuzzyConfig` `{ maxDistance?, maxRatio? }`): typo-tolerant `contains` / `notContains` on strings. A rule's own flag wins. The compilers have no fuzzy form: they refuse `contains` / `notContains` whenever fuzzy is on, by the rule or by this default. |
 | `prismaOptions.datasource.provider` | `'postgresql'` | The Prisma connector. `toPrisma()` emits `mode: 'insensitive'` only for `postgresql`, `cockroachdb` and `mongodb`; the others are case-insensitive by collation and reject it. `toPrisma(rule, { datasource: { provider } })` overrides it per call. |
 | `prismaOptions.anyNull` | your `@prisma/client`'s | Prisma's `AnyNull` for Json null checks (see above); set it only to use another client's. |

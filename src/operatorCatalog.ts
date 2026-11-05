@@ -426,12 +426,19 @@ export const VALUE_AGGREGATE_MODES = Object.keys(
 export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode =>
   typeof mode === 'string' && Object.hasOwn(AGGREGATE_MODE_CATALOG, mode);
 
-/** The kinds `min` / `max` order: numbers, strings and dates. */
-export const ORDERED_VALUE_KINDS: readonly FieldKind[] = ORDERABLE_KINDS;
+/** The kinds `min` / `max` order: numbers and dates. A string column orders through `coerceType`,
+ *  never by character code. */
+export const ORDERED_VALUE_KINDS: readonly FieldKind[] = [...NUMERIC_KINDS, 'DateTime'];
 
-/** The kinds `distinct` lists: values that are named, not measured — strings, enums, dates and
- *  booleans. */
-export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = ['String', 'Enum', 'DateTime', 'Boolean'];
+/** The kinds `distinct` lists: strings, enums, dates, booleans and numbers — each compared as
+ *  stored, so `1` and `Decimal('1')` stay two values unless `coerceType` reads them as one. */
+export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = [
+  'String',
+  'Enum',
+  'DateTime',
+  'Boolean',
+  ...NUMERIC_KINDS,
+];
 
 /** The comparisons an aggregate rule takes; every target compiles all of them. */
 export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;

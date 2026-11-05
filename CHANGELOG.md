@@ -10,10 +10,13 @@
   `clock.finestUnit`, as in check().
 - **Aggregate modes `count`, `min`, `max`, `distinct`** for value expressions (`VALUE_AGGREGATE_MODES`, the
   catalog's `AGGREGATE_MODE_CATALOG`). `count` counts the rows, or with `aggregate.field` the rows
-  whose field has a value; `min` / `max` order numbers, strings or dates and return the value as
-  stored, null over no rows; `distinct` lists the distinct values of strings, enums, dates or
-  booleans (first seen first, NULLs skipped as every mode skips them, `[]` over no rows; numbers
-  and Json are refused at save). `sum` is 0 over no rows; `avg` is null over no values (an aggregate
+  whose field has a value; `min` / `max` order numbers or dates and return the value as
+  stored, null over no rows (numbers and dates only; a string column orders through `coerceType`);
+  `distinct` lists the distinct values of strings, enums, dates, booleans or numbers (first seen
+  first, NULLs skipped as every mode skips them, `[]` over no rows; Json and Bytes are refused at
+  save). Values compare as stored, so `1` and `Decimal('1')` are two values; `coerceType` on
+  `distinct` / `min` / `max` reads them as one kind first, and `caseInsensitive` (default
+  `string.caseInsensitive`) folds case for `distinct`. `sum` is 0 over no rows; `avg` is null over no values (an aggregate
   rule still compares `avg` as 0).
   An aggregate rule still compares `sum` / `avg` only (`AGGREGATE_MODES` is unchanged).
 - **`inferValueType(expression, lens?)`**: `{ kind, isList, nullable }` without data — a path's

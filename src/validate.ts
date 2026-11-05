@@ -141,6 +141,40 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
       'invalid_aggregate_mode',
       unknownValueAggregateMode(agg.mode).message,
     );
+  const value = (isPlainObject(node) ? node : {}) as Record<string, unknown>;
+  const mode = agg?.mode;
+  if (value.coerceType !== undefined) {
+    if (!isFieldKind(value.coerceType))
+      pushIssue(
+        context,
+        '$.coerceType',
+        'invalid_coerce_type',
+        `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
+      );
+    else if (!['distinct', 'min', 'max'].includes(mode as string))
+      pushIssue(
+        context,
+        '$.coerceType',
+        'unexpected_coerce_type',
+        'coerceType reads the values distinct, min and max return',
+      );
+  }
+  if (value.caseInsensitive !== undefined) {
+    if (typeof value.caseInsensitive !== 'boolean')
+      pushIssue(
+        context,
+        '$.caseInsensitive',
+        'invalid_case_insensitive',
+        'caseInsensitive must be a boolean',
+      );
+    else if (mode !== 'distinct')
+      pushIssue(
+        context,
+        '$.caseInsensitive',
+        'unexpected_case_insensitive',
+        'caseInsensitive folds the strings distinct returns',
+      );
+  }
   return validationResult(context.errors);
 };
 

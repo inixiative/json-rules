@@ -60,6 +60,7 @@ const maps: FieldMapSet['maps'] = {
           title: { kind: 'scalar', type: 'String' },
           approvedAt: { kind: 'scalar', type: 'DateTime' },
           isFeatured: { kind: 'scalar', type: 'Boolean' },
+          payload: { kind: 'scalar', type: 'Json' },
           brandUuid: { kind: 'scalar', type: 'String' },
         },
       },
@@ -325,14 +326,28 @@ describe('aggregate modes', () => {
     expect(evaluateValue(over('max', 'points'), row)).toBe(10);
   });
 
-  test('min / max order dates and strings, and return the value as stored', () => {
+  test('min / max order dates and numbers, return the value as stored, and order strings only through coerceType', () => {
     const a = new Date('2026-01-02T00:00:00Z');
     const b = new Date('2026-03-04T00:00:00Z');
     const row = rows({ approvedAt: b, title: 'beta' }, { approvedAt: a, title: 'alpha' });
     expect(evaluateValue(over('min', 'approvedAt'), row)).toBe(a);
     expect(evaluateValue(over('max', 'approvedAt'), row)).toBe(b);
-    expect(evaluateValue(over('min', 'title'), row)).toBe('alpha');
-    expect(evaluateValue(over('max', 'title'), row)).toBe('beta');
+    expect(() => evaluateValue(over('min', 'title'), row)).toThrow(
+      'must be a finite number or a valid date for min / max',
+    );
+    const coerced = (mode: string, coerceType: string) =>
+      ({ ...(over(mode, 'title') as object), coerceType }) as ValueExpression;
+    const numbers = rows({ title: '10' }, { title: '9' }, { title: '100' });
+    expect(evaluateValue(coerced('min', 'Int'), numbers)).toBe(9);
+    expect(evaluateValue(coerced('max', 'Int'), numbers)).toBe(100);
+    const stamps = rows({ title: '2026-03-04T00:00:00Z' }, { title: '2026-01-02T00:00:00Z' });
+    expect(evaluateValue(coerced('min', 'DateTime'), stamps)).toEqual(a);
+    expect(evaluateValue(coerced('max', 'DateTime'), stamps)).toEqual(b);
+    expect(inferValueType(coerced('max', 'DateTime'), lens)).toEqual({
+      kind: 'DateTime',
+      isList: false,
+      nullable: true,
+    });
   });
 
   test('a primitive list aggregates its own values', () => {
@@ -547,7 +562,7 @@ describe('inferValueType', () => {
     expect(inferValueType(over('sum', 'weight'), lens)).toEqual(type('Decimal'));
     expect(inferValueType(over('avg', 'points'), lens)).toEqual(type('Float', true));
     expect(inferValueType(over('avg', 'weight'), lens)).toEqual(type('Decimal', true));
-    expect(inferValueType(over('min', 'title'), lens)).toEqual(type('String', true));
+    expect(inferValueType(over('min', 'points'), lens)).toEqual(type('Int', true));
     expect(inferValueType(over('max', 'approvedAt'), lens)).toEqual(type('DateTime', true));
   });
 
@@ -574,7 +589,11 @@ describe('inferValueType', () => {
       [{ path: 'secret' }, "'secret' does not resolve through the lens (hidden)"],
       [{ path: 'nope' }, "'nope' does not resolve through the lens (missing)"],
       [over('sum', 'title'), 'sum adds numbers, not String values'],
-      [over('min', 'status'), 'min orders numbers, strings and dates, not Enum values'],
+      [
+        over('min', 'status'),
+        'min orders numbers and dates, not Enum values; read strings with coerceType',
+      ],
+      [over('max', 'title'), 'max orders numbers and dates, not String values'],
       [over('max'), 'max over rows names the field it reads'],
       [{ field: 'name', aggregate: { mode: 'count' } }, "'name' is not a list"],
       [{ bind: 'x' }, "{ bind: 'x' } has no type until it is bound"],
@@ -750,11 +769,11 @@ describe('invalid expressions', () => {
     expect(() => evaluateValue(over('sum', 'title'), rows({ title: 'x' }))).toThrow(
       'fanMissions[0].title must be a finite number',
     );
-    expect(() => evaluateValue(over('max', 'v'), rows({ v: 1 }, { v: 'a' }))).toThrow(
-      'fanMissions max orders one kind of value, not number and string',
+    expect(() => evaluateValue(over('max', 'v'), rows({ v: 1 }, { v: new Date(0) }))).toThrow(
+      'fanMissions max orders one kind of value, not number and date',
     );
     expect(() => evaluateValue(over('min', 'v'), rows({ v: true }))).toThrow(
-      'fanMissions[0].v must be a finite number, a string or a valid date',
+      'fanMissions[0].v must be a finite number or a valid date',
     );
     expect(() => evaluateValue([[{ value: 1 }]] as never, {})).toThrow(
       "$[0]: a list's items are single values",
@@ -912,10 +931,117 @@ describe('the distinct aggregate', () => {
       kind: 'String',
       isList: true,
     });
-    for (const field of ['points', 'weight'])
-      expect(() => inferValueType(over('distinct', field), lens)).toThrow(
-        'distinct lists strings, enums, dates and booleans',
-      );
+    expect(inferValueType(over('distinct', 'points'), lens)).toMatchObject({
+      kind: 'Int',
+      isList: true,
+    });
+    expect(inferValueType(over('distinct', 'weight'), lens)).toMatchObject({
+      kind: 'Decimal',
+      isList: true,
+    });
+  });
+
+  test('numbers are distinct by kind as stored; coerceType reads them as one', () => {
+    const decimalOne = { toString: () => '1', toJSON: () => '1' };
+    const missions = rows({ v: 1 }, { v: decimalOne }, { v: 1n }, { v: '1' }, { v: 1 });
+    expect(evaluateValue(over('distinct', 'v'), missions)).toEqual([1, decimalOne, 1n, '1']);
+    expect(
+      evaluateValue(
+        { ...(over('distinct', 'v') as object), coerceType: 'Decimal' } as ValueExpression,
+        missions,
+      ),
+    ).toEqual([1]);
+  });
+
+  test('caseInsensitive folds strings, keeping the first seen; the engine default applies', () => {
+    const missions = rows(
+      { title: 'Acme' },
+      { title: 'acme' },
+      { title: 'Beta' },
+      { title: 'ACME' },
+    );
+    const distinctTitles = over('distinct', 'title') as object;
+    expect(evaluateValue(distinctTitles as ValueExpression, missions)).toEqual([
+      'Acme',
+      'acme',
+      'Beta',
+      'ACME',
+    ]);
+    expect(
+      evaluateValue({ ...distinctTitles, caseInsensitive: true } as ValueExpression, missions),
+    ).toEqual(['Acme', 'Beta']);
+    engineGlobals.with({ string: { caseInsensitive: true } }, () => {
+      expect(evaluateValue(distinctTitles as ValueExpression, missions)).toEqual(['Acme', 'Beta']);
+      expect(
+        evaluateValue({ ...distinctTitles, caseInsensitive: false } as ValueExpression, missions),
+      ).toHaveLength(4);
+    });
+  });
+
+  test('coerceType reads only what its column can become', () => {
+    const coerced = (mode: string, field: string, coerceType: string) =>
+      ({ ...(over(mode, field) as object), coerceType }) as ValueExpression;
+    expect(() => inferValueType(coerced('distinct', 'payload', 'String'), lens)).toThrow(
+      "Json values can't be read as String",
+    );
+    expect(() => inferValueType(coerced('min', 'isFeatured', 'Int'), lens)).toThrow(
+      "Boolean values can't be read as Int",
+    );
+    expect(() => inferValueType(coerced('distinct', 'title', 'Enum'), lens)).toThrow(
+      "String values can't be read as Enum",
+    );
+    expect(inferValueType(coerced('distinct', 'points', 'String'), lens)).toMatchObject({
+      kind: 'String',
+      isList: true,
+    });
+  });
+
+  test('coerced numbers keep their precision or throw; strings and dates read as their kind', () => {
+    const decimal = (text: string) => ({ toString: () => text, toJSON: () => text });
+    const distinctV = (coerceType: string) =>
+      ({ ...(over('distinct', 'v') as object), coerceType }) as ValueExpression;
+    expect(() =>
+      evaluateValue(distinctV('Decimal'), rows({ v: decimal('9007199254740993') })),
+    ).toThrow('more digits than a number holds exactly');
+    expect(evaluateValue(distinctV('Decimal'), rows({ v: decimal('0.25') }))).toEqual([0.25]);
+    const when = new Date('2026-01-01T00:00:00Z');
+    expect(
+      evaluateValue(
+        distinctV('String'),
+        rows({ v: 1 }, { v: decimal('1') }, { v: 1n }, { v: '1' }, { v: when }),
+      ),
+    ).toEqual(['1', '2026-01-01T00:00:00.000Z']);
+    expect(
+      evaluateValue(
+        { ...(over('min', 'v') as object), coerceType: 'DateTime' } as ValueExpression,
+        rows({ v: 1700000000000n }, { v: 1600000000000n }),
+      ),
+    ).toEqual(new Date(1600000000000));
+  });
+
+  test('coerceType reads dates for distinct, and is refused where it means nothing', () => {
+    const missions = rows(
+      { title: '2026-01-01T00:00:00Z' },
+      { title: '2026-01-01T00:00:00.000Z' },
+      { title: '2026-02-01T00:00:00Z' },
+    );
+    expect(
+      evaluateValue(
+        { ...(over('distinct', 'title') as object), coerceType: 'DateTime' } as ValueExpression,
+        missions,
+      ),
+    ).toEqual([new Date('2026-01-01T00:00:00Z'), new Date('2026-02-01T00:00:00Z')]);
+    const codes = (expr: unknown) =>
+      validateValue(expr).errors.map((issue) => `${issue.path} ${issue.code}`);
+    expect(codes({ ...(over('count') as object), coerceType: 'Int' })).toEqual([
+      '$.coerceType unexpected_coerce_type',
+    ]);
+    expect(codes({ ...(over('max', 'points') as object), coerceType: 'Nope' })).toEqual([
+      '$.coerceType invalid_coerce_type',
+    ]);
+    expect(codes({ ...(over('max', 'points') as object), caseInsensitive: true })).toEqual([
+      '$.caseInsensitive unexpected_case_insensitive',
+    ]);
   });
 
   test('is a value, never a list item or a comparison', () => {

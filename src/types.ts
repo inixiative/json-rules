@@ -387,6 +387,12 @@ export type AggregateValue<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   field: string;
   aggregate: { mode: ValueAggregateMode; field?: string };
   condition?: Condition<TRuleValue, TDateValue>;
+  /** `distinct` / `min` / `max`: read each value as this kind first (`'10'` as 10, an ISO string
+   *  as a date, `Decimal('1')` as 1). Without it values compare as stored, kind by kind. */
+  coerceType?: FieldKind;
+  /** `distinct` over strings: `'Acme'` and `'acme'` are one value (the first seen is kept).
+   *  Defaults to the engine's `string.caseInsensitive`. */
+  caseInsensitive?: boolean;
   operator?: never;
   value?: never;
   path?: never;

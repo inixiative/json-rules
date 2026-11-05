@@ -16,7 +16,17 @@ type Node = Record<string, unknown>;
 const SHAPE_KEYS: Record<Exclude<ValueExpressionShape, 'literal'>, readonly string[]> = {
   source: ['value', 'path', 'bind', 'bindOptional'],
   if: ['if', 'then', 'else'],
-  aggregate: ['field', 'aggregate', 'condition', 'filter', 'orderBy', 'take', 'skip'],
+  aggregate: [
+    'field',
+    'aggregate',
+    'condition',
+    'filter',
+    'orderBy',
+    'take',
+    'skip',
+    'coerceType',
+    'caseInsensitive',
+  ],
   list: ['list', 'distinct'],
 };
 

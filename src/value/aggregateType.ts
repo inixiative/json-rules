@@ -4,12 +4,32 @@ import {
   AGGREGATE_MODE_CATALOG,
   DISTINCT_VALUE_KINDS,
   FieldKind,
+  NUMERIC_KINDS,
   ORDERED_VALUE_KINDS,
 } from '../operatorCatalog';
 import type { AggregateValue, ValueAggregateMode, ValueType } from '../types';
 import { columnKind, needLens, resolveValuePath, rowPath } from './resolveValuePath';
 import { isNumeric } from './unifyValueTypes';
 import { refuse } from './valueTypeIssue';
+
+// What a coerceType can read: a string as anything it parses to, a number or date as another
+// number, date or string, a boolean or enum as a string (or itself). Json and Bytes coerce to
+// nothing, and nothing coerces to an enum, Json or Bytes.
+const COERCES_FROM: Partial<Record<FieldKind, readonly FieldKind[]>> = {
+  String: ['String', 'Boolean', 'DateTime', ...NUMERIC_KINDS],
+  DateTime: ['DateTime', 'String', ...NUMERIC_KINDS],
+  Boolean: ['Boolean', 'String'],
+  Enum: ['String'],
+  ...Object.fromEntries(
+    NUMERIC_KINDS.map((kind) => [kind, ['String', 'DateTime', ...NUMERIC_KINDS]]),
+  ),
+};
+
+const refuseCoercion = (stored: FieldKind | null, target: FieldKind, at: string): void => {
+  if (stored === null || stored === target) return;
+  if (!COERCES_FROM[stored]?.includes(target))
+    refuse(at, 'coerce_kind_mismatch', `${stored} values can't be read as ${target}`);
+};
 
 // The list an aggregate reads: a to-many relation or a scalar list column.
 const aggregateList = (lens: Lens | LensNarrowing, node: AggregateValue, path: string) => {
@@ -60,7 +80,8 @@ const elementKind = (
 
 /** An aggregate value's type: `count` an `Int`; `sum` its column's numeric kind, never null;
  *  `avg` a `Float` (`Decimal` stays `Decimal`), null over no rows; `min` / `max` their column's
- *  kind, nullable; `distinct` a list of its column's kind, never null (`[]` over no rows). */
+ *  kind, nullable; `distinct` a list of its column's kind, never null (`[]` over no rows). For
+ *  `distinct` / `min` / `max` a `coerceType` is the kind. */
 export const aggregateType = (
   lens: Lens | LensNarrowing | undefined,
   node: AggregateValue,
@@ -72,7 +93,10 @@ export const aggregateType = (
     if (lens) aggregateList(lens, node, path);
     return { kind: FieldKind.Int, isList: false, nullable: false };
   }
-  const kind = elementKind(needLens(lens, `${mode} over '${node.field}'`), node, path);
+  const stored = elementKind(needLens(lens, `${mode} over '${node.field}'`), node, path);
+  if (node.coerceType !== undefined) refuseCoercion(stored, node.coerceType, `${path}.coerceType`);
+  // A coerced aggregate returns the values as its coerceType reads them.
+  const kind = node.coerceType ?? stored;
   const at = `${path}.aggregate.field`;
   if (mode === 'sum' || mode === 'avg') {
     if (!isNumeric(kind))
@@ -90,7 +114,7 @@ export const aggregateType = (
       refuse(
         at,
         'aggregate_kind_mismatch',
-        `distinct lists strings, enums, dates and booleans, not ${kind ?? 'untyped'} values`,
+        `distinct lists strings, enums, dates, booleans and numbers, not ${kind ?? 'untyped'} values`,
       );
     return { kind, isList: true, nullable: false };
   }
@@ -98,7 +122,7 @@ export const aggregateType = (
     refuse(
       at,
       'aggregate_kind_mismatch',
-      `${mode} orders numbers, strings and dates, not ${kind ?? 'untyped'} values`,
+      `${mode} orders numbers and dates, not ${kind ?? 'untyped'} values; read strings with coerceType`,
     );
   return { kind, isList: false, nullable: true };
 };

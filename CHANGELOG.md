@@ -1,3 +1,15 @@
+## 3.19.1 — one join per to-one relation
+
+- **`toPrisma` folds sibling filters on one to-one relation** under the same AND into a single
+  relation filter (`{ AND: [{ rel: A }, { rel: B }] }` → `{ rel: { AND: [A, B] } }`), recursing into
+  the folded relation. Prisma emits one join per relation-filter object, so a lens clamp, a
+  `deletedAt` scope and a leaf on the same hop now cost one join instead of three. To-many
+  `some` / `every` / `none` siblings, OR and NOT are never folded across; nothing folds without a
+  field map; an unfoldable where comes back as the same object.
+- **Dead absent-relation arms drop.** An OR arm requiring a relation absent (`rel: { is: null }`,
+  or a deeper hop) is removed when a sibling requires that path present; an OR left with one arm
+  becomes that arm. `isNot`, a bare `{}` and `is: null` siblings are left alone.
+
 ## 3.19.0 — value expressions
 
 - **`evaluateValue(expression, row, options)`**: a value computed from a row, in memory, with

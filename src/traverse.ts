@@ -383,10 +383,10 @@ export const valueExpressionShape = (expr: unknown): ValueExpressionShape | null
  * Everything a value expression reads, as one condition reading the same things — the one
  * structural walk over a value expression's slots (list items, `if` / `then` / `else`, an
  * aggregate's `filter` / `condition` / `orderBy` / `aggregate.field`). A path read is an `exists`
- * on its field; an aggregate is an aggregate rule over the same rows and window (its mode and
- * comparison stand in: they read nothing); a literal or a binding reads nothing (`true`). For the
- * walkers that describe what a rule reads — `clockUnit`, `readPaths`, `validateRuleInLens` —
- * never to evaluate.
+ * on its field; an aggregate is itself (an aggregate node without a comparison: the walkers read
+ * its field, window and `aggregate.field`, never its mode); a literal or a binding reads nothing
+ * (`true`). For the walkers that describe what a rule reads — `clockUnit`, `readPaths`,
+ * `validateRuleInLens` — never to evaluate or validate.
  */
 export const valueReads = (expr: unknown): Condition => {
   const node = expr as ConditionNode;
@@ -399,18 +399,8 @@ export const valueReads = (expr: unknown): Condition => {
         valueReads(node.then),
         ...(node.else === undefined ? [] : [valueReads(node.else)]),
       ]);
-    case 'aggregate': {
-      const { aggregate, ...rest } = node as { aggregate: { field?: unknown } };
-      return {
-        ...rest,
-        aggregate: {
-          mode: 'sum',
-          ...(aggregate.field !== undefined && { field: aggregate.field }),
-        },
-        operator: 'equals',
-        value: 0,
-      } as Condition;
-    }
+    case 'aggregate':
+      return node as Condition;
     case 'source':
       return hasPath(node as never)
         ? ({ field: node.path, operator: 'exists' } as Condition)

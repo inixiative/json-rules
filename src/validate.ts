@@ -20,6 +20,7 @@ import {
   rangeExprRequired,
   unknownAggregateMode,
   unknownOperator,
+  unknownValueAggregateMode,
   windowUnsupported,
 } from './errors';
 import { isJsonEntry, isRelationEntry } from './fieldMap/entry';
@@ -43,6 +44,7 @@ import {
   isFieldKind,
   isOperatorSupportedForTarget,
   isRelativeUnit,
+  isValueAggregateMode,
   OFFSET_OPERATORS,
   PERIOD_UNITS,
   RANGE_OPERATORS,
@@ -112,16 +114,40 @@ export const validateRule = (
   condition: unknown,
   options: ValidateRuleOptions = {},
 ): ValidationResult => {
-  const context: ValidationContext = {
-    target: options.target ?? 'check',
-    errors: [],
-    map: resolveFieldMap(options.map, options.mapName, 'toPrisma'),
-    scopeModels: [options.model],
-    stepScopes: [false],
-  };
-
+  const context = newContext(options);
   validateCondition(condition, '$', context, 1);
   if (options.positive) validatePositive(condition, context);
+  return validationResult(context.errors);
+};
+
+const newContext = (options: ValidateRuleOptions = {}): ValidationContext => ({
+  target: options.target ?? 'check',
+  errors: [],
+  map: resolveFieldMap(options.map, options.mapName, 'toPrisma'),
+  scopeModels: [options.model],
+  stepScopes: [false],
+});
+
+/** A value expression's aggregate checked without data: what the aggregate rule over the same
+ *  rows reads (its list field, window, `aggregate.field` and condition), with a value mode
+ *  (VALUE_AGGREGATE_MODES) in place of the comparison. */
+export const validateAggregateValue = (node: unknown): ValidationResult => {
+  const context = newContext();
+  const agg = isPlainObject(node) ? validateAggregateReads(node, '$', context, 1) : null;
+  if (agg && !isValueAggregateMode(agg.mode))
+    pushIssue(
+      context,
+      '$.aggregate.mode',
+      'invalid_aggregate_mode',
+      unknownValueAggregateMode(agg.mode).message,
+    );
+  return validationResult(context.errors);
+};
+
+/** One value source — `{ value } | { path } | { bind }` — checked as a rule's comparison value is. */
+export const validateValueSource = (source: unknown): ValidationResult => {
+  const context = newContext();
+  if (isPlainObject(source)) validateSource(source, '$', context, 1);
   return validationResult(context.errors);
 };
 
@@ -627,12 +653,15 @@ const validateGroupStep = (
   }
 };
 
-const validateAggregateRule = (
+// What an aggregate reads, whether a rule compares it or a value expression returns it: its list
+// field, window, `aggregate.field` and condition. Returns the `aggregate` object, or null when it
+// is malformed.
+const validateAggregateReads = (
   rule: Record<string, unknown>,
   path: string,
   context: ValidationContext,
   depth: number,
-): void => {
+): Record<string, unknown> | null => {
   validateGroupStep(rule, path, context, depth, 'Aggregate rules');
   if (rule.offset !== undefined)
     pushIssue(context, `${path}.offset`, 'unexpected_offset', 'Aggregate rules take no offset');
@@ -645,18 +674,10 @@ const validateAggregateRule = (
 
   if (!isPlainObject(rule.aggregate)) {
     pushIssue(context, `${path}.aggregate`, 'invalid_aggregate', 'aggregate must be an object');
-    return;
+    return null;
   }
 
   const agg = rule.aggregate as Record<string, unknown>;
-  if (!AGGREGATE_MODES.includes(agg.mode as AggregateMode))
-    pushIssue(
-      context,
-      `${path}.aggregate.mode`,
-      'invalid_aggregate_mode',
-      unknownAggregateMode(agg.mode).message,
-    );
-
   if ('field' in agg && agg.field !== undefined && typeof agg.field !== 'string') {
     pushIssue(
       context,
@@ -665,6 +686,37 @@ const validateAggregateRule = (
       'aggregate.field must be a string',
     );
   }
+
+  if ('condition' in rule && rule.condition !== undefined) {
+    if (context.target === 'toSql') {
+      pushIssue(
+        context,
+        `${path}.condition`,
+        'unsupported_sql_aggregate_condition',
+        `Aggregate condition filtering is not supported by toSql(); use check() or toPrisma()`,
+      );
+    }
+    enterScope(context, depth, rule.field, true);
+    validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
+  }
+  return agg;
+};
+
+const validateAggregateRule = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  const agg = validateAggregateReads(rule, path, context, depth);
+  if (!agg) return;
+  if (!AGGREGATE_MODES.includes(agg.mode as AggregateMode))
+    pushIssue(
+      context,
+      `${path}.aggregate.mode`,
+      'invalid_aggregate_mode',
+      unknownAggregateMode(agg.mode).message,
+    );
 
   if (!AGGREGATE_OPERATORS.includes(rule.operator as Operator)) {
     pushIssue(
@@ -683,19 +735,6 @@ const validateAggregateRule = (
       'unsupported_prisma_aggregate_path',
       `path is not supported by toPrisma() for aggregate rules; use value instead`,
     );
-  }
-
-  if ('condition' in rule && rule.condition !== undefined) {
-    if (context.target === 'toSql') {
-      pushIssue(
-        context,
-        `${path}.condition`,
-        'unsupported_sql_aggregate_condition',
-        `Aggregate condition filtering is not supported by toSql(); use check() or toPrisma()`,
-      );
-    }
-    enterScope(context, depth, rule.field, true);
-    validateCondition(rule.condition, `${path}.condition`, context, depth + 1);
   }
 
   if (validateSource(rule, path, context, depth) === null) return;

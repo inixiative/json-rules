@@ -634,7 +634,7 @@ describe('describeValue', () => {
 
   test('a shape problem stops there', () => {
     expect(describeValue({ value: 1, path: 'x' } as never, lens).errors[0].code).toBe(
-      'invalid_value_source',
+      'ambiguous_value_source',
     );
   });
 });
@@ -697,9 +697,9 @@ describe('invalid expressions', () => {
     expect(codes({ list: [], unique: true })).toEqual(['$.unique unknown_key']);
     expect(codes([{ list: [1] }])).toEqual(['$[0] nested_list']);
     expect(codes({})).toEqual(['$ invalid_value_expression']);
-    expect(codes({ value: 1, path: 'x' })).toEqual(['$ invalid_value_source']);
+    expect(codes({ value: 1, path: 'x' })).toEqual(['$ ambiguous_value_source']);
     expect(codes({ value: 1, offset: 2 })).toEqual(['$.offset unknown_key']);
-    expect(codes({ path: '' })).toEqual(['$.path invalid_path']);
+    expect(codes({ path: '' })).toEqual(['$.path invalid_value_source']);
     expect(
       codes({
         field: 'fanMissions',
@@ -798,5 +798,50 @@ describe('bare literals and distinct lists', () => {
       isList: true,
       nullable: false,
     });
+  });
+
+  test('distinct keeps the first of equal dates, never folds a date into a number, and matches equal Bytes', () => {
+    const [a, b] = [new Date(0), new Date(0)];
+    const out = evaluateValue({ list: [a, b, 0], distinct: true }, {}) as unknown[];
+    expect(out).toEqual([a, 0]);
+    expect(out[0]).toBe(a);
+    expect(
+      evaluateValue(
+        { list: [{ path: 'x' }, { path: 'y' }], distinct: true },
+        { x: Buffer.from('hi'), y: Buffer.from('hi') },
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('distinct is for values, not Json: refused at save', () => {
+    const json = { list: [{ value: { a: 1 } }, { value: { a: 1 } }], distinct: true };
+    expect(() => inferValueType(json)).toThrow('distinct drops repeated values, not Json');
+    expect(inferValueType({ ...json, distinct: false })).toMatchObject({ kind: 'Json' });
+  });
+
+  test('a list mixing dates and numbers is refused at save, so distinct never compares them', () => {
+    expect(() => inferValueType({ list: [new Date(0), 0], distinct: true })).toThrow(
+      'the values here are DateTime and Int',
+    );
+  });
+});
+
+describe('an aggregate value is validated as the aggregate rule over the same rows', () => {
+  test('its window and condition report at their node; its mode is a value mode', () => {
+    const codes = (expr: unknown) =>
+      validateValue(expr).errors.map((issue) => `${issue.path} ${issue.code}`);
+    expect(
+      codes({
+        field: 'fanMissions',
+        aggregate: { mode: 'count' },
+        condition: { field: 'status', operator: 'nope', value: 1 },
+      }),
+    ).toEqual(['$.condition.operator invalid_operator']);
+    expect(codes({ field: 'fanMissions', aggregate: { mode: 'median' } })).toEqual([
+      '$.aggregate.mode invalid_aggregate_mode',
+    ]);
+    expect(codes({ field: 'fanMissions', aggregate: { mode: 'max', field: 7 } })).toEqual([
+      '$.aggregate.field invalid_aggregate_field',
+    ]);
   });
 });

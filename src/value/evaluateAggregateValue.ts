@@ -7,32 +7,36 @@ import { unknownValueAggregateMode, valueTakesNoComparison } from '../errors';
 import { isValueAggregateMode } from '../operatorCatalog';
 import type { AggregateValue } from '../types';
 import { readValueSource } from '../valueSource';
-import { coerceAggregateValue } from './coerceAggregateValue';
+import { coerceAggregateValue, numericObject } from './coerceAggregateValue';
 import { distinctValues } from './distinctValues';
 import { namesComparison } from './namesComparison';
 
-type Ordered = number | bigint | Date;
+// A value min / max orders: the value as stored, the key it orders by, and its kind.
+type Ordered = { value: unknown; key: number | bigint; kind: 'number' | 'date' };
 
-// min / max order numbers and dates; a string orders only once `coerceType` has read it.
+// min / max order numbers (a numeric object such as a Decimal by its value) and dates; a string
+// orders only once `coerceType` has read it.
 const orderedValue = (raw: unknown, loc: string): Ordered => {
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-  if (typeof raw === 'bigint') return raw;
-  if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw;
+  if ((typeof raw === 'number' && Number.isFinite(raw)) || typeof raw === 'bigint')
+    return { value: raw, key: raw, kind: 'number' };
+  if (raw instanceof Date && !Number.isNaN(raw.getTime()))
+    return { value: raw, key: raw.getTime(), kind: 'date' };
+  if (typeof raw === 'object' && raw !== null) {
+    const key = numericObject(raw);
+    if (typeof key === 'number') return { value: raw, key, kind: 'number' };
+  }
   throw new Error(`${loc} must be a finite number or a valid date for min / max`);
 };
 
-const orderClass = (value: Ordered): string => (value instanceof Date ? 'date' : 'number');
-
-// The least or greatest of one kind of value; null over none.
-const extreme = (values: Ordered[], mode: 'min' | 'max', field: string): Ordered | null => {
+// The least or greatest of one kind of value, as stored; null over none.
+const extreme = (values: Ordered[], mode: 'min' | 'max', field: string): unknown => {
   if (values.length === 0) return null;
-  const kinds = new Set(values.map(orderClass));
+  const kinds = new Set(values.map((ordered) => ordered.kind));
   if (kinds.size > 1)
     throw new Error(`${field} ${mode} orders one kind of value, not ${[...kinds].join(' and ')}`);
-  const key = (value: Ordered) => (value instanceof Date ? value.getTime() : value);
-  return values.reduce((best, value) =>
-    (mode === 'max' ? key(value) > key(best) : key(value) < key(best)) ? value : best,
-  );
+  return values.reduce((best, next) =>
+    (mode === 'max' ? next.key > best.key : next.key < best.key) ? next : best,
+  ).value;
 };
 
 /** The value an aggregate computes over its relation's rows, through its window and condition:

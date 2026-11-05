@@ -14,7 +14,9 @@ const significantDigits = (text: string): number =>
     .replace(/^0+/, '')
     .replace(/0+$/, '').length;
 
-const numericObject = (raw: object): unknown => {
+/** A numeric object (`Decimal('2.5')`) as a number; past 15 significant digits it throws, and an
+ *  object that isn't a number comes back as it is. */
+export const numericObject = (raw: object): unknown => {
   const text = String(raw);
   const number = Number(text);
   if (!Number.isFinite(number)) return raw;

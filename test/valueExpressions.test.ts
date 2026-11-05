@@ -978,6 +978,28 @@ describe('the distinct aggregate', () => {
     });
   });
 
+  test('min / max order Decimal objects by value and return them as stored', () => {
+    const decimal = (text: string) => ({ toString: () => text, toJSON: () => text });
+    const [small, big] = [decimal('2.5'), decimal('10')];
+    const missions = rows({ weight: big }, { weight: small });
+    expect(evaluateValue(over('min', 'weight'), missions)).toBe(small);
+    expect(evaluateValue(over('max', 'weight'), missions)).toBe(big);
+    expect(inferValueType(over('max', 'weight'), lens)).toMatchObject({ kind: 'Decimal' });
+    expect(() =>
+      evaluateValue(over('max', 'weight'), rows({ weight: decimal('9007199254740993') })),
+    ).toThrow('more digits than a number holds exactly');
+  });
+
+  test('a value coerceType cannot read: distinct shows it, min / max refuse it', () => {
+    const coerced = (mode: string) =>
+      ({ ...(over(mode, 'title') as object), coerceType: 'Int' }) as ValueExpression;
+    const missions = rows({ title: '3' }, { title: 'abc' });
+    expect(evaluateValue(coerced('distinct'), missions)).toEqual([3, 'abc']);
+    expect(() => evaluateValue(coerced('max'), missions)).toThrow(
+      'must be a finite number or a valid date for min / max',
+    );
+  });
+
   test('coerceType reads only what its column can become', () => {
     const coerced = (mode: string, field: string, coerceType: string) =>
       ({ ...(over(mode, field) as object), coerceType }) as ValueExpression;

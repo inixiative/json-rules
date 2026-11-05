@@ -243,7 +243,9 @@ as 1, `'Int'` lets `min` / `max` order a string column of numbers (`'9'` before 
 must be one the column can become, checked at save: a string reads as anything it parses to, a
 number or date as another number, date or string, a boolean or enum as a string; Json and Bytes
 read as nothing, and nothing reads as an enum. A numeric object read as a number throws past 15
-significant digits, as a bigint past the safe range does. A value that won't coerce stays as it is. `min` / `max` never order raw strings: character-code order
+significant digits, as a bigint past the safe range does. A value that won't coerce stays as it is: `distinct` returns it, so dirty data shows (`['3', 'abc']`
+as `Int` gives `[3, 'abc']`), and `min` / `max` throw on it. A Decimal column orders by value without
+`coerceType`; `min` / `max` return the Decimal as stored. `min` / `max` never order raw strings: character-code order
 (`'Zebra'` before `'apple'`) would disagree with a database collation. `distinct` over strings
 takes `caseInsensitive` (default: the engine's `string.caseInsensitive`), keeping the first spelling
 seen; it lowers strings, which is close to, not the same as, a case- and accent-insensitive

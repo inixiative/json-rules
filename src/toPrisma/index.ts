@@ -1,7 +1,9 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
+import type { FieldMap } from '../fieldMap/types';
 import { compileWithLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
+import { foldRelationFilters } from './foldRelations';
 import { recordRefs } from './sentinels';
 import type { PrismaBuildState, PrismaStep, ToPrismaOptions, ToPrismaResult } from './types';
 
@@ -46,7 +48,13 @@ export const toPrisma = (rule: Condition, compileOptions?: ToPrismaOptions): ToP
 
 const compilePrisma = (condition: Condition, options?: ToPrismaOptions): ToPrismaResult => {
   const state: PrismaBuildState = { steps: [] };
-  const where = buildCondition(condition, normalizeOptions(options), state);
+  const normalized = normalizeOptions(options);
+  // One relation filter per to-one hop: Prisma joins once per filter object.
+  const where = foldRelationFilters(
+    buildCondition(condition, normalized, state),
+    normalized?.map as FieldMap | undefined,
+    normalized?.model,
+  );
   // Each step records where its own references sit; nothing else is ever resolved.
   const withRefs = <S extends PrismaStep>(step: S, root: unknown): S => {
     const refs = recordRefs(root);

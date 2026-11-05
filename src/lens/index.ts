@@ -7,6 +7,8 @@ export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
 export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
+export { invertLensPath } from './invertLensPath';
+export type { LensRead } from './lensReads';
 export type {
   LensRelationSelect,
   LensSelect,

@@ -13,7 +13,7 @@ export type RuleScalar = string | number | boolean | null | undefined;
 export type AggregateMode = 'sum' | 'avg';
 /** What a value expression's aggregate computes: an aggregate rule's modes, plus `count` and the
  *  least / greatest item value. */
-export type ValueAggregateMode = AggregateMode | 'count' | 'min' | 'max';
+export type ValueAggregateMode = AggregateMode | 'count' | 'min' | 'max' | 'distinct';
 
 export type RuleValue = RuleScalar | Date | RegExp | RuleValue[] | { [key: string]: RuleValue };
 export type OrderedRuleValue = string | number | Date;

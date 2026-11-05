@@ -8,15 +8,17 @@
   match as if / else; no `else` is null), or a list of them (experimental, match-all: an `if` with
   no `else` that doesn't hold adds nothing; `{ list, distinct: true }` drops repeats). Relative dates in a filter need `now` and are held to
   `clock.finestUnit`, as in check().
-- **Aggregate modes `count`, `min`, `max`** for value expressions (`VALUE_AGGREGATE_MODES`, the
+- **Aggregate modes `count`, `min`, `max`, `distinct`** for value expressions (`VALUE_AGGREGATE_MODES`, the
   catalog's `AGGREGATE_MODE_CATALOG`). `count` counts the rows, or with `aggregate.field` the rows
   whose field has a value; `min` / `max` order numbers, strings or dates and return the value as
-  stored, null over no rows. `sum` is 0 over no rows; `avg` is null over no values (an aggregate
+  stored, null over no rows; `distinct` lists the distinct values of strings, enums, dates or
+  booleans (first seen first, NULLs skipped as every mode skips them, `[]` over no rows; numbers
+  and Json are refused at save). `sum` is 0 over no rows; `avg` is null over no values (an aggregate
   rule still compares `avg` as 0).
   An aggregate rule still compares `sum` / `avg` only (`AGGREGATE_MODES` is unchanged).
 - **`inferValueType(expression, lens?)`**: `{ kind, isList, nullable }` without data — a path's
   column kind through the lens, `count` `Int`, `sum` the column's numeric kind, `avg` `Float`,
-  `min` / `max` the column's kind; `avg` and `min` / `max` nullable. Branches and list items must
+  `min` / `max` the column's kind; `avg` and `min` / `max` nullable; `distinct` a list of the column's kind. Branches and list items must
   agree (two numeric kinds read as `Decimal` when either is, else `Float`); a path that doesn't
   resolve, reads through a to-many relation or names rows, a binding, and an aggregate over a
   non-list are refused.

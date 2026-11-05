@@ -3,6 +3,7 @@ import { aggregateItems, aggregateValues, type EvalOptions, sumOrAverage } from 
 import { unknownValueAggregateMode, valueTakesNoComparison } from '../errors';
 import { isValueAggregateMode } from '../operatorCatalog';
 import type { AggregateValue } from '../types';
+import { distinctValues } from './distinctValues';
 import { namesComparison } from './namesComparison';
 
 type Ordered = number | bigint | string | Date;
@@ -30,7 +31,8 @@ const extreme = (values: Ordered[], mode: 'min' | 'max', field: string): Ordered
 };
 
 /** The value an aggregate computes over its relation's rows, through its window and condition:
- *  `count`, `sum` (0 over none), `avg`, `min`, `max` (null over none). */
+ *  `count`, `sum` (0 over none), `avg`, `min`, `max` (null over none), `distinct` (the values
+ *  without repeats, first seen first; NULLs skipped as every mode skips them; `[]` over none). */
 export const evaluateAggregateValue = (
   node: AggregateValue,
   opts: EvalOptions,
@@ -56,6 +58,8 @@ export const evaluateAggregateValue = (
       return aggregateValues(items, node.field, itemField, () => true).length === 0
         ? null
         : sumOrAverage(mode, items, node.field, itemField);
+    case 'distinct':
+      return distinctValues(aggregateValues(items, node.field, itemField, (raw) => raw));
     default:
       return extreme(aggregateValues(items, node.field, itemField, orderedValue), mode, node.field);
   }

@@ -59,6 +59,7 @@ const maps: FieldMapSet['maps'] = {
           weight: { kind: 'scalar', type: 'Decimal' },
           title: { kind: 'scalar', type: 'String' },
           approvedAt: { kind: 'scalar', type: 'DateTime' },
+          isFeatured: { kind: 'scalar', type: 'Boolean' },
           brandUuid: { kind: 'scalar', type: 'String' },
         },
       },
@@ -284,7 +285,7 @@ const rows = (...missions: Record<string, unknown>[]) => ({ fanMissions: mission
 
 describe('aggregate modes', () => {
   test('VALUE_AGGREGATE_MODES lists every mode; aggregate rules still compare sum and avg only', () => {
-    expect([...VALUE_AGGREGATE_MODES]).toEqual(['sum', 'avg', 'count', 'min', 'max']);
+    expect([...VALUE_AGGREGATE_MODES]).toEqual(['sum', 'avg', 'count', 'min', 'max', 'distinct']);
     const countRule = {
       field: 'fanMissions',
       aggregate: { mode: 'count' },
@@ -842,6 +843,92 @@ describe('an aggregate value is validated as the aggregate rule over the same ro
     ]);
     expect(codes({ field: 'fanMissions', aggregate: { mode: 'max', field: 7 } })).toEqual([
       '$.aggregate.field invalid_aggregate_field',
+    ]);
+  });
+});
+
+// ─── distinct ───────────────────────────────────────────────────────────────
+
+describe('the distinct aggregate', () => {
+  test('lists the values without repeats, first seen first, skipping NULLs; [] over none', () => {
+    const [jan, feb] = [new Date('2026-01-01T00:00:00Z'), new Date('2026-02-01T00:00:00Z')];
+    const missions = rows(
+      { title: 'b', status: 'approved', approvedAt: jan, isFeatured: true },
+      { title: 'a', status: 'pending', approvedAt: null, isFeatured: null },
+      { title: 'b', status: 'approved', approvedAt: new Date(jan), isFeatured: false },
+      { title: null, status: 'draft', approvedAt: feb, isFeatured: true },
+    );
+    expect(evaluateValue(over('distinct', 'title'), missions)).toEqual(['b', 'a']);
+    expect(evaluateValue(over('distinct', 'status'), missions)).toEqual([
+      'approved',
+      'pending',
+      'draft',
+    ]);
+    expect(evaluateValue(over('distinct', 'approvedAt'), missions)).toEqual([jan, feb]);
+    expect(evaluateValue(over('distinct', 'isFeatured'), missions)).toEqual([true, false]);
+    for (const row of [rows(), {}, { fanMissions: null }, rows({ title: null })])
+      expect(evaluateValue(over('distinct', 'title'), row)).toEqual([]);
+  });
+
+  test('reads through the window and condition, and over a scalar list column', () => {
+    const missions = rows(
+      { title: 'a', status: 'approved' },
+      { title: 'b', status: 'rejected' },
+      { title: 'c', status: 'approved' },
+    );
+    expect(
+      evaluateValue(
+        {
+          ...(over('distinct', 'title') as object),
+          condition: { field: 'status', operator: Operator.equals, value: 'approved' },
+        } as ValueExpression,
+        missions,
+      ),
+    ).toEqual(['a', 'c']);
+    expect(
+      evaluateValue({ field: 'tags', aggregate: { mode: 'distinct' } }, { tags: ['x', 'y', 'x'] }),
+    ).toEqual(['x', 'y']);
+  });
+
+  test('types as a list of its column, never null; named values only', () => {
+    expect(inferValueType(over('distinct', 'title'), lens)).toEqual({
+      kind: 'String',
+      isList: true,
+      nullable: false,
+    });
+    expect(inferValueType(over('distinct', 'status'), lens)).toMatchObject({
+      kind: 'Enum',
+      isList: true,
+    });
+    expect(inferValueType(over('distinct', 'approvedAt'), lens)).toMatchObject({
+      kind: 'DateTime',
+      isList: true,
+    });
+    expect(inferValueType(over('distinct', 'isFeatured'), lens)).toMatchObject({
+      kind: 'Boolean',
+      isList: true,
+    });
+    expect(inferValueType({ field: 'tags', aggregate: { mode: 'distinct' } }, lens)).toMatchObject({
+      kind: 'String',
+      isList: true,
+    });
+    for (const field of ['points', 'weight'])
+      expect(() => inferValueType(over('distinct', field), lens)).toThrow(
+        'distinct lists strings, enums, dates and booleans',
+      );
+  });
+
+  test('is a value, never a list item or a comparison', () => {
+    expect(() => inferValueType([over('distinct', 'title')], lens)).toThrow(
+      "a list's items are single values",
+    );
+    const distinctRule = {
+      ...(over('distinct', 'title') as object),
+      operator: Operator.equals,
+      value: 1,
+    } as never;
+    expect(validateRule(distinctRule).errors.map((e) => e.code)).toEqual([
+      'invalid_aggregate_mode',
     ]);
   });
 });

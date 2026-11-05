@@ -9,7 +9,7 @@ modules allowed to implement it, and every exported function must appear in this
 | Verb | Name | What it does |
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
-| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal, a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` through its window), the branch an `if` picks, a list (experimental). |
+| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal, a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` through its window), the branch an `if` picks, a list (experimental). |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
 | compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s. |
 | compile | `toWhereSql`, `toLensWhereSql` | Compile a condition, or a lens's `where`s where the lens wrote them (`root`, `relations` by path, `mapDefaults` by map and model), to a predicate in the engine's `sql.dialect`: values inline, columns from the caller's `columns` map, no joins. Equality, membership and existence inside `all` / `any`, and `any` / `all` / `none` / `empty` / `notEmpty` on a to-many relation as an `EXISTS` subquery on the caller's `tables` — or, with `toMany: 'join'`, `notEmpty` / `any` in the root's `where` on the caller's LEFT JOIN of the relation; anything else throws. |

@@ -43,7 +43,7 @@ check(rule, { age: 16 }); // "Must be 18 or older"
 - `if` / `then` / `else`
 - array validation against nested object elements
 - array aggregates: `sum` and `avg` across numeric arrays or relation lists
-- value expressions: compute a value (`count`, `sum`, `avg`, `min`, `max`, a path, if / else) from a row with `evaluateValue`
+- value expressions: compute a value (`count`, `sum`, `avg`, `min`, `max`, `distinct`, a path, if / else) from a row with `evaluateValue`
 - ordered windowing: first/last `N` with `orderBy` / `take` / `skip` (`check()`; `toPrisma()` compiles the extremal case and a `filter` alone)
 - date comparisons with timezone-aware runtime evaluation
 - relative & calendar date expressions ("last 30 days", "this month") via `within` and `ago`/`ahead`/`this`/`last`/`next`
@@ -229,7 +229,9 @@ already use. `evaluateValue(expression, row, options)` takes what `check()` take
 
 `aggregate.mode` is one of `VALUE_AGGREGATE_MODES`: `sum` (0 over no rows), `avg` (null over no
 values, as SQL's `AVG`; an aggregate rule still compares 0), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
-`min` and `max` (numbers, strings or dates, the value as stored; null over no rows). The window
+`min` and `max` (numbers, strings or dates, the value as stored; null over no rows), and `distinct`
+(strings, enums, dates or booleans: the values without repeats, first seen first, NULLs skipped;
+`[]` over no rows). The window
 runs first (filter → order → skip → take), then `condition`. An aggregate rule still compares
 `sum` / `avg` only.
 
@@ -267,7 +269,7 @@ What a consumer checks before saving one:
 | Function | Purpose |
 | --- | --- |
 | `validateValue(expr)` / `assertValidValue(expr)` | The shape, without data: each node exactly one kind, known keys, a known mode, and every condition it holds valid as `validateRule` sees it. |
-| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable). Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
+| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null). Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
 | `valueClockUnit(expr)` | `clockUnit` over every condition the expression holds: a 90-day window reads `day`. |
 | `describeValue(expr, lens)` | Its type, the dotted paths it reads (`brandReferenceRequestFanUsers.activatedAt`), its clock unit, and every issue (shape, lens gate, type) as `{ path, code, message }`, without throwing. |
 

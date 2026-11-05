@@ -1,6 +1,11 @@
 import { isRelationEntry } from '../fieldMap/entry';
 import type { Lens, LensNarrowing } from '../lens/types';
-import { AGGREGATE_MODE_CATALOG, FieldKind, ORDERED_VALUE_KINDS } from '../operatorCatalog';
+import {
+  AGGREGATE_MODE_CATALOG,
+  DISTINCT_VALUE_KINDS,
+  FieldKind,
+  ORDERED_VALUE_KINDS,
+} from '../operatorCatalog';
 import type { AggregateValue, ValueAggregateMode, ValueType } from '../types';
 import { columnKind, needLens, resolveValuePath, rowPath } from './resolveValuePath';
 import { isNumeric } from './unifyValueTypes';
@@ -55,7 +60,7 @@ const elementKind = (
 
 /** An aggregate value's type: `count` an `Int`; `sum` its column's numeric kind, never null;
  *  `avg` a `Float` (`Decimal` stays `Decimal`), null over no rows; `min` / `max` their column's
- *  kind, nullable. */
+ *  kind, nullable; `distinct` a list of its column's kind, never null (`[]` over no rows). */
 export const aggregateType = (
   lens: Lens | LensNarrowing | undefined,
   node: AggregateValue,
@@ -79,6 +84,15 @@ export const aggregateType = (
     const sumKind = mode === 'sum' || kind === FieldKind.Decimal ? kind : FieldKind.Float;
     // sum over no rows is 0; avg over none is null.
     return { kind: sumKind, isList: false, nullable: mode === 'avg' };
+  }
+  if (mode === 'distinct') {
+    if (kind === null || !DISTINCT_VALUE_KINDS.includes(kind))
+      refuse(
+        at,
+        'aggregate_kind_mismatch',
+        `distinct lists strings, enums, dates and booleans, not ${kind ?? 'untyped'} values`,
+      );
+    return { kind, isList: true, nullable: false };
   }
   if (kind === null || !ORDERED_VALUE_KINDS.includes(kind))
     refuse(

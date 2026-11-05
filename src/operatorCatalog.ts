@@ -396,19 +396,20 @@ export const WHERE_SQL_OPERATORS: readonly Operator[] = [
  *  compiles all of them. */
 export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];
 
-/** What an aggregate computes over its items, and what it gives back: a number, a count, or one
- *  of the items' own values (the least or greatest; null over no items). `comparable` modes are the
- *  ones an aggregate rule compares against a threshold on every rail; the rest are value
- *  expressions only (`evaluateValue`), evaluated in memory. */
+/** What an aggregate computes over its items, and what it gives back: a number, a count, one of
+ *  the items' own values (the least or greatest; null over no items), or the list of their
+ *  distinct values. `comparable` modes are the ones an aggregate rule compares against a threshold
+ *  on every rail; the rest are value expressions only (`evaluateValue`), evaluated in memory. */
 export const AGGREGATE_MODE_CATALOG: Record<
   ValueAggregateMode,
-  { result: 'number' | 'count' | 'element'; comparable: boolean }
+  { result: 'number' | 'count' | 'element' | 'list'; comparable: boolean }
 > = {
   sum: { result: 'number', comparable: true },
   avg: { result: 'number', comparable: true },
   count: { result: 'count', comparable: false },
   min: { result: 'element', comparable: false },
   max: { result: 'element', comparable: false },
+  distinct: { result: 'list', comparable: false },
 };
 
 /** The modes an aggregate rule compares (`sum`, `avg`). */
@@ -427,6 +428,10 @@ export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode 
 
 /** The kinds `min` / `max` order: numbers, strings and dates. */
 export const ORDERED_VALUE_KINDS: readonly FieldKind[] = ORDERABLE_KINDS;
+
+/** The kinds `distinct` lists: values that are named, not measured — strings, enums, dates and
+ *  booleans. */
+export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = ['String', 'Enum', 'DateTime', 'Boolean'];
 
 /** The comparisons an aggregate rule takes; every target compiles all of them. */
 export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;

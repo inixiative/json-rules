@@ -207,17 +207,18 @@ const finiteNumber = (raw: unknown, loc: string): number => {
   return raw;
 };
 
-/** The sum or the average of an aggregate's numbers; of nothing, 0 (the compilers coalesce to
- *  match). */
+/** The sum or the average of an aggregate's numbers. The sum of nothing is 0 (the compilers
+ *  coalesce to match); nothing has no average, so `avg` of nothing is null, as SQL's AVG is. */
 export const sumOrAverage = (
   mode: 'sum' | 'avg',
   items: unknown[],
   field: string,
   itemField: string | undefined,
-): number => {
+): number | null => {
   const numbers = aggregateValues(items, field, itemField, finiteNumber);
   const sum = numbers.reduce((total, n) => total + n, 0);
-  return mode === 'sum' || numbers.length === 0 ? sum : sum / numbers.length;
+  if (mode === 'sum') return sum;
+  return numbers.length === 0 ? null : sum / numbers.length;
 };
 
 const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {

@@ -78,6 +78,28 @@ const leaves: [string, Condition][] = [
     'aggregate between',
     rule({ field: 'nums', aggregate: { mode: 'avg' }, operator: 'between', value: [1, 4] }),
   ],
+  // FEAT-007: an average over no values is NULL; every operator's negation keeps exactly the rows
+  // the rule drops, the empty and the absent `nums` included.
+  ...['equals', 'notEquals', 'lessThan', 'lessThanEquals', 'greaterThan', 'greaterThanEquals'].map(
+    (operator): [string, Condition] => [
+      `aggregate avg ${operator}`,
+      rule({ field: 'nums', aggregate: { mode: 'avg' }, operator, value: 3 }),
+    ],
+  ),
+  [
+    'aggregate avg notBetween',
+    rule({ field: 'nums', aggregate: { mode: 'avg' }, operator: 'notBetween', value: [1, 4] }),
+  ],
+  [
+    'aggregate avg over rows a condition empties',
+    rule({
+      field: 'tags',
+      aggregate: { mode: 'avg', field: 'n' },
+      condition: { field: 't', operator: 'equals', value: 'a' },
+      operator: 'greaterThan',
+      value: 0,
+    }),
+  ],
 ];
 
 const logical: [string, Condition][] = [

@@ -3,7 +3,7 @@
 **Status**: ✅ Approved (Aron, 2026-11-05; `negate()` 2026-11-06)
 **Priority**: Medium
 **Created**: 2026-11-05
-**Target**: 4.0.0 (changes what existing rules match)
+**Target**: 3.21.0 (Aron 2026-11-06: not a major change) — built
 
 ## Problem
 
@@ -71,10 +71,10 @@ column.
 ## Migration
 
 This changes what existing rules match: any stored rule comparing `avg` with a positive operator
-stops matching rows with no values, and negated ones start matching them. Ship as a major
-(4.0.0) with a CHANGELOG entry naming the rewrite (`any: [count == 0, avg …]`). Before release,
-consumers (Zealot) should list their stored rules with `aggregate.mode: 'avg'` to see who is
-affected.
+stops matching rows with no values, and negated ones start matching them. Ships in 3.21.0 with a
+CHANGELOG entry naming the rewrite (`any: [count == 0, avg …]`). Zealot production holds no stored
+rule with `aggregate.mode: 'avg'` (read-only count over all 9 rule columns, 2026-11-05), so no
+Zealot rule changes what it matches.
 
 ## Out of scope
 

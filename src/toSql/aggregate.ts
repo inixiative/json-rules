@@ -19,15 +19,17 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
   }
 
   const subquery = buildAggregateSubquery(rule, state);
-  // An aggregate compares like a field whose value the subquery computes.
-  return buildFieldRule(rule as unknown as Rule, state, subquery);
+  // An aggregate compares like a field whose value the subquery computes; an average can be NULL.
+  return buildFieldRule(rule as unknown as Rule, state, subquery, rule.aggregate.mode === 'avg');
 };
 
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {
   const { mode, field: itemField } = rule.aggregate;
-  // check() reads the sum and the average of nothing as 0.
   if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
+  // The sum of nothing is 0, as check() reads it; the average of nothing stays NULL (FEAT-007).
+  const total = (expr: string) =>
+    mode === 'sum' ? `COALESCE(${fn}(${expr}), 0)` : `${fn}(${expr})`;
 
   const shape = ruleShape({ field: rule.field }, state.map, state.currentModel);
 
@@ -59,19 +61,19 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
         `aggregate.field is not supported for native array types. Use a JSONB column for object arrays.`,
       );
     }
-    const agg = `COALESCE(${fn}(elem), 0)`;
+    const agg = total('elem');
     return `(SELECT ${agg} FROM unnest(${field}) AS elem)`;
   }
 
   if (itemField) {
     // JSONB object array
     const extract = `(elem->>${jsonKey(itemField)})::numeric`;
-    const agg = `COALESCE(${fn}(${extract}), 0)`;
+    const agg = total(extract);
     return `(SELECT ${agg} FROM jsonb_array_elements(${field}) AS elem)`;
   }
 
   // JSONB primitive array
   const extract = `elem::numeric`;
-  const agg = `COALESCE(${fn}(${extract}), 0)`;
+  const agg = total(extract);
   return `(SELECT ${agg} FROM jsonb_array_elements_text(${field}) AS elem)`;
 };

@@ -68,7 +68,7 @@ given; Json otherwise.
 
 ### Aggregate Rules
 
-`sum` or `avg` over a stored array, compared as a scalar. The sum and the average of nothing are 0.
+`sum` or `avg` over a stored array, compared as a scalar. The sum of nothing is 0; the average of nothing is NULL, compared as a NULL column is.
 
 ```typescript
 { field: 'scores', aggregate: { mode: 'sum' }, operator: Operator.greaterThan, value: 200 }

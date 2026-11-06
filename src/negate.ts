@@ -18,6 +18,24 @@ export type Settle = (leaf: Node) => Node | null;
 
 const absent = (field: unknown): Condition => ({ field, operator: 'notExists' }) as Condition;
 
+const WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'];
+
+// An average over no values is NULL, as a field with no value is: the array rule over the same
+// rows and window that finds no item with a value — the aggregate's `notExists`.
+const noValues = (leaf: Node): Condition => {
+  const itemField = (leaf.aggregate as { field?: string }).field;
+  const hasValue = { field: itemField ?? '$', operator: 'exists' } as Condition;
+  return {
+    field: leaf.field,
+    arrayOperator: ArrayOperator.none,
+    ...Object.fromEntries(
+      WINDOW_KEYS.filter((key) => leaf[key] !== undefined).map((key) => [key, leaf[key]]),
+    ),
+    condition:
+      leaf.condition === undefined ? hasValue : allOf([leaf.condition as Condition, hasValue]),
+  } as Condition;
+};
+
 const negateLeaf = (node: Node, settle: Settle): Condition => {
   const leaf = settle(node);
   // Nothing to compare against: a positive comparison is false everywhere, so its complement
@@ -31,7 +49,11 @@ const negateLeaf = (node: Node, settle: Settle): Condition => {
   if ('aggregate' in leaf) {
     const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
     if (flip) return { ...leaf, operator: flip } as Condition;
-    return { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) } as Condition;
+    const opposite = { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) };
+    // A sum is never NULL; an average over no values is, and the opposite comparison is false there.
+    return (leaf.aggregate as { mode?: unknown }).mode === 'avg'
+      ? anyOf([opposite as Condition, noValues(leaf)])
+      : (opposite as Condition);
   }
   if (typeof leaf.dateOperator === 'string') {
     const flip = own(COMPLEMENT_DATE_OPERATORS, leaf.dateOperator);

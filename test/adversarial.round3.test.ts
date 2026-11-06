@@ -119,9 +119,9 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
   });
 });
 
-// Bug #3: aggregate avg of zero-matched rows should return 0, matching sum.
-describe('Bug #3 — aggregate avg matches sum behavior on empty matches', () => {
-  test('avg with no matched rows returns 0 (not an error)', () => {
+// Bug #3, revised by FEAT-007: the average of zero matched rows is NULL, not 0 (sum stays 0).
+describe('Bug #3 — aggregate avg over no matched rows (FEAT-007)', () => {
+  test('avg with no matched rows is NULL: a positive comparison fails, a negated one holds', () => {
     const rule = {
       field: 'orders',
       aggregate: { mode: 'avg' as const, field: 'total' },
@@ -130,8 +130,9 @@ describe('Bug #3 — aggregate avg matches sum behavior on empty matches', () =>
       value: 0,
     };
     const data = { orders: [{ total: 50, status: 'pending' }] };
-    // No completed orders; avg should be 0; 0 >= 0 is true
-    expect(check(rule, data)).toBe(true);
+    // No completed orders: no average, so NULL >= 0 fails and NULL != 0 holds.
+    expect(check(rule, data)).not.toBe(true);
+    expect(check({ ...rule, operator: Operator.notEquals }, data)).toBe(true);
   });
 
   test('sum with no matched rows already returns 0', () => {

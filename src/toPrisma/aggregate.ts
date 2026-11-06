@@ -72,10 +72,12 @@ const buildAggregateStep = (
   // matches nothing.
   const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>);
   if (leaf === null || hasNoOperand(leaf as unknown as Rule, leaf.value)) return matchNothing();
-  // A parent with no matching children has the empty aggregate (0) and no group: when the
-  // comparison holds for it, select the parents outside the groups where it fails.
+  // A parent with no matching children has no group, and the empty aggregate: a sum of 0, an
+  // average of NULL. When the comparison holds for it, select the parents outside the groups
+  // where it fails.
+  const empty = rule.aggregate.mode === 'sum' ? 0 : null;
   const holdsEmpty =
-    checkField(leaf as unknown as Rule, [{}], undefined, {}, { value: 0 }) === true;
+    checkField(leaf as unknown as Rule, [{}], undefined, {}, { value: empty }) === true;
   const target = (holdsEmpty ? negate(leaf as Condition) : leaf) as unknown as Rule;
   const filter = comparisonFilter(target, options);
   const aggregate = { [rule.aggregate.mode === 'sum' ? '_sum' : '_avg']: filter };

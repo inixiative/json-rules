@@ -539,7 +539,7 @@ describe('toSql() aggregate rules', () => {
       value: 80,
     });
     expect(sql).toBe(
-      `(SELECT COALESCE(AVG(elem::numeric), 0) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) >= $1`,
+      `(SELECT AVG(elem::numeric) FROM jsonb_array_elements_text((CASE WHEN jsonb_typeof("scores") = 'array' THEN "scores" END)) AS elem) >= $1`,
     );
     expect(params).toEqual([80]);
   });
@@ -688,10 +688,11 @@ describe('toPrisma() aggregate rules', () => {
       },
       { map: orderMap, model: 'User' },
     );
-    // An empty avg is 0, which is <= 500: select the parents outside the groups above it.
+    // An empty avg is NULL, which <= 500 doesn't hold for: select the parents in the groups at or
+    // below it.
     const step = result.steps[0] as GroupByStep;
-    expect(step.args.having).toEqual({ total: { _avg: { gt: 500 } } });
-    expect(getWhere(result)).toEqual({ NOT: { id: { in: { __step: 0 } } } });
+    expect(step.args.having).toEqual({ total: { _avg: { lte: 500 } } });
+    expect(getWhere(result)).toEqual({ id: { in: { __step: 0 } } });
   });
 
   it('between maps to gte/lte in having', () => {

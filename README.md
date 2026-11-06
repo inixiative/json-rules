@@ -207,8 +207,12 @@ Computes `sum` or `avg` of an array and compares the result to a value.
 }
 ```
 
-Empty-array semantics: `sum([]) = 0` and `avg([]) = 0`. A NULL or absent array is empty, and
-NULL items are skipped, as SQL's `SUM` / `AVG` skip them.
+Empty-array semantics: `sum([]) = 0`, and `avg([])` is NULL, as SQL's `AVG` is: nothing has no
+average. An average over no values is compared as a NULL column is — a positive operator
+(`lessThan`, `equals`, `between`, …) doesn't hold, a negated one (`notEquals`, `notBetween`) does —
+and `negate()` adds the "no values" arm a field rule's `notExists` stands for. To count no values as
+low, say so: `any: [count == 0, avg < 3]`. A NULL or absent array is empty, and NULL items are
+skipped, as SQL's `SUM` / `AVG` skip them.
 
 ### Value Expressions
 
@@ -228,7 +232,7 @@ already use. `evaluateValue(expression, row, options)` takes what `check()` take
 | `{ list: [item, …], distinct? }` *(experimental)* | the same list; `distinct: true` keeps the first of equal items |
 
 `aggregate.mode` is one of `VALUE_AGGREGATE_MODES`: `sum` (0 over no rows), `avg` (null over no
-values, as SQL's `AVG`; an aggregate rule still compares 0), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
+values, as SQL's `AVG`, and in an aggregate rule), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
 `min` and `max` (numbers or dates, the value as stored; null over no rows), and `distinct`
 (strings, enums, dates, booleans or numbers: the values without repeats, first seen first, NULLs
 skipped; `[]` over no rows). The window

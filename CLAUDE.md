@@ -59,8 +59,10 @@ recursion — their descent IS their semantics — and are guarded by differenti
 - **`distinct`** lists strings, enums, dates, booleans and numbers; it skips NULLs as every
   aggregate mode does, and `[]` is no rows. `caseInsensitive` folds strings, defaulting to the
   engine's `string.caseInsensitive`. It is a value, never a comparison.
-- **`avg` over no values is `null` in a value.** An aggregate rule comparing it as 0 is the wart;
-  `tickets/FEAT-007` (approved 2026-11-05) makes it NULL on every rail as a major release.
+- **`avg` over no values is NULL, in a value and in a rule, on every rail** (`tickets/FEAT-007`,
+  3.21.0). A positive comparison fails on it, a negated one holds, and `negate()` adds a
+  "no values" arm to opposite-operator flips — the aggregate's `notExists`. Shipped as a minor:
+  Aron ruled it not a major change (2026-11-06).
 
 ## Lens rulings (Aron, 2026-10-08)
 

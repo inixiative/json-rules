@@ -32,15 +32,21 @@ import type { BuilderState } from './types';
 import { dateConfigOf, type ResolvedRhs, resolveSource } from './valueSource';
 
 /** A field rule as SQL; `lhs` compiles a computed left-hand side (an aggregate) in the column's place. */
-export const buildFieldRule = (rule: Rule, state: BuilderState, lhs?: string): string => {
+export const buildFieldRule = (
+  rule: Rule,
+  state: BuilderState,
+  lhs?: string,
+  lhsNullable = false,
+): string => {
   const fuzzy = fuzzyNotCompiled(rule);
   if (fuzzy) throw fuzzy;
   const resolved: FieldSql =
     lhs === undefined ? resolveField(rule.field, state) : { sql: lhs, shape: 'scalar' };
   // A to-one relation as a field exists or not: its key is not a value to compare.
   if (resolved.shape === 'relation' && !isExistenceTest(rule)) throw relationNotValue(rule.field);
-  // A computed left-hand side is never NULL (an aggregate coalesces): no NULL arms.
-  const nullable = lhs === undefined;
+  // A column can be NULL; a computed left-hand side only when its computation says so (a sum
+  // coalesces to 0, an average over no values is NULL).
+  const nullable = lhs === undefined || lhsNullable;
   // A column compared with a column: an enum on either side compares exactly, natively, or not at
   // all.
   const columnPath =

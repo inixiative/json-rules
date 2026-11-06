@@ -590,14 +590,38 @@ const MATRIX: Record<string, Case> = {
     rule: { field: 'org.settings.nums', arrayOperator: 'empty' },
     ids: [2, 3, 4, 5],
   },
-  'an aggregate under an absent relation is 0': {
+  'an average under an absent relation is NULL: a positive comparison fails there': {
     rule: {
       field: 'org.users',
       aggregate: { mode: 'avg', field: 'age' },
       operator: 'lessThan',
       value: 20,
     },
-    ids: [2, 3, 4, 5],
+    ids: [3],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average under an absent relation is NULL: a negated comparison holds': {
+    rule: {
+      field: 'org.users',
+      aggregate: { mode: 'avg', field: 'age' },
+      operator: 'notEquals',
+      value: 20,
+    },
+    ids: [1, 2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'the else of an average holds where it has no values (negate adds the no-values arm)': {
+    rule: {
+      if: {
+        field: 'org.users',
+        aggregate: { mode: 'avg', field: 'age' },
+        operator: 'lessThan',
+        value: 20,
+      },
+      then: false,
+      else: { field: 'id', operator: 'exists' },
+    },
+    ids: [1, 2, 4, 5],
     refuses: { sql: RELATION_AGGREGATES },
   },
   'the top of a window is its largest value, NULLs last': {
@@ -637,9 +661,14 @@ const MATRIX: Record<string, Case> = {
     ids: [1],
     refuses: { prisma: 'require aggregate.field' },
   },
-  'Json array avg of nothing is 0': {
+  'Json array avg of nothing is NULL, not 0': {
     rule: { field: 'meta.list', aggregate: { mode: 'avg' }, operator: 'equals', value: 0 },
-    ids: [2, 3, 4, 5],
+    ids: [],
+    refuses: { prisma: 'require aggregate.field' },
+  },
+  'Json array avg of nothing is NULL: notEquals 0 keeps it': {
+    rule: { field: 'meta.list', aggregate: { mode: 'avg' }, operator: 'notEquals', value: 0 },
+    ids: [1, 2, 3, 4, 5],
     refuses: { prisma: 'require aggregate.field' },
   },
 };

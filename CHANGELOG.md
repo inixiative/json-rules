@@ -1,3 +1,19 @@
+## 3.21.0 — avg over no values is NULL (FEAT-007)
+
+- **An aggregate rule's `avg` over no values is NULL on every rail**, as SQL's `AVG` and the value
+  expression's `avg` already were; `sum` stays 0. A positive comparison (`lessThan`, `equals`,
+  `between`, …) no longer matches a row with no values; a negated one (`notEquals`, `notBetween`)
+  does, under the ruling that negation keeps NULL rows. `check()` returns null from `sumOrAverage`
+  for it, `toSql` drops the `COALESCE(AVG(…), 0)` and keeps NULL arms on a nullable aggregate, and
+  `toPrisma` computes its empty-group case against NULL. To count no values as low, write it:
+  `any: [count == 0, avg < 3]`.
+- **`negate()` over `avg`**: an opposite-operator flip (`lessThan` ↔ `greaterThanEquals`,
+  `greaterThan` ↔ `lessThanEquals`) gains a "no values" arm — the array rule over the same rows and
+  window with no item holding a value — as a field rule's negation gains `notExists`. Complement
+  pairs (`equals` / `notEquals`, `between` / `notBetween`) stay a plain flip.
+- Differential tests (check vs PGlite SQL vs Prisma) cover a positive and a negated comparison over
+  no values, and an `if` / `else` whose `else` reads the negation.
+
 ## 3.20.0 — coerceValue
 
 - **`coerceValue(expression, lens)`**: stamps each `distinct` / `min` / `max` over a DateTime column

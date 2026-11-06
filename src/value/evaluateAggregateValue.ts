@@ -70,12 +70,8 @@ export const evaluateAggregateValue = (
         ? items.length
         : aggregateValues(items, node.field, itemField, () => true).length;
     case 'sum':
-      return sumOrAverage(mode, items, node.field, itemField);
     case 'avg':
-      // No values have no average: null, as SQL's AVG over none.
-      return aggregateValues(items, node.field, itemField, () => true).length === 0
-        ? null
-        : sumOrAverage(mode, items, node.field, itemField);
+      return sumOrAverage(mode, items, node.field, itemField);
     case 'distinct':
       return distinctValues(
         aggregateValues(items, node.field, itemField, coerce),

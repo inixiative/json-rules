@@ -1,6 +1,6 @@
 # FEAT-007: An aggregate rule's `avg` over no values is NULL, not 0
 
-**Status**: ✅ Approved (Aron, 2026-11-05) — `negate()` section still proposed
+**Status**: ✅ Approved (Aron, 2026-11-05; `negate()` 2026-11-06)
 **Priority**: Medium
 **Created**: 2026-11-05
 **Target**: 4.0.0 (changes what existing rules match)
@@ -81,7 +81,7 @@ affected.
 `sum` (0 is correct), the value expression's `avg` (already null), and `min` / `max` (value
 expressions only, already null).
 
-## `negate()` over `avg` (proposed 2026-11-05 — not yet agreed)
+## `negate()` over `avg` (decided, Aron 2026-11-06)
 
 `negate()` must return the condition that holds exactly where the rule doesn't. Today it flips an
 aggregate's operator (`lessThan` → `greaterThanEquals`, `equals` → `notEquals`) with no NULL arm,
@@ -89,7 +89,8 @@ because `avg` is never NULL. Under this spec it can be, and then the opposite-op
 `avg lessThan 5` and `avg greaterThanEquals 5` are both false for a row with no values, so that row
 satisfies neither the rule nor its "negation".
 
-Proposal: negate an `avg` comparison the way `negateLeaf` already negates a field rule.
+Decision: negate an `avg` comparison the way `negateLeaf` already negates a field rule, which is
+what the standing ruling (negation keeps NULL rows) requires.
 
 - **Complement pairs stay a plain flip.** `equals` ↔ `notEquals` and `between` ↔ `notBetween`
   already split NULL correctly (the negated operator keeps it).

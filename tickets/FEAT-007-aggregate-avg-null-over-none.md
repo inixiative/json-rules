@@ -95,10 +95,16 @@ what the standing ruling (negation keeps NULL rows) requires.
 - **Complement pairs stay a plain flip.** `equals` ↔ `notEquals` and `between` ↔ `notBetween`
   already split NULL correctly (the negated operator keeps it).
 - **Opposite pairs gain a "no values" arm.** `lessThan` / `greaterThanEquals` and
-  `greaterThan` / `lessThanEquals` become `any: [opposite, noValues]`. Here `noValues` is the array
-  rule over the same rows and window that finds no item with a value:
-  `{ field, arrayOperator: 'none', filter, orderBy, take, skip, condition: all [condition, aggregate.field exists] }`.
-  It is the field rule's `notExists` arm, spelled for a relation.
+  `greaterThan` / `lessThanEquals` become `any: [opposite, noValues]`. Here `noValues` is the
+  aggregate's own `notExists`: the same rule (rows, window, condition) with `operator: 'notExists'`
+  and no operand — exactly the field rule's `notExists` arm, with the average in the column's place.
+  (Aron 2026-11-06: "Okay, yes, make this consistent. Seems good." — replacing the array-`none`
+  spelling first drafted here, which `check()` refused on a primitive list holding only NULLs.)
+- **Aggregates take `exists` / `notExists`.** `avg exists` holds where at least one item it reads has
+  a value; `sum` always exists (0 over nothing). Every rail compiles both.
+- **Nothing to compare against settles as on a field.** A negated operator with no operand
+  (`notBetween [null, 3]`, a missing bind) holds where the average has no number, and its negation
+  is `avg exists`; a positive one holds nowhere.
 - **`sum` is unchanged.** It is never NULL.
 
 | Rule | its negation | a (avg 3) | c (no values) |

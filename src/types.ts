@@ -252,13 +252,16 @@ type AggregateSingleOperator =
 
 type AggregateRangeOperator = OperatorValues['between'] | OperatorValues['notBetween'];
 
+type AggregatePresenceOperator = OperatorValues['exists'] | OperatorValues['notExists'];
+
 export type StrictAggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   | (AggregateRuleBase<TRuleValue, TDateValue> & {
       operator: AggregateSingleOperator;
     } & ValueSource<number>)
   | (AggregateRuleBase<TRuleValue, TDateValue> & {
       operator: AggregateRangeOperator;
-    } & ValueSource<[number, number]>);
+    } & ValueSource<[number, number]>)
+  | (AggregateRuleBase<TRuleValue, TDateValue> & { operator: AggregatePresenceOperator });
 
 // --- Windowing selector (v2.6.0) ---
 // Ordered selection on array/aggregate rules. Pipeline: order → skip → take.

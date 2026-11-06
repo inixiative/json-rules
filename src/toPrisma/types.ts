@@ -14,7 +14,7 @@ export type GroupByStep = {
   args: {
     by: string[];
     where: Record<string, unknown>;
-    having: Record<string, unknown>;
+    having?: Record<string, unknown>;
   };
   extract: string;
 };

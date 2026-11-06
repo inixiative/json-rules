@@ -54,7 +54,7 @@ export const settleLeaf =
       leaf.value !== undefined ||
       (typeof leaf.path === 'string' && leaf.path !== '') ||
       typeof leaf.bind === 'string';
-    if (!comparison || 'aggregate' in leaf || !sourced) return leaf;
+    if (!comparison || !sourced) return leaf;
     // A column compared with a column stays one: its complement compiles to a field reference.
     if (typeof leaf.operator === 'string' && typeof leaf.path === 'string' && leaf.path !== '')
       return leaf;
@@ -66,6 +66,7 @@ export const settleLeaf =
       options?.model,
     );
     if (
+      !('aggregate' in leaf) &&
       (shape === 'json' || shape === 'json-path') &&
       typeof leaf.operator === 'string' &&
       ORDERED_OPERATORS.includes(leaf.operator)

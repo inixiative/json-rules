@@ -210,7 +210,8 @@ Computes `sum` or `avg` of an array and compares the result to a value.
 Empty-array semantics: `sum([]) = 0`, and `avg([])` is NULL, as SQL's `AVG` is: nothing has no
 average. An average over no values is compared as a NULL column is — a positive operator
 (`lessThan`, `equals`, `between`, …) doesn't hold, a negated one (`notEquals`, `notBetween`) does —
-and `negate()` adds the "no values" arm a field rule's `notExists` stands for. To count no values as
+and `negate()` adds the "no values" arm, the aggregate's own `notExists`, as it adds `notExists`
+to a field's. Ask for it directly with `operator: 'exists'` / `'notExists'`; a sum always exists. To count no values as
 low, say so: `any: [count == 0, avg < 3]`. A NULL or absent array is empty, and NULL items are
 skipped, as SQL's `SUM` / `AVG` skip them.
 
@@ -1182,7 +1183,7 @@ getOperatorsForKind('Int', 'toPrisma');
 // { field: ['equals', 'notEquals', 'lessThan', …], date: [] } — operators that kind takes on that target
 
 getArrayOperators('toSql'); // ['empty', 'notEmpty']
-getAggregateOperators(); // ['equals', 'notEquals', 'lessThan', …, 'between', 'notBetween']
+getAggregateOperators(); // ['equals', 'notEquals', 'lessThan', …, 'notBetween', 'exists', 'notExists']
 
 getValueShape('between', 'field'); // 'range'
 getValueShape('between', 'date'); // 'dateRange'
@@ -1192,7 +1193,7 @@ getValueShape('between', 'date'); // 'dateRange'
 | --- | --- |
 | `getOperatorsForKind(kind, target?)` | `{ field, date }`: the field and date operators a `FieldKind` takes, narrowed to one target when given. |
 | `getArrayOperators(target?)` | The array operators, narrowed to one target when given. |
-| `getAggregateOperators()` | The comparisons an aggregate rule takes. Every target compiles all of them. |
+| `getAggregateOperators()` | What an aggregate rule asks of its number: the comparisons, and `exists` / `notExists` (an average over no values has none). Every target compiles all of them. |
 | `getValueShape(operator, family)` | The operand an operator takes (`'scalar'`, `'range'`, `'dayList'`, …). `family` is `'field'`, `'date'` or `'array'`, since `between` is both a field and a date operator. Throws on an operator the family doesn't have. |
 | `getConditionShapeKeys(shape)` | `{ required, optional }`: the keys a node of a `ConditionShape` (`'all'`, `'any'`, `'if'`, `'field'`, `'aggregate'`, `'array'`, `'date'`) must have and the keys it may. A literal `true` / `false` is a condition too. |
 

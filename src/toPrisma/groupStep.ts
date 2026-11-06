@@ -85,13 +85,13 @@ export const groupMembership = (
   state: PrismaBuildState,
   path: GroupPath,
   where: PrismaWhere,
-  having: Record<string, unknown>,
+  having: Record<string, unknown> | undefined,
   complement: boolean,
 ): PrismaWhere => {
   const step: GroupByStep = {
     operation: 'groupBy',
     model: path.target,
-    args: { by: [path.targetKey], where, having },
+    args: { by: [path.targetKey], where, ...(having && { having }) },
     extract: path.targetKey,
   };
   const ref = emit({ __step: state.steps.length });

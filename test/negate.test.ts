@@ -11,6 +11,7 @@ const rows = [
   { n: 10, s: '', d: '2026-10-07T00:00:00Z', tags: [{ t: 'a' }], nums: [] },
   { n: null, s: null, d: null, tags: [], nums: [5] },
   { tags: [{ t: 'c' }], nums: [3, 4] },
+  { n: 1, tags: [{ t: 'a', n: null }], nums: [null] },
 ];
 const rule = (r: object): Condition => r as never;
 const now = '2026-10-06T00:00:00Z';
@@ -99,6 +100,24 @@ const leaves: [string, Condition][] = [
       operator: 'greaterThan',
       value: 0,
     }),
+  ],
+  ['aggregate avg exists', rule({ field: 'nums', aggregate: { mode: 'avg' }, operator: 'exists' })],
+  [
+    'aggregate avg notExists',
+    rule({ field: 'nums', aggregate: { mode: 'avg' }, operator: 'notExists' }),
+  ],
+  ['aggregate sum exists', rule({ field: 'nums', aggregate: { mode: 'sum' }, operator: 'exists' })],
+  [
+    'aggregate avg negated with nothing to compare against',
+    rule({ field: 'nums', aggregate: { mode: 'avg' }, operator: 'notBetween', value: [null, 3] }),
+  ],
+  [
+    'aggregate avg with nothing to compare against',
+    rule({ field: 'nums', aggregate: { mode: 'avg' }, operator: 'between', value: [null, 3] }),
+  ],
+  [
+    'aggregate sum negated with nothing to compare against',
+    rule({ field: 'nums', aggregate: { mode: 'sum' }, operator: 'notBetween', value: [null, 3] }),
   ],
 ];
 

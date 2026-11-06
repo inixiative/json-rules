@@ -392,9 +392,13 @@ export const WHERE_SQL_OPERATORS: readonly Operator[] = [
   Operator.exists,
   Operator.notExists,
 ];
-/** The threshold comparisons an aggregate takes — equality, order and ranges; every target
- *  compiles all of them. */
-export const AGGREGATE_OPERATORS = withShape('scalar', 'ordered', 'range') as readonly Operator[];
+/** What an aggregate rule asks of the number it computes — equality, order, ranges, and whether
+ *  there is one (an average over no values is NULL); every target compiles all of them. */
+export const AGGREGATE_OPERATORS = [
+  ...withShape('scalar', 'ordered', 'range'),
+  Operator.exists,
+  Operator.notExists,
+] as readonly Operator[];
 
 /** What an aggregate computes over its items, and what it gives back: a number, a count, one of
  *  the items' own values (the least or greatest; null over no items), or the list of their

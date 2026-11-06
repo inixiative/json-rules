@@ -8,9 +8,14 @@
   `toPrisma` computes its empty-group case against NULL. To count no values as low, write it:
   `any: [count == 0, avg < 3]`.
 - **`negate()` over `avg`**: an opposite-operator flip (`lessThan` ↔ `greaterThanEquals`,
-  `greaterThan` ↔ `lessThanEquals`) gains a "no values" arm — the array rule over the same rows and
-  window with no item holding a value — as a field rule's negation gains `notExists`. Complement
-  pairs (`equals` / `notEquals`, `between` / `notBetween`) stay a plain flip.
+  `greaterThan` ↔ `lessThanEquals`) gains a "no values" arm — the same aggregate with
+  `notExists` — as a field rule's negation gains `notExists`. Complement pairs (`equals` /
+  `notEquals`, `between` / `notBetween`) stay a plain flip.
+- **Aggregate rules take `exists` / `notExists`** on every rail: `avg exists` where an item it reads
+  has a value, `sum` always. `getAggregateOperators()` lists them.
+- **An aggregate with nothing to compare against** (`notBetween [null, 3]`, a missing bind) settles
+  as a field does: a negated operator holds where the average has no number, a positive one nowhere.
+  `negate()` and `toPrisma` used to leave it unsettled, matching nothing.
 - Differential tests (check vs PGlite SQL vs Prisma) cover a positive and a negated comparison over
   no values, and an `if` / `else` whose `else` reads the negation.
 

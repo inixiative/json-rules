@@ -45,6 +45,7 @@ import {
   isOperatorSupportedForTarget,
   isRelativeUnit,
   isValueAggregateMode,
+  NO_VALUE_OPERATORS,
   OFFSET_OPERATORS,
   PERIOD_UNITS,
   RANGE_OPERATORS,
@@ -759,6 +760,10 @@ const validateAggregateRule = (
       'invalid_aggregate_operator',
       `Aggregate rules only support: ${AGGREGATE_OPERATORS.join(', ')}`,
     );
+    return;
+  }
+  if (NO_VALUE_OPERATORS.includes(rule.operator as string)) {
+    forbidValueAndPath(rule, path, context);
     return;
   }
 

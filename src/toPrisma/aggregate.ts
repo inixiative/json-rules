@@ -4,14 +4,22 @@ import { isJsonEntry } from '../fieldMap/entry';
 import type { FieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
-import { AGGREGATE_MODES, NEGATED_RANGE_OPERATORS } from '../operatorCatalog';
+import { Operator } from '../operator';
+import {
+  AGGREGATE_MODES,
+  type FieldKind,
+  NEGATED_OPERATORS,
+  NEGATED_RANGE_OPERATORS,
+  NO_VALUE_OPERATORS,
+  NUMERIC_KINDS,
+} from '../operatorCatalog';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasWindow, windowRewrite } from '../window';
 import { nestedScope } from './columnRef';
 import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
-import { matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
+import { andWhere, matchAll, matchNothing, notLeaf, orWhere, overFetch } from './logical';
 import { buildCondition } from './recurse';
 import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
 import { settleLeaf } from './valueSource';
@@ -63,37 +71,62 @@ const buildAggregateStep = (
   const item = fieldOf(options.map, path.target, itemField);
   if (!item)
     throw new Error(`aggregate.field '${itemField}' does not exist on model '${path.target}'.`);
-  if (item.kind !== 'scalar' || isJsonEntry(item))
+  if (
+    item.kind !== 'scalar' ||
+    isJsonEntry(item) ||
+    !NUMERIC_KINDS.includes(item.type as FieldKind)
+  )
     throw new Error(
-      `aggregate.field '${itemField}' on model '${path.target}' must be a numeric scalar, got ${item.kind === 'scalar' ? 'Json' : `'${item.kind}'`}.`,
+      `aggregate.field '${itemField}' on model '${path.target}' must be a numeric scalar, got '${item.kind === 'scalar' ? item.type : item.kind}'.`,
     );
 
   // The comparison as check() makes it, with its operand read; nothing to compare against
   // matches nothing.
+  // Built only where a group step reads it: a step the condition pushes runs whether read or not.
+  const where = () =>
+    rule.condition
+      ? buildCondition(
+          rule.condition,
+          nestedScope({ ...options, model: path.target }, options, true),
+          state,
+        )
+      : matchAll();
+  if (NO_VALUE_OPERATORS.includes(rule.operator))
+    return presence(rule, rule.operator === Operator.exists, where, path, options, state);
+
   const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>);
-  if (leaf === null || hasNoOperand(leaf as unknown as Rule, leaf.value)) return matchNothing();
-  // A parent with no matching children has no group, and the empty aggregate: a sum of 0, an
-  // average of NULL. When the comparison holds for it, select the parents outside the groups
-  // where it fails.
+  // Nothing to compare against: a negation holds where the aggregate has no number, as it does on
+  // a NULL field; a positive comparison holds nowhere.
+  if (leaf === null || hasNoOperand(leaf as unknown as Rule, leaf.value))
+    return NEGATED_OPERATORS.includes(rule.operator)
+      ? presence(rule, false, where, path, options, state)
+      : matchNothing();
   const empty = rule.aggregate.mode === 'sum' ? 0 : null;
   const holdsEmpty =
     checkField(leaf as unknown as Rule, [{}], undefined, {}, { value: empty }) === true;
   const target = (holdsEmpty ? negate(leaf as Condition) : leaf) as unknown as Rule;
   const filter = comparisonFilter(target, options);
   const aggregate = { [rule.aggregate.mode === 'sum' ? '_sum' : '_avg']: filter };
-  // Prisma can't negate a two-sided bound inside a field filter; NOT the having clause instead.
   const having = NEGATED_RANGE_OPERATORS.includes(target.operator)
     ? notLeaf({ [itemField]: aggregate })
     : { [itemField]: aggregate };
 
-  const where = rule.condition
-    ? buildCondition(
-        rule.condition,
-        nestedScope({ ...options, model: path.target }, options, true),
-        state,
-      )
-    : matchAll();
-  const membership = groupMembership(state, path, where, having, holdsEmpty);
-  // check() reads the array under an absent to-one relation as empty.
+  const membership = groupMembership(state, path, where(), having, holdsEmpty);
   return holdsEmpty ? orWhere([membership, ...hopArms(rule.field, options)]) : membership;
+};
+
+/** Whether the aggregate has a number: a sum always does (0 over nothing); an average where at
+ *  least one item it reads has a value. */
+const presence = (
+  rule: AggregateRule,
+  exists: boolean,
+  where: () => PrismaWhere,
+  path: ReturnType<typeof groupPath>,
+  options: ToPrismaOptions & { map: FieldMap; model: string },
+  state: PrismaBuildState,
+): PrismaWhere => {
+  if (rule.aggregate.mode === 'sum') return exists ? matchAll() : matchNothing();
+  const valued = andWhere([where(), { [rule.aggregate.field as string]: { not: null } }]);
+  const membership = groupMembership(state, path, valued, undefined, !exists);
+  return exists ? membership : orWhere([membership, ...hopArms(rule.field, options)]);
 };

@@ -610,7 +610,7 @@ const MATRIX: Record<string, Case> = {
     ids: [1, 2, 3, 4, 5],
     refuses: { sql: RELATION_AGGREGATES },
   },
-  'the else of an average holds where it has no values (negate adds the no-values arm)': {
+  'the else of an average holds where it has no values (negate adds the average notExists arm)': {
     rule: {
       if: {
         field: 'org.users',
@@ -656,6 +656,99 @@ const MATRIX: Record<string, Case> = {
     ids: [1],
     refuses: { sql: RELATION_AGGREGATES },
   },
+  'an average exists where an item it reads has a value': {
+    rule: { field: 'posts', aggregate: { mode: 'avg', field: 'views' }, operator: 'exists' },
+    ids: [1],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average notExists where no item it reads has a value (3 has one post, with no views)': {
+    rule: { field: 'posts', aggregate: { mode: 'avg', field: 'views' }, operator: 'notExists' },
+    ids: [2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average under an absent relation does not exist': {
+    rule: { field: 'org.users', aggregate: { mode: 'avg', field: 'age' }, operator: 'notExists' },
+    ids: [2, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average exists over the rows its condition keeps': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      condition: { field: 'title', operator: 'exists' },
+      operator: 'exists',
+    },
+    ids: [1],
+    refuses: { sql: 'condition filtering' },
+  },
+  'a sum always exists': {
+    rule: { field: 'posts', aggregate: { mode: 'sum', field: 'views' }, operator: 'exists' },
+    ids: [1, 2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'a sum never notExists': {
+    rule: { field: 'posts', aggregate: { mode: 'sum', field: 'views' }, operator: 'notExists' },
+    ids: [],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average notEquals a missing bind is the is-null sentinel, as on a field': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'notEquals',
+      bind: 'q',
+      bindOptional: true,
+    },
+    ids: [1],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average negated with nothing to compare against holds where it has no number': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'notBetween',
+      bind: 'q',
+      bindOptional: true,
+    },
+    ids: [2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average compared with nothing holds nowhere': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'greaterThan',
+      bind: 'q',
+      bindOptional: true,
+    },
+    ids: [],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'the else of a negated average with nothing to compare against holds where it has a number': {
+    rule: {
+      if: {
+        field: 'posts',
+        aggregate: { mode: 'avg', field: 'views' },
+        operator: 'notBetween',
+        bind: 'q',
+        bindOptional: true,
+      },
+      then: false,
+      else: { field: 'id', operator: 'exists' },
+    },
+    ids: [1],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'a Json array average exists': {
+    rule: { field: 'meta.list', aggregate: { mode: 'avg' }, operator: 'exists' },
+    ids: [1],
+    refuses: { prisma: 'require aggregate.field' },
+  },
+  'a Json array average notExists': {
+    rule: { field: 'meta.list', aggregate: { mode: 'avg' }, operator: 'notExists' },
+    ids: [2, 3, 4, 5],
+    refuses: { prisma: 'require aggregate.field' },
+  },
   'Json array sum': {
     rule: { field: 'meta.list', aggregate: { mode: 'sum' }, operator: 'greaterThan', value: 1 },
     ids: [1],
@@ -672,6 +765,14 @@ const MATRIX: Record<string, Case> = {
     refuses: { prisma: 'require aggregate.field' },
   },
 };
+
+test('an average of a text field: check and Prisma both refuse it', async () => {
+  const result = await rails.run(
+    rule({ field: 'posts', aggregate: { mode: 'avg', field: 'title' }, operator: 'exists' }),
+  );
+  expect(result.check).toContain('must be a finite number');
+  expect(result.prisma).toContain('must be a numeric scalar');
+});
 
 describe('the rule matrix', () => {
   for (const [name, { rule: r, ids, options, refuses = {} }] of Object.entries(MATRIX))

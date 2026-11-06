@@ -23,6 +23,17 @@ describe('every target compiles every aggregate comparison', () => {
       expect(validateRule(aggRule(Operator.notBetween, [0, 100]), { target }).ok).toBe(true);
     });
 
+  for (const target of ['check', 'toSql', 'toPrisma'] as const)
+    test(`${target}: exists and notExists take no value`, () => {
+      for (const operator of [Operator.exists, Operator.notExists])
+        expect(validateRule(aggRule(operator, undefined), { target }).ok).toBe(true);
+    });
+
+  test('exists takes no value, as on a field', () => {
+    const result = validateRule(aggRule(Operator.exists, 3), { target: 'check' });
+    expect(result.errors[0].code).toBe('unexpected_value');
+  });
+
   test('a non-aggregate operator is rejected', () => {
     const result = validateRule(aggRule(Operator.contains, 'x'), { target: 'toPrisma' });
     expect(result.errors[0].code).toBe('invalid_aggregate_operator');

@@ -20,21 +20,19 @@ const absent = (field: unknown): Condition => ({ field, operator: 'notExists' })
 
 const WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'];
 
-// An average over no values is NULL, as a field with no value is: the array rule over the same
-// rows and window that finds no item with a value — the aggregate's `notExists`.
-const noValues = (leaf: Node): Condition => {
-  const itemField = (leaf.aggregate as { field?: string }).field;
-  const hasValue = { field: itemField ?? '$', operator: 'exists' } as Condition;
-  return {
+// Whether an aggregate has a number, over the same rows and window: an average over no values is
+// NULL, as a field with no value is.
+const presence = (leaf: Node, operator: 'exists' | 'notExists'): Condition =>
+  ({
     field: leaf.field,
-    arrayOperator: ArrayOperator.none,
+    aggregate: leaf.aggregate,
     ...Object.fromEntries(
-      WINDOW_KEYS.filter((key) => leaf[key] !== undefined).map((key) => [key, leaf[key]]),
+      ['condition', ...WINDOW_KEYS]
+        .filter((key) => leaf[key] !== undefined)
+        .map((key) => [key, leaf[key]]),
     ),
-    condition:
-      leaf.condition === undefined ? hasValue : allOf([leaf.condition as Condition, hasValue]),
-  } as Condition;
-};
+    operator,
+  }) as Condition;
 
 const negateLeaf = (node: Node, settle: Settle): Condition => {
   const leaf = settle(node);
@@ -42,9 +40,10 @@ const negateLeaf = (node: Node, settle: Settle): Condition => {
   // holds everywhere; a negation still keeps a NULL field, so its complement is a present one.
   if (leaf === null) {
     const op = (node.operator ?? node.dateOperator) as string;
-    return NEGATED_OPERATORS.includes(op)
-      ? ({ field: node.field, operator: 'exists' } as Condition)
-      : true;
+    if (!NEGATED_OPERATORS.includes(op)) return true;
+    return 'aggregate' in node
+      ? presence(node, 'exists')
+      : ({ field: node.field, operator: 'exists' } as Condition);
   }
   if ('aggregate' in leaf) {
     const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
@@ -52,7 +51,7 @@ const negateLeaf = (node: Node, settle: Settle): Condition => {
     const opposite = { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) };
     // A sum is never NULL; an average over no values is, and the opposite comparison is false there.
     return (leaf.aggregate as { mode?: unknown }).mode === 'avg'
-      ? anyOf([opposite as Condition, noValues(leaf)])
+      ? anyOf([opposite as Condition, presence(leaf, 'notExists')])
       : (opposite as Condition);
   }
   if (typeof leaf.dateOperator === 'string') {
@@ -138,7 +137,7 @@ export const negate = (condition: Condition, settle: Settle = (leaf) => leaf): C
 /** check()'s settle: a leaf's literal operand reads nothing when it's null or a range misses an
  *  end — the compilers read paths and offsets into literals before negating. */
 export const settleLiteral: Settle = (leaf) =>
-  conditionShape(leaf) === 'field' &&
+  ['field', 'aggregate'].includes(conditionShape(leaf) as string) &&
   leaf.value !== undefined &&
   hasNoOperand(leaf as Rule, leaf.value)
     ? null

@@ -1,3 +1,42 @@
+## 3.22.0 — aggregate and negate fixes; aggregate coerceType
+
+A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType`, which
+`AggregateRule`, `validateRule` and `getConditionShapeKeys('aggregate')` now list.
+
+- **Aggregate rules take `coerceType`** (a numeric kind: `Float`, `Int`, `Decimal`, …), as field
+  rules do: `check()` parses each item through check()'s own coercion before adding it, so a Json
+  array of numbers stored as strings (`["1", "2.5"]`) sums and averages as SQL's `::numeric`
+  reads it. Without it the items must be numbers and `check()` throws, as before. An item that
+  won't parse keeps the error. `validateRule` refuses a kind that isn't numeric and, with a map,
+  one that can't read what the items are declared to hold (the value expression's coercion
+  table; a Json array's items have no declared kind). On `toPrisma` a relation aggregate reads a
+  numeric column, so `coerceType` changes nothing; `toSql` already casts. `negate()`'s "no
+  values" arm keeps it.
+- **`toPrisma`: an array rule's `notEmpty` on a Json value that isn't an array no longer holds**,
+  as on SQL (`array_contains: []` holds on an array only). Prisma has no filter for "not an
+  array", so its `empty` still doesn't match one; README, Where the Rails Differ.
+
+- **An aggregate `equals` / `notEquals` `null` validates**: it is the is-null sentinel, as on a
+  field — whether the aggregate has a number — and every rail already evaluated it so. `bindRule`
+  with a null binding produces it. A range missing an end (`notBetween [null, 3]`) and an ordered
+  comparison with null are still refused by `validateRule`, as they are on a field; the rails
+  settle them as reading nothing.
+- **`toPrisma` refuses an aggregate rule compared against a column** (`path`), at compile time and
+  in `validateRule`, with one message: Prisma computes the aggregate in a `groupBy`, whose `having`
+  can't read the parent row. A positive comparison matched nothing; a negated one threw a generic
+  path error.
+- **`toPrisma`: a `sum` never equals null**, as in `check()` (a sum over no values is 0). Prisma's
+  `_sum` over only NULL items is NULL, so `sum equals null` matched those rows and
+  `sum notEquals null` dropped them.
+- **`negate()` is the exact complement under `check()` for bound and pathed operands.** One settle
+  reads every operand through the rail's reader: `check()`'s reads binds and the row's paths
+  (`toPrisma`'s, as before, its literals and optional binds). A date rule whose unit amount reads
+  nothing — a missing optional bind in `{ ago: { days } }`, in the value or the offset — settles as
+  reading nothing on every rail; `toPrisma`'s `else` of `within` such an amount matched only the
+  NULL dates instead of every row.
+- An aggregate over a Json value that isn't an array stays a data error, as for an array rule:
+  `check()` throws, SQL reads it as an empty array. Differential rows pin it.
+
 ## 3.21.0 — avg over no values is NULL (FEAT-007)
 
 - **An aggregate rule's `avg` over no values is NULL on every rail**, as SQL's `AVG` and the value

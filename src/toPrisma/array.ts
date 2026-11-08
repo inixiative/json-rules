@@ -21,7 +21,7 @@ import { hasWindow, windowRewrite } from '../window';
 import { nestedScope } from './columnRef';
 import { buildCountStep } from './countStep';
 import { buildMapAwareFilter, emptinessWhere, hopArms } from './field';
-import { orWhere, overFetch } from './logical';
+import { andWhere, orWhere, overFetch } from './logical';
 import { buildCondition } from './recurse';
 import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
 import { settleLeaf } from './valueSource';
@@ -123,14 +123,14 @@ const buildValueArrayRule = (
 ): PrismaWhere => {
   switch (rule.arrayOperator) {
     case ArrayOperator.empty:
-    case ArrayOperator.notEmpty:
-      return emptinessWhere(
-        field,
-        shape,
-        rule.arrayOperator === ArrayOperator.empty,
-        false,
-        options,
-      );
+      return emptinessWhere(field, shape, true, false, options);
+    case ArrayOperator.notEmpty: {
+      const notEmpty = emptinessWhere(field, shape, false, false, options);
+      if (shape === 'list') return notEmpty;
+      // A Json value that isn't an array reads as empty, as on SQL: `array_contains: []` holds on
+      // an array only. Prisma has no filter for "not an array", so `empty` can't take them in.
+      return andWhere([notEmpty, buildMapAwareFilter(field, { array_contains: [] }, options)]);
+    }
     default:
       throw noCompiledForm(
         'toPrisma',

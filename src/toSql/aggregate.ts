@@ -20,7 +20,14 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
 
   const subquery = buildAggregateSubquery(rule, state);
   // An aggregate compares like a field whose value the subquery computes; an average can be NULL.
-  return buildFieldRule(rule as unknown as Rule, state, subquery, rule.aggregate.mode === 'avg');
+  // Its coerceType parsed the items, which `::numeric` already does; the number compares as is.
+  const { coerceType: _parsed, ...comparison } = rule;
+  return buildFieldRule(
+    comparison as unknown as Rule,
+    state,
+    subquery,
+    rule.aggregate.mode === 'avg',
+  );
 };
 
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {

@@ -280,6 +280,9 @@ export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = 
   condition?: Condition<TRuleValue, TDateValue>;
   operator: Operator;
   error?: string;
+  // A numeric kind each item is parsed as before it is added ('3' → 3); without it items are
+  // numbers as stored.
+  coerceType?: FieldKind;
 } & ValueSourceFields<number | [number, number]>;
 
 export type Rule<TValue = RuleValue> = ValueSourceFields<TValue> & {

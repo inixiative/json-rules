@@ -213,6 +213,36 @@ describe('check() aggregate rules', () => {
     });
   });
 
+  describe('coerceType', () => {
+    const rule = (coerceType?: string) =>
+      ({
+        field: 'scores',
+        aggregate: { mode: 'avg' },
+        operator: Operator.equals,
+        value: 2,
+        ...(coerceType && { coerceType }),
+      }) as never;
+
+    it('reads numbers as stored without it', () => {
+      expect(() => check(rule(), { scores: ['1', '3'] })).toThrow('must be a finite number');
+    });
+
+    it('parses each item as the kind', () => {
+      expect(check(rule('Float'), { scores: ['1', 3] })).toBe(true);
+      expect(check(rule('Int'), { scores: ['1', '3'] })).toBe(true);
+    });
+
+    it('an item that will not parse keeps the error', () => {
+      expect(() => check(rule('Float'), { scores: ['1', 'x'] })).toThrow('must be a finite number');
+    });
+
+    it('parses the items, never the average', () => {
+      expect(
+        check({ ...(rule('Int') as object), value: 1.5 } as never, { scores: ['1', '2'] }),
+      ).toBe(true);
+    });
+  });
+
   describe('errors', () => {
     it('throws if field is not an array', () => {
       expect(() =>
@@ -1051,6 +1081,49 @@ describe('validateRule() aggregate rules', () => {
       expect(validateRule(aggregate as never).errors.map((e) => e.code)).toEqual([code]);
       expect(validateRule({ field: 'score', ...comparison } as never).ok).toBe(false);
     }
+  });
+
+  it('coerceType is a numeric kind', () => {
+    const rule = (coerceType: unknown) =>
+      validateRule({
+        field: 'scores',
+        aggregate: { mode: 'sum' },
+        operator: Operator.greaterThan,
+        value: 1,
+        coerceType,
+      } as never).errors.map((e) => e.code);
+    expect(rule('Float')).toEqual([]);
+    expect(rule('Decimal')).toEqual([]);
+    expect(rule('String')).toEqual(['aggregate_kind_mismatch']);
+    expect(rule('Nope')).toEqual(['invalid_coerce_type']);
+  });
+
+  it('coerceType reads what the map says the items hold, as a value expression does', () => {
+    const map = {
+      models: {
+        U: {
+          fields: {
+            flags: { kind: 'scalar', type: 'Boolean', isList: true },
+            codes: { kind: 'scalar', type: 'String', isList: true },
+            meta: { kind: 'scalar', type: 'Json' },
+          },
+        },
+      },
+    } as never;
+    const codes = (field: string) =>
+      validateRule(
+        {
+          field,
+          aggregate: { mode: 'avg' },
+          operator: Operator.lessThan,
+          value: 3,
+          coerceType: 'Float',
+        },
+        { map, model: 'U' } as never,
+      ).errors.map((e) => e.code);
+    expect(codes('flags')).toEqual(['coerce_kind_mismatch']);
+    expect(codes('codes')).toEqual([]);
+    expect(codes('meta.list')).toEqual([]);
   });
 
   it('toPrisma accepts notBetween', () => {

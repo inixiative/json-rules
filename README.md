@@ -212,7 +212,9 @@ average. An average over no values is compared as a NULL column is — a positiv
 (`lessThan`, `equals`, `between`, …) doesn't hold, a negated one (`notEquals`, `notBetween`) does —
 and `negate()` adds the "no values" arm, the aggregate's own `notExists`, as it adds `notExists`
 to a field's. Ask for it directly with `operator: 'exists'` / `'notExists'` (or, as on a field,
-`equals` / `notEquals` `null`); a sum always exists. To count no values as
+`equals` / `notEquals` `null`); a sum always exists. An aggregate rule's `coerceType` (a numeric
+kind) parses each item before it is added (`'3'` → 3), as `coerceType` does on a field; without
+it the items must be numbers. To count no values as
 low, say so: `any: [count == 0, avg < 3]`. A NULL or absent array is empty, and NULL items are
 skipped, as SQL's `SUM` / `AVG` skip them.
 
@@ -1095,7 +1097,11 @@ engines themselves differ:
   `check()` compares UTF-16 code units, Postgres the column's collation.
 - An array or aggregate rule on a Json value that isn't an array is a data error. `check()`
   throws on it; SQL can't raise per row, so it reads the value as an empty array, for an
-  aggregate and for `empty` / `notEmpty` alike.
+  aggregate and for `empty` / `notEmpty` alike. Prisma's `notEmpty` holds on an array only, as
+  SQL's does, but Prisma has no filter for "not an array", so its `empty` doesn't match one.
+- A Json-array `sum` / `avg` over numbers stored as strings (`["1", "2"]`): without
+  `coerceType`, `check()` throws on them, and SQL casts them with `::numeric`. Give the aggregate
+  rule `coerceType: 'Float'` (or `'Int'` / `'Decimal'`) and `check()` parses each item as SQL does.
 
 ## TypeScript Types
 

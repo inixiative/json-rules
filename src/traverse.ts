@@ -285,6 +285,7 @@ const CONDITION_SHAPE_KEYS: Record<ConditionShape, ConditionShapeKeys> = {
       'orderBy',
       'take',
       'skip',
+      'coerceType',
       'error',
     ],
   ),

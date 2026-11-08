@@ -48,6 +48,7 @@ import {
   isRelativeUnit,
   isValueAggregateMode,
   NO_VALUE_OPERATORS,
+  NUMERIC_KINDS,
   OFFSET_OPERATORS,
   PERIOD_UNITS,
   RANGE_OPERATORS,
@@ -62,6 +63,7 @@ import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
 import { conditionShape, visitCondition } from './traverse';
 import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
+import { coerceMismatch, coerces } from './value/aggregateType';
 import { rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
 
@@ -739,6 +741,46 @@ const validateAggregateReads = (
   return agg;
 };
 
+// An aggregate rule's coerceType parses each item as a number before it is added: a numeric kind,
+// and — where the map says what the items hold — one that can read them, as a value expression's
+// coerceType must (`coerces`). A Json array's items have no declared kind.
+const validateAggregateCoercion = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  const { coerceType } = rule;
+  if (coerceType === undefined) return;
+  const at = `${path}.coerceType`;
+  if (!isFieldKind(coerceType)) {
+    pushIssue(
+      context,
+      at,
+      'invalid_coerce_type',
+      `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
+    );
+    return;
+  }
+  if (!NUMERIC_KINDS.includes(coerceType)) {
+    pushIssue(context, at, 'aggregate_kind_mismatch', `sum and avg add numbers, not ${coerceType}`);
+    return;
+  }
+  const model = context.scopeModels[depth - 1];
+  if (!context.map || !model || typeof rule.field !== 'string') return;
+  const itemField = (rule.aggregate as { field?: unknown } | undefined)?.field;
+  const target = relationTarget(rule.field, context.map, model);
+  const item = target
+    ? typeof itemField === 'string'
+      ? fieldEntry(itemField, context.map, target)
+      : undefined
+    : fieldEntry(rule.field, context.map, model);
+  const stored =
+    item && item.kind === 'scalar' && !isJsonEntry(item) ? (item.type as FieldKind) : null;
+  if (!coerces(stored, coerceType))
+    pushIssue(context, at, 'coerce_kind_mismatch', coerceMismatch(stored, coerceType));
+};
+
 const validateAggregateRule = (
   rule: Record<string, unknown>,
   path: string,
@@ -754,6 +796,8 @@ const validateAggregateRule = (
       'invalid_aggregate_mode',
       unknownAggregateMode(agg.mode).message,
     );
+
+  validateAggregateCoercion(rule, path, context, depth);
 
   if (!AGGREGATE_OPERATORS.includes(rule.operator as Operator)) {
     pushIssue(

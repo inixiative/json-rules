@@ -1,5 +1,6 @@
 import { isObject, some } from 'lodash-es';
 import { checkDate } from './date';
+import { DEFAULT_ZONE } from './dateExpr';
 import {
   ambiguousCondition,
   conditionRequired,
@@ -13,6 +14,7 @@ import {
   AGGREGATE_MODES,
   ARRAY_CONDITION_OPERATORS,
   ARRAY_COUNT_OPERATORS,
+  type FieldKind,
 } from './operatorCatalog';
 import { readField, readOwnPath, type Scopes } from './scope';
 import { conditionShape, visitCondition } from './traverse';
@@ -30,6 +32,7 @@ import type {
   RuleValue,
   WindowFields,
 } from './types';
+import { coerceAggregateValue } from './value/coerceAggregateValue';
 import { applyWindow } from './window';
 
 /** `bindings`: the caller's values, read by `{ bind }`. The rest is the clock and zone. */
@@ -207,15 +210,20 @@ const finiteNumber = (raw: unknown, loc: string): number => {
   return raw;
 };
 
-/** The sum or the average of an aggregate's numbers. The sum of nothing is 0 (the compilers
- *  coalesce to match); nothing has no average, so `avg` of nothing is null, as SQL's AVG is. */
+/** The sum or the average of an aggregate's numbers, each read through `coerceType` when it names
+ *  one. The sum of nothing is 0 (the compilers coalesce to match); nothing has no average, so
+ *  `avg` of nothing is null, as SQL's AVG is. */
 export const sumOrAverage = (
   mode: 'sum' | 'avg',
   items: unknown[],
   field: string,
   itemField: string | undefined,
+  coerceType?: FieldKind,
 ): number | null => {
-  const numbers = aggregateValues(items, field, itemField, finiteNumber);
+  const coerce = coerceAggregateValue(coerceType, DEFAULT_ZONE);
+  const numbers = aggregateValues(items, field, itemField, (raw, loc) =>
+    finiteNumber(coerce(raw), loc),
+  );
   const sum = numbers.reduce((total, n) => total + n, 0);
   if (mode === 'sum') return sum;
   return numbers.length === 0 ? null : sum / numbers.length;
@@ -227,8 +235,9 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const items = aggregateItems(condition, opts);
   // An aggregate compares like a field whose value it computes.
-  const result = sumOrAverage(mode, items, condition.field, itemField);
-  const labelled = { ...condition, field: `${condition.field} ${mode}` } as unknown as Rule;
+  const { coerceType, ...comparison } = condition;
+  const result = sumOrAverage(mode, items, condition.field, itemField, coerceType);
+  const labelled = { ...comparison, field: `${condition.field} ${mode}` } as unknown as Rule;
   return checkField(labelled, opts.scopes, opts.bindings, opts, { value: result });
 };
 

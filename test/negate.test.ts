@@ -14,6 +14,7 @@ const rows = [
     d: '2026-10-05T00:00:00Z',
     tags: [{ t: 'a' }, { t: 'b' }],
     nums: [1, 2],
+    codes: ['1', '4'],
     m: 4,
     r: [1, 4],
   },
@@ -198,6 +199,16 @@ const sourced: [string, Condition][] = [
       dateOperator: 'notBefore',
       value: now,
       offset: { value: { ago: { days: missing } } },
+    }),
+  ],
+  [
+    'an average of numbers stored as strings, coerced',
+    rule({
+      field: 'codes',
+      aggregate: { mode: 'avg' },
+      coerceType: 'Float',
+      operator: 'lessThan',
+      value: 3,
     }),
   ],
   [

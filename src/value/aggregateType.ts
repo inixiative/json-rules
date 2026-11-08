@@ -25,10 +25,16 @@ const COERCES_FROM: Partial<Record<FieldKind, readonly FieldKind[]>> = {
   ),
 };
 
+/** Whether a coerceType can read values stored as `stored` (an unknown kind, or the same, can). */
+export const coerces = (stored: FieldKind | null, target: FieldKind): boolean =>
+  stored === null || stored === target || COERCES_FROM[stored]?.includes(target) === true;
+
+/** The issue for a coerceType that can't read what is stored. */
+export const coerceMismatch = (stored: FieldKind | null, target: FieldKind): string =>
+  `${stored} values can't be read as ${target}`;
+
 const refuseCoercion = (stored: FieldKind | null, target: FieldKind, at: string): void => {
-  if (stored === null || stored === target) return;
-  if (!COERCES_FROM[stored]?.includes(target))
-    refuse(at, 'coerce_kind_mismatch', `${stored} values can't be read as ${target}`);
+  if (!coerces(stored, target)) refuse(at, 'coerce_kind_mismatch', coerceMismatch(stored, target));
 };
 
 // The list an aggregate reads: a to-many relation or a scalar list column.

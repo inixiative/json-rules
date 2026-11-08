@@ -97,8 +97,10 @@ const buildAggregateStep = (
   if (NO_VALUE_OPERATORS.includes(rule.operator))
     return presence(rule, rule.operator === Operator.exists, where, path, options, state);
 
-  // The Prisma rail reads every operand at compile time: nothing is left UNREAD.
-  const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>, 0) as Record<
+  // The Prisma rail reads every operand at compile time: nothing is left UNREAD. The items are a
+  // numeric column, so a coerceType parses nothing; the number compares as is.
+  const { coerceType: _parsed, ...comparison } = rule;
+  const leaf = settleLeaf(options)(comparison as unknown as Record<string, unknown>, 0) as Record<
     string,
     unknown
   > | null;

@@ -844,6 +844,17 @@ const MATRIX: Record<string, Case> = {
     ids: [2, 3, 4, 5],
     refuses: { sql: RELATION_AGGREGATES, prisma: AGGREGATE_PATH },
   },
+  'a relation average with coerceType: the column is numeric, the number compares as is': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'lessThan',
+      value: 8,
+      coerceType: 'Float',
+    },
+    ids: [1],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
   'a Json array average compared against a column': {
     rule: { field: 'meta.list', aggregate: { mode: 'avg' }, operator: 'lessThan', path: 'age' },
     ids: [1],
@@ -940,9 +951,59 @@ describe('an aggregate over a Json value that is not an array', () => {
       expect(result.sql).toEqual(ids);
       expect(result.prisma).toContain('require aggregate.field');
     });
-  test('as an array rule reads it', async () => {
+  test('as an array rule reads it: notEmpty holds on an array only', async () => {
+    const result = await odd.run(rule({ field: 'meta.list', arrayOperator: 'notEmpty' }));
+    expect(result.check).toBe('throws: meta.list must be an array');
+    expect(result.sql).toEqual([1]);
+    expect(result.prisma).toEqual([1]);
+  });
+  // Prisma has no filter for "not an array": its empty keeps only NULL, absent and [] values.
+  test('as an array rule reads it: empty, which Prisma reads without the non-arrays', async () => {
     const result = await odd.run(rule({ field: 'meta.list', arrayOperator: 'empty' }));
     expect(result.check).toBe('throws: meta.list must be an array');
     expect(result.sql).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(result.prisma).toEqual([2, 3, 4, 5]);
+  });
+});
+
+// Numbers stored as strings: an aggregate rule's coerceType parses each item, as SQL's ::numeric
+// does; without it check() refuses them (README, Where the Rails Differ).
+describe('an aggregate over numbers stored as strings', () => {
+  let strings: Awaited<ReturnType<typeof openRails>>;
+  beforeAll(async () => {
+    strings = await openRails(`
+      INSERT INTO users (id, meta, tags) VALUES (6, '{"list":["1","2.5"]}', '{}'), (7, '{"list":["4",null]}', '{}');
+    `);
+  });
+  afterAll(async () => {
+    await strings.close();
+  });
+  const list = (r: object) => rule({ field: 'meta.list', ...r });
+  test('with coerceType, every rail adds them', async () => {
+    const result = await strings.run(
+      list({ aggregate: { mode: 'sum' }, operator: 'between', value: [3, 4], coerceType: 'Float' }),
+    );
+    expect(result.check).toEqual([6, 7]);
+    expect(result.sql).toEqual([6, 7]);
+    expect(result.prisma).toContain('require aggregate.field');
+  });
+  test('with coerceType, an average and its negation', async () => {
+    for (const [operator, ids] of [
+      ['lessThan', [1, 6]],
+      ['notEquals', [1, 2, 3, 4, 5, 6]],
+    ] as const) {
+      const result = await strings.run(
+        list({ aggregate: { mode: 'avg' }, operator, value: 4, coerceType: 'Int' }),
+      );
+      expect(result.check).toEqual([...ids]);
+      expect(result.sql).toEqual([...ids]);
+    }
+  });
+  test('without it, check() refuses them and SQL casts them', async () => {
+    const result = await strings.run(
+      list({ aggregate: { mode: 'sum' }, operator: 'greaterThan', value: 3 }),
+    );
+    expect(result.check).toContain('must be a finite number');
+    expect(result.sql).toEqual([1, 6, 7]);
   });
 });

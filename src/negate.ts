@@ -28,14 +28,14 @@ const absent = (field: unknown): Condition => ({ field, operator: 'notExists' })
 
 const WINDOW_KEYS = ['filter', 'orderBy', 'take', 'skip'];
 
-// Whether an aggregate has a number, over the same rows and window: an average over no values is
-// NULL, as a field with no value is.
+// Whether an aggregate has a number, over the same rows, window and coercion: an average over no
+// values is NULL, as a field with no value is.
 const presence = (leaf: Node, operator: 'exists' | 'notExists'): Condition =>
   ({
     field: leaf.field,
     aggregate: leaf.aggregate,
     ...Object.fromEntries(
-      ['condition', ...WINDOW_KEYS]
+      ['condition', 'coerceType', ...WINDOW_KEYS]
         .filter((key) => leaf[key] !== undefined)
         .map((key) => [key, leaf[key]]),
     ),

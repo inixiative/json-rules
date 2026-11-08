@@ -153,8 +153,9 @@ export const settleLiteral = (leaf: Node): Node | null =>
     ? null
     : leaf;
 
-/** How a settle reads one value source of a leaf `depth` hops in: its value, or UNREAD. */
-export type ReadSourceAt = (source: Source, depth: number) => unknown;
+/** How a settle reads one value source of a leaf `depth` hops in: its value, or UNREAD.
+ *  `isAmount`: a date rule's unit amount, which check() reads only once the date has a value. */
+export type ReadSourceAt = (source: Source, depth: number, isAmount?: boolean) => unknown;
 
 // A date expression whose unit amounts read nothing places no date.
 const placesNothing = (expr: unknown, read: ReadSource): boolean =>
@@ -170,7 +171,12 @@ export const settleWith =
     const sourced =
       leaf.value !== undefined || hasPath(leaf as Source) || typeof leaf.bind === 'string';
     if (!comparison || !sourced) return leaf;
-    if (leafSources(leaf).some(({ source }) => read(source, depth) === UNREAD)) return UNREAD;
+    const isDate = typeof leaf.dateOperator === 'string';
+    const isAmount = (role: string) => isDate && (role === 'number' || role === 'whole');
+    if (
+      leafSources(leaf).some(({ source, role }) => read(source, depth, isAmount(role)) === UNREAD)
+    )
+      return UNREAD;
     const readHere: ReadSource = (source) => read(source, depth);
     const value = read(leaf, depth);
     const offset = leaf.offset === undefined ? undefined : read(leaf.offset as Source, depth);
@@ -193,7 +199,8 @@ export const settleWith =
 
 /** check()'s settle at one row: a literal as itself, a bind from `bindings`, a path from `scopes`
  *  (the root row first, as check() holds them); a `$`-path that reads an item of a relation the
- *  negation entered is UNREAD. */
+ *  negation entered is UNREAD, and so is a date amount read from data — check() reads it only
+ *  where the date has a value, so a settle that read it could throw where check() doesn't. */
 export const settleIn = ({
   bindings,
   scopes,
@@ -201,11 +208,12 @@ export const settleIn = ({
   bindings?: Record<string, RuleValue>;
   scopes: Scopes;
 }): Settle =>
-  settleWith((source, depth) =>
+  settleWith((source, depth, isAmount) =>
     matchSource<unknown>(source, {
       value: (value) => value,
       bind: (name, optional) => readBinding(name, optional, bindings),
       path: (ref) => {
+        if (isAmount) return UNREAD;
         const scoped = parseScopeRef(ref);
         if (!scoped) return readPath(ref, scopes) ?? null;
         if (scoped.depth <= depth) return UNREAD;

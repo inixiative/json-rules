@@ -14,9 +14,9 @@ const significantDigits = (text: string): number =>
     .replace(/^0+/, '')
     .replace(/0+$/, '').length;
 
-/** A numeric object (`Decimal('2.5')`) as a number; past 15 significant digits it throws, and an
- *  object that isn't a number comes back as it is. */
-export const numericObject = (raw: object): unknown => {
+/** A numeric object (`Decimal('2.5')`) or a Decimal string as a number; past 15 significant
+ *  digits it throws, and one that isn't a number comes back as it is. */
+export const numericObject = (raw: object | string): unknown => {
   const text = String(raw);
   const number = Number(text);
   if (!Number.isFinite(number)) return raw;
@@ -47,12 +47,15 @@ export const coerceAggregateValue =
     const value =
       isNumberOrDate && typeof raw === 'bigint'
         ? bigIntToNumber(raw)
-        : NUMERIC_KINDS.includes(kind) &&
-            typeof raw === 'object' &&
-            raw !== null &&
-            !(raw instanceof Date)
-          ? numericObject(raw)
-          : raw;
+        : // A Decimal string reads as a Decimal object does: past what a number holds, it throws.
+          kind === 'Decimal' && typeof raw === 'string' && raw.trim() !== ''
+          ? numericObject(raw.trim())
+          : NUMERIC_KINDS.includes(kind) &&
+              typeof raw === 'object' &&
+              raw !== null &&
+              !(raw instanceof Date)
+            ? numericObject(raw)
+            : raw;
     const coerced = applyCoercion(value, kind, zone);
     return kind === 'DateTime' && typeof coerced === 'number' ? new Date(coerced) : coerced;
   };

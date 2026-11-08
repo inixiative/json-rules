@@ -236,6 +236,21 @@ describe('check() aggregate rules', () => {
       expect(() => check(rule('Float'), { scores: ['1', 'x'] })).toThrow('must be a finite number');
     });
 
+    it('a Decimal string past what a number holds exactly throws, as a Decimal object does', () => {
+      expect(() =>
+        check({ ...(rule('Decimal') as object), value: 1 } as never, {
+          scores: ['1234567890.123456789'],
+        }),
+      ).toThrow('more digits than a number holds exactly');
+    });
+
+    it('a bigint item adds as a number, as a bigint compares (BigInt reads as Int)', () => {
+      expect(check(rule(), { scores: [1n, 3n] })).toBe(true);
+      expect(() => check(rule(), { scores: [2n ** 60n] })).toThrow(
+        'outside the safe integer range',
+      );
+    });
+
     it('parses the items, never the average', () => {
       expect(
         check({ ...(rule('Int') as object), value: 1.5 } as never, { scores: ['1', '2'] }),
@@ -1151,6 +1166,33 @@ describe('validateRule() aggregate rules', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.errors.map((e) => e.code)).toEqual(['unsupported_prisma_aggregate_path']);
+  });
+
+  // validate mirrors the Prisma compiler: a relation aggregate reads a numeric column, which
+  // Prisma can't cast, with or without coerceType.
+  it('toPrisma refuses a non-numeric aggregate.field with the message the compiler gives', () => {
+    const options = { map: orderMap, model: 'User' };
+    for (const coerceType of [undefined, 'Int']) {
+      const rule = {
+        field: 'orders',
+        aggregate: { mode: 'sum', field: 'status' },
+        operator: Operator.greaterThan,
+        value: 1,
+        ...(coerceType && { coerceType }),
+      } as never;
+      let thrown = '';
+      try {
+        toPrisma(rule, options);
+      } catch (error) {
+        thrown = (error as Error).message;
+      }
+      expect(thrown).toContain('must be a numeric scalar');
+      const issues = validateRule(rule, { target: 'toPrisma', ...options } as never).errors;
+      expect(issues.map((e) => [e.code, e.message])).toEqual([
+        ['unsupported_prisma_aggregate_field', thrown],
+      ]);
+      expect(validateRule(rule, { target: 'check', ...options } as never).ok).toBe(true);
+    }
   });
 
   it('toPrisma refuses a path with the message validate gives', () => {

@@ -9,6 +9,7 @@ import {
   unknownOperator,
 } from './errors';
 import { checkField } from './field';
+import { bigIntToNumber } from './number';
 import { ArrayOperator } from './operator';
 import {
   AGGREGATE_MODES,
@@ -204,7 +205,9 @@ export const aggregateValues = <T>(
     return [read(raw, `${field}[${index}]${itemField ? `.${itemField}` : ''}`)];
   });
 
-const finiteNumber = (raw: unknown, loc: string): number => {
+// A bigint adds as the number it compares as (refused past the safe range).
+const finiteNumber = (stored: unknown, loc: string): number => {
+  const raw = typeof stored === 'bigint' ? bigIntToNumber(stored) : stored;
   if (typeof raw !== 'number' || !Number.isFinite(raw))
     throw new Error(`${loc} must be a finite number`);
   return raw;

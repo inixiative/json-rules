@@ -59,6 +59,7 @@ import {
 } from './operatorCatalog';
 import { patternProblem } from './pattern';
 import { parseScopeRef, scopeOutOfBounds } from './scope';
+import { aggregateFieldRequired, aggregateItemError } from './toPrisma/aggregate';
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
 import { conditionShape, visitCondition } from './traverse';
@@ -687,11 +688,27 @@ const validateGroupStep = (
   const model = context.scopeModels[depth - 1];
   if (context.target !== 'toPrisma' || !context.map || !model || typeof rule.field !== 'string')
     return;
+  let target: string;
   try {
-    groupPath(rule.field, context.map, model, kind);
+    target = groupPath(rule.field, context.map, model, kind).target;
   } catch (error) {
     pushIssue(context, `${path}.field`, 'unsupported_prisma_relation', (error as Error).message);
+    return;
   }
+  if (kind === 'Count operators') return;
+  // An aggregate groups a numeric column of the related rows, as stored: Prisma can't cast it.
+  const itemField = (rule.aggregate as { field?: unknown } | undefined)?.field;
+  const error =
+    typeof itemField === 'string' && itemField !== ''
+      ? aggregateItemError(context.map, target, itemField)
+      : aggregateFieldRequired();
+  if (error)
+    pushIssue(
+      context,
+      `${path}.aggregate.field`,
+      'unsupported_prisma_aggregate_field',
+      error.message,
+    );
 };
 
 // What an aggregate reads, whether a rule compares it or a value expression returns it: its list

@@ -22,6 +22,8 @@ const rows = [
   { n: null, s: null, d: null, tags: [], nums: [5], m: 5, r: null },
   { tags: [{ t: 'c', n: 2 }], nums: [3, 4], r: [2, 9] },
   { n: 1, tags: [{ t: 'a', n: null }], nums: [null], m: 1 },
+  // An amount check() never reads: the date is NULL, the array empty.
+  { d: null, k: 'x', tags: [] },
 ];
 const rule = (r: object): Condition => r as never;
 const now = '2026-10-06T00:00:00Z';
@@ -199,6 +201,18 @@ const sourced: [string, Condition][] = [
       dateOperator: 'notBefore',
       value: now,
       offset: { value: { ago: { days: missing } } },
+    }),
+  ],
+  [
+    'a date amount read from the row, where check() never reads it',
+    rule({ field: 'd', dateOperator: 'onOrAfter', value: { ago: { days: { path: 'k' } } } }),
+  ],
+  [
+    'all over an empty array, whose items would read an amount from the row',
+    rule({
+      field: 'tags',
+      arrayOperator: 'all',
+      condition: { field: 'd', dateOperator: 'within', value: { ago: { days: { path: '$$.k' } } } },
     }),
   ],
   [

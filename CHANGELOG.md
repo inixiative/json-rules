@@ -9,9 +9,20 @@ A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType
   reads it. Without it the items must be numbers and `check()` throws, as before. An item that
   won't parse keeps the error. `validateRule` refuses a kind that isn't numeric and, with a map,
   one that can't read what the items are declared to hold (the value expression's coercion
-  table; a Json array's items have no declared kind). On `toPrisma` a relation aggregate reads a
-  numeric column, so `coerceType` changes nothing; `toSql` already casts. `negate()`'s "no
-  values" arm keeps it.
+  table; a Json array's items have no declared kind). `toSql` casts every item with `::numeric`
+  under it — a Json array's already were, and a native String list now is (it raised
+  `sum(text) does not exist`). `toPrisma` aggregates a related column as stored and can't cast: a
+  relation `aggregate.field` that isn't a numeric column is refused with or without `coerceType`,
+  and `validateRule` (target `toPrisma`, with a map) now refuses it — and a missing
+  `aggregate.field` — with the compiler's own message, `unsupported_prisma_aggregate_field`.
+  Under `Decimal`, a numeric string past 15 significant digits throws, as a Decimal object does,
+  rather than round. `negate()`'s "no values" arm keeps `coerceType`.
+- **A bigint item adds as a number** in `sum` / `avg` (it threw "must be a finite number"), as a
+  bigint compares — refused past the safe integer range.
+- **`negate()` never reads a date amount from data**: `check()` reads it only where the date has a
+  value, so the complement of a rule with `{ ago: { days: { path } } }` is check()'s own
+  `{ if, then: false }` there, and no longer throws on a row whose amount isn't a number but whose
+  date is NULL (or inside an `all` over an empty array).
 - **A value expression's `sum` / `avg` take `coerceType` too**, exactly as the aggregate rule does:
   each item is parsed before it is added, through the same `sumOrAverage`, so a value and a rule
   over the same rows compute the same number. `validateValue` takes a numeric kind there (it

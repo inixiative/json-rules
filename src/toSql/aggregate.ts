@@ -68,7 +68,8 @@ const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): strin
         `aggregate.field is not supported for native array types. Use a JSONB column for object arrays.`,
       );
     }
-    const agg = total('elem');
+    // A coerceType parses each item, as the Json paths' ::numeric does: a String list adds.
+    const agg = total(rule.coerceType ? 'elem::numeric' : 'elem');
     return `(SELECT ${agg} FROM unnest(${field}) AS elem)`;
   }
 

@@ -972,7 +972,8 @@ describe('an aggregate over numbers stored as strings', () => {
   let strings: Awaited<ReturnType<typeof openRails>>;
   beforeAll(async () => {
     strings = await openRails(`
-      INSERT INTO users (id, meta, tags) VALUES (6, '{"list":["1","2.5"]}', '{}'), (7, '{"list":["4",null]}', '{}');
+      UPDATE users SET tags = '{}';
+      INSERT INTO users (id, meta, tags) VALUES (6, '{"list":["1","2.5"]}', '{"1","2.5"}'), (7, '{"list":["4",null]}', '{}');
     `);
   });
   afterAll(async () => {
@@ -998,6 +999,19 @@ describe('an aggregate over numbers stored as strings', () => {
       expect(result.check).toEqual([...ids]);
       expect(result.sql).toEqual([...ids]);
     }
+  });
+  test('with coerceType, a native String list adds as SQL casts it', async () => {
+    const result = await strings.run(
+      rule({
+        field: 'tags',
+        aggregate: { mode: 'sum' },
+        operator: 'equals',
+        value: 3.5,
+        coerceType: 'Float',
+      }),
+    );
+    expect(result.check).toEqual([6]);
+    expect(result.sql).toEqual([6]);
   });
   test('without it, check() refuses them and SQL casts them', async () => {
     const result = await strings.run(

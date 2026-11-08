@@ -26,6 +26,33 @@ import { buildCondition } from './recurse';
 import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
 import { settleLeaf } from './valueSource';
 
+/** A relation aggregate with no `aggregate.field`: Prisma groups a column of the related rows. */
+export const aggregateFieldRequired = (): Error =>
+  new Error(
+    `Prisma aggregate rules require aggregate.field to specify the numeric field on the related model.`,
+  );
+
+/** Why Prisma can't aggregate `itemField` on the related model, or null: it reads a numeric
+ *  column as stored — a coerceType can't cast it. */
+export const aggregateItemError = (
+  map: FieldMap,
+  target: string,
+  itemField: string,
+): Error | null => {
+  const item = fieldOf(map, target, itemField);
+  if (!item)
+    return new Error(`aggregate.field '${itemField}' does not exist on model '${target}'.`);
+  if (
+    item.kind === 'scalar' &&
+    !isJsonEntry(item) &&
+    NUMERIC_KINDS.includes(item.type as FieldKind)
+  )
+    return null;
+  return new Error(
+    `aggregate.field '${itemField}' on model '${target}' must be a numeric scalar, got '${item.kind === 'scalar' ? item.type : item.kind}'.`,
+  );
+};
+
 export const buildAggregateRule = (
   rule: AggregateRule,
   options?: ToPrismaOptions,
@@ -47,11 +74,7 @@ export const buildAggregateRule = (
 
   if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
     throw unknownAggregateMode(rule.aggregate.mode);
-  if (!rule.aggregate.field) {
-    throw new Error(
-      `Prisma aggregate rules require aggregate.field to specify the numeric field on the related model.`,
-    );
-  }
+  if (!rule.aggregate.field) throw aggregateFieldRequired();
 
   return buildAggregateStep(
     rule,
@@ -71,17 +94,8 @@ const buildAggregateStep = (
   if (rule.condition && conditionTouchesBridge(rule.condition, options.map, path.target))
     return overFetch();
   const itemField = rule.aggregate.field ?? '';
-  const item = fieldOf(options.map, path.target, itemField);
-  if (!item)
-    throw new Error(`aggregate.field '${itemField}' does not exist on model '${path.target}'.`);
-  if (
-    item.kind !== 'scalar' ||
-    isJsonEntry(item) ||
-    !NUMERIC_KINDS.includes(item.type as FieldKind)
-  )
-    throw new Error(
-      `aggregate.field '${itemField}' on model '${path.target}' must be a numeric scalar, got '${item.kind === 'scalar' ? item.type : item.kind}'.`,
-    );
+  const itemError = aggregateItemError(options.map, path.target, itemField);
+  if (itemError) throw itemError;
 
   // The comparison as check() makes it, with its operand read; nothing to compare against
   // matches nothing.

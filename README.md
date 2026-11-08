@@ -1099,10 +1099,19 @@ engines themselves differ:
 - An array or aggregate rule on a Json value that isn't an array is a data error. `check()`
   throws on it; SQL can't raise per row, so it reads the value as an empty array, for an
   aggregate and for `empty` / `notEmpty` alike. Prisma's `notEmpty` holds on an array only, as
-  SQL's does, but Prisma has no filter for "not an array", so its `empty` doesn't match one.
+  SQL's does, but Prisma has no filter for "not an array", so its `empty` doesn't match one: on
+  Prisma a non-array value satisfies neither `notEmpty` nor its negation, and an `all` whose
+  condition is a `notEmpty` (compiled as no item where it fails) carries that through.
 - A Json-array `sum` / `avg` over numbers stored as strings (`["1", "2"]`): without
   `coerceType`, `check()` throws on them, and SQL casts them with `::numeric`. Give the aggregate
   rule `coerceType: 'Float'` (or `'Int'` / `'Decimal'`) and `check()` parses each item as SQL does.
+  Postgres's `numeric` also parses text JavaScript doesn't (`'1_000'`, `'Infinity'`, `'NaN'`,
+  `'1e400'`); `check()` keeps its error on those.
+- `check()` adds JavaScript doubles; SQL adds exact `numeric`. A Json array `[0.1, 0.2]` sums to
+  `0.30000000000000004` in `check()` and `0.3` in SQL, so `sum equals 0.3` holds on SQL only.
+  Compare a computed sum with a tolerance (`between`) rather than `equals`.
+- Under `coerceType: 'Decimal'`, an item past 15 significant digits — a Decimal object or a
+  numeric string — throws in `check()` rather than round; SQL's `numeric` reads it exactly.
 
 ## TypeScript Types
 

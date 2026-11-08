@@ -87,7 +87,7 @@ const elementKind = (
 /** An aggregate value's type: `count` an `Int`; `sum` its column's numeric kind, never null;
  *  `avg` a `Float` (`Decimal` stays `Decimal`), null over no rows; `min` / `max` their column's
  *  kind, nullable; `distinct` a list of its column's kind, never null (`[]` over no rows). For
- *  `distinct` / `min` / `max` a `coerceType` is the kind. */
+ *  every mode but `count` a `coerceType` is the kind. */
 export const aggregateType = (
   lens: Lens | LensNarrowing | undefined,
   node: AggregateValue,
@@ -100,11 +100,15 @@ export const aggregateType = (
     return { kind: FieldKind.Int, isList: false, nullable: false };
   }
   const stored = elementKind(needLens(lens, `${mode} over '${node.field}'`), node, path);
-  if (node.coerceType !== undefined) refuseCoercion(stored, node.coerceType, `${path}.coerceType`);
+  // sum / avg parse Json items as an aggregate rule over a Json array does: their kind is undeclared.
+  const adds = mode === 'sum' || mode === 'avg';
+  const declared = adds && stored === FieldKind.Json ? null : stored;
+  if (node.coerceType !== undefined)
+    refuseCoercion(declared, node.coerceType, `${path}.coerceType`);
   // A coerced aggregate returns the values as its coerceType reads them.
   const kind = node.coerceType ?? stored;
   const at = `${path}.aggregate.field`;
-  if (mode === 'sum' || mode === 'avg') {
+  if (adds) {
     if (!isNumeric(kind))
       refuse(
         at,

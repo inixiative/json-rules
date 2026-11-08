@@ -42,7 +42,7 @@ const extreme = (values: Ordered[], mode: 'min' | 'max', field: string): unknown
 /** The value an aggregate computes over its relation's rows, through its window and condition:
  *  `count`, `sum` (0 over none), `avg`, `min`, `max` (numbers and dates; null over none),
  *  `distinct` (the values without repeats, first seen first; NULLs skipped as every mode skips
- *  them; `[]` over none). `distinct` / `min` / `max` read each value through `coerceType`;
+ *  them; `[]` over none). Every mode but `count` reads each value through `coerceType`;
  *  `distinct` folds case under `caseInsensitive` (default `string.caseInsensitive`). */
 export const evaluateAggregateValue = (
   node: AggregateValue,
@@ -71,7 +71,7 @@ export const evaluateAggregateValue = (
         : aggregateValues(items, node.field, itemField, () => true).length;
     case 'sum':
     case 'avg':
-      return sumOrAverage(mode, items, node.field, itemField);
+      return sumOrAverage(mode, items, node.field, itemField, node.coerceType);
     case 'distinct':
       return distinctValues(
         aggregateValues(items, node.field, itemField, coerce),

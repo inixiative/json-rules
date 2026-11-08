@@ -12,6 +12,11 @@ A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType
   table; a Json array's items have no declared kind). On `toPrisma` a relation aggregate reads a
   numeric column, so `coerceType` changes nothing; `toSql` already casts. `negate()`'s "no
   values" arm keeps it.
+- **A value expression's `sum` / `avg` take `coerceType` too**, exactly as the aggregate rule does:
+  each item is parsed before it is added, through the same `sumOrAverage`, so a value and a rule
+  over the same rows compute the same number. `validateValue` takes a numeric kind there (it
+  refused any `coerceType` on `sum` / `avg`); `inferValueType` and `describeValue` check it against
+  the item's declared kind, a Json item taking any numeric kind, and report it as the kind.
 - **`toPrisma`: an array rule's `notEmpty` on a Json value that isn't an array no longer holds**,
   as on SQL (`array_contains: []` holds on an array only). Prisma has no filter for "not an
   array", so its `empty` still doesn't match one; README, Where the Rails Differ.

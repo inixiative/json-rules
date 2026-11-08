@@ -245,7 +245,8 @@ runs first (filter → order → skip → take), then `condition`. An aggregate 
 
 Values compare as stored, kind by kind: `distinct` keeps `1`, `Decimal('1')`, `1n` and `'1'` as
 four values, which shows mixed data rather than hiding it. To read them as one kind, give
-`distinct`, `min` or `max` a `coerceType` (as on a field rule): `coerceType: 'Decimal'` reads all four
+`distinct`, `min` or `max` a `coerceType` (as on a field rule; on `sum` / `avg` it parses each
+item before adding it, as on an aggregate rule): `coerceType: 'Decimal'` reads all four
 as 1, `'Int'` lets `min` / `max` order a string column of numbers (`'9'` before `'10'`), and
 `'DateTime'` reads date strings as dates (a zoneless one in the evaluation's `timeZone`). A coercion
 must be one the column can become, checked at save: a string reads as anything it parses to, a

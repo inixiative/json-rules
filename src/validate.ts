@@ -148,7 +148,9 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
     );
   const value = (isPlainObject(node) ? node : {}) as Record<string, unknown>;
   const mode = agg?.mode;
-  if (value.coerceType !== undefined) {
+  // sum / avg parse each item as their aggregate rule does.
+  if (mode === 'sum' || mode === 'avg') validateAggregateCoercion(value, '$', context, 1);
+  else if (value.coerceType !== undefined) {
     if (!isFieldKind(value.coerceType))
       pushIssue(
         context,
@@ -161,7 +163,7 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
         context,
         '$.coerceType',
         'unexpected_coerce_type',
-        'coerceType reads the values distinct, min and max return',
+        'coerceType reads the values sum, avg, distinct, min and max read',
       );
   }
   if (value.caseInsensitive !== undefined) {

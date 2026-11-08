@@ -1067,6 +1067,69 @@ describe('the distinct aggregate', () => {
     ]);
   });
 
+  describe('coerceType on sum and avg parses each item, as an aggregate rule does', () => {
+    const coerced = (mode: string, field: string, coerceType: string) =>
+      ({ ...(over(mode, field) as object), coerceType }) as ValueExpression;
+    const codes = (expr: unknown) =>
+      validateValue(expr).errors.map((issue) => `${issue.path} ${issue.code}`);
+
+    test('without it the items are numbers as stored', () => {
+      expect(() => evaluateValue(over('sum', 'title'), rows({ title: '1' }))).toThrow(
+        'must be a finite number',
+      );
+    });
+
+    test('with it, items parse; one that will not keeps the error', () => {
+      const missions = rows({ title: '1' }, { title: 2.5 }, { title: null });
+      expect(evaluateValue(coerced('sum', 'title', 'Float'), missions)).toBe(3.5);
+      expect(evaluateValue(coerced('avg', 'title', 'Int'), missions)).toBe(1.75);
+      expect(() => evaluateValue(coerced('sum', 'title', 'Float'), rows({ title: 'x' }))).toThrow(
+        'must be a finite number',
+      );
+    });
+
+    test('the value and the rule agree', () => {
+      const missions = rows({ title: '1' }, { title: '4' });
+      const value = evaluateValue(coerced('avg', 'title', 'Float'), missions);
+      const rule = {
+        ...(coerced('avg', 'title', 'Float') as object),
+        operator: 'equals',
+        value,
+      } as Condition;
+      expect(check(rule, missions)).toBe(true);
+    });
+
+    test('validate: a numeric kind', () => {
+      expect(codes(coerced('sum', 'title', 'Float'))).toEqual([]);
+      expect(codes(coerced('avg', 'title', 'String'))).toEqual([
+        '$.coerceType aggregate_kind_mismatch',
+      ]);
+      expect(codes(coerced('sum', 'title', 'Nope'))).toEqual(['$.coerceType invalid_coerce_type']);
+    });
+
+    test('types: the coerceType is the kind; it must read what the item is declared as', () => {
+      expect(inferValueType(coerced('sum', 'title', 'Float'), lens)).toEqual({
+        kind: 'Float',
+        isList: false,
+        nullable: false,
+      });
+      expect(inferValueType(coerced('avg', 'points', 'Decimal'), lens)).toEqual({
+        kind: 'Decimal',
+        isList: false,
+        nullable: true,
+      });
+      expect(inferValueType(coerced('sum', 'payload', 'Int'), lens).kind).toBe('Int');
+      expect(() => inferValueType(coerced('sum', 'isFeatured', 'Float'), lens)).toThrow(
+        "Boolean values can't be read as Float",
+      );
+      expect(
+        describeValue(coerced('sum', 'isFeatured', 'Float'), lens).errors.map(
+          (issue) => issue.code,
+        ),
+      ).toEqual(['coerce_kind_mismatch']);
+    });
+  });
+
   test('is a value, never a list item or a comparison', () => {
     expect(() => inferValueType([over('distinct', 'title')], lens)).toThrow(
       "a list's items are single values",

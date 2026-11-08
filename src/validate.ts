@@ -13,6 +13,7 @@ import {
 } from './dateExpr';
 import { resolveCaseInsensitive } from './engineGlobals';
 import {
+  aggregatePathUnsupported,
   ambiguousCondition,
   conditionRequired,
   countRequired,
@@ -37,6 +38,7 @@ import {
   catalogEntry,
   countsInAStep,
   DAY_NAMES,
+  EQUALITY_OPERATORS,
   FieldKind,
   getValueShape,
   HOLDS_ON_ABSENT_OPERATORS,
@@ -772,11 +774,12 @@ const validateAggregateRule = (
       context,
       `${path}.path`,
       'unsupported_prisma_aggregate_path',
-      `path is not supported by toPrisma() for aggregate rules; use value instead`,
+      aggregatePathUnsupported(rule.path).message,
     );
   }
 
-  if (validateSource(rule, path, context, depth) === null) return;
+  // The comparison column is judged above, as a field rule's is by validateFieldRule.
+  if (validateSource(rule, path, context, depth, true) === null) return;
   if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
 
   const value = rule.value;
@@ -790,7 +793,9 @@ const validateAggregateRule = (
       );
     }
   } else {
-    if (typeof value !== 'number') {
+    // Against null, equals / notEquals ask whether the aggregate has a number, as on a field.
+    const isNullSentinel = value === null && EQUALITY_OPERATORS.includes(rule.operator as Operator);
+    if (typeof value !== 'number' && !isNullSentinel) {
       pushIssue(
         context,
         `${path}.value`,

@@ -107,6 +107,15 @@ export const noCompiledForm = (target: 'toSql' | 'toPrisma', what: string, why?:
     `${what} has no ${target === 'toSql' ? 'SQL' : 'Prisma'} form${why ? ` (${why})` : ''}; use ${target === 'toSql' ? 'check()' : 'toSql() or check()'}.`,
   );
 
+/** An aggregate rule compared against a column: Prisma computes the aggregate in a groupBy, whose
+ *  `having` can't read a column of the row that owns the relation. */
+export const aggregatePathUnsupported = (path: string): Error =>
+  noCompiledForm(
+    'toPrisma',
+    `An aggregate rule compared against the column '${path}'`,
+    "a groupBy's having can't read the parent row",
+  );
+
 /** A window (filter / orderBy / take / skip) a compiler has no form for. */
 export const windowUnsupported = (target: 'toSql' | 'toPrisma'): Error =>
   new Error(

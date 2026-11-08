@@ -211,7 +211,8 @@ Empty-array semantics: `sum([]) = 0`, and `avg([])` is NULL, as SQL's `AVG` is: 
 average. An average over no values is compared as a NULL column is — a positive operator
 (`lessThan`, `equals`, `between`, …) doesn't hold, a negated one (`notEquals`, `notBetween`) does —
 and `negate()` adds the "no values" arm, the aggregate's own `notExists`, as it adds `notExists`
-to a field's. Ask for it directly with `operator: 'exists'` / `'notExists'`; a sum always exists. To count no values as
+to a field's. Ask for it directly with `operator: 'exists'` / `'notExists'` (or, as on a field,
+`equals` / `notEquals` `null`); a sum always exists. To count no values as
 low, say so: `any: [count == 0, avg < 3]`. A NULL or absent array is empty, and NULL items are
 skipped, as SQL's `SUM` / `AVG` skip them.
 
@@ -1067,6 +1068,7 @@ positive operator, ask for them:
 - `path: '$.field'` column-to-column comparisons are not supported by Prisma `WHERE`; no scope ref (`$$.` path, prefixed `field`) compiles
 - count-based and aggregate relation operators require `{ map, model }`
 - aggregate rules on JSON/native stored arrays are not supported by Prisma; use `toSql()` or `check()` for those
+- an aggregate rule compared against a column (`path`) is refused: Prisma computes the aggregate in a `groupBy`, whose `having` can't read the parent row
 - element conditions (`all` / `any` / `none` / counts) over a scalar list or a Json array are not supported by Prisma; test a list's membership with `contains`
 - a field path through a to-many relation (`posts.title`) is an error on both compilers; compare its rows with an array rule on `posts`
 - Prisma loads a NULL scalar-list column as `[]`, so `check()` over Prisma-loaded rows reads it as an empty list while the compilers read NULL; a list Prisma writes is never NULL, so this only matters for rows written outside Prisma

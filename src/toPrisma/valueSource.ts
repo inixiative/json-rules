@@ -1,14 +1,13 @@
 import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
 import { noCompiledForm } from '../errors';
-import { hasNoOperand } from '../field';
 import { ruleShape } from '../fieldMap/shape';
 import type { FieldMap } from '../fieldMap/types';
-import { type Settle, settleLiteral } from '../negate';
+import { type Settle, settleWith } from '../negate';
 import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
-import type { Rule, ValueSourceFields } from '../types';
-import { compileBinding, matchSource, type ReadSource } from '../valueSource';
+import type { ValueSourceFields } from '../types';
+import { compileBinding, hasPath, matchSource, type ReadSource } from '../valueSource';
 import { holdsReservedKey } from './sentinels';
 import type { ToPrismaOptions } from './types';
 
@@ -46,51 +45,33 @@ export const dateConfigOf = (options?: ToPrismaOptions): ResolvedDateConfig =>
 
 /** A leaf with its value source and offset read as the Prisma rail reads them, for negation;
  *  null when one reads nothing (the leaf is then false). */
-export const settleLeaf =
-  (options?: ToPrismaOptions): Settle =>
-  (leaf) => {
-    const comparison = typeof leaf.operator === 'string' || typeof leaf.dateOperator === 'string';
-    const sourced =
-      leaf.value !== undefined ||
-      (typeof leaf.path === 'string' && leaf.path !== '') ||
-      typeof leaf.bind === 'string';
-    if (!comparison || !sourced) return leaf;
+export const settleLeaf = (options?: ToPrismaOptions): Settle => {
+  const settle = settleWith((source) => readSource(source));
+  return (leaf, depth) => {
     // A column compared with a column stays one: its complement compiles to a field reference.
-    if (typeof leaf.operator === 'string' && typeof leaf.path === 'string' && leaf.path !== '')
+    if (typeof leaf.operator === 'string' && hasPath(leaf as ValueSourceFields<unknown>))
       return leaf;
     // The complement of an ordered comparison keeps the values of other types, which Prisma's
     // Json filters can't test for.
-    const shape = ruleShape(
-      { field: String(leaf.field) },
-      options?.map as FieldMap | undefined,
-      options?.model,
-    );
+    const sourced = leaf.value !== undefined || typeof leaf.bind === 'string';
     if (
+      sourced &&
       !('aggregate' in leaf) &&
-      (shape === 'json' || shape === 'json-path') &&
       typeof leaf.operator === 'string' &&
       ORDERED_OPERATORS.includes(leaf.operator)
-    )
-      throw noCompiledForm(
-        'toPrisma',
-        `The complement of '${leaf.operator}' on the Json value '${leaf.field}'`,
-        'it keeps values of other types',
+    ) {
+      const shape = ruleShape(
+        { field: String(leaf.field) },
+        options?.map as FieldMap | undefined,
+        options?.model,
       );
-    const value = readSource(leaf);
-    const offset = leaf.offset === undefined ? undefined : readSource(leaf.offset as never);
-    if (leaf.offset !== undefined && (offset === null || offset === undefined)) return null;
-    const { path: _path, bind: _bind, bindOptional: _optional, ...rest } = leaf;
-    const literal = {
-      ...rest,
-      value,
-      ...(leaf.offset !== undefined && { offset: { value: offset } }),
-    };
-    // A date range with a missing end reads nothing, as a field range does.
-    if (typeof leaf.dateOperator === 'string')
-      return value === null ||
-        value === undefined ||
-        hasNoOperand({ operator: leaf.dateOperator } as Rule, value)
-        ? null
-        : literal;
-    return settleLiteral(literal);
+      if (shape === 'json' || shape === 'json-path')
+        throw noCompiledForm(
+          'toPrisma',
+          `The complement of '${leaf.operator}' on the Json value '${leaf.field}'`,
+          'it keeps values of other types',
+        );
+    }
+    return settle(leaf, depth);
   };
+};

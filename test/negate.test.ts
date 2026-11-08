@@ -1,17 +1,26 @@
 import { describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
 import { check } from '../index';
-import { negate, settleLiteral } from '../src/negate';
+import { negate, settleIn } from '../src/negate';
 
 // negate(c) holds exactly where check(c) doesn't — over NULLs, empty strings, missing fields,
 // empty arrays, every operator family and the logical nodes.
 
+// `m` and `r` are operands read per row: a number, a range, or nothing.
 const rows = [
-  { n: 5, s: 'abc', d: '2026-10-05T00:00:00Z', tags: [{ t: 'a' }, { t: 'b' }], nums: [1, 2] },
-  { n: 10, s: '', d: '2026-10-07T00:00:00Z', tags: [{ t: 'a' }], nums: [] },
-  { n: null, s: null, d: null, tags: [], nums: [5] },
-  { tags: [{ t: 'c' }], nums: [3, 4] },
-  { n: 1, tags: [{ t: 'a', n: null }], nums: [null] },
+  {
+    n: 5,
+    s: 'abc',
+    d: '2026-10-05T00:00:00Z',
+    tags: [{ t: 'a' }, { t: 'b' }],
+    nums: [1, 2],
+    m: 4,
+    r: [1, 4],
+  },
+  { n: 10, s: '', d: '2026-10-07T00:00:00Z', tags: [{ t: 'a' }], nums: [], m: null, r: [null, 3] },
+  { n: null, s: null, d: null, tags: [], nums: [5], m: 5, r: null },
+  { tags: [{ t: 'c', n: 2 }], nums: [3, 4], r: [2, 9] },
+  { n: 1, tags: [{ t: 'a', n: null }], nums: [null], m: 1 },
 ];
 const rule = (r: object): Condition => r as never;
 const now = '2026-10-06T00:00:00Z';
@@ -121,6 +130,90 @@ const leaves: [string, Condition][] = [
   ],
 ];
 
+// Operands read from a bind or the row: an operand that reads nothing settles as a null literal
+// does (negate reads them through check()'s own sources, settleIn).
+const missing = { bind: 'q', bindOptional: true };
+const sourced: [string, Condition][] = [
+  ...[
+    ['lessThan', 'm'],
+    ['notEquals', 'm'],
+    ['notBetween', 'r'],
+    ['between', 'r'],
+    ['notIn', 'r'],
+  ].flatMap(([operator, path]): [string, Condition][] => [
+    [`${operator} a path`, rule({ field: 'n', operator, path })],
+    [
+      `aggregate avg ${operator} a path`,
+      rule({ field: 'nums', aggregate: { mode: 'avg' }, operator, path }),
+    ],
+  ]),
+  ...['notBetween', 'between', 'lessThan', 'notEquals', 'equals'].flatMap(
+    (operator): [string, Condition][] => [
+      [`${operator} a missing bind`, rule({ field: 'n', operator, ...missing })],
+      [
+        `aggregate avg ${operator} a missing bind`,
+        rule({ field: 'nums', aggregate: { mode: 'avg' }, operator, ...missing }),
+      ],
+      [
+        `aggregate sum ${operator} a missing bind`,
+        rule({ field: 'nums', aggregate: { mode: 'sum' }, operator, ...missing }),
+      ],
+    ],
+  ),
+  ['a bound range', rule({ field: 'n', operator: 'notBetween', bind: 'range' })],
+  [
+    'an offset read from the row',
+    rule({ field: 'n', operator: 'lessThan', value: 3, offset: { path: 'm' } }),
+  ],
+  ['a date before a missing bind', rule({ field: 'd', dateOperator: 'notBefore', ...missing })],
+  [
+    'all over items compared with the row',
+    rule({
+      field: 'tags',
+      arrayOperator: 'all',
+      condition: { field: 'n', operator: 'notEquals', path: '$$.m' },
+    }),
+  ],
+  [
+    'all over items compared with themselves',
+    rule({
+      field: 'tags',
+      arrayOperator: 'all',
+      condition: { field: 'n', operator: 'notBetween', path: '$.r' },
+    }),
+  ],
+  // A date amount that reads nothing places no date: the rule is false, its negation keeps NULL.
+  ...['within', 'notWithin'].map((dateOperator): [string, Condition] => [
+    `${dateOperator} an amount that reads nothing`,
+    rule({ field: 'd', dateOperator, value: { ago: { days: missing } } }),
+  ]),
+  [
+    'a date amount read from the row',
+    rule({ field: 'd', dateOperator: 'within', value: { ago: { days: { path: 'm' } } } }),
+  ],
+  [
+    'a date offset whose amount reads nothing',
+    rule({
+      field: 'd',
+      dateOperator: 'notBefore',
+      value: now,
+      offset: { value: { ago: { days: missing } } },
+    }),
+  ],
+  [
+    'an average over a window',
+    rule({
+      field: 'tags',
+      aggregate: { mode: 'avg', field: 'n' },
+      orderBy: [{ field: 't', dir: 'desc' }],
+      take: 1,
+      operator: 'lessThan',
+      value: 3,
+    }),
+  ],
+];
+const bindings = { range: [4, 6] };
+
 const logical: [string, Condition][] = [
   ['all', { all: [leaves[0][1], leaves[9][1]] }],
   ['any', { any: [leaves[2][1], leaves[12][1]] }],
@@ -131,14 +224,15 @@ const logical: [string, Condition][] = [
 ];
 
 describe('negate is the exact complement under check()', () => {
-  for (const [name, condition] of [...leaves, ...logical])
+  for (const [name, condition] of [...leaves, ...sourced, ...logical])
     test(name, () => {
-      const negated = negate(condition, settleLiteral);
-      for (const row of rows)
-        expect([name, row, check(negated, row, { now }) === true]).toEqual([
+      for (const row of rows) {
+        const negated = negate(condition, settleIn({ bindings, scopes: [row] }));
+        expect([name, row, check(negated, row, { now, bindings }) === true]).toEqual([
           name,
           row,
-          check(condition, row, { now }) !== true,
+          check(condition, row, { now, bindings }) !== true,
         ]);
+      }
     });
 });

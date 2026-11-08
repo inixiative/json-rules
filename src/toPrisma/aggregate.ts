@@ -1,4 +1,4 @@
-import { unknownAggregateMode, windowUnsupported } from '../errors';
+import { aggregatePathUnsupported, unknownAggregateMode, windowUnsupported } from '../errors';
 import { checkField, hasNoOperand } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import type { FieldMap } from '../fieldMap/types';
@@ -7,6 +7,7 @@ import { negate } from '../negate';
 import { Operator } from '../operator';
 import {
   AGGREGATE_MODES,
+  EQUALITY_OPERATORS,
   type FieldKind,
   NEGATED_OPERATORS,
   NEGATED_RANGE_OPERATORS,
@@ -15,6 +16,7 @@ import {
 } from '../operatorCatalog';
 import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
+import { hasPath } from '../valueSource';
 import { hasWindow, windowRewrite } from '../window';
 import { nestedScope } from './columnRef';
 import { comparisonFilter, hopArms } from './field';
@@ -29,6 +31,7 @@ export const buildAggregateRule = (
   options?: ToPrismaOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  if (hasPath(rule)) throw aggregatePathUnsupported(rule.path);
   if (hasWindow(rule)) {
     const rewritten = windowRewrite(rule);
     if (!rewritten) throw windowUnsupported('toPrisma');
@@ -94,7 +97,15 @@ const buildAggregateStep = (
   if (NO_VALUE_OPERATORS.includes(rule.operator))
     return presence(rule, rule.operator === Operator.exists, where, path, options, state);
 
-  const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>);
+  // The Prisma rail reads every operand at compile time: nothing is left UNREAD.
+  const leaf = settleLeaf(options)(rule as unknown as Record<string, unknown>, 0) as Record<
+    string,
+    unknown
+  > | null;
+  // Against null, equals / notEquals ask whether the aggregate has a number, as on a field: a sum
+  // always has one, though Prisma's _sum over only NULL items is NULL.
+  if (leaf !== null && leaf.value === null && EQUALITY_OPERATORS.includes(rule.operator))
+    return presence(rule, rule.operator === Operator.notEquals, where, path, options, state);
   // Nothing to compare against: a negation holds where the aggregate has no number, as it does on
   // a NULL field; a positive comparison holds nowhere.
   if (leaf === null || hasNoOperand(leaf as unknown as Rule, leaf.value))

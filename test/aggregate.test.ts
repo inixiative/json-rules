@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { GroupByStep } from '../index';
 import {
   ArrayOperator,
+  bindRule,
   check,
   DateOperator,
   Operator,
@@ -1016,6 +1017,42 @@ describe('validateRule() aggregate rules', () => {
     expect(result.errors[0].code).toBe('invalid_range_value');
   });
 
+  // As on a field: null is the is-null sentinel for equals / notEquals, and an operand to the
+  // ordered and range operators, which a literal can't leave out.
+  it('equals / notEquals null is the is-null sentinel, as on a field', () => {
+    for (const operator of [Operator.equals, Operator.notEquals]) {
+      const aggregate = { field: 'scores', aggregate: { mode: 'avg' }, operator, value: null };
+      expect(validateRule(aggregate as never).ok).toBe(true);
+      expect(validateRule({ field: 'score', operator, value: null }).ok).toBe(true);
+    }
+  });
+
+  it('a bound null passes as it is bound', () => {
+    const rule = bindRule(
+      {
+        field: 'scores',
+        aggregate: { mode: 'avg' },
+        operator: Operator.notEquals,
+        bind: 'q',
+        bindOptional: true,
+      },
+      { q: null },
+    );
+    expect(validateRule(rule, { target: 'toPrisma' }).ok).toBe(true);
+  });
+
+  it('an ordered comparison with null and a range missing an end are refused, as on a field', () => {
+    const cases: [object, string][] = [
+      [{ operator: Operator.lessThan, value: null }, 'invalid_aggregate_value'],
+      [{ operator: Operator.notBetween, value: [null, 3] }, 'invalid_range_value'],
+    ];
+    for (const [comparison, code] of cases) {
+      const aggregate = { field: 'scores', aggregate: { mode: 'avg' }, ...comparison };
+      expect(validateRule(aggregate as never).errors.map((e) => e.code)).toEqual([code]);
+      expect(validateRule({ field: 'score', ...comparison } as never).ok).toBe(false);
+    }
+  });
+
   it('toPrisma accepts notBetween', () => {
     const result = validateRule(
       {
@@ -1040,7 +1077,23 @@ describe('validateRule() aggregate rules', () => {
       { target: 'toPrisma' },
     );
     expect(result.ok).toBe(false);
-    expect(result.errors[0].code).toBe('unsupported_prisma_aggregate_path');
+    expect(result.errors.map((e) => e.code)).toEqual(['unsupported_prisma_aggregate_path']);
+  });
+
+  it('toPrisma refuses a path with the message validate gives', () => {
+    const rule = {
+      field: 'orders',
+      aggregate: { mode: 'avg', field: 'total' },
+      operator: Operator.greaterThan,
+      path: 'minScore',
+    } as const;
+    const [issue] = validateRule(rule, { target: 'toPrisma' }).errors;
+    expect(issue.message).toContain("a groupBy's having can't read the parent row");
+    const options = { map: orderMap, model: 'User' };
+    expect(() => toPrisma(rule, options)).toThrow(issue.message);
+    expect(() =>
+      toPrisma({ if: { ...rule, operator: Operator.notEquals }, then: false, else: true }, options),
+    ).toThrow(issue.message);
   });
 
   it('valid aggregate with condition', () => {

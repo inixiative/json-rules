@@ -130,6 +130,7 @@ const NO_COLUMN_COMPARE = 'compares to a column, which';
 const NO_WEEKDAY = 'has no Prisma form';
 const NY = { timeZone: 'America/New_York' };
 const NOT_FOR_ENUMS = 'does not apply to the enum';
+const AGGREGATE_PATH = "a groupBy's having can't read the parent row";
 
 const MATRIX: Record<string, Case> = {
   'date before': {
@@ -764,6 +765,90 @@ const MATRIX: Record<string, Case> = {
     ids: [1, 2, 3, 4, 5],
     refuses: { prisma: 'require aggregate.field' },
   },
+  'an average equals null where it has no number, as a field does': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'equals',
+      value: null,
+    },
+    ids: [2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average notEquals null where it has one': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'notEquals',
+      value: null,
+    },
+    ids: [1],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  // Prisma's _sum over only NULL items (user 3's one post) is NULL; the rule's sum is 0.
+  'a sum never equals null': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'sum', field: 'views' },
+      operator: 'equals',
+      value: null,
+    },
+    ids: [],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'a sum always notEquals null': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'sum', field: 'views' },
+      operator: 'notEquals',
+      value: null,
+    },
+    ids: [1, 2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'the else of a sum equals null holds everywhere': {
+    rule: {
+      if: {
+        field: 'posts',
+        aggregate: { mode: 'sum', field: 'views' },
+        operator: 'equals',
+        value: null,
+      },
+      then: false,
+      else: true,
+    },
+    ids: [1, 2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES },
+  },
+  'an average compared against a column: Prisma refuses it': {
+    rule: {
+      field: 'posts',
+      aggregate: { mode: 'avg', field: 'views' },
+      operator: 'lessThan',
+      path: 'age',
+    },
+    ids: [1],
+    refuses: { sql: RELATION_AGGREGATES, prisma: AGGREGATE_PATH },
+  },
+  'the else of an average compared against a column: Prisma refuses it': {
+    rule: {
+      if: {
+        field: 'posts',
+        aggregate: { mode: 'avg', field: 'views' },
+        operator: 'lessThan',
+        path: 'age',
+      },
+      then: false,
+      else: true,
+    },
+    ids: [2, 3, 4, 5],
+    refuses: { sql: RELATION_AGGREGATES, prisma: AGGREGATE_PATH },
+  },
+  'a Json array average compared against a column': {
+    rule: { field: 'meta.list', aggregate: { mode: 'avg' }, operator: 'lessThan', path: 'age' },
+    ids: [1],
+    refuses: { prisma: AGGREGATE_PATH },
+  },
 };
 
 test('an average of a text field: check and Prisma both refuse it', async () => {
@@ -823,5 +908,41 @@ describe('a narrowed array rule compiles on Prisma', () => {
     );
     expect(two.check).toEqual([1]);
     expect(two.prisma).toEqual([1]);
+  });
+});
+
+// A Json value that isn't an array, under an aggregate: a data error, which check() raises and
+// SQL, which can't raise per row, reads as an empty array — as it does for an array rule's
+// empty / notEmpty (README, Where the Rails Differ).
+describe('an aggregate over a Json value that is not an array', () => {
+  let odd: Awaited<ReturnType<typeof openRails>>;
+  beforeAll(async () => {
+    odd = await openRails(`
+      INSERT INTO users (id, meta, tags) VALUES (6, '{"list":"abc"}', '{}'), (7, '{"list":{"x":1}}', '{}');
+    `);
+  });
+  afterAll(async () => {
+    await odd.close();
+  });
+  const cases: [string, object, number[]][] = [
+    ['sum', { aggregate: { mode: 'sum' }, operator: 'equals', value: 0 }, [2, 3, 4, 5, 6, 7]],
+    ['avg', { aggregate: { mode: 'avg' }, operator: 'notExists' }, [2, 3, 4, 5, 6, 7]],
+    [
+      'avg negated',
+      { aggregate: { mode: 'avg' }, operator: 'notEquals', value: 2 },
+      [2, 3, 4, 5, 6, 7],
+    ],
+  ];
+  for (const [name, r, ids] of cases)
+    test(name, async () => {
+      const result = await odd.run(rule({ field: 'meta.list', ...r }));
+      expect(result.check).toBe('throws: meta.list must be an array');
+      expect(result.sql).toEqual(ids);
+      expect(result.prisma).toContain('require aggregate.field');
+    });
+  test('as an array rule reads it', async () => {
+    const result = await odd.run(rule({ field: 'meta.list', arrayOperator: 'empty' }));
+    expect(result.check).toBe('throws: meta.list must be an array');
+    expect(result.sql).toEqual([2, 3, 4, 5, 6, 7]);
   });
 });

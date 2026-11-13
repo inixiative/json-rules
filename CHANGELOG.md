@@ -52,6 +52,12 @@ A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType
   NULL dates instead of every row.
 - An aggregate over a Json value that isn't an array stays a data error, as for an array rule:
   `check()` throws, SQL reads it as an empty array. Differential rows pin it.
+- **`listFields` reports what a rule reads from the row inside a relation.** It stopped at a
+  relation node, so a hydrator loading only the paths it listed dropped a relation the rule
+  reaches through a scope ref, and `check()` saw no rows. It now lists a scope ref that climbs
+  back to the row (`$$.` one relation down, `$$$.` two down) and a bare value `path` inside a
+  relation, which `check()` reads from the root row. Bare `field`s and `$.` refs inside a relation
+  still read the related row and are not listed. A top-level `$.x` is reported as `x`, not `$.x`.
 
 ## 3.21.0 — avg over no values is NULL (FEAT-007)
 

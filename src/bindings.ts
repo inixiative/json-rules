@@ -1,3 +1,4 @@
+import { parseScopeRef } from './scope';
 import {
   type ConditionNode,
   isRelationNode,
@@ -40,17 +41,31 @@ export const listBindings = (
 
 /**
  * The paths a rule reads from the row it is checked on, sorted: each leaf's `field` and each
- * `{ path }` on its value side. A relation node (`arrayOperator`, `aggregate`) contributes its own
- * field; what its `condition` / `filter` read is relative to the related rows, so it is not listed.
- * For a caller that must load what a rule reads before checking it (a hydrator).
+ * `{ path }` on its value side, scope prefix dropped. Inside a relation node (`arrayOperator`,
+ * `aggregate`) a bare `field` reads the related row and is not listed, while a bare value path and
+ * a scope ref that climbs back to the row (`$$.` one relation down, `$$$.` two down) are. For a
+ * caller that must load what a rule reads before checking it (a hydrator).
  */
 export const listFields = (condition: Condition): string[] => {
   const paths = new Set<string>();
-  visitCondition(condition, (node) => {
-    if (typeof node.field === 'string') paths.add(node.field);
-    for (const { ref } of valueRefRoles(node)) paths.add(ref);
-    return isRelationNode(node) ? false : undefined;
-  });
+  // The row's own path for a ref read `nesting` relations down, or null when it reads a related row.
+  const rowPath = (ref: string, nesting: number, bareReadsRow: boolean): string | null => {
+    const scoped = parseScopeRef(ref);
+    if (!scoped) return bareReadsRow || nesting === 0 ? ref : null;
+    return scoped.depth === nesting + 1 ? scoped.path : null;
+  };
+  visitCondition<number>(
+    condition,
+    (node, nesting) => {
+      const reads = [
+        ...(typeof node.field === 'string' ? [rowPath(node.field, nesting, false)] : []),
+        ...valueRefRoles(node).map(({ ref }) => rowPath(ref, nesting, true)),
+      ];
+      for (const path of reads) if (path !== null) paths.add(path);
+      return isRelationNode(node) ? nesting + 1 : undefined;
+    },
+    0,
+  );
   return [...paths].sort();
 };
 

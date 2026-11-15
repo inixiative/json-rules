@@ -203,6 +203,14 @@ describe('a re-check reading JSON selects the Json column whole', () => {
       ).toEqual(['Ann', 'Dee']);
   });
 
+  test('a bracket spelling selects the same Json column as its dotted twin', () => {
+    const selectOf = (field: string) =>
+      toSourceQueries(source({ field, operator: 'equals', value: 'X' }))[0]?.prisma.select;
+    expect(selectOf('meta["a"]["b"]')).toEqual(selectOf('meta.a.b'));
+    expect(selectOf('org["settings"].tier')).toEqual(selectOf('org.settings.tier'));
+    expect(selectOf('org["name"]')).toEqual(selectOf('org.name'));
+  });
+
   test('a Json read through a relation: the column under it, and SQL says relation', async () => {
     const lens = source({ field: 'org.settings.tier', operator: 'equals', value: 'gold' });
     const [query] = toSourceQueries(lens);

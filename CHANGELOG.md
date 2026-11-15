@@ -9,6 +9,8 @@
   `resolvePolicyPath`, `unresolvedIssue` and `relationHops` split on `.`, so
   `validateRuleInLens` read `["org"]["plan"]` as one missing key while `check()` read
   `org.plan`. They use `pathSegments` now; dotted paths are unchanged.
+  `toSourceQueries` selects a re-check's reads by `pathSegments` too (`meta["a"]` selected a
+  column named `meta["a"]`).
 
 ## 3.22.0 — aggregate and negate fixes; aggregate coerceType
 

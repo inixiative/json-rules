@@ -2,6 +2,7 @@ import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { FieldMap } from '../fieldMap/types';
 import { walkFieldPath } from '../fieldMap/walk';
 import { modelOf, own } from '../own';
+import { pathSegments } from '../scope';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere, WhereStep } from '../toPrisma/types.ts';
 import { buildCondition } from '../toSql/condition.ts';
@@ -116,7 +117,7 @@ const compileOne = (
   // A read into a Json column selects the column whole: a select can't open a Json value.
   const columnOf = (read: string): string => {
     const walk = walkFieldPath(read, map, model);
-    return walk.kind === 'json-path' ? read.split('.').slice(0, walk.stopIndex).join('.') : read;
+    return walk.kind === 'json-path' ? pathSegments(read).slice(0, walk.stopIndex).join('.') : read;
   };
   // What the re-check reads here: its local columns, and each bridge's local key.
   const recheckReads =
@@ -144,7 +145,7 @@ const compileOne = (
     [field]: true,
     ...(localLabel && !labelPath ? { [localLabel]: true } : {}),
   };
-  for (const read of nestedPaths) mergeSelect(select, read.split('.'));
+  for (const read of nestedPaths) mergeSelect(select, pathSegments(read));
   const prisma: SourcePrismaQuery = {
     model,
     // Candidates differ in what the re-check reads, so DISTINCT on the value would drop some.

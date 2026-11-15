@@ -1,0 +1,46 @@
+{
+  "id": "values-and-bindings",
+  "title": "Value sources, bindings, value expressions",
+  "routing": "Is this about where a rule's compared value comes from \u2014 a literal, `{ path }` (another column, `$.` / `$$.` / `$$$.` scope refs into enclosing array elements), `{ bind }` placeholders (bindOptional, bindRule, listBindings, listFields, check's `bindings`, bindLens / listLensBindings), an `offset` shifting it \u2014 or about computing a value instead of testing one with evaluateValue (count / sum / avg / min / max / distinct, if / else, lists, coerceType) and checking it with validateValue, assertValidValue, inferValueType, describeValue, coerceValue? Jobs: 'compare with another field', 'fill in the tenant id at request time', 'which params does this rule need', 'how many orders in the last 90 days', 'date of the last ask', 'distinct regions'.",
+  "concepts": ["value-sources-and-scope", "bindings", "value-expressions"],
+  "tokens": 14199,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 1823,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 14199
+    }
+  },
+  "runsAgreed": 3,
+  "sources": {
+    "docs": ["CLAUDE.md", "README.md"],
+    "docUnits": [
+      "doc:README.md#path-semantics",
+      "doc:README.md#rule-introspection",
+      "doc:README.md#lens-multi-source-data/bindings-in-a-lens",
+      "doc:CLAUDE.md#value-expression-rulings-aron-2026-11-04-05",
+      "doc:README.md#rule-shapes/value-expressions"
+    ],
+    "catalogClusters": [
+      "primitive-bindings",
+      "primitive-lens-gate-and-compiles",
+      "primitive-lens-projection-and-fetch",
+      "primitive-null-semantics",
+      "primitive-prisma-plan-execution",
+      "primitive-prisma-planner",
+      "primitive-validation-and-errors",
+      "primitive-value-expressions",
+      "primitive-value-sources-and-scope"
+    ],
+    "codeEntries": 63,
+    "docMembers": 17
+  },
+  "bypassLines": 20,
+  "glossaryTerms": 28
+}

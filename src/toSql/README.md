@@ -58,12 +58,14 @@ that instant, a zoneless one wall time in the evaluation's zone.
 
 ### Array Operators
 The storage (a native list or a Json array) comes from the FieldMap when `map` and `model` are
-given; Json otherwise.
+given; Json otherwise. Only `empty` / `notEmpty` compile: the element operators (`all`, `any`,
+`none`, `atLeast`, `atMost`, `exactly`) throw on either storage — use `check()`.
 
 ```typescript
 { field: 'tags', arrayOperator: ArrayOperator.empty }
 // native → ("t0"."tags" IS NULL OR cardinality("t0"."tags") = 0)
-// Json   → ("tags" IS NULL OR "tags" IN ('null'::jsonb, '[]'::jsonb))
+// Json   → (CASE WHEN jsonb_typeof("tags") = 'array' THEN jsonb_array_length("tags") = 0 ELSE TRUE END)
+//          (NULL, a JSON null and a non-array read as empty)
 ```
 
 ### Aggregate Rules

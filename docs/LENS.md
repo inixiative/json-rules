@@ -1,6 +1,6 @@
 # Lens deep-dive guide
 
-> The Lens primitive as of 3.5. For library basics (operators, `check()`,
+> The Lens primitive. For library basics (operators, `check()`,
 > `toPrisma()`, `toSql()`, bridges, multi-source data evaluation), see the
 > [README](../README.md).
 
@@ -57,7 +57,7 @@ What one layer may do, given the layers above it (layer 1 is the first narrowing
 | `picks` / `omits` / `enumPicks` / `enumOmits` | intersect (omits union) | only hide more; naming what an ancestor hid is an error. `picks` names columns only (a relation in it is `wrong_kind`); `omits` may name a relation, beside `picks` too |
 | `relations` (turning on) | exposed₁ = layer 1 turns it on ∧ ¬ layer 1 hides it; exposedₖ = exposedₖ₋₁ ∧ ¬ layer k hides it | layer 1: turn on any relation, along the path (`root.relations`) or at a model default (`mapDefaults…models.M.relations`). Later layers: hide it with `omits`, or restate one the parent shows to narrow that hop (else `not_visible`); a restatement hides nothing else |
 | model-default relations | a tree under each spelled node: each model once, at its nearest reach (ties: earlier parent, then field order) | spell under `root.relations` to reach a model another way; every posture walks the same tree |
-| `where` clamps | AND at their anchor | only add. A later layer's clamp is checked by one function — the gate over its parent's surface, every hop and the column at its end — at every visit it applies to (the shown visits, and the ones a layer-1 clamp or source crosses), by `validateNarrowing` and by every runtime posture alike. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`, and at runtime every posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation clamp or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
+| `where` clamps | AND at their anchor | only add. A later layer's clamp is checked by one function — the gate over its parent's surface, every hop and the column at its end — at every visit it applies to (the shown visits, and the ones a layer-1 clamp or source crosses), by `validateNarrowing` and by every runtime posture alike. Layer 1's may read any relation on the schema; a later layer's only what its parent shows — refused by `validateNarrowing`; at runtime the gate refuses it and every other posture throws rather than apply it. A bare value `path` reads the root row, so only `root.where` may hold one; a relation clamp or a model default uses a literal, a bind, or a `$` scope ref (`invalid_value_source`, and a runtime throw) |
 | `sources` `where` / `label` / `groupBy` | `where` ANDs; a later `label` / `groupBy` wins | the `where` is a clamp (as above); a label or axis reads only relations shown at each visit the source is projected, and columns every other layer shows (only the layer that set the value in force is exempt from its own hiding) |
 | `from: 'mapDefaults'` pointers | — | escape only their own layer's path clamps; every other layer's still apply |
 
@@ -136,11 +136,12 @@ const n: LensNarrowing = {
   parent: lens, // anchor: User
   // along the path: org at the root, parent at org
   root: { relations: { org: { relations: { parent: {} } } } },
-  // at the model default: users wherever Org is visited
+  // at the model default: users wherever Org is visited, unless User is already on the path
   mapDefaults: { prisma: { models: { Org: { relations: { users: {} } } } } },
 };
-// accepted: org.name, org.parent.name, org.users.name, { field: 'org', operator: 'exists' }
-// refused (not_in_lens, walkLensPath 'hidden'): posts.title, org.parent.parent.name
+// accepted: org.name, org.parent.name, { field: 'org', operator: 'exists' }
+// refused (not_in_lens, walkLensPath 'hidden'): posts.title, org.parent.parent.name,
+//   org.users.name (User, the anchor, is already on the path; spell it to reach it)
 ```
 
 The relation object carries that hop's narrowing — `where`, `picks` / `omits` of the target's
@@ -196,8 +197,9 @@ Later layers:
 - **Clamp on what the parent shows.** A later layer's `where` (and source eligibility `where`)
   may cross only relations its parent shows; otherwise a delegate's clamp would probe what it
   can't see. Layer 1's clamps read the schema. `validateNarrowing` reports a clamp that crosses
-  more, and every runtime posture (the gate, `narrowRule`, `{ lens }` compiles, `toLensSelect`,
-  `projectRows`, `readLensValue`, the sources) throws instead of applying it.
+  more; at runtime the gate refuses it (`not_in_lens`), and every other posture (`narrowRule`,
+  `{ lens }` compiles, `toLensSelect`, `projectRows`, `readLensValue`, the sources) throws
+  instead of applying it.
 - **A source `where` narrows as a rule.** It is a clamp on the options and a surface a viewer
   reasons over, so each one is narrowed under the whole lens as `narrowRule` narrows a rule: an
   option never comes through a row any layer hides. A later layer's clamp on a relation a source
@@ -346,7 +348,8 @@ the user's data over rows they weren't even asking about.
 
 `toPrisma` compiles a window that is only a `filter` (no `orderBy` / `take` / `skip`) by folding
 it into the rule: `all` becomes "no row in scope breaks the condition", through the exact
-complement of the condition (NULL fields included); `any`, `none`, counts and aggregates take
+complement of the condition (with the NULL arm where the map declares the column
+`isRequired: false`); `any`, `none`, counts and aggregates take
 `filter AND condition`. A `filter` beside `orderBy` / `take` / `skip` stays check-only, and
 `toSql` compiles no relation arrays.
 
@@ -366,10 +369,13 @@ Injecting into the `filter` avoids both: there is no `negate`, so no operator ne
 `startsWith` clamp just works), and the window can't reorder around the scope. The trade-off is
 that the clamp rides a window `filter`: `toPrisma` folds a filter-only window into the rule (see
 above), and `toSql`, which compiles no relation arrays, refuses it — `describeRule` reports
-`['check', 'toPrisma']`.
+`['check', 'toPrisma']` (`['check']` for a clamp with no Prisma form, such as `matches`).
 
-The other array operators (`any`, `none`, `atLeast`, `atMost`, `exactly`) and `aggregate.condition`
-use plain AND injection — filter-first is already preserved by the operator's own meaning.
+The same `filter` injection serves any relation node that has a window (`filter`, `orderBy`,
+`take` or `skip`) or no `condition` (a count, an aggregate, an emptiness check). The other array
+operators (`any`, `none`, `atLeast`, `atMost`, `exactly`) with a `condition` and no window, and
+`aggregate.condition`, use plain AND injection — filter-first is already preserved by the
+operator's own meaning.
 
 ## 5. Composition rules
 
@@ -381,7 +387,7 @@ only further restrict what the layers above admit.
 - `enumPicks`: per-field intersection
 - `enumOmits`: per-field union
 - `where`: collected and AND'd at the anchor (across all layers contributing a where to the same anchor)
-- `defaults` + path-specific intersect cleanly: both apply, both narrow
+- `mapDefaults` + path-specific intersect cleanly: both apply, both narrow
 - `relations`: turned on by the first narrowing only (its path tree and model defaults); every
   layer's `omits` hides one. A later layer's relation object restates a relation its parent shows
   to narrow that hop, and hides nothing else.
@@ -427,8 +433,10 @@ its own resolved narrowing. See section 10 for the API.
 
 ## 6. Defaults vs path-specific
 
-`defaults` applies *wherever* a model or enum appears. Path-specific applies
-*only* on the path you declared.
+`mapDefaults` applies *wherever* a model or enum appears. Path-specific applies
+*only* on the path you declared. The examples assume the lens's first narrowing turned on
+`manager`, `posts` and `posts.author` (relations are off by default, §2); a relation that is off
+has no visit at all.
 
 ```ts
 // Schema: User has manager (User) and posts (Post[]); Post.author is User
@@ -499,11 +507,13 @@ const n: LensNarrowing = {
 
 ## 7. Per-model and per-type enum narrowing
 
-Enum value visibility composes from up to five sources, intersected per field:
+Enum value visibility composes from up to five sources, intersected per field (the first
+two are one base set: a field's own `values` replaces the registry, it is not intersected
+with it):
 
 1. The registry — `FieldMap.enums[enumType]` (declared once per source)
-2. The per-field override — `FieldMapEntry.values` (a field can declare a
-   tighter set than its type's registry — useful for narrow-purpose fields)
+2. The per-field override — `FieldMapEntry.values` (when set, it is the field's base set
+   in place of its type's registry — useful for narrow-purpose fields)
 3. `mapDefaults[X].enums[enumType]` — narrow the enum *type* (applies to every
    field of that type in map X)
 4. `mapDefaults[X].models[Y].enumPicks/enumOmits[field]` — per-field on a default
@@ -546,14 +556,15 @@ const n: LensNarrowing = {
 
 Validation enforces this layering at construction time (`validateNarrowing`):
 layer 5 picks can't reference values omitted by layer 4 or 3 or by ancestor's
-same-position layer-5 narrowing. Same for layer 4 against layer 3 and ancestor's
-same-position layer 4. A test in `v2_1.validateNarrowing.test.ts` exercises each
-boundary.
+same-position layer-5 narrowing. Layer 4 picks can't reference values an ancestor
+narrowing's layer 3 or 4 omitted; within one narrowing, a layer-4 pick of a value its own
+layer 3 omits is not reported, and the value is intersected away. `v2_1.validateNarrowing.test.ts`
+covers the root-level picks.
 
 ### Surfacing the narrowed enum to a builder/SDK
 
 `projectLens` materializes the per-field allowed set onto `FieldMapEntry.values`
-on each visited field at each path, with all three enum narrowing layers
+on each visited field at each path, with every enum source above
 composed. The consumer reads it directly:
 
 ```ts
@@ -615,10 +626,9 @@ type SourceEntry =
   | { where?: Condition; label?: string; groupBy?: string | string[] } // at least one key
   | { from: 'mapDefaults'; where?: Condition };                         // offers the model source
 
-/** Narrowing for a model at a specific traversal path. Adds relations. */
-type ModelNarrowing = ModelDefaultNarrowing & {
-  relations?: Record<string, ModelNarrowing>;             // the relations a rule may cross from here
-};
+/** Narrowing for a model at a specific traversal path: the same shape as a model default
+ *  (`relations` lives on ModelDefaultNarrowing). */
+type ModelNarrowing = ModelDefaultNarrowing;
 
 /** Narrowing for an enum *type* (anywhere the enum is referenced in this map). */
 type EnumNarrowing = {
@@ -854,7 +864,7 @@ const plan = toPrisma(anyPublishedRule, { lens: narrowing });
 
 `toLensSelect(narrowing, options?)` gives the `findMany` `select` for the rows a lens shows: each
 shown visit's visible columns and the relations turned on, and every column a `where` on the way
-reads. A relation that is off is not fetched. A to-many
+reads, and every column a declared source reads (hidden or not). A relation that is off is not fetched. A to-many
 relation carries its clamps as its `where`, unless a clamp reads that list — a clamp reads a list
 whole, as the database does. `projectRows(narrowing, rows, options?)` cuts fetched rows to what the
 lens shows: hidden columns, and relations that are off or omitted, removed, a row a `where` hides
@@ -975,8 +985,9 @@ spelled path goes.
 > **Trust boundaries.** `projectLens(…, { by: 'model' })` strips `where` because the client never
 > executes the rule. A server→subtenant handoff is different: the subtenant *does*
 > execute and must inherit the tenant's `where` scope floor and per-path narrowing,
-> narrowing only further (never widening). That where-preserving collapse is a
-> separate planned primitive (`seal`); do not use `projectLens(…, { by: 'model' })` for it.
+> narrowing only further (never widening). Do not use `projectLens(…, { by: 'model' })`
+> for it. (A where-preserving `seal` primitive was planned and dropped in 2.11.0: the
+> server is the sole executor.)
 
 ## 11. Describe-and-validate vs deny-at-execution
 

@@ -1,0 +1,62 @@
+{
+  "id": "rule-grammar-and-check",
+  "title": "Rule grammar, check and validation",
+  "routing": "Is this about writing or typing a json-rules rule (Condition: field rule with `operator`, array rule with `arrayOperator` + element `condition` / `count`, aggregate rule `{ aggregate: { mode: sum|avg } }`, `all` / `any`, `if` / `then` / `else`, `true` / `false`; Operator / ArrayOperator / DateOperator; StrictCondition), evaluating it in memory with `check(rule, data, options)` (true or a failure message, a rule's `error`, absent: 'unknown', root-array rules), windows (`filter` / `orderBy` / `skip` / `take`, orderRecords), the operator catalog for builders (getOperatorsForKind, getArrayOperators, getAggregateOperators, getValueShape, FieldKind, RuleTarget, ValueShape), or validating a stored rule (validateRule, assertValidRule, UsageError)? Jobs: 'is this user eligible', 'at least two completed orders', 'total over 1000', 'the last mission', 'which operators can the picker offer for this column', 'validate the tenant's rule before saving'.",
+  "concepts": [
+    "rule-ast",
+    "in-memory-evaluator",
+    "array-aggregate-windowing",
+    "operator-catalog",
+    "rule-validation"
+  ],
+  "tokens": 18511,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 2061,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 18511
+    }
+  },
+  "runsAgreed": 2,
+  "sources": {
+    "docs": ["README.md"],
+    "docUnits": [
+      "doc:README.md#preface",
+      "doc:README.md#what-it-supports",
+      "doc:README.md#operators",
+      "doc:README.md#rule-shapes/field-rule",
+      "doc:README.md#rule-shapes/logical-rules",
+      "doc:README.md#rule-shapes/conditional-rule",
+      "doc:README.md#rule-shapes/array-rule",
+      "doc:README.md#typescript-types",
+      "doc:README.md#quick-start",
+      "doc:README.md#runtime-validation",
+      "doc:README.md#root-array-rules-in-check",
+      "doc:README.md#rule-shapes/aggregate-rule",
+      "doc:README.md#rule-shapes/windowing-first-last-with-orderby-take-skip",
+      "doc:README.md#error-handling"
+    ],
+    "catalogClusters": [
+      "primitive-field-maps-and-bridges",
+      "primitive-in-memory-evaluator",
+      "primitive-inline-predicates",
+      "primitive-lens-gate-and-compiles",
+      "primitive-lens-narrowing",
+      "primitive-operator-catalog",
+      "primitive-rule-ast",
+      "primitive-structural-walk",
+      "primitive-validation-and-errors",
+      "primitive-windowing"
+    ],
+    "codeEntries": 127,
+    "docMembers": 27
+  },
+  "bypassLines": 19,
+  "glossaryTerms": 31
+}

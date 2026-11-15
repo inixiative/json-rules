@@ -1,0 +1,47 @@
+{
+  "id": "using-a-lens",
+  "title": "Using a lens",
+  "routing": "Is this about running, checking or fetching under an existing lens or LensNarrowing: the gate validateRuleInLens, narrowRule (clamps injected at anchors, the filter-first `all`), `toPrisma(rule, { lens })` / `toSql(rule, { lens })`, describeRule's supportedTargets, coerceRule, prefixConditionFields, walkLensPath, lensVisit, readLensValue, projectLens (by path, or `{ by: 'model' }` for a client surface), toLensSelect + projectRows (keepClampColumns)? Jobs: reject an AI-written rule that touches a hidden field, only return rows this tenant may see, run a user rule scoped to the account, hand the client the fields it may build with, fetch and strip hidden columns.",
+  "concepts": ["lens-gate-and-compiles", "lens-projection-and-fetch"],
+  "tokens": 16496,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 1551,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 16496
+    }
+  },
+  "runsAgreed": 2,
+  "sources": {
+    "docs": ["README.md", "docs/LENS.md"],
+    "docUnits": [
+      "doc:README.md#lens-multi-source-data/lens-utilities",
+      "doc:docs/LENS.md#10-using-the-lens/validateruleinlens-rule-lens-validate-at-the-api-boundary",
+      "doc:docs/LENS.md#10-using-the-lens/narrowrule-rule-narrowing-compose-with-scope",
+      "doc:docs/LENS.md#10-using-the-lens/walklenspath-lens-path-one-path-verified-hop-by-hop",
+      "doc:docs/LENS.md#11-describe-and-validate-vs-deny-at-execution",
+      "doc:docs/LENS.md#13-end-to-end-worked-example",
+      "doc:README.md#lens-multi-source-data/fetching-under-a-lens",
+      "doc:docs/LENS.md#10-using-the-lens/fetching-rows-under-a-lens",
+      "doc:docs/LENS.md#10-using-the-lens/projectlens-lens-path-keyed-projection",
+      "doc:docs/LENS.md#10-using-the-lens/projectlens-lens-by-model-the-leak-safe-surface-as-a-lens"
+    ],
+    "catalogClusters": [
+      "primitive-lens-gate-and-compiles",
+      "primitive-lens-narrowing",
+      "primitive-lens-projection-and-fetch",
+      "primitive-validation-and-errors",
+      "primitive-windowing"
+    ],
+    "codeEntries": 35,
+    "docMembers": 15
+  },
+  "bypassLines": 14,
+  "glossaryTerms": 24
+}

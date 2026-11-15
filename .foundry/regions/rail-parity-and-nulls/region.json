@@ -1,0 +1,40 @@
+{
+  "id": "rail-parity-and-nulls",
+  "title": "Rail parity and NULL rows",
+  "routing": "Is this about whether check(), toPrisma() and toSql() agree on a rule: which rail compiles which shape (the README Backend Support Matrix, Prisma Limitations, SQL Limitations), why a negation (notEquals, notIn, notBetween, notWithin, dayNotIn) keeps NULL rows, FieldMapEntry `isRequired: false` licensing toPrisma's `{ equals: null }` and optional-hop `{ rel: { is: null } }` arms, avg of nothing being NULL, or where the rails legitimately differ (collation, case mapping, double vs numeric sums, coerceType on Json-array aggregates)? Jobs: rows with a null column vanish from the not-equals filter, this rule works in check but throws in Prisma, the sum matches in SQL but not in memory.",
+  "concepts": ["null-semantics", "rail-support"],
+  "tokens": 6962,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 956,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 6962
+    }
+  },
+  "runsAgreed": 0,
+  "sources": {
+    "docs": ["CLAUDE.md", "README.md"],
+    "docUnits": ["doc:CLAUDE.md#semantics-rulings", "doc:README.md#backend-support-matrix"],
+    "catalogClusters": [
+      "primitive-dates-and-clock",
+      "primitive-in-memory-evaluator",
+      "primitive-null-semantics",
+      "primitive-operator-catalog",
+      "primitive-prisma-planner",
+      "primitive-rule-ast",
+      "primitive-sql-compiler",
+      "primitive-value-expressions",
+      "primitive-value-sources-and-scope"
+    ],
+    "codeEntries": 12,
+    "docMembers": 14
+  },
+  "bypassLines": 5,
+  "glossaryTerms": 22
+}

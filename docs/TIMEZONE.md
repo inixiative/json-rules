@@ -5,8 +5,9 @@ so results are deterministic — never dependent on the host machine's timezone.
 
 ## The policy
 
-- **Absolute instants are never anchored.** A `Date` object, an epoch `number`, or an ISO
-  string carrying an explicit zone (a trailing `Z`, or a `±HH:MM` offset after the time)
+- **Absolute instants are never anchored.** A `Date` object, an epoch `number` (or a string
+  of digits, read as epoch milliseconds), or a string carrying an explicit zone (a trailing
+  `Z`, or a `±HH`, `±HHMM` or `±HH:MM` offset after the time, or a `GMT` / `UTC` token)
   denotes one exact instant and is used as-is.
 - **Naive values are anchored in the evaluation's timezone.** A zoneless string — a
   date-only `YYYY-MM-DD` (which becomes midnight in that zone) or a datetime with no zone —
@@ -41,7 +42,7 @@ Sketch for when that lands:
 - Declare the companion zone column on the field in the lens / fieldmap (e.g. a field-level
   `timeZoneField: 'startsAtTimeZone'` pointing at the sibling scalar that holds the IANA
   string for that datetime).
-- Read it alongside the value and feed it through the same `resolveTimeZone` seam, so a
+- Read it alongside the value and feed it through the same `resolveDateConfig` seam, so a
   per-field zone overrides the per-evaluation zone only for that field. Absolute instants
   still bypass anchoring entirely.
 

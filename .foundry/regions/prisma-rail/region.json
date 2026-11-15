@@ -1,0 +1,36 @@
+{
+  "id": "prisma-rail",
+  "title": "Prisma rail: plans and wheres",
+  "routing": "Is this about turning a rule into a Prisma query: toPrisma(rule, { map, model, mapName | lens, now }) returning a plan `{ steps }`, running its groupBy / count steps and `{ __field }` column references with executePrismaPlan(plan, delegate), or combining compiled wheres with andWhere / orWhere / matchAll / matchNothing? Also Json null checks (AnyNull from @prisma/client), Json filter mapping, relation counts and sums. Jobs: filter a findMany by a saved rule, users with at least three published posts, users whose orders sum past a thousand, add the org scope to a compiled filter.",
+  "concepts": ["prisma-planner", "prisma-plan-execution"],
+  "tokens": 6435,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 981,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 6435
+    }
+  },
+  "runsAgreed": 0,
+  "sources": {
+    "docs": ["README.md"],
+    "docUnits": ["doc:README.md#prisma-query-planning"],
+    "catalogClusters": [
+      "primitive-lens-gate-and-compiles",
+      "primitive-null-semantics",
+      "primitive-prisma-plan-execution",
+      "primitive-prisma-planner",
+      "primitive-sql-compiler"
+    ],
+    "codeEntries": 40,
+    "docMembers": 6
+  },
+  "bypassLines": 8,
+  "glossaryTerms": 24
+}

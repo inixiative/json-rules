@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "project": "json-rules",
+  "builtFrom": {
+    "docs": [
+      "README.md",
+      "CLAUDE.md",
+      "docs/LENS.md",
+      "docs/VERBS.md",
+      "docs/TIMEZONE.md",
+      "src/toSql/README.md"
+    ],
+    "excluded": [
+      {
+        "path": "CHANGELOG.md",
+        "kind": "history",
+        "reason": "Release history to 3.22.0. Current facts are in the README and LENS.md; removals and renames are carried as legacy notes."
+      },
+      {
+        "path": "docs/plans/**",
+        "kind": "history",
+        "reason": "The 2026-06 date and window primitives design; shipped, and the README is the current account."
+      },
+      {
+        "path": "tickets/**",
+        "kind": "workItem",
+        "reason": "FEAT-001..007 feature tickets; the shipped ones are described by the README (FEAT-007 avg over none is 3.21.0)."
+      },
+      {
+        "path": "docs/LENS.md#12-migration",
+        "kind": "excluded",
+        "reason": "Upgrade notes from 2.x and 3.0-3.4 shapes; pure history, carried as legacy notes below."
+      },
+      {
+        "path": "examples/**",
+        "kind": "excluded",
+        "reason": "Runnable example scripts (run-examples.sh); consumers of the package, not exported."
+      },
+      {
+        "path": "test/**",
+        "kind": "excluded",
+        "reason": "Bun tests, the PGlite differential harness and the rails Prisma schema; outside codeScope."
+      },
+      {
+        "path": ".github/**",
+        "kind": "excluded",
+        "reason": "CI and release workflows only."
+      },
+      {
+        "path": ".gloss/**",
+        "kind": "excluded",
+        "reason": "Gloss event log, tooling state."
+      },
+      {
+        "path": ".playwright-mcp/**",
+        "kind": "excluded",
+        "reason": "Tracked browser-tool logs; not part of the library."
+      }
+    ],
+    "catalog": "code read through the repo's Atlas map when it has one, else the plan's code scope; described with Foundry's catalog describer prompts",
+    "atlas": ".atlas/concepts.ts",
+    "libraries": {},
+    "method": "three independent model proposals, item-level majority vote (2 of 3), seams to the size ceiling, per-region authoring"
+  },
+  "concepts": [
+    {
+      "tag": "rule-ast",
+      "atlas": "primitive:rule-ast",
+      "description": "The Condition rule grammar: field, date, array, aggregate, all/any, if/then/else, true/false rules; Operator / DateOperator / ArrayOperator enums; Condition and Strict* types",
+      "region": "rule-grammar-and-check"
+    },
+    {
+      "tag": "in-memory-evaluator",
+      "atlas": "primitive:in-memory-evaluator",
+      "description": "check(rule, data, options) -> true or failure message: value/enum/pattern (re2js)/fuzzy/number comparisons, custom and generated errors, root-array rules",
+      "region": "rule-grammar-and-check"
+    },
+    {
+      "tag": "array-aggregate-windowing",
+      "atlas": "primitive:windowing",
+      "description": "Array rules (arrayOperator + element condition, counts), aggregate sum/avg rules and their empty/avg-NULL semantics, filter -> orderBy -> skip -> take windows, orderRecords",
+      "region": "rule-grammar-and-check"
+    },
+    {
+      "tag": "operator-catalog",
+      "atlas": "primitive:operator-catalog",
+      "description": "The one operator table per field kind and target: getOperatorsForKind, getArrayOperators, getAggregateOperators, getValueShape, FieldKind, RuleTarget, unit sets",
+      "region": "rule-grammar-and-check"
+    },
+    {
+      "tag": "rule-validation",
+      "atlas": "primitive:validation-and-errors",
+      "description": "validateRule / assertValidRule per target with coded ValidationIssues, UsageError vs LensRefusal vs plain Error, error-message helpers",
+      "region": "rule-grammar-and-check"
+    },
+    {
+      "tag": "dates-and-clock",
+      "atlas": "primitive:dates-and-clock",
+      "description": "Date operators and relative/calendar DateExpr (ago/ahead, this/last/next, rolling, edges), explicit now, timeZone/weekStart, resolveDateConfig, clockUnit and clock.finestUnit",
+      "region": "dates-and-clock"
+    },
+    {
+      "tag": "value-sources-and-scope",
+      "atlas": "primitive:value-sources-and-scope",
+      "description": "Where a compared value comes from: literal, { path } column compares, $. / $$. scope refs, offsets and unit amounts",
+      "region": "values-and-bindings"
+    },
+    {
+      "tag": "bindings",
+      "atlas": "primitive:bindings",
+      "description": "{ bind } placeholders and bindOptional: bindRule, listBindings, listFields, check's bindings, and the lens forms bindLens / listLensBindings",
+      "region": "values-and-bindings"
+    },
+    {
+      "tag": "value-expressions",
+      "atlas": "primitive:value-expressions",
+      "description": "Computed values: evaluateValue (literal/path/bind/count-sum-avg-min-max-distinct aggregates/if/list), coerceType, validateValue, describeValue, inferValueType, coerceValue, valueClockUnit",
+      "region": "values-and-bindings"
+    },
+    {
+      "tag": "prisma-planner",
+      "atlas": "primitive:prisma-planner",
+      "description": "toPrisma(rule, { map, model, now }) -> { steps }: count/group steps, column refs, relation folding, Json AnyNull",
+      "region": "prisma-rail"
+    },
+    {
+      "tag": "prisma-plan-execution",
+      "atlas": "primitive:prisma-plan-execution",
+      "description": "executePrismaPlan(plan, delegate) and the WHERE composers andWhere / orWhere / matchAll / matchNothing",
+      "region": "prisma-rail"
+    },
+    {
+      "tag": "sql-compiler",
+      "atlas": "primitive:sql-compiler",
+      "description": "toSql(rule, options): parameterized PostgreSQL WHERE + LEFT JOINs, storage-aware arrays, Json, aggregates, quoting and params",
+      "region": "sql-rails"
+    },
+    {
+      "tag": "inline-predicates",
+      "atlas": "primitive:inline-predicates",
+      "description": "toWhereSql / toLensWhereSql inline predicates in sql.dialect (postgres/mysql) over caller columns/tables, EXISTS / NOT EXISTS or toMany: 'join'",
+      "region": "sql-rails"
+    },
+    {
+      "tag": "null-semantics",
+      "atlas": "primitive:null-semantics",
+      "description": "Negated and negative-flavored date operators keep NULL rows on every rail; isRequired: false licenses toPrisma's NULL and optional-hop arms",
+      "region": "rail-parity-and-nulls"
+    },
+    {
+      "tag": "rail-support",
+      "atlas": null,
+      "description": "Which rail (check / toPrisma / toSql) compiles which rule shape, per-rail limitations, and where the rails legitimately differ",
+      "region": "rail-parity-and-nulls"
+    },
+    {
+      "tag": "structural-walk",
+      "atlas": "primitive:structural-walk",
+      "description": "src/traverse.ts as the single condition-tree walk (visitCondition, someCondition, mapCondition, ConditionShape, getConditionShapeKeys) and own-property reads",
+      "region": "engine-architecture"
+    },
+    {
+      "tag": "verb-catalog",
+      "atlas": null,
+      "description": "docs/VERBS.md: one public name and one owning module per verb, enforced by test/verbs.test.ts; the root index.ts export list (no export *)",
+      "region": "engine-architecture"
+    },
+    {
+      "tag": "engine-design-rules",
+      "atlas": null,
+      "description": "Standing rulings: the engine evaluates one rule, introspection lives in the lens, everything serializable, extend primitives not wrappers, bun run check / PGlite differential verification",
+      "region": "engine-architecture"
+    },
+    {
+      "tag": "engine-globals",
+      "atlas": "primitive:engine-globals",
+      "description": "engineGlobals process-wide defaults (string.caseInsensitive, string.fuzzy, prismaOptions, sql.dialect, clock.finestUnit), with(), registerEngineGlobals",
+      "region": "engine-architecture"
+    },
+    {
+      "tag": "field-maps-and-bridges",
+      "atlas": "primitive:field-maps-and-bridges",
+      "description": "FieldMap / FieldMapEntry / FieldMapSet schema description, Bridges and stitchFieldMaps, indexBridges, map:Model endpoint keys, field-path walks, validateFieldMaps",
+      "region": "field-maps-and-bridges"
+    },
+    {
+      "tag": "lens-narrowing",
+      "atlas": "primitive:lens-narrowing",
+      "description": "createLens and the shape of one LensNarrowing: picks/omits, enum narrowing, relations off until turned on, mapDefaults vs path-specific narrowing",
+      "region": "lens-narrowing"
+    },
+    {
+      "tag": "lens-layers-and-clamps",
+      "atlas": "primitive:lens-narrowing",
+      "description": "How lens layers stack: where anchors and the filter-first all, layers only narrow, clamps read only what the parent shows, composition as intersection, clampLens / composeLens / storeLens, validateNarrowing, LensRefusal, policy.ts",
+      "region": "lens-layers-and-clamps"
+    },
+    {
+      "tag": "lens-gate-and-compiles",
+      "atlas": "primitive:lens-gate-and-compiles",
+      "description": "Rules under a lens: validateRuleInLens gate, narrowRule (filter-first anchoring), { lens } compiles, describeRule, coerceRule",
+      "region": "using-a-lens"
+    },
+    {
+      "tag": "lens-projection-and-fetch",
+      "atlas": "primitive:lens-projection-and-fetch",
+      "description": "What a lens shows and fetches: projectLens by path / by model, lensVisit, walkLensPath, readLensValue, toLensSelect + projectRows",
+      "region": "using-a-lens"
+    },
+    {
+      "tag": "option-sources",
+      "atlas": "primitive:option-sources",
+      "description": "Field option sources: SourceSpec, toSourceQueries (Prisma + SQL, bridged over-fetch and recheck), materializeSourceQuery / materializeSources, SourceOptionOrder, describeRuleSources",
+      "region": "option-sources"
+    }
+  ],
+  "regions": [
+    {
+      "id": "rule-grammar-and-check",
+      "tokens": 18511,
+      "recogniseTokens": 2061,
+      "concepts": [
+        "rule-ast",
+        "in-memory-evaluator",
+        "array-aggregate-windowing",
+        "operator-catalog",
+        "rule-validation"
+      ],
+      "runsAgreed": 2
+    },
+    {
+      "id": "dates-and-clock",
+      "tokens": 7080,
+      "recogniseTokens": 914,
+      "concepts": ["dates-and-clock"],
+      "runsAgreed": 1
+    },
+    {
+      "id": "values-and-bindings",
+      "tokens": 14199,
+      "recogniseTokens": 1823,
+      "concepts": ["value-sources-and-scope", "bindings", "value-expressions"],
+      "runsAgreed": 3
+    },
+    {
+      "id": "prisma-rail",
+      "tokens": 6435,
+      "recogniseTokens": 981,
+      "concepts": ["prisma-planner", "prisma-plan-execution"],
+      "runsAgreed": 0
+    },
+    {
+      "id": "sql-rails",
+      "tokens": 12500,
+      "recogniseTokens": 1471,
+      "concepts": ["sql-compiler", "inline-predicates"],
+      "runsAgreed": 0
+    },
+    {
+      "id": "rail-parity-and-nulls",
+      "tokens": 6962,
+      "recogniseTokens": 956,
+      "concepts": ["null-semantics", "rail-support"],
+      "runsAgreed": 0
+    },
+    {
+      "id": "engine-architecture",
+      "tokens": 20810,
+      "recogniseTokens": 3702,
+      "concepts": ["structural-walk", "verb-catalog", "engine-design-rules", "engine-globals"],
+      "runsAgreed": 3
+    },
+    {
+      "id": "field-maps-and-bridges",
+      "tokens": 5888,
+      "recogniseTokens": 898,
+      "concepts": ["field-maps-and-bridges"],
+      "runsAgreed": 1
+    },
+    {
+      "id": "lens-narrowing",
+      "tokens": 13437,
+      "recogniseTokens": 1355,
+      "concepts": ["lens-narrowing"],
+      "runsAgreed": 0
+    },
+    {
+      "id": "lens-layers-and-clamps",
+      "tokens": 9874,
+      "recogniseTokens": 1464,
+      "concepts": ["lens-layers-and-clamps"],
+      "runsAgreed": 0
+    },
+    {
+      "id": "using-a-lens",
+      "tokens": 16496,
+      "recogniseTokens": 1551,
+      "concepts": ["lens-gate-and-compiles", "lens-projection-and-fetch"],
+      "runsAgreed": 2
+    },
+    {
+      "id": "option-sources",
+      "tokens": 7844,
+      "recogniseTokens": 960,
+      "concepts": ["option-sources"],
+      "runsAgreed": 2
+    }
+  ],
+  "dropped": {
+    "doc:CLAUDE.md#preface": "Intro line only (who wrote the rulings, pointer to git history); the rulings themselves are tagged.",
+    "doc:README.md#installation": "npm/yarn/bun install commands only; nothing to reuse or obey.",
+    "doc:README.md#rule-shapes": "Bare H2 heading with no content; its H3s are tagged.",
+    "doc:README.md#lens-multi-source-data": "Navigation pointer to docs/LENS.md; content lives in the H3s and LENS.md.",
+    "doc:README.md#examples": "Index of links into examples/, which is excluded.",
+    "doc:README.md#license": "License line only.",
+    "doc:docs/LENS.md#preface": "Navigation pointer back to the README.",
+    "doc:docs/LENS.md#10-using-the-lens": "Bare H2 heading; its H3s are tagged.",
+    "doc:docs/TIMEZONE.md#not-built-per-record-companion-column-zones": "Future sketch of an unbuilt feature (says so); routing to it would invite building against a plan, not the code."
+  }
+}

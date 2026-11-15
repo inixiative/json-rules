@@ -1,0 +1,45 @@
+{
+  "id": "sql-rails",
+  "title": "SQL compilers and inline predicates",
+  "routing": "Is this about turning a rule into SQL: a parameterized PostgreSQL WHERE with LEFT JOINs (toSql \u2192 `{ sql, params, joins }`, alias t0, storage-aware arrays, Json by type, sum / avg over stored arrays), or an inline-value predicate for SQL you write yourself (toWhereSql over caller `columns` / `tables`, toLensWhereSql for a lens's wheres, SqlDialect postgres or mysql via engineGlobals 'sql.dialect', `toMany: 'join'` vs EXISTS subqueries)? Jobs: query Postgres with a rule, embed a rule in a MySQL or BI topic query, keep user values out of the SQL string, filter by a to-many relation in SQL.",
+  "concepts": ["sql-compiler", "inline-predicates"],
+  "tokens": 12500,
+  "tokenMethod": "chars/4",
+  "files": {
+    "recognise": {
+      "path": "recognise.md",
+      "tokens": 1471,
+      "experimental": true,
+      "note": "a smaller recognise-only document; knowledge.md is the Warden document"
+    },
+    "knowledge": {
+      "path": "knowledge.md",
+      "tokens": 12500
+    }
+  },
+  "runsAgreed": 0,
+  "sources": {
+    "docs": ["README.md", "src/toSql/README.md"],
+    "docUnits": [
+      "doc:README.md#postgresql-sql-generation",
+      "doc:src/toSql/README.md#usage",
+      "doc:src/toSql/README.md#supported-features",
+      "doc:src/toSql/README.md#security",
+      "doc:README.md#inline-predicates-towheresql-tolenswheresql",
+      "doc:README.md#inline-predicates-towheresql-tolenswheresql/towheresql-a-condition-as-a-predicate",
+      "doc:README.md#inline-predicates-towheresql-tolenswheresql/tolenswheresql-a-lens-s-row-filters",
+      "doc:README.md#inline-predicates-towheresql-tolenswheresql/join-mode-tomany-join",
+      "doc:src/toSql/README.md#inline-predicates-wheresql-ts"
+    ],
+    "catalogClusters": [
+      "primitive-inline-predicates",
+      "primitive-lens-narrowing",
+      "primitive-null-semantics",
+      "primitive-sql-compiler"
+    ],
+    "codeEntries": 35,
+    "docMembers": 25
+  },
+  "bypassLines": 10,
+  "glossaryTerms": 25
+}

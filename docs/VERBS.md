@@ -15,7 +15,7 @@ modules allowed to implement it, and every exported function must appear in this
 | compile | `toWhereSql`, `toLensWhereSql` | Compile a condition, or a lens's `where`s where the lens wrote them (`root`, `relations` by path, `mapDefaults` by map and model), to a predicate in the engine's `sql.dialect`: values inline, columns from the caller's `columns` map, no joins. Equality, membership and existence inside `all` / `any`, and `any` / `all` / `none` / `empty` / `notEmpty` on a to-many relation as an `EXISTS` subquery on the caller's `tables` — or, with `toMany: 'join'`, `notEmpty` / `any` in the root's `where` on the caller's LEFT JOIN of the relation; anything else throws. |
 | compile | `toSourceQueries` | Compile a lens's sources to option queries (Prisma and SQL). |
 | execute | `executePrismaPlan` | Run a Prisma query plan's steps and return its final WHERE. |
-| compose | `andWhere`, `orWhere`, `matchAll`, `matchNothing` | AND / OR compiled WHEREs with a consumer's own filters, folding the boolean constants the way the compiler does — a hand-written `AND: [x, { OR: [] }]` matches everything in Prisma. |
+| compose | `andWhere`, `orWhere`, `matchAll`, `matchNothing` | AND / OR compiled WHEREs with a consumer's own filters, folding the boolean constants the way the compiler does — Prisma drops `{ OR: [] }` as an AND arm, so a hand-written `AND: [x, { OR: [] }]` is just `x`, not match-nothing. |
 | validate | `validateRule`, `validateRuleInLens`, `validateNarrowing`, `validateFieldMaps` | Return `{ ok, errors: { path, message, code }[] }`. |
 | validate | `validateValue` | A value expression's shape: return `{ ok, errors }` like the rule validators. |
 | validate | `assertValidRule`, `assertValidNarrowing`, `assertValidFieldMaps`, `assertValidValue` | The throwing form of each validator. |
@@ -44,16 +44,17 @@ modules allowed to implement it, and every exported function must appear in this
 | store | `storeLens` | A composed lens as the records it's stored in: one per layer, each listing the ids it composes with (the base lens first). |
 | compose | `composeLens` | A stored layer and the records it lists, resolved into the composed lens every other function takes. |
 | stitch | `stitchFieldMaps` | Join field maps across bridges. |
-| index | `indexBridges` | Key a set of bridges by endpoint. |
+| index | `indexBridges` | Index raw rows (keyed `<fieldMap>:<Model>`) by each bridge endpoint's `on` value, for embedding under bridge keys. |
 | read | `parseScopeRef`, `readScopeRef` | Parse a `$`-prefixed ref; read which scope it names. |
 | order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths, NULLs last, stable. |
 | look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. |
 
 `engineGlobals` (configure) holds process-wide defaults, one store per process however many
 copies are loaded; `registerEngineGlobals` adds a library's own namespace to it; `Operator`, `DateOperator`,
-`ArrayOperator`, `FieldKind`, `RuleTarget`, `ValueShape`, `NUMERIC_KINDS`, `ALL_KINDS` and
-`VALUE_AGGREGATE_MODES` are
-the catalog's constants.
+`ArrayOperator`, `FieldKind`, `RuleTarget`, `ValueShape`, `ConditionShape`, `NUMERIC_KINDS`, `ALL_KINDS`,
+`CLOCK_UNITS` and `VALUE_AGGREGATE_MODES` are
+the catalog's constants; `SqlDialect` names the inline predicates' dialects and
+`SourceOptionOrder` the order a source's options come back in.
 
 Two error classes say whose input is wrong (each sets `name`, so `instanceof` or `error.name`
 tells them apart):
@@ -75,8 +76,8 @@ Any other Error is a rule-shape problem the validators report (`validateRule`).
 | read a path, a row by key | `src/scope.ts` (`readOwnPath`, `readPath`) | No lodash `get` / `has` / `keyBy` / `groupBy` / `property` anywhere: they read `Object.prototype`. |
 | read a binding | `src/valueSource.ts`, `src/bindings.ts` | `Object.hasOwn(bindings` only there. |
 | walk a field path | `src/fieldMap/walk.ts` (`walkMaps`, under `walkFieldPath`, the lens's `resolvePolicyPath` and `relationHops`) | No hand-split path walked against a map elsewhere. |
-| cross a relation under a lens | `src/lens/policy.ts` (`resolveVisit`: the first narrowing turns relations on, every layer's `omits` hides, a model-default relation crosses each edge once per path; read by `resolvePolicyPath`, `hiddenHop` and `shownVisits`) | The exposure is computed in one place; a `clamp` policy (the first narrowing's `where`) is the only reader that crosses a relation that is off. |
-| compare a column with a column on Prisma | `src/toPrisma/columnRef.ts` (`columnCompare`, `{ __field }` resolved by `executePrismaPlan`) | `toPrisma` and `validateRule` judge Prisma support through it. |
+| cross a relation under a lens | `src/lens/policy.ts` (`resolveVisit`: the first narrowing turns relations on, every layer's `omits` hides, a model-default relation crosses each edge once per path; read by `resolvePolicyPath`, `hiddenHop` and `shownVisits`) | — (convention; not checked) The exposure is computed in one place; a `clamp` policy (the first narrowing's `where`) is the only reader that crosses a relation that is off. |
+| compare a column with a column on Prisma | `src/toPrisma/columnRef.ts` (`columnCompare`, `{ __field }` resolved by `executePrismaPlan`), `src/columnCompare.ts` (`columnCompareProblem`) | — (convention; not checked) `toPrisma` and `validateRule` judge Prisma support through it. |
 | classify a field-map entry | `src/fieldMap/entry.ts` (`isJsonEntry`, `isRelationEntry`, `declaredEnumValues`) | No `kind === 'object' \|\| … 'bridge'` (or its negation) elsewhere. |
 | name a bridge endpoint | `src/fieldMap/endpointKey.ts` | `map:Model` built nowhere else. |
 | define an operator, kind or unit set | `src/operatorCatalog.ts` | No list of operators (enum or string) elsewhere; the catalog tables read nowhere else. |

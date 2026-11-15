@@ -1,4 +1,5 @@
 import { fieldOf, modelOf, own } from '../own';
+import { pathSegments } from '../scope';
 import { someCondition } from '../traverse';
 import type { Condition } from '../types';
 import { parseEndpointKey } from './endpointKey.ts';
@@ -38,7 +39,7 @@ export function* walkMaps(
   from: MapVisit,
   path: string,
 ): Generator<MapStep> {
-  const parts = path.split('.');
+  const parts = pathSegments(path);
   let at: MapVisit = from;
   for (let index = 0; index < parts.length; index++) {
     const field = parts[index];
@@ -78,7 +79,7 @@ export type MapWalkResult =
   | { kind: 'fallback'; hops: MapHop[] };
 
 export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): MapWalkResult => {
-  const parts = field.split('.');
+  const parts = pathSegments(field);
   const hops: MapHop[] = [];
   const from = { mapName: '', modelName: rootModel, relPath: [] };
   for (const { index: i, field: column, at, entry } of walkMaps({ '': map }, from, field)) {

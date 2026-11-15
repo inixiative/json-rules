@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { check, pathSegments } from '../index';
+import { check, createLens, pathSegments, validateRuleInLens, walkLensPath } from '../index';
+import { map } from './rails/harness';
 
 // The keys a path reads, as check() reads them, for code that walks a path of its own.
 
@@ -25,5 +26,27 @@ describe('pathSegments', () => {
       check({ field: '["messages"][0]["authorId"]', operator: 'equals', value: 'u1' }, row),
     ).toBe(true);
     expect(check({ field: "meta['a.b'].c", operator: 'equals', value: 1 }, row)).toBe(true);
+  });
+});
+
+describe('the lens gate reads a path as check() does', () => {
+  const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+  const lens = { parent: base, root: { relations: { org: { omits: ['plan'] } } } };
+  const row = { org: { name: 'Acme', plan: 'pro' }, meta: { a: { b: 1 } } };
+
+  test('a bracket spelling resolves, hides and passes like its dotted twin', () => {
+    for (const [dotted, bracket] of [
+      ['org.name', '["org"]["name"]'],
+      ['org.plan', 'org["plan"]'],
+      ['meta.a.b', "meta['a'].b"],
+    ] as const) {
+      expect(walkLensPath(lens, bracket)).toEqual(walkLensPath(lens, dotted));
+      const rule = (field: string) => ({ field, operator: 'exists' }) as const;
+      expect(validateRuleInLens(rule(bracket), lens).ok).toBe(
+        validateRuleInLens(rule(dotted), lens).ok,
+      );
+      expect(check(rule(bracket), row)).toBe(check(rule(dotted), row));
+    }
+    expect(walkLensPath(lens, 'org["plan"]').outcome).toBe('hidden');
   });
 });

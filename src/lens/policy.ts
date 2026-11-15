@@ -2,7 +2,7 @@ import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/en
 import type { FieldMap, FieldMapEntry, ModelEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
-import { parseScopeRef, readScopeRef } from '../scope';
+import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition } from '../types.ts';
 import type { ValidationIssue } from '../validate';
@@ -794,7 +794,7 @@ export const resolvePolicyPath = (
   from: MapVisit,
   path: string,
 ): { resolution: LensPathResolution; effects: VisitEffect[] } => {
-  const parts = path.split('.');
+  const parts = pathSegments(path);
   const hops: LensPathHop[] = [];
   const effects: VisitEffect[] = [];
   for (const { index: i, field: fieldName, at, entry, next } of walkMaps(
@@ -907,7 +907,7 @@ export const unresolvedIssue = (
 ): { code: 'not_in_lens'; message: string } => {
   const { resolution } = resolvePolicyPath(policy, from, path);
   if (resolution.outcome !== 'hidden') return { code: 'not_in_lens', message };
-  const segments = path.split('.');
+  const segments = pathSegments(path);
   const at = resolution.hops.at(-1);
   const visit = at
     ? { mapName: at.mapName, modelName: at.model, relPath: [...at.relPath, at.field] }
@@ -999,7 +999,7 @@ export const relationHops = (
   hops: RelationHop[];
   end: MapVisit | null;
 } => {
-  const parts = path.split('.');
+  const parts = pathSegments(path);
   const hops: RelationHop[] = [];
   let end: MapVisit | null = null;
   for (const { index: i, field, at, entry, next } of walkMaps(maps, from, path)) {

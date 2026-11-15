@@ -40,8 +40,14 @@ const ann = {
 
 // Every posture answers the same: the gate, the compile, the read, the fetch, the cut.
 const agree = (lens: Lens | LensNarrowing, path: string, open: boolean) => {
-  const rule: Condition = { field: path, operator: 'exists' };
-  const [relation] = path.split('.');
+  const [relation, ...rest] = path.split('.');
+  const rule: Condition = Array.isArray((ann as Record<string, unknown>)[relation])
+    ? {
+        field: relation,
+        arrayOperator: 'any',
+        condition: { field: rest.join('.'), operator: 'exists' },
+      }
+    : { field: path, operator: 'exists' };
   expect(validateRuleInLens(rule, lens).ok).toBe(open);
   expect(walkLensPath(lens, path).outcome).toBe(open ? 'resolved' : 'hidden');
   const compiled = (() => {

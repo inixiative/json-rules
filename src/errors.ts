@@ -123,7 +123,7 @@ export const windowUnsupported = (target: 'toSql' | 'toPrisma'): Error =>
   );
 
 /** A to-many relation inside a plain field path: which child it reads is undefined. */
-export const toManyHopError = (field: string, hop: MapHop): Error =>
+export const toManyHopError = (field: string, hop: Pick<MapHop, 'prefix'>): Error =>
   new Error(
     `'${field}' reads through the to-many relation '${hop.prefix}'; compare its rows with an arrayOperator rule on '${hop.prefix}'.`,
   );

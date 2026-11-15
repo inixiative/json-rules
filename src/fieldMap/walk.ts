@@ -54,6 +54,12 @@ export function* walkMaps(
 /** A relation the walk crossed on the way to the terminal segment. */
 export type MapHop = { field: string; prefix: string; entry: FieldMapEntry; from: string };
 
+/** The first to-many relation among the hops a path crosses before its end: a plain path that
+ *  continues past one reads no single row, so every rail refuses it. */
+export const toManyHop = <Hop extends { entry: FieldMapEntry }>(
+  hops: readonly Hop[],
+): Hop | undefined => hops.find((hop) => hop.entry.isList === true);
+
 /**
  * A dot-notation field path walked through a FieldMap — the one walk both compilers use:
  * - `direct`      the path ends on a declared field (`entry`), a column of `model` or a relation

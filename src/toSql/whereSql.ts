@@ -12,7 +12,7 @@ import { hasNoOperand, isExistenceTest } from '../field';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import { entryKind, fieldShape } from '../fieldMap/shape';
 import type { FieldMap, FieldMapSet } from '../fieldMap/types';
-import { type MapWalkResult, walkFieldPath } from '../fieldMap/walk';
+import { type MapWalkResult, toManyHop, walkFieldPath } from '../fieldMap/walk';
 import { leafFitViolations } from '../lens/fieldFit';
 import { splitNull } from '../number';
 import { ArrayOperator, Operator } from '../operator';
@@ -300,7 +300,7 @@ const columnOf = (rule: Rule, walk: MapWalkResult, ctx: Context): string => {
     throw new Error(`toWhereSql: '${rule.field}' is not a field the map declares on ${ctx.model}`);
   if (walk.kind === 'past-scalar') throw pastScalarError(rule.field, walk.column);
   if (walk.kind === 'bridge') throw refuse(`'${rule.field}', which crosses a bridge`);
-  const toMany = walk.hops.find((hop) => hop.entry.isList);
+  const toMany = toManyHop(walk.hops);
   if (toMany) throw toManyHopError(rule.field, toMany);
   const shape = fieldShape(walk);
   const existence = isExistenceTest(rule);

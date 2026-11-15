@@ -1,5 +1,5 @@
 import type { FieldMap } from '../fieldMap/types';
-import { walkFieldPath } from '../fieldMap/walk';
+import { toManyHop, walkFieldPath } from '../fieldMap/walk';
 import { modelOf } from '../own';
 import { notLeaf } from './logical';
 import { relationKeys } from './relationUtils';
@@ -40,7 +40,7 @@ export const groupPath = (
       `Field '${segments[walk.hops.length]}' is not a relation in model '${on}'. ${rule} require a relation field.`,
     );
   }
-  const toMany = walk.hops.find((hop) => hop.entry.isList);
+  const toMany = toManyHop(walk.hops);
   if (toMany)
     throw new Error(
       `Intermediate field '${toMany.field}' in path '${field}' is a list relation. ` +

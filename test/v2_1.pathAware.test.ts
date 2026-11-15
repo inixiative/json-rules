@@ -75,11 +75,15 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
 
     // Rule via .posts.author.email → rejected (email not in this path's narrowing)
     const bad = validateRuleInLens(
-      { field: 'posts.author.email', operator: Operator.equals, value: 'x' },
+      {
+        field: 'posts',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'author.email', operator: Operator.equals, value: 'x' },
+      },
       n,
     );
     expect(bad.ok).toBe(false);
-    expect(bad.errors[0].path).toBe('posts.author.email');
+    expect(bad.errors[0].path).toBe('author.email');
   });
 
   test('Two paths each declare User narrowing; rule must use the right field per path', () => {
@@ -104,12 +108,24 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
       validateRuleInLens({ field: 'manager.name', operator: Operator.equals, value: 'x' }, n).ok,
     ).toBe(false);
     expect(
-      validateRuleInLens({ field: 'posts.author.name', operator: Operator.equals, value: 'x' }, n)
-        .ok,
+      validateRuleInLens(
+        {
+          field: 'posts',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'author.name', operator: Operator.equals, value: 'x' },
+        },
+        n,
+      ).ok,
     ).toBe(true);
     expect(
-      validateRuleInLens({ field: 'posts.author.email', operator: Operator.equals, value: 'x' }, n)
-        .ok,
+      validateRuleInLens(
+        {
+          field: 'posts',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'author.email', operator: Operator.equals, value: 'x' },
+        },
+        n,
+      ).ok,
     ).toBe(false);
   });
 
@@ -169,28 +185,52 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
     // visit-1: spaceId visible
     expect(
       validateRuleInLens(
-        { field: 'spaceUsers.spaceId', operator: Operator.equals, value: 'space-1' },
+        {
+          field: 'spaceUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'spaceId', operator: Operator.equals, value: 'space-1' },
+        },
         n,
       ).ok,
     ).toBe(true);
     // visit-1: orgId NOT visible
     expect(
       validateRuleInLens(
-        { field: 'spaceUsers.orgId', operator: Operator.equals, value: 'org-1' },
+        {
+          field: 'spaceUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'orgId', operator: Operator.equals, value: 'org-1' },
+        },
         n,
       ).ok,
     ).toBe(false);
     // visit-2: orgId IS visible (independent of visit-1)
     expect(
       validateRuleInLens(
-        { field: 'spaceUsers.user.spaceUsers.orgId', operator: Operator.equals, value: 'org-1' },
+        {
+          field: 'spaceUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: {
+            field: 'user.spaceUsers',
+            arrayOperator: ArrayOperator.any,
+            condition: { field: 'orgId', operator: Operator.equals, value: 'org-1' },
+          },
+        },
         n,
       ).ok,
     ).toBe(true);
     // visit-2: spaceId NOT visible (visit-1's having it is irrelevant here)
     expect(
       validateRuleInLens(
-        { field: 'spaceUsers.user.spaceUsers.spaceId', operator: Operator.equals, value: 'x' },
+        {
+          field: 'spaceUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: {
+            field: 'user.spaceUsers',
+            arrayOperator: ArrayOperator.any,
+            condition: { field: 'spaceId', operator: Operator.equals, value: 'x' },
+          },
+        },
         n,
       ).ok,
     ).toBe(false);
@@ -262,13 +302,27 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
 
     // role blocked at visit-1
     expect(
-      validateRuleInLens({ field: 'spaceUsers.role', operator: Operator.equals, value: 'admin' }, n)
-        .ok,
+      validateRuleInLens(
+        {
+          field: 'spaceUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'role', operator: Operator.equals, value: 'admin' },
+        },
+        n,
+      ).ok,
     ).toBe(false);
     // role blocked at visit-2 too — defaults apply at every visit of SpaceUser
     expect(
       validateRuleInLens(
-        { field: 'spaceUsers.user.spaceUsers.role', operator: Operator.equals, value: 'admin' },
+        {
+          field: 'spaceUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: {
+            field: 'user.spaceUsers',
+            arrayOperator: ArrayOperator.any,
+            condition: { field: 'role', operator: Operator.equals, value: 'admin' },
+          },
+        },
         n,
       ).ok,
     ).toBe(false);
@@ -300,7 +354,11 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
     ).toBe(false);
     expect(
       validateRuleInLens(
-        { field: 'posts.author.password', operator: Operator.equals, value: 'x' },
+        {
+          field: 'posts',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'author.password', operator: Operator.equals, value: 'x' },
+        },
         n,
       ).ok,
     ).toBe(false);
@@ -309,8 +367,14 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
       validateRuleInLens({ field: 'manager.email', operator: Operator.equals, value: 'x' }, n).ok,
     ).toBe(true);
     expect(
-      validateRuleInLens({ field: 'posts.author.email', operator: Operator.equals, value: 'x' }, n)
-        .ok,
+      validateRuleInLens(
+        {
+          field: 'posts',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'author.email', operator: Operator.equals, value: 'x' },
+        },
+        n,
+      ).ok,
     ).toBe(true);
   });
 });

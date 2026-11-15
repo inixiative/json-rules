@@ -1,6 +1,7 @@
+import { toManyHopError } from '../errors';
 import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMap, FieldMapEntry, ModelEntry } from '../fieldMap/types';
-import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
+import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
@@ -869,6 +870,9 @@ export const sourceReadsVisible = (
   );
 };
 
+/** Where a path ends through the lens, or null when it doesn't resolve. `throughToMany`: it
+ *  continues past a to-many relation, which a plain path can't (a relation node's joined scope
+ *  path can). */
 export const lensPathEnd = (
   policy: Policy,
   from: MapVisit,
@@ -882,6 +886,7 @@ export const lensPathEnd = (
   terminalFieldName: string;
   /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
   jsonSubPath: string[];
+  throughToMany: boolean;
 } | null => {
   const { resolution, effects } = resolvePolicyPath(policy, from, fieldPath);
   if (resolution.outcome !== 'resolved') return null;
@@ -894,11 +899,13 @@ export const lensPathEnd = (
     terminalEffect: effects[effects.length - 1],
     terminalFieldName: terminal.field,
     jsonSubPath,
+    throughToMany: toManyHop(resolution.hops.slice(0, -1)) !== undefined,
   };
 };
 
 /** The issue for a path `lensPathEnd` refuses: `message`, or — when it stops at a relation the lens
- *  doesn't turn on — how to turn it on. */
+ *  doesn't turn on — how to turn it on, or — when it reads through a to-many relation — the
+ *  arrayOperator form the compilers point at. */
 export const unresolvedIssue = (
   policy: Policy,
   from: MapVisit,
@@ -906,8 +913,14 @@ export const unresolvedIssue = (
   message: string,
 ): { code: 'not_in_lens'; message: string } => {
   const { resolution } = resolvePolicyPath(policy, from, path);
-  if (resolution.outcome !== 'hidden') return { code: 'not_in_lens', message };
   const segments = pathSegments(path);
+  if (resolution.outcome === 'resolved') {
+    const toMany = toManyHop(resolution.hops.slice(0, -1));
+    if (!toMany) return { code: 'not_in_lens', message };
+    const prefix = segments.slice(0, resolution.hops.indexOf(toMany) + 1).join('.');
+    return { code: 'not_in_lens', message: toManyHopError(path, { prefix }).message };
+  }
+  if (resolution.outcome !== 'hidden') return { code: 'not_in_lens', message };
   const at = resolution.hops.at(-1);
   const visit = at
     ? { mapName: at.mapName, modelName: at.model, relPath: [...at.relPath, at.field] }
@@ -958,7 +971,7 @@ export const stepIntoField = (
     return { issue: { code: 'scope_out_of_bounds', message: target.outOfBounds } };
   if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
   const walked = lensPathEnd(policy, target.scope, target.path);
-  if (!walked)
+  if (!walked || walked.throughToMany)
     return {
       issue: unresolvedIssue(
         policy,

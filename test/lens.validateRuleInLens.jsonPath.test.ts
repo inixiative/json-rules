@@ -75,7 +75,11 @@ describe('validateRuleInLens — Json sub-paths', () => {
 
   test('a path traverses declared relations and then enters Json', () => {
     const res = validateRuleInLens(
-      { field: 'posts.payload.blocks.0.kind', operator: 'equals', value: 'hero' },
+      {
+        field: 'posts',
+        arrayOperator: 'any',
+        condition: { field: 'payload.blocks.0.kind', operator: 'equals', value: 'hero' },
+      },
       lens,
     );
     expect(res.ok).toBe(true);

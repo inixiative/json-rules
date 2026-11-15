@@ -1,3 +1,26 @@
+## Unreleased — the lens gate refuses a plain path through a to-many relation
+
+- **`validateRuleInLens` refuses a plain path that continues past a to-many relation**: a field
+  (`messages.authorId`, `messages.author.name`, `["messages"]["authorId"]`, `org.members.name`),
+  a value `path` or offset, a `$`-scope ref, and an `orderBy` / aggregate field. The issue is
+  `not_in_lens` with the compilers' own message (`'messages.authorId' reads through the to-many
+  relation 'messages'; compare its rows with an arrayOperator rule on 'messages'.`). A path may
+  still end on a to-many relation as an array rule's `field`, and that rule's `condition` reads
+  the related rows' columns. Scalar list and Json columns are unchanged. Why: the rails
+  disagreed on such a path. The gate admitted it; `check()` read the array's missing property, so
+  `messages.authorId equals null` held on a conversation with messages; `toPrisma` / `toSql`
+  threw `toManyHopError`; `readLensValue` refused it with `reason: 'list'`. What the gate admits
+  must run on every rail, and the field map's `isList` is the one place that says a relation is
+  to-many. `walkLensPath` still resolves such a path (template's `each` reads through a list);
+  `lensPathEnd` reports `throughToMany` and the gate refuses on it.
+- **One "to-many hop before the end" check.** `toManyHop(hops)` (`src/fieldMap/walk.ts`) replaces
+  the copies in `toWhereSql`, the `toSql` join, `toPrisma`'s nested filter and group step,
+  `readLensValue` and the value-expression path typer. `toManyHopError` takes the hop's prefix.
+- **Breaking:** a rule the gate used to admit is now refused. Rewrite `posts.title` as
+  `{ field: 'posts', arrayOperator: 'any', condition: { field: 'title', … } }`.
+  `check()` itself is unchanged: it takes no field map, so it can't tell a to-many relation
+  from a Json array, and still reads such a path as `undefined`.
+
 ## 3.23.0 — `pathSegments`; the lens gate splits a path as `check()` reads it
 
 - **`pathSegments(path)` is exported**: the keys a path reads, as `check()` reads them (dotted

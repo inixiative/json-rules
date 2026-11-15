@@ -18,7 +18,13 @@ import {
 import { hasNoOperand, isExistenceTest, listMembership } from '../field';
 import { acceptsEmptyString, comparesText, type FieldShape, ruleShape } from '../fieldMap/shape';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
-import { fieldEntry, optionalToOneHops, walkFieldPath, walkWith } from '../fieldMap/walk';
+import {
+  fieldEntry,
+  optionalToOneHops,
+  toManyHop,
+  walkFieldPath,
+  walkWith,
+} from '../fieldMap/walk';
 import { orderPair, readPair, splitNull } from '../number';
 import { Operator } from '../operator';
 import {
@@ -499,7 +505,7 @@ export const buildMapAwareFilter = (
   }
 
   const walkResult = walkFieldPath(field, options.map as FieldMap, options.model);
-  const toMany = walkResult.hops.find((hop) => hop.entry.isList);
+  const toMany = toManyHop(walkResult.hops);
   if (toMany) throw toManyHopError(field, toMany);
   const parts = field.split('.');
 

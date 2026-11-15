@@ -780,6 +780,10 @@ surface at the right visit, and reports:
 
 - field paths that don't resolve through the narrowed lens
 - relations a path crosses that the lens doesn't turn on (`not_in_lens`)
+- a plain path (a field, a value `path`, a `$`-scope ref, an `orderBy` or aggregate field) that
+  continues past a to-many relation (`messages.authorId`, `not_in_lens`, with the compilers'
+  message: compare its rows with an arrayOperator rule on `messages`). The map's `isList` says
+  which relations are to-many; a path may end on one only as an array rule's `field`
 - enum values not in the allowed set
 - nested-condition fields validated against the *relation target*, not the
   lens root

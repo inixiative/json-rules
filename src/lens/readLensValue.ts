@@ -1,5 +1,6 @@
 import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry';
+import { toManyHop } from '../fieldMap/walk';
 import { own } from '../own';
 import { readOwnPath } from '../scope';
 import type { Row } from '../types';
@@ -29,8 +30,7 @@ export const readLensValue = (
   if (resolution.outcome !== 'resolved') return { ok: false, reason: resolution.outcome };
   const { hops, terminal, jsonSubPath } = resolution;
   if (isRelationEntry(terminal.entry)) return { ok: false, reason: 'relation' };
-  if (hops.some((hop) => hop !== terminal && hop.entry.isList))
-    return { ok: false, reason: 'list' };
+  if (toManyHop(hops.slice(0, -1))) return { ok: false, reason: 'list' };
 
   const admits = (visit: { mapName: string; model: string; relPath: string[] }, at: unknown) =>
     at !== null &&

@@ -1,3 +1,11 @@
+## Unreleased — `pathSegments`
+
+- **`pathSegments(path)` is exported**: the keys a path reads, as `check()` reads them (dotted
+  names, bracket indices, quoted keys). Why: `@inixiative/permissions` walks every path a rule
+  reads through the relations hydration loads, and a `split('.')` of its own missed
+  `["messages"][0]["authorId"]`, which `check()` reads as `messages.0.authorId`. One segmenter
+  means a walker and the reader can never disagree on what a path names.
+
 ## 3.22.0 — aggregate and negate fixes; aggregate coerceType
 
 A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType`, which

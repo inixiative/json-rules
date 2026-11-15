@@ -751,6 +751,58 @@ the base down, validating each layer against the ones above it (`validateNarrowi
 record, a base anywhere but first, or a parent whose own `parents` disagree with the list fails
 closed. Re-parenting a stored layer means rewriting the layers below it, whose lists name it.
 
+### Joining layers into one narrowing
+
+A grant row stores one narrowing, computed from what was asked and what the approver answered, so
+the stored value is a function of two recorded inputs, the same every time. That needs a chain of
+layers rewritten as one narrowing over the base lens. `joinNarrowings(lens, layers)` does it:
+`layers` are narrowing bodies (no `parent`), each written over the lens the ones before it produce,
+exactly as the chain `{ parent: { parent: lens, ...layers[0] }, ...layers[1] }` reads them. It
+returns one body over `lens` that every posture answers as the chain does: the same columns,
+relations and enum values at every visit, the same rows kept, and the same rules refused.
+
+```ts
+const request = { root: everyBranch, mapDefaults: { ops: { models: { Doc: { where: pinned } } } } };
+const approval = { root: everyBranch, mapDefaults: { ops: { models: { Doc: { picks: ['id', 'title'] } } } } };
+const stored = joinNarrowings(base, [request, approval]);
+// { mapDefaults: { ops: { models: { Doc: { picks: ['id', 'title'], where: pinned } } } }, root: everyBranch }
+```
+
+How the parts join, node by node (the root's tree by path, model defaults by map and model):
+
+| Part | Joined |
+| --- | --- |
+| `picks` | intersect; a column one layer picks and another omits leaves the picks |
+| `omits`, `enumOmits`, enum-type `omits` | union |
+| `enumPicks`, enum-type `picks` | intersect |
+| `where` | conjoined as flat siblings of one `all`, in layer order: each layer's condition kept whole, an `all` it holds spread beside the others |
+| `relations` | the first layer's turn-ons; a later restatement merges into the node it restates, and one that narrows nothing is dropped |
+
+A later layer's `where` reads through the earlier layers' clamps (§1): `posts none(unpublished)`
+in layer 2 over layer 1's `posts.where: live` counts live posts only. Written into one narrowing, the
+condition carries those clamps itself, injected exactly as the chain injects them (`narrowAt`, the
+call `resolveVisit` makes for every layer after the first): `posts none(live ∧ unpublished)`. A
+condition that crosses no clamped relation is kept as written.
+
+Two things in one narrowing differ from a chain, and `joinNarrowings` refuses a chain that needs
+either, with a `LensRefusal` whose `path` names the visit or the part:
+
+| Refused (`code`) | Why one narrowing can't say it |
+| --- | --- |
+| an invalid layer (the issue's own code, `path` `layers.<i>.…`) | `validateNarrowing` refuses the chain itself. |
+| `unjoinable_sources` | A source's `label` and `groupBy` are exempt from their own layer's hiding, and a `from: 'mapDefaults'` pointer escapes its own layer's path clamps. Joined, every layer's hiding and clamps become the source's own layer's, so the source would show more. Any source in a join of two or more layers is refused. |
+| `unjoinable_shape` | Only the first narrowing turns relations on, and its model defaults grow one tree (each model once, at its nearest reach, §2). A later layer's omit only hides; in one narrowing the same omit also cuts that edge of the tree, which then reaches the model another way. A later restatement at a model default turns the relation on wherever the model is visited, and one on a path the tree reached spells that path, which grows its own tree. Refused when the joined narrowing shows a different visit, or different columns, relations or enum values at one. |
+| `unjoinable_clamp` | A later layer's model-default `where` applies wherever its model is visited, but reads through an earlier layer's path clamp only at the visits that clamp sits on. One `where` can't carry a clamp at some visits and not others. Also a clamp injection the chain itself refuses (a to-many hop with no array operator). |
+
+The function checks its own result: it validates the joined narrowing and compares it with the chain
+at every visit either one shows (columns, relations, enum values, and the clamps as one set of
+conjuncts), and refuses rather than return a narrowing that differs. Output is canonical: keys and
+`picks` / `omits` / enum lists sorted, empty parts dropped, so the same inputs give byte-identical
+output. Joining one narrowing returns it in that form, and the join is a left fold, so
+`joinNarrowings(lens, [a, b, c])` equals `joinNarrowings(lens, [joinNarrowings(lens, [a, b]), c])`.
+It knows nothing of identifiers: a host that requires `id` (template does) applies that rule to the
+result itself.
+
 ## 10. Using the lens
 
 ### `validateRuleInLens(rule, lens)` — validate at the API boundary

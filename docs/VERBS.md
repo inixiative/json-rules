@@ -24,6 +24,7 @@ modules allowed to implement it, and every exported function must appear in this
 | list fields | `listFields` | The paths a rule reads from the row it is checked on, sorted: leaf fields and value-side `{ path }`s; a relation node's inner rule is relative to its rows and not listed. |
 | narrow | `narrowRule` | Inject a lens's clamps into a rule at their anchors. |
 | re-root | `prefixConditionFields` | Move a condition onto a related record (a parent's where read from the child); refuse shapes it cannot move. |
+| join | `joinNarrowings` | A chain of narrowing layers over a base lens as one narrowing that every posture answers alike; refuses a chain one narrowing can't hold. |
 | clamp | `clampLens` | AND clamps into a lens's first narrowing over the base, where they read the whole schema; later layers kept. |
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
 | coerce | `coerceValue` | Stamp each `distinct` / `min` / `max` over a DateTime column with `coerceType: 'DateTime'` from the lens, so ISO date strings read as dates. |
@@ -60,7 +61,8 @@ Two error classes say whose input is wrong (each sets `name`, so `instanceof` or
 tells them apart):
 
 - `LensRefusal` — what the lens itself can't do: a clamp a later layer may not read, a clamp or
-  source a compile can't hold, a link a source's path can't carry. It carries a `code`;
+  source a compile can't hold, a link a source's path can't carry, a chain `joinNarrowings` can't
+  hold as one narrowing (with the `path` it stopped at). It carries a `code`;
   `validateNarrowing` reports the same refusal as an issue before anything runs.
 - `UsageError` — the caller's input missing or malformed: no `now` for a relative date, an invalid
   `now` or time zone, a bind that was never bound.

@@ -1,3 +1,23 @@
+## 3.23.0 — joinNarrowings
+
+- **`joinNarrowings(lens, layers)`: a chain of narrowings as one.** A grant row stores one
+  narrowing computed from the request and the approval (Aron, 2026-11-15: "The computed value is
+  what's stored… the most deterministic version"), and nothing turned two layers into one. It takes
+  a base lens and narrowing bodies, each written over the lens the ones before it produce, and
+  returns one body over the base that every posture answers as the chain does. Picks intersect,
+  omits and enum omits union, enum picks intersect, `where`s conjoin as flat siblings of one `all`
+  in layer order, and relations stay the first layer's. A later layer's `where` that crosses a
+  relation carries the earlier layers' clamps on it, injected by `narrowAt`, the call the chain's
+  own evaluation makes. Output is canonical (keys and lists sorted, empty parts dropped) and the
+  join is a left fold. It refuses, with a `LensRefusal` whose new `path` names where, an invalid
+  layer, sources in a join (`unjoinable_sources`), a join whose relation tree or surface would
+  differ from the chain's (`unjoinable_shape`: a later omit that cuts a default-tree edge, a
+  restatement that would turn a relation on or spell a path), and a later model-default `where`
+  reading through a path clamp (`unjoinable_clamp`). It validates its result and compares it with
+  the chain at every shown visit before returning it. docs/LENS.md, "Joining layers into one
+  narrowing".
+- `LensRefusal` takes an optional third argument, `path`.
+
 ## 3.22.0 — aggregate and negate fixes; aggregate coerceType
 
 A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType`, which

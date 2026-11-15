@@ -50,6 +50,7 @@ export {
   describeRule,
   describeRuleSources,
   getLensRoot,
+  joinNarrowings,
   type LensClamps,
   type LensPathHop,
   type LensPathResolution,

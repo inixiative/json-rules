@@ -307,12 +307,14 @@ const accumulateInto = (
   }
 };
 
-/** A narrowing the lens refuses to apply: a clamp validateNarrowing reports, met at runtime. */
+/** A narrowing the lens refuses to apply: a clamp validateNarrowing reports, met at runtime, or a
+ *  chain `joinNarrowings` can't hold as one narrowing (`path` names where). */
 export class LensRefusal extends Error {
   override name = 'LensRefusal';
   constructor(
     message: string,
     readonly code: string,
+    readonly path?: string,
   ) {
     super(message);
   }

@@ -1,4 +1,4 @@
-## Unreleased — the lens gate refuses a plain path through a to-many relation
+## 4.0.0 — the lens gate refuses a plain path through a to-many relation
 
 The principle, in [docs/LENS.md, Address vs cross](docs/LENS.md#address-vs-cross-to-many-relations):
 a path may address through a to-many relation; a rule may only cross one under an iterator.
@@ -29,8 +29,8 @@ a path may address through a to-many relation; a rule may only cross one under a
 - **One "to-many hop before the end" check.** `toManyHop(hops)` (`src/fieldMap/walk.ts`) replaces
   the copies in `toWhereSql`, the `toSql` join, `toPrisma`'s nested filter and group step,
   `readLensValue` and the value-expression path typer. `toManyHopError` takes the hop's prefix.
-- **Breaking:** a rule the gate used to admit is now refused, so this must not ship as a version
-  an existing `^3.x` range picks up silently; the owner picks the version. Rewrite `posts.title` as
+- **Breaking:** a rule the gate used to admit is now refused, and `describeRuleSources` reports
+  no sources for one; hence a major version, which no existing `^3.x` range picks up. Rewrite `posts.title` as
   `{ field: 'posts', arrayOperator: 'any', condition: { field: 'title', … } }`.
   `check()` itself is unchanged: it takes no field map, so it can't tell a to-many relation
   from a Json array, and still reads such a path as `undefined`.

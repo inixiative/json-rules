@@ -167,7 +167,9 @@ root: { relations: { q: { relations: { t: {} } } } }      // now 'q.t.id' resolv
 ```
 
 Anchored at User with `User.org`, `User.posts`, `Org.users`, `Org.parent` and `Post.author` on at
-the defaults: `org.name` and `posts.title` resolve; `org.users`, `org.parent` and `posts.author`
+the defaults: `org.name` and `posts.title` resolve (`posts.title` addresses through the to-many
+`posts`; a rule reads it under an array rule on `posts`, see
+[Address vs cross](#address-vs-cross-to-many-relations)); `org.users`, `org.parent` and `posts.author`
 do not (User and Org are already in the tree). `org: { relations: { users: {} } }` spells
 `org.users`, and below it the defaults grow again (`org.users.posts`). Every posture walks this
 same tree — the gate, `walkLensPath`, `readLensValue`, `lensVisit`, `narrowRule`, `{ lens }`
@@ -780,13 +782,38 @@ surface at the right visit, and reports:
 
 - field paths that don't resolve through the narrowed lens
 - relations a path crosses that the lens doesn't turn on (`not_in_lens`)
-- a plain path (a field, a value `path`, a `$`-scope ref, an `orderBy` or aggregate field) that
-  continues past a to-many relation (`messages.authorId`, `not_in_lens`, with the compilers'
-  message: compare its rows with an arrayOperator rule on `messages`). The map's `isList` says
-  which relations are to-many; a path may end on one only as an array rule's `field`
+- a rule path that crosses a to-many relation outside an iterator (`messages.authorId`,
+  `not_in_lens`, with the compilers' message); see [Address vs cross](#address-vs-cross-to-many-relations)
 - enum values not in the allowed set
 - nested-condition fields validated against the *relation target*, not the
   lens root
+
+#### Address vs cross: to-many relations
+
+**A path may address through a to-many relation; a rule may only cross one under an iterator.**
+
+| | What it is | Through a to-many relation |
+|---|---|---|
+| **Address** | Naming which rows, or which value on them, without comparing: what a template's `{{#each}}` iterates, a token path, `walkLensPath` / `resolvePolicyPath`, an array rule's own `field` | allowed |
+| **Cross** | A rule's `field`, value `path`, `$` ref, `orderBy` or aggregate field that continues past the relation | only under an array operator (or an aggregate or window over the relation) |
+
+Why: a to-many relation holds many rows, so `messages.authorId` has no single value to compare
+until something says which element. The array operator says it (`any`, `all`, `none`, a count),
+and inside it the condition reads the element directly (`status`, `author.name`). The field map's
+`isList` says which relations are to-many; the lens carries no notation of its own.
+
+A consumer validating a rule written inside a loop, say an email template's
+`{{#each recipient.missions as=m}}` with a rule on `m.status`, hands the gate the wrapped form and
+pins the list to the current element when it evaluates:
+
+```ts
+validateRuleInLens(
+  { field: 'recipient.missions', arrayOperator: 'any', condition: { field: 'status', operator: 'equals', value: 'live' } },
+  lens,
+); // ok
+validateRuleInLens({ field: 'recipient.missions.status', operator: 'equals', value: 'live' }, lens);
+// not_in_lens: 'recipient.missions.status' reads through the to-many relation 'recipient.missions'; …
+```
 
 #### The Json boundary
 

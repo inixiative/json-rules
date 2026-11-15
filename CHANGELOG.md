@@ -1,5 +1,8 @@
 ## Unreleased — the lens gate refuses a plain path through a to-many relation
 
+The principle, in [docs/LENS.md, Address vs cross](docs/LENS.md#address-vs-cross-to-many-relations):
+a path may address through a to-many relation; a rule may only cross one under an iterator.
+
 - **`validateRuleInLens` refuses a plain path that continues past a to-many relation**: a field
   (`messages.authorId`, `messages.author.name`, `["messages"]["authorId"]`, `org.members.name`),
   a value `path` or offset, a `$`-scope ref, and an `orderBy` / aggregate field. The issue is

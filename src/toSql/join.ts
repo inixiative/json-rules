@@ -1,7 +1,7 @@
 import { pastScalarError, toManyHopError } from '../errors';
 import { type FieldShape, fieldShape } from '../fieldMap/shape';
 import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
-import { type MapHop, walkFieldPath } from '../fieldMap/walk';
+import { type MapHop, toManyHop, walkFieldPath } from '../fieldMap/walk';
 import { modelOf } from '../own';
 import { relationKeys } from '../toPrisma/relationUtils';
 import { escapeIdentifier } from './escape';
@@ -34,7 +34,7 @@ export const resolveField = (
     throw new Error(`'${field}' crosses a bridge to another source; toSql() has no column for it`);
   if (walk.kind === 'fallback' || (walk.entry.kind === 'object' && walk.entry.isList))
     return asWritten();
-  const toMany = walk.hops.find((hop) => hop.entry.isList);
+  const toMany = toManyHop(walk.hops);
   if (toMany) throw toManyHopError(field, toMany);
   let alias = state.currentAlias;
   for (const hop of walk.hops) {

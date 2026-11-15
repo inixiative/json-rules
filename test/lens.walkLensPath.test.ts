@@ -4,6 +4,7 @@ import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { walkLensPath } from '../src/lens/walkLensPath';
 import { Operator } from '../src/operator';
+import type { Condition } from '../src/types';
 
 const maps: FieldMapSet['maps'] = {
   app: {
@@ -125,8 +126,10 @@ describe('walkLensPath — one dotted path through the lens, verified hop by hop
 
   test('the gate and the walk agree: a hidden path is a violation, a resolved one is not', () => {
     const rule = (field: string) => ({ field, operator: Operator.exists });
-    expect(validateRuleInLens(rule('posts.title'), narrowed).ok).toBe(true);
-    expect(validateRuleInLens(rule('posts.author.name'), narrowed).ok).toBe(false);
+    const anyPost = (field: string) =>
+      ({ field: 'posts', arrayOperator: 'any', condition: rule(field) }) as Condition;
+    expect(validateRuleInLens(anyPost('title'), narrowed).ok).toBe(true);
+    expect(validateRuleInLens(anyPost('author.name'), narrowed).ok).toBe(false);
     expect(validateRuleInLens(rule('meta.settings.theme'), bare).ok).toBe(true);
     expect(validateRuleInLens(rule('posts.title'), bare).ok).toBe(false);
   });

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
 import { describeRuleSources } from '../src/lens/describeRuleSources';
 import type { Lens, LensNarrowing } from '../src/lens/types';
+import { ArrayOperator } from '../src/operator';
 import type { Condition } from '../src/types';
 
 const map: FieldMap = {
@@ -64,11 +65,9 @@ describe('describeRuleSources — the values a rule names at each declared sourc
     ]);
   });
 
-  test('dotted spelling is the same path', () => {
+  test('a dotted path through a to-many relation is silent: the gate refuses it', () => {
     const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' };
-    expect(describeRuleSources(rule, narrowing)).toEqual([
-      { ...tagSource, values: ['a'], dynamic: false },
-    ]);
+    expect(describeRuleSources(rule, narrowing)).toEqual([]);
   });
 
   test('quantifier- and operator-blind: none / notIn name their values too', () => {
@@ -79,7 +78,11 @@ describe('describeRuleSources — the values a rule names at each declared sourc
           arrayOperator: 'none',
           condition: { field: 'tag.id', operator: 'equals', value: 'a' },
         },
-        { field: 'tagAttachments.tag.id', operator: 'notIn', value: ['b', 'a'] },
+        {
+          field: 'tagAttachments',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'tag.id', operator: 'notIn', value: ['b', 'a'] },
+        },
       ],
     };
     expect(describeRuleSources(rule, narrowing)).toEqual([
@@ -90,7 +93,11 @@ describe('describeRuleSources — the values a rule names at each declared sourc
   test('a path / bind leaf marks the source dynamic and contributes no value', () => {
     const rule: Condition = {
       any: [
-        { field: 'tagAttachments.tag.id', operator: 'equals', path: 'account.id' },
+        {
+          field: 'tagAttachments',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'tag.id', operator: 'equals', path: 'account.id' },
+        },
         { field: 'tier', operator: 'equals', bind: 'tier' },
       ],
     };
@@ -103,7 +110,11 @@ describe('describeRuleSources — the values a rule names at each declared sourc
   test('operators that take no value contribute nothing, even with value: true', () => {
     const rule: Condition = {
       all: [
-        { field: 'tagAttachments.tag.id', operator: 'exists', value: true },
+        {
+          field: 'tagAttachments',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'tag.id', operator: 'exists', value: true },
+        },
         { field: 'tier', operator: 'isEmpty', value: true },
       ],
     };
@@ -116,7 +127,11 @@ describe('describeRuleSources — the values a rule names at each declared sourc
   test('undeclared sources are silent: a field without a source, a relation the narrowing omits', () => {
     const rule: Condition = {
       all: [
-        { field: 'tagAttachments.tag.name', operator: 'equals', value: 'vip' },
+        {
+          field: 'tagAttachments',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'tag.name', operator: 'equals', value: 'vip' },
+        },
         { field: 'account.active', operator: 'equals', value: true },
         { field: 'meta.tag.id', operator: 'equals', value: 'a' },
       ],
@@ -140,8 +155,16 @@ describe('describeRuleSources — the values a rule names at each declared sourc
   test('if / then / else descend', () => {
     const rule: Condition = {
       if: { field: 'tier', operator: 'equals', value: 'gold' },
-      then: { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' },
-      else: { field: 'tagAttachments.tag.id', operator: 'equals', value: 'b' },
+      then: {
+        field: 'tagAttachments',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'tag.id', operator: 'equals', value: 'a' },
+      },
+      else: {
+        field: 'tagAttachments',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'tag.id', operator: 'equals', value: 'b' },
+      },
     };
     expect(describeRuleSources(rule, narrowing)).toEqual([
       {
@@ -157,7 +180,11 @@ describe('describeRuleSources — the values a rule names at each declared sourc
   });
 
   test('a bare lens declares no sources', () => {
-    const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'equals', value: 'a' };
+    const rule: Condition = {
+      field: 'tagAttachments',
+      arrayOperator: ArrayOperator.any,
+      condition: { field: 'tag.id', operator: 'equals', value: 'a' },
+    };
     expect(describeRuleSources(rule, lens)).toEqual([]);
   });
 
@@ -173,7 +200,11 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
       parent: lens,
       mapDefaults: { app: { models: { Tag: { sources: { id: true } } } } },
     };
-    const rule: Condition = { field: 'tagAttachments.tag.id', operator: 'in', value: ['t1', 't2'] };
+    const rule: Condition = {
+      field: 'tagAttachments',
+      arrayOperator: ArrayOperator.any,
+      condition: { field: 'tag.id', operator: 'in', value: ['t1', 't2'] },
+    };
     // The path crosses relations that are off: no source answers there.
     expect(describeRuleSources(rule, byDefaults)).toEqual([]);
     const declared: LensNarrowing = {
@@ -187,9 +218,21 @@ describe('describeRuleSources — adversarial round (2.20.0 fix set)', () => {
 
   test('non-enumerating shapes mark the source dynamic instead of inventing values: between, contains, matches', () => {
     const rules: Condition[] = [
-      { field: 'tagAttachments.tag.id', operator: 'between', value: ['a', 'z'] },
-      { field: 'tagAttachments.tag.id', operator: 'contains', value: 'gol' },
-      { field: 'tagAttachments.tag.id', operator: 'matches', value: '^gold$' },
+      {
+        field: 'tagAttachments',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'tag.id', operator: 'between', value: ['a', 'z'] },
+      },
+      {
+        field: 'tagAttachments',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'tag.id', operator: 'contains', value: 'gol' },
+      },
+      {
+        field: 'tagAttachments',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'tag.id', operator: 'matches', value: '^gold$' },
+      },
     ];
     for (const rule of rules) {
       expect(describeRuleSources(rule, narrowing)).toEqual([

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { FieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
-import { Operator } from '../src/operator';
+import { ArrayOperator, Operator } from '../src/operator';
 
 // Lockdown: validateRuleInLens must reject rules whose path goes through
 // a relation that the narrowing strips. The library's contract is
@@ -45,7 +45,11 @@ const withParent = (
 describe('validateRuleInLens — deep-path rejection through un-narrowed relations', () => {
   test('bare lens: a deep path crosses undeclared relations and is rejected', () => {
     const result = validateRuleInLens(
-      { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
+      {
+        field: 'orgUsers',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'organization.name', operator: Operator.equals, value: 'Acme' },
+      },
       lens,
     );
     expect(result.errors.map((e) => e.code)).toEqual(['not_in_lens']);
@@ -56,7 +60,11 @@ describe('validateRuleInLens — deep-path rejection through un-narrowed relatio
       root: { relations: { orgUsers: { relations: { organization: {} } } } },
     });
     const result = validateRuleInLens(
-      { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
+      {
+        field: 'orgUsers',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'organization.name', operator: Operator.equals, value: 'Acme' },
+      },
       declared,
     );
     expect(result.ok).toBe(true);
@@ -73,11 +81,15 @@ describe('validateRuleInLens — deep-path rejection through un-narrowed relatio
       },
     });
     const result = validateRuleInLens(
-      { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
+      {
+        field: 'orgUsers',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'organization.name', operator: Operator.equals, value: 'Acme' },
+      },
       n,
     );
     expect(result.ok).toBe(false);
-    expect(result.errors[0].path).toBe('orgUsers.organization.name');
+    expect(result.errors[0].path).toBe('organization.name');
   });
 
   test('narrowing strips terminal field → terminal path rejected', () => {
@@ -91,7 +103,11 @@ describe('validateRuleInLens — deep-path rejection through un-narrowed relatio
       },
     });
     const result = validateRuleInLens(
-      { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'Acme' },
+      {
+        field: 'orgUsers',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'organization.name', operator: Operator.equals, value: 'Acme' },
+      },
       n,
     );
     expect(result.ok).toBe(false);
@@ -110,14 +126,22 @@ describe('validateRuleInLens — deep-path rejection through un-narrowed relatio
     // name is declared → passes
     expect(
       validateRuleInLens(
-        { field: 'orgUsers.organization.name', operator: Operator.equals, value: 'x' },
+        {
+          field: 'orgUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'organization.name', operator: Operator.equals, value: 'x' },
+        },
         n,
       ).ok,
     ).toBe(true);
     // plan is not declared → rejected
     expect(
       validateRuleInLens(
-        { field: 'orgUsers.organization.plan', operator: Operator.equals, value: 'x' },
+        {
+          field: 'orgUsers',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'organization.plan', operator: Operator.equals, value: 'x' },
+        },
         n,
       ).ok,
     ).toBe(false);
@@ -128,7 +152,11 @@ describe('validateRuleInLens — deep-path rejection through un-narrowed relatio
       mapDefaults: { prisma: { models: { Organization: { omits: ['plan'] } } } },
     });
     const result = validateRuleInLens(
-      { field: 'orgUsers.organization.plan', operator: Operator.equals, value: 'enterprise' },
+      {
+        field: 'orgUsers',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'organization.plan', operator: Operator.equals, value: 'enterprise' },
+      },
       n,
     );
     expect(result.ok).toBe(false);

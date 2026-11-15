@@ -1,6 +1,7 @@
+import { toManyHopError } from '../errors';
 import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMap, FieldMapEntry, ModelEntry } from '../fieldMap/types';
-import { type MapVisit, relationTargetOf, walkMaps } from '../fieldMap/walk.ts';
+import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
 import { fieldOf, modelOf, own } from '../own';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
@@ -869,6 +870,8 @@ export const sourceReadsVisible = (
   );
 };
 
+/** Where a path ends through the lens; null when it doesn't resolve or continues past a to-many
+ *  relation (`unresolvedIssue` says which). */
 export const lensPathEnd = (
   policy: Policy,
   from: MapVisit,
@@ -884,7 +887,7 @@ export const lensPathEnd = (
   jsonSubPath: string[];
 } | null => {
   const { resolution, effects } = resolvePolicyPath(policy, from, fieldPath);
-  if (resolution.outcome !== 'resolved') return null;
+  if (resolution.outcome !== 'resolved' || toManyHop(resolution.hops.slice(0, -1))) return null;
   const { terminal, jsonSubPath } = resolution;
   return {
     mapName: terminal.mapName,
@@ -898,7 +901,8 @@ export const lensPathEnd = (
 };
 
 /** The issue for a path `lensPathEnd` refuses: `message`, or — when it stops at a relation the lens
- *  doesn't turn on — how to turn it on. */
+ *  doesn't turn on — how to turn it on, or — when it reads through a to-many relation — the
+ *  arrayOperator form the compilers point at. */
 export const unresolvedIssue = (
   policy: Policy,
   from: MapVisit,
@@ -906,8 +910,14 @@ export const unresolvedIssue = (
   message: string,
 ): { code: 'not_in_lens'; message: string } => {
   const { resolution } = resolvePolicyPath(policy, from, path);
-  if (resolution.outcome !== 'hidden') return { code: 'not_in_lens', message };
   const segments = pathSegments(path);
+  if (resolution.outcome === 'resolved') {
+    const toMany = toManyHop(resolution.hops.slice(0, -1));
+    if (!toMany) return { code: 'not_in_lens', message };
+    const prefix = segments.slice(0, resolution.hops.indexOf(toMany) + 1).join('.');
+    return { code: 'not_in_lens', message: toManyHopError(path, { prefix }).message };
+  }
+  if (resolution.outcome !== 'hidden') return { code: 'not_in_lens', message };
   const at = resolution.hops.at(-1);
   const visit = at
     ? { mapName: at.mapName, modelName: at.model, relPath: [...at.relPath, at.field] }

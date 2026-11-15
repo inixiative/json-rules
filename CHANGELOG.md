@@ -1,3 +1,40 @@
+## 4.0.0 — the lens gate refuses a plain path through a to-many relation
+
+The principle, in [docs/LENS.md, Address vs cross](docs/LENS.md#address-vs-cross-to-many-relations):
+a path may address through a to-many relation; a rule may only cross one under an iterator.
+
+- **`validateRuleInLens` refuses a plain path that continues past a to-many relation**: a field
+  (`messages.authorId`, `messages.author.name`, `["messages"]["authorId"]`, `org.members.name`),
+  a value `path` or offset, a `$`-scope ref, and an `orderBy` / aggregate field. The issue is
+  `not_in_lens` with the compilers' own message (`'messages.authorId' reads through the to-many
+  relation 'messages'; compare its rows with an arrayOperator rule on 'messages'.`). A path may
+  still end on a to-many relation as an array rule's `field`, and that rule's `condition` reads
+  the related rows' columns. Scalar list and Json columns are unchanged. Why: the rails
+  disagreed on such a path. The gate admitted it; `check()` read the array's missing property, so
+  `messages.authorId equals null` held on a conversation with messages; `toPrisma` / `toSql`
+  threw `toManyHopError`; `readLensValue` refused it with `reason: 'list'`. What the gate admits
+  must run on every rail, and the field map's `isList` is the one place that says a relation is
+  to-many. `walkLensPath` still resolves such a path (template's `each` reads through a list);
+  `lensPathEnd`, which only the gate's steps use, returns null for it and `unresolvedIssue`
+  words the refusal.
+- **`describeRuleSources` walks a rule as the gate does**, scope by scope with `stepIntoField`,
+  instead of joining each scope's segments into one dotted path from the root. An array rule's
+  condition still reaches its source (`tagAttachments` → `tag.id`); a plain dotted path through
+  a to-many relation (`tagAttachments.tag.id`), which the gate refuses, is silent, as every
+  other path the gate refuses already was. Why: it documented and tested the dotted spelling as
+  valid, a rule no caller could get past the gate.
+- **`validateNarrowing` names a path once.** It prefixed every gate message with the issue's
+  path, so a message that already names it (the to-many message, `relationNotValue`,
+  `relationsNotValue`) read `'messages.authorId' 'messages.authorId' reads through …`.
+- **One "to-many hop before the end" check.** `toManyHop(hops)` (`src/fieldMap/walk.ts`) replaces
+  the copies in `toWhereSql`, the `toSql` join, `toPrisma`'s nested filter and group step,
+  `readLensValue` and the value-expression path typer. `toManyHopError` takes the hop's prefix.
+- **Breaking:** a rule the gate used to admit is now refused, and `describeRuleSources` reports
+  no sources for one; hence a major version, which no existing `^3.x` range picks up. Rewrite `posts.title` as
+  `{ field: 'posts', arrayOperator: 'any', condition: { field: 'title', … } }`.
+  `check()` itself is unchanged: it takes no field map, so it can't tell a to-many relation
+  from a Json array, and still reads such a path as `undefined`.
+
 ## 3.23.0 — `pathSegments`; the lens gate splits a path as `check()` reads it
 
 - **`pathSegments(path)` is exported**: the keys a path reads, as `check()` reads them (dotted

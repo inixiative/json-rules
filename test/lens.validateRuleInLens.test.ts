@@ -3,7 +3,7 @@ import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge, FieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
-import { Operator } from '../src/operator';
+import { ArrayOperator, Operator } from '../src/operator';
 
 const prismaMap: FieldMap = {
   models: {
@@ -118,7 +118,11 @@ describe('validateRuleInLens', () => {
       },
     });
     const result = validateRuleInLens(
-      { field: 'fanMissions.missionUuid', operator: Operator.equals, value: 'x' },
+      {
+        field: 'fanMissions',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'missionUuid', operator: Operator.equals, value: 'x' },
+      },
       n,
     );
     expect(result.ok).toBe(true);
@@ -131,11 +135,15 @@ describe('validateRuleInLens', () => {
       },
     });
     const result = validateRuleInLens(
-      { field: 'fanMissions.status', operator: Operator.equals, value: 'x' },
+      {
+        field: 'fanMissions',
+        arrayOperator: ArrayOperator.any,
+        condition: { field: 'status', operator: Operator.equals, value: 'x' },
+      },
       n,
     );
     expect(result.ok).toBe(false);
-    expect(result.errors[0].path).toBe('fanMissions.status');
+    expect(result.errors[0].path).toBe('status');
   });
 
   test('cross-map bridge path passes when narrowed in', () => {

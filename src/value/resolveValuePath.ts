@@ -1,7 +1,7 @@
 import { UsageError } from '../errors';
-import { isRelationEntry } from '../fieldMap/entry';
 import { entryKind } from '../fieldMap/shape';
 import type { FieldMapEntry } from '../fieldMap/types';
+import { toManyHop } from '../fieldMap/walk';
 import type { Lens, LensNarrowing } from '../lens/types';
 import { walkLensPath } from '../lens/walkLensPath';
 import { FieldKind } from '../operatorCatalog';
@@ -41,9 +41,7 @@ export const resolveValuePath = (
       'unresolved_path',
       `'${ref}' does not resolve through the lens (${resolution.outcome})`,
     );
-  const listHop = resolution.hops
-    .slice(0, -1)
-    .find((hop) => isRelationEntry(hop.entry) && hop.entry.isList);
+  const listHop = toManyHop(resolution.hops.slice(0, -1));
   return {
     entry: resolution.terminal.entry,
     viaList: listHop ? listHop.field : null,

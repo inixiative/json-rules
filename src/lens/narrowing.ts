@@ -91,7 +91,7 @@ const validateWhere = (
   for (const { mapName, modelName, relPath } of visits) {
     for (const v of checkConditionAtVisit(condition, clamp, mapName, modelName, relPath)) {
       // The gate's own code carries through: what is wrong, not only that something is.
-      const message = `'${v.path}' ${v.message}`;
+      const message = v.message.startsWith(`'${v.path}'`) ? v.message : `'${v.path}' ${v.message}`;
       if (seen.has(message)) continue;
       seen.add(message);
       errors.push({ path: position, code: v.code, message });

@@ -30,9 +30,11 @@ export const readScopeRef = <S>(
   return { scope: scopes[scopes.length - parsed.depth], path: parsed.path };
 };
 
-// Segments of a path: dotted names, bracket indices and quoted keys (`ids[1]`, `meta["a.b"]`).
 const SEGMENT = /\[(\d+)\]|\[(["'])(.*?)\2\]|([^.[\]]+)/g;
-const segments = (path: string): string[] =>
+
+/** The keys a path reads, in order, as `check()` reads them: dotted names, bracket indices and
+ *  quoted keys (`ids[1]` → `['ids', '1']`, `meta["a.b"]` → `['meta', 'a.b']`). `''` is `['']`. */
+export const pathSegments = (path: string): string[] =>
   path === '' ? [''] : [...path.matchAll(SEGMENT)].map((m) => m[1] ?? m[3] ?? m[4]);
 
 // One step of a path read: an own property only (an array's index or `length`, a string's
@@ -45,7 +47,7 @@ const step = (at: unknown, key: string): unknown => {
 
 /** A path read of own properties only, bracket indices included: nothing inherited resolves. */
 export const readOwnPath = (root: unknown, path: string): unknown =>
-  segments(path).reduce<unknown>(step, root);
+  pathSegments(path).reduce<unknown>(step, root);
 
 export const readField = (ref: string, scopes: Scopes): unknown => {
   const target = readScopeRef(ref, scopes);

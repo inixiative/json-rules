@@ -1254,6 +1254,11 @@ readScopeRef('$$$.x', [rootRow, order]);
 `readScopeRef` returns the scope a ref names and the path left to read in it. It never throws:
 a ref deeper than the stack comes back as `{ outOfBounds }` with the message.
 
+`pathSegments(path)` is the list of keys a path reads, as `check()` reads it: dotted names,
+bracket indices and quoted keys (`messages[0].authorId` and `["messages"][0]["authorId"]` are
+both `['messages', '0', 'authorId']`). Use it, never `split('.')`, to walk a path of your own:
+a dotted split misses every bracket spelling `check()` accepts.
+
 ## Error Handling
 
 The library throws when a rule is structurally invalid, for example:

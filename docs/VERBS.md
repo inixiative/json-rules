@@ -45,7 +45,7 @@ modules allowed to implement it, and every exported function must appear in this
 | compose | `composeLens` | A stored layer and the records it lists, resolved into the composed lens every other function takes. |
 | stitch | `stitchFieldMaps` | Join field maps across bridges. |
 | index | `indexBridges` | Index raw rows (keyed `<fieldMap>:<Model>`) by each bridge endpoint's `on` value, for embedding under bridge keys. |
-| read | `parseScopeRef`, `readScopeRef` | Parse a `$`-prefixed ref; read which scope it names. |
+| read | `parseScopeRef`, `readScopeRef`, `pathSegments` | Parse a `$`-prefixed ref; read which scope it names; split a path into the keys `check()` reads. |
 | order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths, NULLs last, stable. |
 | look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. |
 

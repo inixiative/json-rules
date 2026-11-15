@@ -1,3 +1,17 @@
+## 3.23.0 — `pathSegments`; the lens gate splits a path as `check()` reads it
+
+- **`pathSegments(path)` is exported**: the keys a path reads, as `check()` reads them (dotted
+  names, bracket indices, quoted keys). Why: `@inixiative/permissions` walks every path a rule
+  reads through the relations hydration loads, and a `split('.')` of its own missed
+  `["messages"][0]["authorId"]`, which `check()` reads as `messages.0.authorId`. One segmenter
+  means a walker and the reader can never disagree on what a path names.
+- **The lens gate segments a path as `check()` reads it.** `walkMaps` (so `walkFieldPath`) and
+  `resolvePolicyPath`, `unresolvedIssue` and `relationHops` split on `.`, so
+  `validateRuleInLens` read `["org"]["plan"]` as one missing key while `check()` read
+  `org.plan`. They use `pathSegments` now; dotted paths are unchanged.
+  `toSourceQueries` selects a re-check's reads by `pathSegments` too (`meta["a"]` selected a
+  column named `meta["a"]`).
+
 ## 3.22.0 — aggregate and negate fixes; aggregate coerceType
 
 A minor rather than 3.21.1: aggregate rules take a new optional key, `coerceType`, which

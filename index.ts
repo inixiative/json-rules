@@ -111,6 +111,7 @@ export {
 } from './src/operatorCatalog';
 export {
   parseScopeRef,
+  pathSegments,
   readScopeRef,
   type ScopedRef,
   type ScopeOutOfBounds,

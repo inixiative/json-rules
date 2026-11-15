@@ -1,4 +1,4 @@
-## Unreleased — `pathSegments`
+## 3.23.0 — `pathSegments`; the lens gate splits a path as `check()` reads it
 
 - **`pathSegments(path)` is exported**: the keys a path reads, as `check()` reads them (dotted
   names, bracket indices, quoted keys). Why: `@inixiative/permissions` walks every path a rule

@@ -12,11 +12,22 @@
   threw `toManyHopError`; `readLensValue` refused it with `reason: 'list'`. What the gate admits
   must run on every rail, and the field map's `isList` is the one place that says a relation is
   to-many. `walkLensPath` still resolves such a path (template's `each` reads through a list);
-  `lensPathEnd` reports `throughToMany` and the gate refuses on it.
+  `lensPathEnd`, which only the gate's steps use, returns null for it and `unresolvedIssue`
+  words the refusal.
+- **`describeRuleSources` walks a rule as the gate does**, scope by scope with `stepIntoField`,
+  instead of joining each scope's segments into one dotted path from the root. An array rule's
+  condition still reaches its source (`tagAttachments` → `tag.id`); a plain dotted path through
+  a to-many relation (`tagAttachments.tag.id`), which the gate refuses, is silent, as every
+  other path the gate refuses already was. Why: it documented and tested the dotted spelling as
+  valid, a rule no caller could get past the gate.
+- **`validateNarrowing` names a path once.** It prefixed every gate message with the issue's
+  path, so a message that already names it (the to-many message, `relationNotValue`,
+  `relationsNotValue`) read `'messages.authorId' 'messages.authorId' reads through …`.
 - **One "to-many hop before the end" check.** `toManyHop(hops)` (`src/fieldMap/walk.ts`) replaces
   the copies in `toWhereSql`, the `toSql` join, `toPrisma`'s nested filter and group step,
   `readLensValue` and the value-expression path typer. `toManyHopError` takes the hop's prefix.
-- **Breaking:** a rule the gate used to admit is now refused. Rewrite `posts.title` as
+- **Breaking:** a rule the gate used to admit is now refused, so this must not ship as a version
+  an existing `^3.x` range picks up silently; the owner picks the version. Rewrite `posts.title` as
   `{ field: 'posts', arrayOperator: 'any', condition: { field: 'title', … } }`.
   `check()` itself is unchanged: it takes no field map, so it can't tell a to-many relation
   from a Json array, and still reads such a path as `undefined`.

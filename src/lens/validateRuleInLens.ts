@@ -98,7 +98,7 @@ const visit = (
           : { scope: lensRootScope(policy), field: ref };
         if (!target || target.scope.open) continue;
         const walked = lensPathEnd(policy, target.scope, target.field);
-        if (!walked || walked.throughToMany) {
+        if (!walked) {
           issues.push({
             path: ref,
             ...unresolvedIssue(
@@ -178,8 +178,7 @@ const visit = (
       // The fields a relation node orders or aggregates by read its elements.
       if (!next.open)
         for (const ref of elementRefs(cond as Record<string, unknown>)) {
-          const end = ref === '' ? null : lensPathEnd(policy, next, ref);
-          if (ref !== '' && (!end || end.throughToMany))
+          if (ref !== '' && !lensPathEnd(policy, next, ref))
             issues.push({
               path: ref,
               ...unresolvedIssue(

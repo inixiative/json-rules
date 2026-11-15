@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { check, readLensValue, toPrisma, validateRuleInLens, walkLensPath } from '../index';
+import {
+  check,
+  readLensValue,
+  toPrisma,
+  validateNarrowing,
+  validateRuleInLens,
+  walkLensPath,
+} from '../index';
 import type { FieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -111,6 +118,19 @@ describe('validateRuleInLens — a plain path never continues past a to-many rel
     } as Condition);
     expect(errors(scopedPath).map((e) => [e.path, e.message])).toEqual([
       ['$$.messages.authorId', toManyMessage('messages.authorId', 'messages')],
+    ]);
+  });
+
+  test('a clamp through a to-many relation is refused once, naming its path once', () => {
+    const clamp: LensNarrowing = {
+      parent: lens.parent,
+      root: {
+        where: { field: 'messages.authorId', operator: Operator.equals, value: 'u1' },
+        relations: { messages: {} },
+      },
+    };
+    expect(validateNarrowing(clamp).errors.map((e) => e.message)).toEqual([
+      toManyMessage('messages.authorId', 'messages'),
     ]);
   });
 

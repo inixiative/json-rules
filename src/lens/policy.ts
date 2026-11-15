@@ -870,9 +870,8 @@ export const sourceReadsVisible = (
   );
 };
 
-/** Where a path ends through the lens, or null when it doesn't resolve. `throughToMany`: it
- *  continues past a to-many relation, which a plain path can't (a relation node's joined scope
- *  path can). */
+/** Where a path ends through the lens; null when it doesn't resolve or continues past a to-many
+ *  relation (`unresolvedIssue` says which). */
 export const lensPathEnd = (
   policy: Policy,
   from: MapVisit,
@@ -886,10 +885,9 @@ export const lensPathEnd = (
   terminalFieldName: string;
   /** Segments consumed below a Json boundary — empty when the path ends on the declared entry. */
   jsonSubPath: string[];
-  throughToMany: boolean;
 } | null => {
   const { resolution, effects } = resolvePolicyPath(policy, from, fieldPath);
-  if (resolution.outcome !== 'resolved') return null;
+  if (resolution.outcome !== 'resolved' || toManyHop(resolution.hops.slice(0, -1))) return null;
   const { terminal, jsonSubPath } = resolution;
   return {
     mapName: terminal.mapName,
@@ -899,7 +897,6 @@ export const lensPathEnd = (
     terminalEffect: effects[effects.length - 1],
     terminalFieldName: terminal.field,
     jsonSubPath,
-    throughToMany: toManyHop(resolution.hops.slice(0, -1)) !== undefined,
   };
 };
 
@@ -971,7 +968,7 @@ export const stepIntoField = (
     return { issue: { code: 'scope_out_of_bounds', message: target.outOfBounds } };
   if (target.scope.open) return { from: target.scope, next: target.scope, walked: null };
   const walked = lensPathEnd(policy, target.scope, target.path);
-  if (!walked || walked.throughToMany)
+  if (!walked)
     return {
       issue: unresolvedIssue(
         policy,

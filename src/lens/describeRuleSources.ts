@@ -1,5 +1,4 @@
 import { leafCatalogEntry, ValueShape } from '../operatorCatalog';
-import { readScopeRef } from '../scope';
 import {
   type ConditionNode,
   isLogicalNode,
@@ -9,7 +8,13 @@ import {
 } from '../traverse.ts';
 import type { Condition, RuleValue } from '../types.ts';
 import { ruleLiterals } from './fieldFit.ts';
-import { lensPathEnd, resolvePolicy } from './policy.ts';
+import {
+  type LensWalk,
+  lensRootScope,
+  resolvePolicy,
+  stepIntoField,
+  type VisitScope,
+} from './policy.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
 /**
@@ -76,10 +81,10 @@ const dedupeKey = (value: RuleValue): string => {
 /**
  * Which values a rule names at each source the lens declares — the lens owns the
  * vocabulary, so it answers questions about it; callers never spell a path. A leaf reaches a
- * source by its absolute path through the lens: nested (`{ field: 'orders', arrayOperator,
- * condition: { field: 'sku' } }`) and dotted (`{ field: 'orders.sku' }`) spellings are one path,
- * resolved by `lensPathEnd` — declared relations, visibility, `mapDefaults`, and the Json boundary
- * all apply, so a source declared in `mapDefaults` answers wherever a declared path reaches its model. Quantifier-blind on
+ * source walked as the gate walks it (`stepIntoField`, scope by scope): `{ field: 'orders',
+ * arrayOperator, condition: { field: 'sku' } }` reaches `orders.sku`, and a plain path the gate
+ * refuses (one continuing past a to-many relation, `{ field: 'orders.sku' }`) is silent. Declared
+ * relations, visibility, `mapDefaults`, and the Json boundary all apply, so a source declared in `mapDefaults` answers wherever a declared path reaches its model. Quantifier-blind on
  * purpose — a `none` relation names its value as much as an `any` one, `notIn` as much as `in` —
  * but shape-aware via the operator catalog: only literal-naming shapes contribute `values`;
  * substring / pattern / range / window operators, and operators the catalog does not know, mark
@@ -97,15 +102,9 @@ export const describeRuleSources = (
   // Each entry's literal keys, so a large `in` list dedupes in linear time.
   const seenKeys = new Map<string, Set<string>>();
 
-  const record = (segments: string[], node: ConditionNode): void => {
-    if (segments.length === 0) return;
-    const resolved = lensPathEnd(
-      policy,
-      { mapName: policy.lens.mapName, modelName: root, relPath: [] },
-      segments.join('.'),
-    );
-    if (!resolved || resolved.jsonSubPath.length > 0) return;
-    const { mapName, modelName, relPath, terminalEffect, terminalFieldName } = resolved;
+  const record = (walked: LensWalk, node: ConditionNode): void => {
+    if (walked.jsonSubPath.length > 0) return;
+    const { mapName, modelName, relPath, terminalEffect, terminalFieldName } = walked;
     if (!terminalEffect.sources.has(terminalFieldName)) return;
 
     const path = [root, ...relPath].join('.');
@@ -134,24 +133,17 @@ export const describeRuleSources = (
     }
   };
 
-  // The scope is the stack of absolute anchors, innermost last; a `$`-prefixed field anchors at
-  // the scope it names. An out-of-bounds ref anchors nowhere and is silent.
-  const anchorOf = (field: string, prefixes: readonly string[][]): string[] | undefined => {
-    const target = readScopeRef(field, prefixes);
-    if ('outOfBounds' in target) return undefined;
-    return [...target.scope, ...target.path.split('.')];
-  };
-  visitCondition<readonly string[][]>(
+  visitCondition<readonly VisitScope[]>(
     rule,
-    (node, prefixes) => {
+    (node, scopes) => {
       if (isLogicalNode(node)) return;
-      const anchor =
-        typeof node.field === 'string' ? anchorOf(node.field, prefixes) : prefixes.at(-1);
-      if (!anchor) return false;
-      if (!isRelationNode(node) && typeof node.field === 'string') record(anchor, node);
-      return [...prefixes, anchor];
+      if (typeof node.field !== 'string' || node.field === '') return;
+      const step = stepIntoField(policy, scopes, node.field);
+      if ('issue' in step) return false;
+      if (!isRelationNode(node) && step.walked) record(step.walked, node);
+      return [...scopes, step.next];
     },
-    [[]],
+    [lensRootScope(policy)],
   );
   return [...out.values()];
 };

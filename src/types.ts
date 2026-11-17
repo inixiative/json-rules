@@ -413,6 +413,24 @@ export type IfThenElseValue = {
   else?: ValueExpression;
 };
 
+/** One case of a categorization: `then` is its value when `if` holds. */
+export type Category = {
+  if: Condition;
+  then: ValueExpression;
+};
+
+/** Cases checked in order against one row (`categorize`). `first` (the default) takes the first
+ *  case that holds; `all` takes every one that holds, in order. `default` is the value when none
+ *  holds. */
+export type Categorization = {
+  cases: Category[];
+  match?: CategorizationMatch;
+  default?: ValueExpression;
+};
+
+/** How a categorization picks its cases: the first that holds, or every one that holds. */
+export type CategorizationMatch = 'first' | 'all';
+
 /** Experimental. A list of values, each item evaluated in turn; an `if` with no `else` that does not
  *  hold adds nothing — match-all, for a multiselect. Items are single values, not lists. A bare
  *  array keeps every item; `{ list, distinct: true }` keeps the first of equal items. */

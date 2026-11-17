@@ -10,6 +10,7 @@ modules allowed to implement it, and every exported function must appear in this
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
 | evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal, a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` through its window), the branch an `if` picks, a list (experimental). |
+| categorize | `categorize` | Put a row in a category: the value of the first case whose rule holds (or, with `match: 'all'`, of every one), else the default. |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
 | compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s. |
 | compile | `toWhereSql`, `toLensWhereSql` | Compile a condition, or a lens's `where`s where the lens wrote them (`root`, `relations` by path, `mapDefaults` by map and model), to a predicate in the engine's `sql.dialect`: values inline, columns from the caller's `columns` map, no joins. Equality, membership and existence inside `all` / `any`, and `any` / `all` / `none` / `empty` / `notEmpty` on a to-many relation as an `EXISTS` subquery on the caller's `tables` — or, with `toMany: 'join'`, `notEmpty` / `any` in the root's `where` on the caller's LEFT JOIN of the relation; anything else throws. |
@@ -18,7 +19,8 @@ modules allowed to implement it, and every exported function must appear in this
 | compose | `andWhere`, `orWhere`, `matchAll`, `matchNothing` | AND / OR compiled WHEREs with a consumer's own filters, folding the boolean constants the way the compiler does — Prisma drops `{ OR: [] }` as an AND arm, so a hand-written `AND: [x, { OR: [] }]` is just `x`, not match-nothing. |
 | validate | `validateRule`, `validateRuleInLens`, `validateNarrowing`, `validateFieldMaps` | Return `{ ok, errors: { path, message, code }[] }`. |
 | validate | `validateValue` | A value expression's shape: return `{ ok, errors }` like the rule validators. |
-| validate | `assertValidRule`, `assertValidNarrowing`, `assertValidFieldMaps`, `assertValidValue` | The throwing form of each validator. |
+| validate | `validateCategorization` | A categorization's shape: its cases' rules and values, `match`, `default`; `{ ok, errors }`. |
+| validate | `assertValidRule`, `assertValidNarrowing`, `assertValidFieldMaps`, `assertValidValue`, `assertValidCategorization` | The throwing form of each validator. |
 | bind | `bindRule`, `bindLens` | Substitute supplied bindings into a rule, or a lens's narrowing conditions. |
 | bind | `listBindings`, `listLensBindings` | The bind names a rule or lens reads, sorted (`{ required }` drops `bindOptional`). |
 | list fields | `listFields` | The paths a rule reads from the row it is checked on, sorted: leaf fields and value-side `{ path }`s; a relation node's inner rule is relative to its rows and not listed. |

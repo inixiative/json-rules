@@ -302,6 +302,37 @@ What a consumer checks before saving one:
 
 Value expressions evaluate in memory only; `toPrisma` / `toSql` do not compile them.
 
+### Categorize
+
+`categorize(categorization, row, options)` puts a row in a category: cases checked in order, each
+an `if` (a rule) and a `then` (a value expression), with the options `check()` takes.
+
+```ts
+categorize(
+  {
+    cases: [
+      { if: { field: 'deals', operator: 'greaterThanEquals', value: 10 }, then: 'gold' },
+      { if: { field: 'deals', operator: 'greaterThanEquals', value: 3 }, then: 'silver' },
+    ],
+    default: 'bronze',
+  },
+  { deals: 4 },
+); // 'silver'
+```
+
+| Key | Meaning |
+| --- | --- |
+| `cases` | `[{ if, then }]`, in order |
+| `match` | `'first'` (the default): the first case that holds gives the value, and later cases are not checked. `'all'`: every case that holds, in case order, as a list |
+| `default` | the value when no case holds (under `all`, a list of it); with none, `null` (`[]` under `all`) |
+
+A `then` can be any value expression: a field/value map is `{ value: { status: 'canceled' } }`.
+A case that throws stops the categorization; it never falls through to a later case or the
+default, which would give a value its author ordered below it. `validateCategorization` /
+`assertValidCategorization` check the shape without data: known keys, a known `match`, each `if`
+as `validateRule` sees it and each `then` and the `default` as `validateValue` does. In memory
+only, like value expressions.
+
 ### Date Rule
 
 ```ts

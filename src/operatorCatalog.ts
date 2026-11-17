@@ -1,6 +1,6 @@
 import { unknownOperator } from './errors';
 import { ArrayOperator, DateOperator, Operator } from './operator';
-import type { AggregateMode, ValueAggregateMode } from './types';
+import type { AggregateMode, CategorizationMatch, ValueAggregateMode } from './types';
 
 export const FieldKind = {
   String: 'String',
@@ -681,3 +681,6 @@ export const OPPOSITE_OPERATORS: Readonly<Record<string, string>> = {
   [DateOperator.onOrBefore]: DateOperator.after,
   [DateOperator.onOrAfter]: DateOperator.before,
 };
+
+/** How a categorization picks its cases (`categorize`): `first` (the default) or `all`. */
+export const CATEGORIZATION_MATCHES: readonly CategorizationMatch[] = ['first', 'all'];

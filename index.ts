@@ -95,6 +95,7 @@ export { LensRefusal } from './src/lens/policy';
 export { ArrayOperator, DateOperator, Operator } from './src/operator';
 export {
   ALL_KINDS,
+  CATEGORIZATION_MATCHES,
   CLOCK_UNITS,
   type ClockUnit,
   FieldKind,
@@ -155,6 +156,9 @@ export type {
   Any,
   ArrayRule,
   BareLiteral,
+  Categorization,
+  CategorizationMatch,
+  Category,
   CheckData,
   CompileOptions,
   Condition,
@@ -221,12 +225,15 @@ export {
   validateRule,
 } from './src/validate';
 export {
+  assertValidCategorization,
   assertValidValue,
+  categorize,
   coerceValue,
   describeValue,
   evaluateValue,
   inferValueType,
   type ValueDescription,
+  validateCategorization,
   validateValue,
   valueClockUnit,
 } from './src/value';

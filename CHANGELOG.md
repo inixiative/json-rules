@@ -1,3 +1,19 @@
+## 4.1.0 — `categorize`: a row's category from ordered cases
+
+- **`categorize(categorization, row, options)`**: `{ cases: [{ if, then }], match?, default? }`.
+  `match: 'first'` (the default) gives the value of the first case whose rule holds, and checks no
+  later case; `match: 'all'` gives every holding case's value, in order, as a list. With no case
+  holding, the `default` (a list of it under `all`), else null (`[]`). Each `if` is checked as
+  `check()` checks a rule and each `then` computed as `evaluateValue()` computes it, with their
+  options. A case that throws stops it, never falling through to a later case or the default.
+  Why: the same ordered "rule → value" loop was being written by hand (Zealot's derived maps,
+  `pickDerivedValue`; template's delete lifecycle, which cancels a deleted party's open
+  inquiries), and a nested `if` / `else` chain is hard to read and edit as a list of cases
+  (Aron, 2026-11-17). In memory only: no compile to SQL or Prisma until more uses show the shape.
+- **`validateCategorization` / `assertValidCategorization`** check it without data.
+- **`CATEGORIZATION_MATCHES`** and the `Categorization`, `Category`, `CategorizationMatch` types
+  are exported.
+
 ## 4.0.0 — the lens gate refuses a plain path through a to-many relation
 
 The principle, in [docs/LENS.md, Address vs cross](docs/LENS.md#address-vs-cross-to-many-relations):

@@ -30,7 +30,7 @@ const SHAPE_KEYS: Record<Exclude<ValueExpressionShape, 'literal'>, readonly stri
   list: ['list', 'distinct'],
 };
 
-const prefixed = (issues: ValidationIssue[], path: string): ValidationIssue[] =>
+export const prefixed = (issues: ValidationIssue[], path: string): ValidationIssue[] =>
   issues.map((issue) => ({
     ...issue,
     path: issue.path.startsWith('$') ? `${path}${issue.path.slice(1)}` : `${path}.${issue.path}`,

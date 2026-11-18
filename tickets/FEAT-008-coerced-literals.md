@@ -28,14 +28,12 @@ ruling): `coerceType` already means "read this value as that kind", on field rul
   `coerce_kind_mismatch` when `coerces(literalKind, coerceType)` is false (the aggregate table).
 - **Validate:** `validateValue` takes `coerceType` on a `{ value }` source only (never with `path`
   or `bind`, whose kind comes from the lens or the binding), one of `FieldKind`.
-- **Stamp:** `coerceValue(expression, lens)` stamps a string literal in an `if`'s `then` / `else`,
-  or a list item, with the kind of a sibling branch the lens types as `DateTime` or a numeric kind,
-  when the literal reads as that kind. A new `coerceCategorization(categorization, lens)` does the
-  same across a categorization's cases and default. Never from values at evaluation; only from
-  the lens, as the DateTime aggregate stamp works.
-- **Caller target:** when the caller knows the target kind and no branch is lens-typed (every case
-  a literal), the builder stamps `coerceType` from the caller's expected kind. json-rules takes
-  no expected-type option.
+- **Who stamps:** nothing in json-rules. `check()` honours a rule's `coerceType` and never reads a
+  lens; `categorize` runs each `if` through `check` and each value through `evaluateValue`, so a
+  stamped literal is honoured there with no categorization-specific code. A field rule is stamped
+  by `coerceRule` from its column; a literal has no column, and guessing its kind from a sibling
+  branch is inference, not a lens fact. The editor stamps it from the kind the caller expects
+  (Zealot's map column). json-rules takes no expected-type option and adds no `coerceCategorization`.
 
 ## Test cases
 
@@ -44,15 +42,14 @@ ruling): `coerceType` already means "read this value as that kind", on field rul
    evaluates to `'x'` and types Int.
 3. `{ value: true, coerceType: 'DateTime' }` is refused by `inferValueType`: `coerce_kind_mismatch`.
 4. `{ path: 'renewedAt', coerceType: 'DateTime' }` is refused by `validateValue`.
-5. `coerceValue({ if: c, then: '2027-01-01', else: { path: 'renewedAt' } }, lens)` stamps the
-   `then` literal DateTime; the result types DateTime.
-6. `coerceValue({ if: c, then: 'gold', else: { path: 'tier' } }, lens)` stamps nothing (String).
-7. `coerceCategorization` over cases `'2027-01-01'`, `{ path: 'renewedAt' }` and a default
-   `'2026-06-01'` stamps both literals; `describeCategorization` types DateTime.
-8. A literal that doesn't read as the sibling's kind (`'soon'` beside a DateTime path) is left as
-   it is, and `describeCategorization` reports the mismatch at its case.
+5. `categorize` over cases `{ value: '2027-01-01', coerceType: 'DateTime' }` and
+   `{ path: 'renewedAt' }` returns a `Date` from either case; `describeCategorization` types
+   DateTime.
+6. The same categorization with the first literal unstamped (`'2027-01-01'`) is reported by
+   `describeCategorization` as `value_type_mismatch` at `$.cases[0].then`: nothing guesses it.
+7. `coerceValue` leaves a literal as it is (no sibling stamping).
 
 ## Not in it
 
-No coercion guessed from a literal's own text (`'2027-01-01'` alone stays a String). No
-expected-type option in json-rules.
+No coercion guessed from a literal's own text or from a sibling branch. No expected-type option
+and no `coerceCategorization` in json-rules.

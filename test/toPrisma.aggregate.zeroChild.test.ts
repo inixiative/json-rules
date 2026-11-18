@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { check, executePrismaPlan, Operator, toPrisma } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 
 // A groupBy yields no group for a parent with no (matching) children, whose sum and avg are 0
 // under check(). A comparison that holds at 0 compiles as the complement of the step for its
 // negation, so those parents stay in.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

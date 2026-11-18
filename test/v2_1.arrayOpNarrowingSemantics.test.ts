@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -11,7 +11,7 @@ import type { Condition } from '../src/types';
 // data with a mix of in-scope and out-of-scope rows. The result must match
 // what a human reading the narrowing as "filter-first scope" would expect.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

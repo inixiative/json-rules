@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toSql } from '../src/toSql';
 
@@ -9,7 +9,7 @@ import { toSql } from '../src/toSql';
 // timestamp or integer at parse time, so the two-branch shape on a typed non-String
 // column is guaranteed-unrunnable SQL — including the documented `deletedAt isEmpty`
 // soft-delete lens clamp.
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Enrichment: {
       fields: {

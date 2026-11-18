@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
   createLens,
   executePrismaPlan,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
@@ -22,7 +23,7 @@ import { map, openRails } from './rails/harness';
 // clamp a plain predicate — never from the lens's own plan.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 type Row = Record<string, unknown>;
 
 const SEED = `
@@ -247,7 +248,7 @@ describe('R10-6/7/8: a source across a bridge over-fetches its local side, and s
       models: { FanUser: { fields: { id: s('String'), email: s('String'), crmId: s('String') } } },
     },
     salesforce: { models: { Contact: { fields: { id: s('String'), industry: s('String') } } } },
-  } as Record<string, FieldMap>;
+  } as Record<string, LensFieldMap>;
   const bridged = createLens({
     maps,
     bridges: [

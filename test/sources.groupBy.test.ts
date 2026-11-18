@@ -9,12 +9,12 @@ import {
   type SourceValues,
   toSourceQueries,
 } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 
 // EAV shape: one physical `value` column whose vocabulary is partitioned by a
 // related definition label — the case a flat DISTINCT source cannot serve.
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -577,7 +577,7 @@ describe('option sort — ungrouped is its own leading tier', () => {
 });
 
 describe('validateNarrowing — "__group" is reserved on grouped sources', () => {
-  const collisionMap: FieldMap = {
+  const collisionMap: LensFieldMap = {
     models: {
       Thing: {
         fields: {
@@ -741,7 +741,7 @@ describe('asymmetric traversal — the same model narrowed differently per path'
   // A model has no canonical schema: its shape is composed per VISIT. Two sibling
   // paths reach the same Enrichment model; each grouped source must compose only
   // its own path's narrowing — plus mapDefaults, the one symmetric layer.
-  const twoPathMap: FieldMap = {
+  const twoPathMap: LensFieldMap = {
     models: {
       ...map.models,
       User: {
@@ -928,7 +928,9 @@ test('a sourced field named after an Object.prototype key plans without inherite
   const proto: Lens = {
     maps: {
       app: {
-        models: { User: { fields: { toString: { kind: 'scalar' as const, type: 'String' } } } },
+        models: {
+          User: { fields: { toString: { kind: 'scalar' as const, type: 'String' as const } } },
+        },
       },
     },
     mapName: 'app',

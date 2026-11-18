@@ -1,9 +1,9 @@
+import { fieldOf, own } from '@inixiative/field-map';
 import { endpointKey } from '../fieldMap/endpointKey';
 import { isRelationEntry } from '../fieldMap/entry';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { FieldMap, SourceOption } from '../fieldMap/types';
+import type { LensFieldMap, SourceOption } from '../fieldMap/types';
 import { conditionTouchesBridge, hitsBridge, walkFieldPath } from '../fieldMap/walk';
-import { fieldOf, own } from '../own';
 import { readOwnPath } from '../scope';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import { allOf, conjuncts } from '../traverse';
@@ -21,7 +21,7 @@ import type { Lens, LensNarrowing } from './types.ts';
  *  The one check: validateNarrowing reports it, and every posture's source plan refuses on it. */
 export const toOnePathError = (
   path: string,
-  maps: Record<string, FieldMap>,
+  maps: Record<string, LensFieldMap>,
   mapName: string,
   modelName: string,
   kind: 'groupBy' | 'label',
@@ -182,7 +182,7 @@ export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
 
 // The local column a read across a bridge needs: the near endpoint's `on` key, under the local
 // relations the read crosses before the bridge ('org.crm:Account.tier' → 'org.crmId').
-const bridgeKey = (lens: Lens, map: FieldMap, mapName: string, model: string, read: string) => {
+const bridgeKey = (lens: Lens, map: LensFieldMap, mapName: string, model: string, read: string) => {
   const { hops } = walkFieldPath(read, map, model);
   const parts = read.split('.');
   const near = hops.at(-1)?.entry.type ?? model;
@@ -207,7 +207,7 @@ export const localReads = (
   model: string,
   reads: readonly string[],
 ): string[] => {
-  const map = resolveFieldMap(lens, mapName, 'toPrisma') as FieldMap;
+  const map = resolveFieldMap(lens, mapName, 'toPrisma') as LensFieldMap;
   return [
     ...new Set(
       reads.map((read) =>

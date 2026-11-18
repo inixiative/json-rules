@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { ArrayOperator, Operator, toPrisma } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 
 // A count of one or zero is presence. atLeast 1 compiles as `any` and atMost 0 / exactly 0 as
 // `none`: a relation filter, with no groupBy step whose matching ids get inlined into the WHERE.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

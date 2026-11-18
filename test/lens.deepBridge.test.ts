@@ -2,14 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import { indexBridges } from '../src/fieldMap/indexBridges';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMapSet, LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 
 // Three sources, two bridges deep:
 //   prisma:FanUser  --(1-1)--  salesforce:Contact  --(1-1)--  billing:Account
 //
 // Rule needs to walk: FanUser → Contact → Account → field
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -21,7 +21,7 @@ const prismaMap: FieldMap = {
   },
 };
 
-const salesforceMap: FieldMap = {
+const salesforceMap: LensFieldMap = {
   models: {
     Contact: {
       fields: {
@@ -33,7 +33,7 @@ const salesforceMap: FieldMap = {
   },
 };
 
-const billingMap: FieldMap = {
+const billingMap: LensFieldMap = {
   models: {
     Account: {
       fields: {

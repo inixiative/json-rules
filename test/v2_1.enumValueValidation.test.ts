@@ -1,17 +1,17 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { Operator } from '../src/operator';
 
 // validateRuleInLens should validate that enum field values used in rules are
 // in the allowed set, considering:
-//   1. FieldMap.enums[type] (registry)
+//   1. LensFieldMap.enums[type] (registry)
 //   2. FieldMapEntry.values (per-field override)
 //   3. mapDefaults.enums[type] (lens-level enum narrowing)
 //   4. ModelNarrowing.enumPicks/enumOmits[fieldName] (per-field-per-visit narrowing)
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -92,7 +92,7 @@ describe('validateRuleInLens — enum value validation', () => {
   });
 
   test('FieldMapEntry.values takes precedence over registry', () => {
-    const mapWithFieldValues: FieldMap = {
+    const mapWithFieldValues: LensFieldMap = {
       models: {
         User: {
           fields: {
@@ -154,7 +154,7 @@ describe('validateRuleInLens — enum value validation', () => {
   });
 
   test('enum value validation inside arrayRule.condition (recurses with model context flip)', () => {
-    const mapWithRel: FieldMap = {
+    const mapWithRel: LensFieldMap = {
       models: {
         Org: {
           fields: {
@@ -185,7 +185,7 @@ describe('validateRuleInLens — enum value validation', () => {
   });
 
   test('no enum registry and no per-field values → skip validation (value passes through)', () => {
-    const bareMap: FieldMap = {
+    const bareMap: LensFieldMap = {
       models: {
         User: {
           fields: { role: { kind: 'enum', type: 'UnknownEnum' } },

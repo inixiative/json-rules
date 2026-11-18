@@ -1,5 +1,9 @@
 export { categorize } from './categorize';
 export { coerceValue } from './coerceValue';
+export {
+  type CategorizationDescription,
+  describeCategorization,
+} from './describeCategorization';
 export { describeValue, type ValueDescription } from './describeValue';
 export { evaluateValue } from './evaluateValue';
 export { inferValueType } from './inferValueType';

@@ -1,7 +1,7 @@
 import { relationsNotValue } from '../errors';
 import { FieldKind, isFieldKind } from '../operatorCatalog';
 import type { Rule } from '../types';
-import type { FieldMap, FieldMapEntry } from './types';
+import type { FieldMapEntry, LensFieldMap } from './types';
 import { fieldEntry, type MapWalkResult, walkWith } from './walk';
 
 /**
@@ -47,7 +47,7 @@ const kindShape = (kind: string): FieldShape => {
  */
 export const acceptsEmptyString = (
   rule: Pick<Rule, 'field' | 'coerceType'>,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): boolean => {
   const entry = fieldEntry(rule.field, map, model);
@@ -60,7 +60,7 @@ export const acceptsEmptyString = (
 /** A field or date rule on a to-many relation: rows, which an array operator reads. */
 export const refuseRelationsValue = (
   field: string,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): void => {
   if (fieldShape(walkWith(field, map, model)) === 'relations') throw relationsNotValue(field);
@@ -87,7 +87,7 @@ const holdsString = (v: unknown): boolean =>
 /** A rule's field shape: the map's authority, a stamped `coerceType` the fallback. */
 export const ruleShape = (
   rule: Pick<Rule, 'field' | 'coerceType'>,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): FieldShape => {
   const shape = fieldShape(walkWith(rule.field, map, model));

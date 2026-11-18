@@ -1,7 +1,7 @@
+import { own } from '@inixiative/field-map';
 import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry';
 import { toManyHop } from '../fieldMap/walk';
-import { own } from '../own';
 import { readOwnPath } from '../scope';
 import type { Row } from '../types';
 import { lensRootScope, resolvePolicy, resolvePolicyPath, resolveVisit } from './policy.ts';

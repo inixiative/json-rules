@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma } from '../index';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMapSet, LensFieldMap } from '../src/fieldMap/types';
 import type { Lens } from '../src/lens/types';
 import { Operator } from '../src/operator';
 
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -17,7 +17,7 @@ const prismaMap: FieldMap = {
   },
 };
 
-const salesforceMap: FieldMap = {
+const salesforceMap: LensFieldMap = {
   models: {
     Contact: {
       fields: {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { check, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
 
@@ -95,7 +95,7 @@ describe('toSql — notBefore / notAfter keep NULL rows', () => {
   });
 });
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

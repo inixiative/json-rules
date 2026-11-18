@@ -1,4 +1,4 @@
-import { own, ownEntry } from '../own';
+import { own, ownEntry } from '@inixiative/field-map';
 import type { Row } from '../types';
 import { endpointKey } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';

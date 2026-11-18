@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -10,7 +10,7 @@ import type { Condition } from '../src/types';
 // relation. Its clamps scope the rows it reads (via `filter`), and the relations its own
 // `filter` reaches keep their clamps. Before, both were skipped.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Customer: {
       fields: {

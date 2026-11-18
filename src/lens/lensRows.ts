@@ -1,8 +1,8 @@
+import { modelOf, own, ownEntry } from '@inixiative/field-map';
 import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry.ts';
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
-import { modelOf, own, ownEntry } from '../own';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
@@ -141,7 +141,7 @@ const clampWhere = (
 // another column. The fetch carries it for the re-check; a viewer's projection drops it. A model
 // with no key is not fetched, and presence on it can't be re-checked from fetched rows.
 const keyColumn = (
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string,
   field: string,
   entry: FieldMapEntry,

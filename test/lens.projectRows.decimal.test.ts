@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { check, type FieldMap, type Lens, type LensNarrowing, projectRows } from '../index';
+import { check, type Lens, type LensFieldMap, type LensNarrowing, projectRows } from '../index';
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

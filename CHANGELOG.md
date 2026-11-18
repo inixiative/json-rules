@@ -1,3 +1,47 @@
+## 4.2.0 — the schema map from field-map, typed conditions, and what a builder reads
+
+Unreleased. Why: rules-builder 0.33 composes one editor per primitive (conditions, value
+expressions, categorizations) for Zealot's derived enrichments and Kingdom's Signet grants, and an
+editor may only offer what the engine admits, read from here, never a copy of its own.
+
+- **The schema map comes from [`@inixiative/field-map`](https://github.com/inixiative/field-map)**
+  (Aron, 2026-11-18: one schema package, "with prisma-map folded into it as the Prisma reader",
+  and typed paths; kept a minor: "Version 4 is brand new").
+  - `FieldMap` and `ModelEntry` are field-map's and are no longer exported here; json-rules reads a
+    map as a `LensFieldMap` (`LensModelEntry`): a `FieldMap`, its bridges stitched in
+    (`BridgeEntry`), a projection's `options` / `groupBy`. A field-map map passes with no cast.
+  - `own` / `modelOf` / `fieldOf` are field-map's; `src/own.ts` is gone.
+  - Stays here: `FieldKind`, `validateFieldMaps` / `assertValidFieldMaps` (path grammar),
+    `FieldMapSet`, bridges, stitch.
+  - `field-map` is a dependency, externalized, so the building blocks share one copy.
+- **Typed spellings over a literal map**: `ConditionOn<M, Model>` (field rules name a
+  `ScalarPath`; array and aggregate rules a `RelationPath`, their condition, window and
+  `aggregate.field` read the related model; `{ path }` reads the root), `ModelNarrowingOn`,
+  `LensNarrowingOn`; scope refs, bridges, `__actor.*` and brackets pass through as `UncheckedPath`.
+  Each is assignable to its untyped twin. `createLens` over a literal map refuses an anchor model
+  the map doesn't have. `test/types/conditionOn.test-d.ts` holds them, over
+  `test/fixtures/railsMap.ts` (written by `field-map generate`, checked against the rail client).
+- **`describeCategorization(categorization, lens)`**, as `describeValue` describes a value: the type
+  `categorize` returns (every case's `then` and the `default` unified; a list of them under
+  `match: 'all'`; nullable with no default), the paths its conditions and values read, its clock
+  unit, and every issue (shape, lens gate on each `if`, each value's own, type mismatch) at the case
+  it is in. A list value under `match: 'all'` is `nested_list`: `categorize` returns one list.
+  `validateCategorization` stays shape only.
+- **A literal can name its kind** (`tickets/FEAT-008`): `{ value: '2027-01-01', coerceType:
+  'DateTime' }`, the field rule's own key. `evaluateValue` (and so `categorize`) reads it as that
+  kind with the reader aggregates use; `inferValueType` types it as that kind, refusing one that
+  can't read what is written (`coerce_kind_mismatch`); `validateValue` takes `coerceType` on a
+  `{ value }` source only. Nothing in json-rules stamps it: as `check()` honours a rule's
+  `coerceType`, these honour a literal's, and the editor stamps it from the caller's target kind.
+  New type `CoercedLiteral`.
+- **`aggregateModesForKind(kind, { comparable? })`**: the modes that read values of a kind.
+  `AGGREGATE_MODE_CATALOG` entries now carry `kinds`, and `inferValueType` refuses a mode by the
+  same table, so the lookup and the type check can't disagree.
+- **`getOperatorsForKind(kind, target, { positive: true })`** leaves out the operators that hold
+  on a missing value, the ones `validateRule({ positive })` refuses.
+- **Exported:** `valueExpressionShape`, `listItems`, `AGGREGATE_MODES`, `ORDERED_VALUE_KINDS`,
+  `DISTINCT_VALUE_KINDS`, and the `ValueExpressionShape` and `CategorizationDescription` types.
+
 ## 4.1.0 — `categorize`: a row's category from ordered cases
 
 - **`categorize(categorization, row, options)`**: `{ cases: [{ if, then }], match?, default? }`.

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { bindRule, check, listBindings, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
 
@@ -144,7 +144,7 @@ describe('validateRule refuses a row-read range for toSql', () => {
 });
 
 describe('a $. value path walks relations like a field', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: {
       Incident: {
         fields: {

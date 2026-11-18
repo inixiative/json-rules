@@ -1,12 +1,10 @@
 import { isPlainObject } from 'lodash-es';
 import { aggregateItems, aggregateValues, type EvalOptions, sumOrAverage } from '../check';
-import { resolveDateConfig } from '../date';
-import { DEFAULT_ZONE } from '../dateExpr';
+import { coercionZone } from '../date';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { unknownValueAggregateMode, valueTakesNoComparison } from '../errors';
 import { isValueAggregateMode } from '../operatorCatalog';
 import type { AggregateValue } from '../types';
-import { readValueSource } from '../valueSource';
 import { coerceAggregateValue, numericObject } from './coerceAggregateValue';
 import { distinctValues } from './distinctValues';
 import { namesComparison } from './namesComparison';
@@ -56,13 +54,7 @@ export const evaluateAggregateValue = (
   if (typeof node.field !== 'string' || node.field === '')
     throw new Error(`${path}.field: an aggregate value reads a list field`);
   const items = aggregateItems(node, opts);
-  // Only a DateTime coercion reads the zone, as in check().
-  const zone =
-    node.coerceType === 'DateTime'
-      ? resolveDateConfig(opts, (source) => readValueSource(source, opts.scopes, opts.bindings))
-          .timeZone
-      : DEFAULT_ZONE;
-  const coerce = coerceAggregateValue(node.coerceType, zone);
+  const coerce = coerceAggregateValue(node.coerceType, coercionZone(node.coerceType, opts));
   switch (mode) {
     case 'count':
       // COUNT(*) over the items, or COUNT(field) — the items whose field has a value.

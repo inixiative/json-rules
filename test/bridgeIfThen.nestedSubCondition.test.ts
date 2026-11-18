@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import { toSql } from '../src/toSql';
@@ -10,7 +10,7 @@ import { getWhere } from './fixtures/helpers';
 // that arrayRule in the `if` of an implication. The if/then guard must walk
 // into nested conditions to catch this — otherwise the outer NOT(ifClause) form
 // corrupts the implication semantics, dropping branches silently.
-const appMap: FieldMap = {
+const appMap: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -28,7 +28,7 @@ const appMap: FieldMap = {
     },
   },
 };
-const crmMap: FieldMap = {
+const crmMap: LensFieldMap = {
   models: {
     Event: {
       fields: {

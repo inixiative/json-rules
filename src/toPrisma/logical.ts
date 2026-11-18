@@ -1,4 +1,4 @@
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
 import type { All, Any, Condition, IfThenElse } from '../types';
@@ -91,7 +91,11 @@ export const buildIfThenElse = (
   // other branch present drops that branch. Over-fetch the whole expression and let the
   // caller's check() filter against hydrated cross-source data.
   if (
-    conditionTouchesBridge(cond as Condition, options?.map as FieldMap | undefined, options?.model)
+    conditionTouchesBridge(
+      cond as Condition,
+      options?.map as LensFieldMap | undefined,
+      options?.model,
+    )
   ) {
     return overFetch();
   }

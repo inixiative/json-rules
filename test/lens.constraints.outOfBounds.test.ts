@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
@@ -11,7 +11,7 @@ import { Operator } from '../src/operator';
 // Concern: a parent constraint on `secretField` survives even when a child narrowing omits it,
 // effectively letting the constraint silently leak access logic about a hidden field.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     FanUser: {
       fields: {

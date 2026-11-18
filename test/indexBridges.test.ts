@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { indexBridges } from '../src/fieldMap/indexBridges';
-import type { Bridge, FieldMap, FieldMapSet } from '../src/fieldMap/types';
+import type { Bridge, FieldMapSet, LensFieldMap } from '../src/fieldMap/types';
 
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -12,7 +12,7 @@ const prismaMap: FieldMap = {
     },
   },
 };
-const salesforceMap: FieldMap = {
+const salesforceMap: LensFieldMap = {
   models: {
     Contact: {
       fields: {
@@ -22,12 +22,12 @@ const salesforceMap: FieldMap = {
     },
   },
 };
-const billingMap: FieldMap = {
+const billingMap: LensFieldMap = {
   models: {
     Account: { fields: { id: { kind: 'scalar', type: 'String' } } },
   },
 };
-const crmMap: FieldMap = {
+const crmMap: LensFieldMap = {
   models: {
     MarketingEvent: {
       fields: {

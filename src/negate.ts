@@ -1,3 +1,4 @@
+import { own } from '@inixiative/field-map';
 import { resolveExpr } from './amount';
 import { isDateExpr } from './dateExpr';
 import { hasNoOperand } from './field';
@@ -8,7 +9,6 @@ import {
   NEGATED_OPERATORS,
   OPPOSITE_OPERATORS,
 } from './operatorCatalog';
-import { own } from './own';
 import { parseScopeRef, readPath, type Scopes } from './scope';
 import { allOf, anyOf, conditionShape, leafSources } from './traverse';
 import type { Condition, Rule, RuleValue, ValueSourceFields } from './types';

@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import type { Lens } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -17,7 +17,7 @@ const prismaMap: FieldMap = {
   },
 };
 
-const salesforceMap: FieldMap = {
+const salesforceMap: LensFieldMap = {
   models: {
     Contact: {
       fields: {
@@ -29,7 +29,7 @@ const salesforceMap: FieldMap = {
   },
 };
 
-const crmMap: FieldMap = {
+const crmMap: LensFieldMap = {
   models: {
     MarketingEvent: {
       fields: {

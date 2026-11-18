@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
   createLens,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   LensRefusal,
   materializeSourceQuery,
@@ -19,7 +20,7 @@ import { map } from './rails/harness';
 // The adversarial review of 3.4 (round 11): each finding's repro, failing first.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
 const values = (run: () => readonly { options: readonly { value: string }[] }[]) =>
   run()[0].options.map((o) => o.value);
@@ -141,7 +142,7 @@ describe('R11-F1: materializeSources requires every key a read walks, not only t
       models: { FanUser: { fields: { id: s('String'), email: s('String'), crmId: s('String') } } },
     },
     salesforce: { models: { Contact: { fields: { id: s('String'), industry: s('String') } } } },
-  } as Record<string, FieldMap>;
+  } as Record<string, LensFieldMap>;
   const bridged = createLens({
     maps: bridgedMaps,
     bridges: [
@@ -232,7 +233,7 @@ describe('R11-F1: materializeSources requires every key a read walks, not only t
 
 describe('R11-F2: a clamp no inverse can carry is a refusal, not an empty list', () => {
   test('a one-sided relation under a root clamp', () => {
-    const oneSided: FieldMap = {
+    const oneSided: LensFieldMap = {
       models: {
         User: {
           fields: {

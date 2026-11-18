@@ -17,7 +17,7 @@ import {
 } from '../errors';
 import { hasNoOperand, isExistenceTest, listMembership } from '../field';
 import { acceptsEmptyString, comparesText, type FieldShape, ruleShape } from '../fieldMap/shape';
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import {
   fieldEntry,
   optionalToOneHops,
@@ -50,7 +50,7 @@ import { buildNestedFilter } from './utils';
 import { dateConfigOf, readSource } from './valueSource';
 
 const shapeOf = (rule: Pick<Rule, 'field' | 'coerceType'>, options?: ToPrismaOptions): FieldShape =>
-  ruleShape(rule, options?.map as FieldMap | undefined, options?.model);
+  ruleShape(rule, options?.map as LensFieldMap | undefined, options?.model);
 
 const isJson = (shape: FieldShape): boolean => shape === 'json' || shape === 'json-path';
 
@@ -65,7 +65,7 @@ const nullOf = (shape: FieldShape): unknown => {
  *  relation to exist, so a row without it needs its own arm. */
 export const hopArms = (field: string, options?: ToPrismaOptions): PrismaWhere[] =>
   options?.map && options?.model
-    ? optionalToOneHops(field, options.map as FieldMap, options.model).map((hop) =>
+    ? optionalToOneHops(field, options.map as LensFieldMap, options.model).map((hop) =>
         buildNestedFilter(hop, { is: null }),
       )
     : [];
@@ -84,7 +84,7 @@ export const absentArms = (
   const nullable =
     isJson(shape) ||
     shape === 'list' ||
-    fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)?.isRequired ===
+    fieldEntry(rule.field, options?.map as LensFieldMap | undefined, options?.model)?.isRequired ===
       false;
   return [
     ...(nullable ? [buildMapAwareFilter(rule.field, { equals: nullOf(shape) }, options)] : []),
@@ -190,7 +190,7 @@ const buildRelationRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhere =
 };
 
 const entryOf = (rule: Rule, options?: ToPrismaOptions) =>
-  fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model);
+  fieldEntry(rule.field, options?.map as LensFieldMap | undefined, options?.model);
 
 const MATCH_ALL = matchAll();
 
@@ -211,7 +211,7 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
   const arms = () => absentArms(rule, options);
   const emptyString = acceptsEmptyString(
     rule,
-    options?.map as FieldMap | undefined,
+    options?.map as LensFieldMap | undefined,
     options?.model,
   );
 
@@ -263,7 +263,7 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
   if (hasPath(rule)) {
     const compare = columnCompare(
       rule,
-      options?.map as FieldMap | undefined,
+      options?.map as LensFieldMap | undefined,
       options?.model,
       isNestedScope(options),
       isStepScope(options),
@@ -319,10 +319,10 @@ export const buildFieldRule = (rule: Rule, options?: ToPrismaOptions): PrismaWhe
   // An enum compares against its declared values (see enumMatches).
   const enumEntry =
     shape === 'enum'
-      ? fieldEntry(rule.field, options?.map as FieldMap | undefined, options?.model)
+      ? fieldEntry(rule.field, options?.map as LensFieldMap | undefined, options?.model)
       : undefined;
   const matched = enumEntry
-    ? enumMatches(rule, value, enumEntry, options?.map as FieldMap | undefined)
+    ? enumMatches(rule, value, enumEntry, options?.map as LensFieldMap | undefined)
     : null;
   if (matched) {
     const listed = at({ in: matched.values });
@@ -396,7 +396,7 @@ const resolveRuleValue = (rule: Rule, options?: ToPrismaOptions): unknown => {
   const value = compileFieldLiteral(
     rule,
     readSource(rule),
-    walkWith(rule.field, options?.map as FieldMap | undefined, options?.model),
+    walkWith(rule.field, options?.map as LensFieldMap | undefined, options?.model),
     'toPrisma',
     () => dateConfigOf(options).timeZone,
   );
@@ -504,7 +504,7 @@ export const buildMapAwareFilter = (
     return buildNestedFilter(field, filter);
   }
 
-  const walkResult = walkFieldPath(field, options.map as FieldMap, options.model);
+  const walkResult = walkFieldPath(field, options.map as LensFieldMap, options.model);
   const toMany = toManyHop(walkResult.hops);
   if (toMany) throw toManyHopError(field, toMany);
   const parts = field.split('.');

@@ -1,7 +1,7 @@
 import { columnCompareProblem } from '../columnCompare';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { isJsonEntry, isRelationEntry } from '../fieldMap/entry';
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { walkFieldPath } from '../fieldMap/walk';
 import { Operator } from '../operator';
 import { parseScopeRef } from '../scope';
@@ -38,7 +38,7 @@ export type ColumnCompare = {
 };
 
 // A column of the visit's own model: one segment, a scalar or enum, not a list or Json.
-const ownColumn = (path: string, map: FieldMap, model: string): FieldMapEntry | string => {
+const ownColumn = (path: string, map: LensFieldMap, model: string): FieldMapEntry | string => {
   const walk = walkFieldPath(path, map, model);
   if (walk.kind !== 'direct' || walk.hops.length > 0)
     return `'${path}' is not a column of ${model} (a relation hop or an undeclared path)`;
@@ -58,7 +58,7 @@ const ownColumn = (path: string, map: FieldMap, model: string): FieldMapEntry | 
  */
 export const columnCompare = (
   rule: Pick<Rule, 'field' | 'operator' | 'path' | 'offset' | 'caseInsensitive'>,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
   nested: boolean,
   inStep = false,

@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Post: {
       fields: {

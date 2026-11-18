@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import { check } from '../src/check';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toSql } from '../src/toSql';
 import type { Condition } from '../src/types';
@@ -10,7 +10,7 @@ import type { Condition } from '../src/types';
 // parameter itself, but it reads a zoneless one in the SESSION's zone, while check() anchors it
 // in UTC. The literal now compiles to a Date (an instant), so the rails agree whatever the
 // session zone — the differential below runs in America/New_York to prove it.
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     events: {
       fields: {

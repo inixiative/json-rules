@@ -2,7 +2,7 @@ import { resolveDateConfig } from '../date';
 import type { ResolvedDateConfig } from '../dateExpr';
 import { noCompiledForm } from '../errors';
 import { ruleShape } from '../fieldMap/shape';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { type Settle, settleWith } from '../negate';
 import { ORDERED_OPERATORS } from '../operatorCatalog';
 import { checkOnlyScopeRef, parseScopeRef } from '../scope';
@@ -62,7 +62,7 @@ export const settleLeaf = (options?: ToPrismaOptions): Settle => {
     ) {
       const shape = ruleShape(
         { field: String(leaf.field) },
-        options?.map as FieldMap | undefined,
+        options?.map as LensFieldMap | undefined,
         options?.model,
       );
       if (shape === 'json' || shape === 'json-path')

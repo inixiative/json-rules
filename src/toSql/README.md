@@ -16,7 +16,7 @@ const { sql, params } = toSql(rule);
 await db.query(`SELECT * FROM users WHERE ${sql}`, params);
 ```
 
-With `{ map, model }` (a FieldMap, or a FieldMapSet with `mapName`), columns are qualified by the
+With `{ map, model }` (a LensFieldMap, or a FieldMapSet with `mapName`), columns are qualified by the
 root alias (`t0`, or `alias`) and relation paths emit `LEFT JOIN`s, returned in `joins`. With
 `{ lens }`, the rule is gated by the lens (a rule it refuses throws) and compiles narrowed by
 it against its base lens; passing `lens` with
@@ -57,7 +57,7 @@ A date in Json or text reads as `check()` reads it: a number is epoch millisecon
 that instant, a zoneless one wall time in the evaluation's zone.
 
 ### Array Operators
-The storage (a native list or a Json array) comes from the FieldMap when `map` and `model` are
+The storage (a native list or a Json array) comes from the LensFieldMap when `map` and `model` are
 given; Json otherwise. Only `empty` / `notEmpty` compile: the element operators (`all`, `any`,
 `none`, `atLeast`, `atMost`, `exactly`) throw on either storage — use `check()`.
 

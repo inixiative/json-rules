@@ -8,6 +8,8 @@ export default node({
   // consumers don't get an ExperimentalWarning (or hard failure on Node <22)
   // from require()-ing ESM.
   external: [
+    // One copy across the building blocks, so its branded types and readers are the same ones.
+    '@inixiative/field-map',
     'dayjs',
     'dayjs/plugin/isSameOrAfter',
     'dayjs/plugin/isSameOrBefore',

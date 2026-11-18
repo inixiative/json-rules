@@ -7,7 +7,7 @@ import {
   windowUnsupported,
 } from '../errors';
 import { type FieldShape, ruleShape } from '../fieldMap/shape';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge, relationTarget } from '../fieldMap/walk';
 import { negate } from '../negate';
 import { ArrayOperator } from '../operator';
@@ -69,7 +69,7 @@ const compileArrayRule = (
     !ARRAY_MONOTONE_OPERATORS.includes(rule.arrayOperator) &&
     conditionTouchesBridge(
       rule.condition,
-      options?.map as FieldMap | undefined,
+      options?.map as LensFieldMap | undefined,
       childOptionsFor(rule, options)?.model,
     )
   )
@@ -83,12 +83,12 @@ const compileArrayRule = (
     if (options?.map && options?.model && state) {
       return buildCountStep(
         rule,
-        options as ToPrismaOptions & { map: FieldMap; model: string },
+        options as ToPrismaOptions & { map: LensFieldMap; model: string },
         state,
       );
     }
     throw new Error(
-      `ArrayOperator '${rule.arrayOperator}' requires a FieldMap and model to generate a multi-step plan. ` +
+      `ArrayOperator '${rule.arrayOperator}' requires a LensFieldMap and model to generate a multi-step plan. ` +
         `Pass { map, model } options to toPrisma(). Without them, use prisma.$queryRaw for count-based relation filtering.`,
     );
   }
@@ -101,7 +101,7 @@ const compileArrayRule = (
     return buildValueArrayRule(
       rule,
       field,
-      ruleShape({ field }, options?.map as FieldMap | undefined, options?.model),
+      ruleShape({ field }, options?.map as LensFieldMap | undefined, options?.model),
       options,
     );
   const filter = buildArrayLeafFilter(rule, options, state);
@@ -109,7 +109,7 @@ const compileArrayRule = (
 };
 
 const isValueArray = (field: string, options?: ToPrismaOptions): boolean => {
-  const shape = ruleShape({ field }, options?.map as FieldMap | undefined, options?.model);
+  const shape = ruleShape({ field }, options?.map as LensFieldMap | undefined, options?.model);
   return shape === 'list' || shape === 'json' || shape === 'json-path';
 };
 
@@ -146,7 +146,7 @@ const childOptionsFor = (
 ): ToPrismaOptions | undefined => {
   if (!options?.map || !options?.model || !rule.field)
     return options && nestedScope({ ...options });
-  const target = relationTarget(rule.field, options.map as FieldMap, options.model);
+  const target = relationTarget(rule.field, options.map as LensFieldMap, options.model);
   return nestedScope(target ? { ...options, model: target } : { ...options });
 };
 

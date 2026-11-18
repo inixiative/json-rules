@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { validateRule } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
@@ -188,7 +188,7 @@ describe('validateRule — path magnitudes', () => {
   });
 });
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Incident: {
       fields: {

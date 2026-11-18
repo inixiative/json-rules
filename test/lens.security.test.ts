@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { Condition, FieldMap, Lens, LensNarrowing } from '../index';
+import type { Condition, Lens, LensFieldMap, LensNarrowing } from '../index';
 import {
   check,
   materializeSources,
@@ -15,7 +15,7 @@ import {
 // What the lens hides stays hidden — through a child layer's own conditions, value-side refs,
 // window and aggregate fields, Json-array scopes, and option lists.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Article: {
       fields: {
@@ -174,7 +174,7 @@ describe('refs that cross a relation carry its clamp', () => {
 });
 
 describe('option lists never offer what the lens hides', () => {
-  const people: FieldMap = {
+  const people: LensFieldMap = {
     enums: { Status: ['OPEN', 'SECRET'] },
     models: {
       Person: {

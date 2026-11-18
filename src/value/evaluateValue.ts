@@ -1,20 +1,30 @@
 import type { CheckOptions, EvalOptions } from '../check';
 import { holdsIn } from '../check';
+import { coercionZone } from '../date';
 import { invalidValueExpression, valueTakesNoComparison } from '../errors';
-import { listItems, valueExpressionShape } from '../traverse';
+import { isCoercedLiteral, listItems, valueExpressionShape } from '../traverse';
 import type {
   AggregateValue,
+  CoercedLiteral,
   IfThenElseValue,
   Row,
   ValueExpression,
   ValueSourceFields,
 } from '../types';
 import { readValueSource } from '../valueSource';
+import { coerceAggregateValue } from './coerceAggregateValue';
 import { distinctValues, isDistinct } from './distinctValues';
 import { evaluateAggregateValue } from './evaluateAggregateValue';
 import { namesComparison } from './namesComparison';
 
 type Branch = { expr: unknown; path: string };
+
+// A literal read as its `coerceType`, as an aggregate reads its values: a list literal item by
+// item. A value the kind can't read stays as it is.
+const coercedLiteral = (node: CoercedLiteral, opts: EvalOptions): unknown => {
+  const coerce = coerceAggregateValue(node.coerceType, coercionZone(node.coerceType, opts));
+  return Array.isArray(node.value) ? node.value.map(coerce) : coerce(node.value);
+};
 
 // The branch an `if` picks: `then` when its condition holds, else `else` — undefined when there is
 // none.
@@ -50,7 +60,9 @@ const evaluateAt = (expr: unknown, opts: EvalOptions, path: string): unknown => 
     case 'literal':
       return expr;
     case 'source':
-      return readValueSource(expr as ValueSourceFields<unknown>, opts.scopes, opts.bindings);
+      return isCoercedLiteral(expr)
+        ? coercedLiteral(expr, opts)
+        : readValueSource(expr as ValueSourceFields<unknown>, opts.scopes, opts.bindings);
     case 'aggregate':
       return evaluateAggregateValue(expr as AggregateValue, opts, path);
     case 'if':
@@ -64,7 +76,8 @@ const evaluateAt = (expr: unknown, opts: EvalOptions, path: string): unknown => 
 
 /**
  * The value an expression computes from a row, in memory, with what check() takes (`bindings`,
- * `now`, `timeZone`, `weekStart`, `absent`): a literal (bare or `{ value }`), a path read (null when absent), a bound
+ * `now`, `timeZone`, `weekStart`, `absent`): a literal (bare, `{ value }`, or `{ value, coerceType }`
+ * read as that kind), a path read (null when absent), a bound
  * value, an aggregate over a relation's rows (`count`, `sum`, `avg`, `min`, `max`, through its
  * window and condition; `avg` and `min` / `max` over no values are null), the branch an `if` picks,
  * or a list (`distinct: true` drops repeats). Throws on a malformed expression,

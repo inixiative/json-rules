@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { projectModels } from '../src/lens/projectModels';
 import type { SourceValues } from '../src/lens/projectPaths';
 import type { Lens } from '../src/lens/types';
@@ -12,7 +12,7 @@ import { Operator } from '../src/operator';
 // rule can reference a value outside the source's fetched set. `free` carries no input
 // `values`, so the folded `options` is the ONLY gating source.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

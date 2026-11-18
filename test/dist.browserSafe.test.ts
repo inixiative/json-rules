@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import type * as JsonRules from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { getWhere } from './fixtures/helpers';
 
 // Browser bundles (rules-builder, Zealot's storybook) reach the whole package: a top-level
@@ -14,7 +14,7 @@ const root = join(import.meta.dir, '..');
 const out = join(root, 'node_modules', '.cache', 'json-rules-dist-test');
 const requireHere = createRequire(import.meta.url);
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: { Row: { fields: { metadata: { kind: 'scalar', type: 'Json' } } } },
 };
 const jsonNullCheck = { field: 'metadata', operator: 'isEmpty' } as const;

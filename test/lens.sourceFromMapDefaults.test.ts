@@ -4,8 +4,8 @@ import {
   bindLens,
   check,
   createLens,
-  type FieldMap,
   type Lens,
+  type LensFieldMap,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
@@ -17,7 +17,7 @@ import {
 
 // A path source offers the rows reachable down its path; `from: 'mapDefaults'` offers the
 // model's own source instead — every row the lens lets the model show, linked or not.
-const app: FieldMap = {
+const app: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -93,7 +93,7 @@ const app: FieldMap = {
     },
   },
 };
-const crm: FieldMap = {
+const crm: LensFieldMap = {
   models: {
     Account: {
       fields: {

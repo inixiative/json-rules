@@ -44,7 +44,7 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
     verb: 'read a field-map record (own-property)',
     pattern:
       /\.(models|fields|maps|sources|relations|enumPicks|enumOmits|mapDefaults|enums)\[[^\]]+\](?!\s*=[^=])|(?:sources|relations|enumPicks|enumOmits|mapDefaults|enums|Registry)\?\.\[/,
-    owners: ['src/own.ts'],
+    owners: [],
   },
   {
     verb: 'read a path (own-property)',
@@ -104,7 +104,7 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
     owners: ['src/valueSource.ts', 'src/bindings.ts'],
   },
   {
-    verb: 'walk a field path through a FieldMap',
+    verb: 'walk a field path through a LensFieldMap',
     pattern: /\.split\('\.'\)[\s\S]{0,400}\b(modelOf|fieldOf)\(/,
     owners: ['src/fieldMap/walk.ts'],
   },

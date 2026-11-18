@@ -1,7 +1,7 @@
+import { own, ownEntry } from '@inixiative/field-map';
 import { UsageError } from '../errors';
 import type { MapVisit } from '../fieldMap/walk';
 import { ArrayOperator } from '../operator';
-import { own, ownEntry } from '../own';
 import {
   type RelationClamps,
   type ToManyRows,

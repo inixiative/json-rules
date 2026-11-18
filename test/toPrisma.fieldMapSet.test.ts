@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import type { FieldMap, FieldMapSet } from '../src/fieldMap/types';
+import type { FieldMapSet, LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import { getWhere } from './fixtures/helpers';
 
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -35,7 +35,7 @@ describe('toPrisma FieldMapSet handling', () => {
     ).toThrow(/mapName/);
   });
 
-  it('FieldMap (not a set) without mapName → unchanged behavior', () => {
+  it('LensFieldMap (not a set) without mapName → unchanged behavior', () => {
     const result = toPrisma(
       { field: 'email', operator: Operator.equals, value: 'x@y.com' },
       { map: prismaMap, model: 'FanUser' },

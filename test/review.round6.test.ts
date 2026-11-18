@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
+import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   type Condition,
   createLens,
-  type FieldMap,
   type Lens,
+  type LensFieldMap,
   type LensNarrowing,
   narrowRule,
   projectLens,
@@ -23,7 +25,7 @@ import { map } from './rails/harness';
 // The adversarial review of 3.4 (round 6): each finding's repro, failing first.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 const o = (t: string, isList = false) => ({ kind: 'object', type: t, isList }) as const;
 
 // Whether any posture refuses the lens at runtime (a LensRefusal), over the rules the gate admits.
@@ -64,7 +66,7 @@ let lastRefusal = '';
 
 describe('R6-1/R6-3: one check decides a later clamp, at the visits it applies to', () => {
   test('a: a later clamp on a column its parent hides is refused, by validation and runtime', () => {
-    const schema: FieldMap = {
+    const schema: LensFieldMap = {
       models: {
         User: {
           fields: { id: s('String'), name: s('String'), salary: s('Int'), posts: o('Post', true) },
@@ -107,7 +109,7 @@ describe('R6-1/R6-3: one check decides a later clamp, at the visits it applies t
     }
   });
 
-  const amr: FieldMap = {
+  const amr: LensFieldMap = {
     models: {
       A: { fields: { id: s('String'), x: s('String'), m: o('M'), m2: o('M') } },
       M: { fields: { id: s('String'), flag: s('Boolean'), r: o('R') } },
@@ -155,7 +157,7 @@ describe('R6-1/R6-3: one check decides a later clamp, at the visits it applies t
   });
 
   test('g: a restated relation’s nested where is checked only where it is shown', () => {
-    const schema: FieldMap = {
+    const schema: LensFieldMap = {
       models: {
         A: { fields: { id: s('String'), m: o('M'), r0: o('R') } },
         M: { fields: { id: s('String'), r: o('R') } },
@@ -218,9 +220,9 @@ describe('R6-1/R6-3: one check decides a later clamp, at the visits it applies t
         ['c', 'C', true],
       ],
     };
-    const schema: FieldMap = { models: {} };
+    const schema: { models: Record<string, LensModelEntry> } = { models: {} };
     for (const n of names) {
-      const fields: FieldMap['models'][string]['fields'] = {
+      const fields: Record<string, FieldMapEntry> = {
         id: s('String'),
         x: s('String'),
         y: s('String'),
@@ -295,7 +297,7 @@ describe('R6-1/R6-3: one check decides a later clamp, at the visits it applies t
 
 describe('R6-2: a pointer drops only its own layer’s carried clamps', () => {
   test('a later layer’s clamp keeps the pointing layer’s narrowing', () => {
-    const schema: FieldMap = {
+    const schema: LensFieldMap = {
       models: {
         Post: {
           fields: {
@@ -354,7 +356,7 @@ describe('R6-2: a pointer drops only its own layer’s carried clamps', () => {
 
 describe('R6-4: no answer outlives the lens it came from', () => {
   test('mutating a narrowing in place between calls gives a fresh result', () => {
-    const schema: FieldMap = {
+    const schema: LensFieldMap = {
       models: {
         A: { fields: { id: s('String'), p: o('P'), q: o('Q') } },
         P: { fields: { id: s('String'), t: o('T') } },
@@ -383,7 +385,7 @@ describe('R6-5: presence never fetches a hidden column', () => {
         User: { fields: { id: s('String'), profile: o('Profile') } },
         Profile: { fields: { ssn: s('String'), name: s('String') } },
       },
-    } as FieldMap;
+    } as LensFieldMap;
     const base: Lens = createLens({ maps: { app: schema }, mapName: 'app', model: 'User' });
     const l1: LensNarrowing = {
       parent: base,
@@ -435,7 +437,7 @@ describe('R6-6: the gate refuses what narrowRule cannot re-root', () => {
 });
 
 describe('LOW: a scalar column compared with a list column', () => {
-  const lists: FieldMap = {
+  const lists: LensFieldMap = {
     enums: { Role: ['admin', 'member'] },
     models: {
       User: {
@@ -462,7 +464,7 @@ describe('LOW: a scalar column compared with a list column', () => {
   });
 
   test('nested default relation objects apply along spelled edges too', () => {
-    const schema: FieldMap = {
+    const schema: LensFieldMap = {
       models: {
         A: { fields: { id: s('String'), m: o('M') } },
         M: { fields: { id: s('String'), r: o('R') } },

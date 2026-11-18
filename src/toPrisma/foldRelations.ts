@@ -1,5 +1,5 @@
-import type { FieldMap } from '../fieldMap/types';
-import { fieldOf } from '../own';
+import { fieldOf } from '@inixiative/field-map';
+import type { LensFieldMap } from '../fieldMap/types';
 import { andWhere } from './logical';
 import type { PrismaWhere } from './types';
 
@@ -24,7 +24,7 @@ import type { PrismaWhere } from './types';
  */
 export const foldRelationFilters = (
   where: PrismaWhere,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): PrismaWhere => (map && model ? foldAt(where, map, model) : where);
 
@@ -33,7 +33,7 @@ type Relation = { key: string; isForm: boolean; inner: PrismaWhere };
 const isObject = (value: unknown): value is PrismaWhere =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const toOneTarget = (map: FieldMap, model: string, key: string): string | null => {
+const toOneTarget = (map: LensFieldMap, model: string, key: string): string | null => {
   const entry = fieldOf(map, model, key);
   return entry?.kind === 'object' && !entry.isList ? entry.type : null;
 };
@@ -50,7 +50,7 @@ const conjunctsOf = (where: PrismaWhere): PrismaWhere[] =>
 
 // A single-key conjunct filtering a to-one relation to a row that is there: its bare form with at
 // least one conjunct, or `is` with a filter.
-const asRelation = (conjunct: PrismaWhere, map: FieldMap, model: string): Relation | null => {
+const asRelation = (conjunct: PrismaWhere, map: LensFieldMap, model: string): Relation | null => {
   const keys = Object.keys(conjunct);
   if (keys.length !== 1 || !toOneTarget(map, model, keys[0])) return null;
   const value = conjunct[keys[0]];
@@ -66,7 +66,7 @@ const asRelation = (conjunct: PrismaWhere, map: FieldMap, model: string): Relati
 
 // The relation paths a conjunct requires to be there: a to-one filter's relation, and every path
 // its own conjuncts require below it.
-const requiredPaths = (conjunct: PrismaWhere, map: FieldMap, model: string): string[] => {
+const requiredPaths = (conjunct: PrismaWhere, map: LensFieldMap, model: string): string[] => {
   const relation = asRelation(conjunct, map, model);
   if (!relation) return [];
   const target = toOneTarget(map, model, relation.key) as string;
@@ -79,7 +79,7 @@ const requiredPaths = (conjunct: PrismaWhere, map: FieldMap, model: string): str
 };
 
 // The relation path an OR arm asks to be absent: a chain of to-one filters ending in `is: null`.
-const absentPath = (arm: unknown, map: FieldMap, model: string): string | null => {
+const absentPath = (arm: unknown, map: LensFieldMap, model: string): string | null => {
   if (!isObject(arm)) return null;
   const keys = Object.keys(arm);
   if (keys.length !== 1) return null;
@@ -92,7 +92,7 @@ const absentPath = (arm: unknown, map: FieldMap, model: string): string | null =
   return deeper ? `${keys[0]}.${deeper}` : null;
 };
 
-const foldList = (value: unknown[], map: FieldMap, model: string): unknown[] => {
+const foldList = (value: unknown[], map: LensFieldMap, model: string): unknown[] => {
   const next = value.map((arm) => (isObject(arm) ? foldAt(arm, map, model) : arm));
   return next.some((arm, i) => arm !== value[i]) ? next : value;
 };
@@ -111,7 +111,7 @@ const mapEntries = (
   return changed ? out : where;
 };
 
-const foldChild = (key: string, value: unknown, map: FieldMap, model: string): unknown => {
+const foldChild = (key: string, value: unknown, map: LensFieldMap, model: string): unknown => {
   if (key === 'AND' || key === 'OR' || key === 'NOT') {
     if (Array.isArray(value)) return foldList(value, map, model);
     return isObject(value) ? foldAt(value, map, model) : value;
@@ -131,7 +131,7 @@ const foldChild = (key: string, value: unknown, map: FieldMap, model: string): u
 };
 
 // Each of a where's children folded at the model it reads.
-const foldChildren = (where: PrismaWhere, map: FieldMap, model: string): PrismaWhere =>
+const foldChildren = (where: PrismaWhere, map: LensFieldMap, model: string): PrismaWhere =>
   mapEntries(where, (key, value) => foldChild(key, value, map, model));
 
 // An OR conjunct's dead arms dropped, given the paths its siblings require: null when none drops,
@@ -139,7 +139,7 @@ const foldChildren = (where: PrismaWhere, map: FieldMap, model: string): PrismaW
 const pruneOr = (
   conjunct: PrismaWhere,
   present: Set<string>,
-  map: FieldMap,
+  map: LensFieldMap,
   model: string,
 ): PrismaWhere[] | null => {
   const keys = Object.keys(conjunct);
@@ -153,7 +153,7 @@ const pruneOr = (
   return live.length === 1 && isObject(live[0]) ? conjunctsOf(live[0]) : [{ OR: live }];
 };
 
-const foldAt = (where: PrismaWhere, map: FieldMap, model: string): PrismaWhere => {
+const foldAt = (where: PrismaWhere, map: LensFieldMap, model: string): PrismaWhere => {
   let conjuncts = conjunctsOf(where);
 
   // Dead arms first: an OR that drops to one arm becomes a conjunct that may fold, and may itself

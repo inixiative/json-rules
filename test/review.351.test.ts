@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
   createLens,
   executePrismaPlan,
-  type FieldMap,
   indexBridges,
+  type LensFieldMap,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
@@ -21,7 +22,7 @@ import { map, openRails } from './rails/harness';
 // 3.5.1: fail-closed and doc findings from the 3.5.0 adversarial review.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
@@ -31,7 +32,7 @@ afterAll(async () => {
   await rails.close();
 });
 
-const crm: FieldMap = {
+const crm: LensFieldMap = {
   models: { Profile: { fields: { id: s('Int'), userId: s('Int'), tier: s('String') } } },
 };
 const bridges = [
@@ -101,7 +102,7 @@ describe('toLensSelect selects the local columns a bridged source re-checks', ()
 });
 
 describe('a label or axis across a to-many relation: validation and every posture refuse alike', () => {
-  const events: FieldMap = {
+  const events: LensFieldMap = {
     models: { Event: { fields: { id: s('Int'), userId: s('Int'), kind: s('String') } } },
   };
   const manyBridges = [
@@ -230,7 +231,7 @@ describe('a re-check reading JSON selects the Json column whole', () => {
 });
 
 test('a count operator across a bridge says a bridge, not "not a relation"', () => {
-  const events: FieldMap = {
+  const events: LensFieldMap = {
     models: { Event: { fields: { id: s('Int'), userId: s('Int'), kind: s('String') } } },
   };
   const lens: LensNarrowing = {

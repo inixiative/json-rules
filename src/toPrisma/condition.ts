@@ -1,6 +1,6 @@
 import { ambiguousCondition } from '../errors';
 import { refuseRelationsValue } from '../fieldMap/shape';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { rejectScopedField } from '../scope';
 import { conditionShape } from '../traverse';
 import type { Condition } from '../types';
@@ -29,7 +29,7 @@ export const buildCondition = (
   if (shape === 'field' || shape === 'date')
     refuseRelationsValue(
       (condition as { field: string }).field,
-      options?.map as FieldMap | undefined,
+      options?.map as LensFieldMap | undefined,
       options?.model,
     );
   const node = condition as never;

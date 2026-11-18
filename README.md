@@ -641,7 +641,7 @@ An enum compares exactly against its declared values. String, pattern and ordere
 don't apply to one, and the compilers refuse them. A case-insensitive equality or membership, or
 one naming a value the enum doesn't declare, compiles to a membership test over the declared
 values `check()` would match (plus the NULL arm for a negation). The field map must list the
-values (prisma-map does).
+values (field-map's Prisma reader does).
 
 ```ts
 // map: { models: { U: { fields: { role: { kind: 'enum', type: 'Role' } } } }, enums: { Role: ['admin', 'member'] } }
@@ -1083,7 +1083,7 @@ and `in [null, …]` carry the same hop arms: a user with no profile has a NULL 
 
 `toPrisma()` can only add the null arm when it knows the column is nullable, because
 an `equals: null` on a NOT NULL column is a Prisma validation error. Nullability
-comes from the field map: `FieldMapEntry.isRequired: false` (prisma-map emits it).
+comes from the field map: `FieldMapEntry.isRequired: false` (field-map's Prisma reader emits it).
 Without `{ map, model }`, or on an entry that doesn't declare it, the bare
 `not` / `notIn` is emitted and NULL rows fall out.
 
@@ -1194,7 +1194,8 @@ Rules:
 Lens & bridges:
 
 - `Lens`, `LensNarrowing`, `ModelNarrowing`, `ModelDefaultNarrowing`, `NarrowingDefaults`, `EnumNarrowing`, `SourceSpec`, `SourceEntry`
-- `FieldMap`, `FieldMapEntry`, `ModelEntry`, `SourceOption`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary`
+- `LensFieldMap`, `LensModelEntry`, `FieldMapEntry`, `BridgeEntry`, `SourceOption`, `FieldMapSet`, `Bridge`, `BridgeEndpoint`, `BridgeCardinality`, `BridgeDictionary` (the schema types themselves, `FieldMap` / `ModelEntry` / `FieldEntry`, are [`@inixiative/field-map`](https://github.com/inixiative/field-map)'s)
+- Typed spellings over a literal map (`typeof prismaMap`, as `field-map generate` writes it): `ConditionOn`, `ModelNarrowingOn`, `LensNarrowingOn`, `UncheckedPath`
 - `createLens`, `storeLens`, `composeLens`, `StoredLens`, `stitchFieldMaps`, `indexBridges`, `validateFieldMaps`, `assertValidFieldMaps`
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`, `getLensRoot`, `clampLens`, `LensClamps`
@@ -1401,7 +1402,7 @@ The `Lens` primitive is a schema-aware view layer over one or more `FieldMap`s. 
 
 ### FieldMap & FieldMapSet
 
-A `FieldMap` is `{ models, enums? }`: models keyed by name, plus an optional enum registry scoped to that source. A `FieldMapSet` groups one or more `FieldMap`s and declares the cross-source edges between them:
+A `FieldMap` is `{ models, enums? }`: models keyed by name, plus an optional enum registry scoped to that source. The type, the Prisma reader (`field-map generate`), the JSON Schema reader and the own-property readers are [`@inixiative/field-map`](https://github.com/inixiative/field-map)'s; json-rules reads a map as a `LensFieldMap` (a `FieldMap`, with its bridges stitched in and a projection's options). A `FieldMapSet` groups one or more `FieldMap`s and declares the cross-source edges between them:
 
 ```ts
 import { stitchFieldMaps } from '@inixiative/json-rules';

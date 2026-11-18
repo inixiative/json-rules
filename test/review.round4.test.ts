@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   type Condition,
   createLens,
   describeRule,
   executePrismaPlan,
-  type FieldMap,
   type Lens,
+  type LensFieldMap,
   type LensNarrowing,
   lensVisit,
   narrowRule,
@@ -216,10 +217,10 @@ describe('H3: a model-default relation never re-enters a model already on the pa
   // A schema whose models all relate to each other, every relation turned on at the defaults.
   const denseLens = (models: number, perPair: number): LensNarrowing => {
     const names = Array.from({ length: models }, (_, i) => `M${i}`);
-    const dense: FieldMap = { models: {} };
+    const dense: { models: Record<string, LensModelEntry> } = { models: {} };
     const defaults: Record<string, { relations: Record<string, object> }> = {};
     for (const from of names) {
-      const fields: FieldMap['models'][string]['fields'] = {
+      const fields: Record<string, FieldMapEntry> = {
         id: { kind: 'scalar', type: 'String' },
         label: { kind: 'scalar', type: 'String' },
       };
@@ -411,7 +412,7 @@ describe('lensVisit: one projected visit, resolved on demand', () => {
 });
 
 describe('projectLens by path keeps the options a map declares', () => {
-  const optioned: FieldMap = {
+  const optioned: LensFieldMap = {
     models: {
       Ticket: {
         fields: {

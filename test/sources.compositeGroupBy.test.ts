@@ -8,14 +8,14 @@ import {
   projectLens,
   toSourceQueries,
 } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 
 // Composite groupBy: a source may partition by SEVERAL axes at once — the
 // (source, field, value) triple that powers a 3-level cascade. Options carry
 // `groups: string[]`, index-aligned with the declared axes. The pairing lives
 // on the junction row, so no single-path groupBy can express it.
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -200,7 +200,7 @@ describe('validateNarrowing — composite groupBy', () => {
   });
 
   test('indexed alias names are reserved on grouped sources', () => {
-    const collisionMap: FieldMap = {
+    const collisionMap: LensFieldMap = {
       models: {
         Thing: {
           fields: {
@@ -426,7 +426,7 @@ describe('projectModels — axes on the surface, groups in the union', () => {
   });
 
   test('divergent axes for the same (model, field) across paths is an error', () => {
-    const twoPathMap: FieldMap = {
+    const twoPathMap: LensFieldMap = {
       models: {
         ...map.models,
         User: {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import { toSql } from '../src/toSql';
@@ -10,7 +10,7 @@ import { getWhere } from './fixtures/helpers';
 // `coerceType` (what coerceRule and the rule builder write) coerces the literal exactly as
 // check() does, so all three rails compare the same value; Decimal and BigInt keep their
 // lossless string spelling; columns the map does not type are left alone.
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Event: {
       fields: {

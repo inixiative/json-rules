@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { at, enumOptions, sortedOptions } from './fixtures/helpers';
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -81,7 +81,7 @@ describe('mapDefaults — applies-everywhere model narrowings', () => {
 });
 
 describe('mapDefaults.enums — applies-everywhere enum narrowing', () => {
-  const mapWithEnums: FieldMap = {
+  const mapWithEnums: LensFieldMap = {
     ...map,
     enums: { UserRole: ['admin', 'member', 'owner', 'guest'] },
   };

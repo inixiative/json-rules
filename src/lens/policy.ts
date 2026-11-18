@@ -1,8 +1,8 @@
+import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { toManyHopError } from '../errors';
 import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
-import type { FieldMap, FieldMapEntry, ModelEntry } from '../fieldMap/types';
+import type { FieldMapEntry, LensFieldMap, LensModelEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
-import { fieldOf, modelOf, own } from '../own';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition } from '../types.ts';
@@ -121,7 +121,7 @@ type CallMemo = {
    *  keyed by visit and that narrowing. */
   places: Map<string, Place>;
   /** Each model's fields as read. */
-  models: Map<ModelEntry, ModelFields>;
+  models: Map<LensModelEntry, ModelFields>;
   /** Each clamp's first bare value ref and first ref climbing out of it. */
   refs: Map<Condition, { bare: string | null; escaping: string | null }>;
   /** Why toPrisma can't compile a condition at a model (null: it can), by map and model. */
@@ -178,7 +178,7 @@ const SEP = '\u0000';
 
 // What resolveVisit reads off a model on every visit: its relation fields, and the fields a set of
 // values gates (options, an enum, or `values`).
-const modelFields = (model: ModelEntry): ModelFields => {
+const modelFields = (model: LensModelEntry): ModelFields => {
   const entries = Object.entries(model.fields);
   return {
     relations: new Set(entries.filter(([, entry]) => isRelationEntry(entry)).map(([f]) => f)),
@@ -559,7 +559,7 @@ export const resolveVisit = (
     relationFields: new Set(),
   };
 
-  const fieldMap: FieldMap | undefined = own(policy.lens.maps, mapName);
+  const fieldMap: LensFieldMap | undefined = own(policy.lens.maps, mapName);
   const model = modelOf(fieldMap, modelName);
   if (!model) return out;
   let fields = policy.memo?.models.get(model);
@@ -1001,7 +1001,7 @@ export type RelationHop = {
  * `prefix` is prepended to each hop's dotted prefix (a `$`-scope ref).
  */
 export const relationHops = (
-  maps: Record<string, FieldMap>,
+  maps: Record<string, LensFieldMap>,
   from: MapVisit,
   path: string,
   prefix = '',

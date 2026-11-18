@@ -20,11 +20,12 @@ export {
   type BridgeCardinality,
   type BridgeDictionary,
   type BridgeEndpoint,
-  type FieldMap,
+  type BridgeEntry,
   type FieldMapEntry,
   type FieldMapSet,
   indexBridges,
-  type ModelEntry,
+  type LensFieldMap,
+  type LensModelEntry,
   type SourceOption,
   stitchFieldMaps,
   validateFieldMaps,
@@ -94,10 +95,13 @@ export {
 export { LensRefusal } from './src/lens/policy';
 export { ArrayOperator, DateOperator, Operator } from './src/operator';
 export {
+  AGGREGATE_MODES,
   ALL_KINDS,
+  aggregateModesForKind,
   CATEGORIZATION_MATCHES,
   CLOCK_UNITS,
   type ClockUnit,
+  DISTINCT_VALUE_KINDS,
   FieldKind,
   getAggregateOperators,
   getArrayOperators,
@@ -105,6 +109,7 @@ export {
   getValueShape,
   NUMERIC_KINDS,
   type OperatorFamily,
+  ORDERED_VALUE_KINDS,
   type RelativeUnit,
   RuleTarget,
   VALUE_AGGREGATE_MODES,
@@ -146,7 +151,16 @@ export {
   ConditionShape,
   type ConditionShapeKeys,
   getConditionShapeKeys,
+  listItems,
+  type ValueExpressionShape,
+  valueExpressionShape,
 } from './src/traverse';
+export type {
+  ConditionOn,
+  LensNarrowingOn,
+  ModelNarrowingOn,
+  UncheckedPath,
+} from './src/typedCondition';
 export type {
   Absent,
   AggregateMode,
@@ -160,6 +174,7 @@ export type {
   CategorizationMatch,
   Category,
   CheckData,
+  CoercedLiteral,
   CompileOptions,
   Condition,
   DateConfig,
@@ -227,8 +242,10 @@ export {
 export {
   assertValidCategorization,
   assertValidValue,
+  type CategorizationDescription,
   categorize,
   coerceValue,
+  describeCategorization,
   describeValue,
   evaluateValue,
   inferValueType,

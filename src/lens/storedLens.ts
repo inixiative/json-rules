@@ -1,4 +1,4 @@
-import { own } from '../own';
+import { own } from '@inixiative/field-map';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { assertValidNarrowing } from './narrowing.ts';
 import type { Lens, LensNarrowing } from './types.ts';

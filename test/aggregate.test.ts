@@ -763,7 +763,7 @@ describe('toPrisma() aggregate rules', () => {
         operator: Operator.greaterThan,
         value: 0,
       }),
-    ).toThrow('require a FieldMap and model');
+    ).toThrow('require a LensFieldMap and model');
   });
 
   it('throws without aggregate.field', () => {

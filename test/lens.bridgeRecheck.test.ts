@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
   createLens,
-  type FieldMap,
   indexBridges,
+  type LensFieldMap,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
@@ -20,7 +21,7 @@ import { map, openRails } from './rails/harness';
 // fixture); their CRM profiles live in memory, as a second source does.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
@@ -30,7 +31,7 @@ afterAll(async () => {
   await rails.close();
 });
 
-const crm: FieldMap = {
+const crm: LensFieldMap = {
   models: { Profile: { fields: { id: s('Int'), userId: s('Int'), tier: s('String') } } },
 };
 const bridges = [

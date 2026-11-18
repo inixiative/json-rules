@@ -1,5 +1,5 @@
 import { conditionRequired, countRequired } from '../errors';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { ArrayOperator } from '../operator';
 import { comparatorOf } from '../operatorCatalog';
 import type { ArrayRule } from '../types';
@@ -21,7 +21,7 @@ import type { PrismaBuildState, PrismaWhere, ToPrismaOptions } from './types';
  */
 export const buildCountStep = (
   rule: ArrayRule,
-  options: ToPrismaOptions & { map: FieldMap; model: string },
+  options: ToPrismaOptions & { map: LensFieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
   if (!rule.field) throw new Error('toPrisma: count-based ArrayRule requires a field path');

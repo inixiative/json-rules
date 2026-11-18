@@ -1,4 +1,4 @@
-import type { FieldMap, FieldMapSet } from './fieldMap/types.ts';
+import type { FieldMapSet, LensFieldMap } from './fieldMap/types.ts';
 import type { FuzzyConfig } from './fuzzy.ts';
 import type { Lens, LensNarrowing } from './lens/types.ts';
 import type { ArrayOperator, DateOperator, Operator } from './operator.ts';
@@ -369,12 +369,12 @@ export type StrictCondition<TRuleValue = RuleValue, TDateValue = DateRuleValue> 
 /** A row as a rule reads it: a record of fields. */
 export type Row = Record<string, unknown>;
 
-/** What both compilers take: the schema (a FieldMap, or a FieldMapSet with `mapName`), the
+/** What both compilers take: the schema (a LensFieldMap, or a FieldMapSet with `mapName`), the
  *  model the rule reads, and the clock. `lens` compiles the
  *  rule under a lens instead — narrowed (`narrowRule`), against the base lens's maps, map and
  *  model — and can't be passed with `map` / `mapName` / `model`. */
 export type CompileOptions = {
-  map?: FieldMap | FieldMapSet;
+  map?: LensFieldMap | FieldMapSet;
   mapName?: string;
   model?: string;
   lens?: Lens | LensNarrowing;
@@ -439,12 +439,20 @@ export type ListValue = ValueExpression[] | { list: ValueExpression[]; distinct?
 /** A scalar written as itself, as a stored value is: `5`, `'gold'`, `true`, `null`, a Date. */
 export type BareLiteral = string | number | boolean | bigint | Date | null;
 
-/** A value computed from a row: a literal (bare, or `{ value }` — an object literal needs the
- *  wrapper), a path read (`{ path }`), a binding (`{ bind }`), an aggregate over a relation's rows,
- *  if / then / else, or a list. */
+/** A literal read as a kind, with the field rule's own key: `{ value: '2027-01-01', coerceType:
+ *  'DateTime' }` evaluates to a Date. Its kind is stamped by whoever knows it (the editor, from
+ *  the caller's target); json-rules never guesses it. */
+export type CoercedLiteral = { value: RuleValue; coerceType: FieldKind } & Never<
+  'path' | 'bind' | 'bindOptional'
+>;
+
+/** A value computed from a row: a literal (bare, `{ value }` — an object literal needs the
+ *  wrapper — or a `CoercedLiteral`), a path read (`{ path }`), a binding (`{ bind }`), an
+ *  aggregate over a relation's rows, if / then / else, or a list. */
 export type ValueExpression =
   | BareLiteral
   | ValueSourceOf<RuleValue>
+  | CoercedLiteral
   | AggregateValue
   | IfThenElseValue
   | ListValue;

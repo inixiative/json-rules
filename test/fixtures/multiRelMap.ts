@@ -1,10 +1,10 @@
-import type { FieldMap } from '../../index';
+import type { LensFieldMap } from '../../index';
 
 /**
  * Post with two distinct named relations to User (author + editor).
  * Tests disambiguation of multiple relations between the same two models.
  */
-export const multiRelMap: FieldMap = {
+export const multiRelMap: LensFieldMap = {
   models: {
     Post: {
       fields: {

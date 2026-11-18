@@ -1,3 +1,4 @@
+import { modelOf } from '@inixiative/field-map';
 import { compileFieldLiteral } from '../compileLiteral';
 import { DEFAULT_ZONE } from '../dateExpr';
 import { engineGlobals, isSqlDialect, resolveCaseInsensitive, SqlDialect } from '../engineGlobals';
@@ -11,7 +12,7 @@ import {
 import { hasNoOperand, isExistenceTest } from '../field';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import { entryKind, fieldShape } from '../fieldMap/shape';
-import type { FieldMap, FieldMapSet } from '../fieldMap/types';
+import type { FieldMapSet, LensFieldMap } from '../fieldMap/types';
 import { type MapWalkResult, toManyHop, walkFieldPath } from '../fieldMap/walk';
 import { leafFitViolations } from '../lens/fieldFit';
 import { splitNull } from '../number';
@@ -23,7 +24,6 @@ import {
   WHERE_SQL_ARRAY_OPERATORS,
   WHERE_SQL_OPERATORS,
 } from '../operatorCatalog';
-import { modelOf } from '../own';
 import { parseScopeRef } from '../scope';
 import { relationKeys } from '../toPrisma/relationUtils';
 import { conditionShape } from '../traverse';
@@ -42,7 +42,7 @@ export type WhereSqlOptions = {
   tables?: Record<string, string>;
   /** The schema the condition reads: it types each literal by its column, finds a relation's key,
    *  and refuses what has no form here (a date, Json or list value, a bridge, a to-many hop). */
-  map: FieldMap | FieldMapSet;
+  map: LensFieldMap | FieldMapSet;
   mapName?: string;
   model: string;
 };
@@ -72,7 +72,7 @@ type Context = {
   joined: JoinedRelation | null;
   /** Inside a joined `any`: the relation whose joined row this reads. */
   joinedRow: string | null;
-  map: FieldMap;
+  map: LensFieldMap;
   model: string;
 };
 
@@ -128,7 +128,7 @@ export const whereSql = (
     throw new UsageError(
       'toWhereSql: `map` and `model` are required — a literal is typed by its column, and a date, Json or list value is refused by it',
     );
-  const map = resolveFieldMap(schema, mapName, 'toWhereSql') as FieldMap;
+  const map = resolveFieldMap(schema, mapName, 'toWhereSql') as LensFieldMap;
   if (!modelOf(map, model)) throw new UsageError(`toWhereSql: the map has no model '${model}'`);
   return buildWhere(condition, {
     map,

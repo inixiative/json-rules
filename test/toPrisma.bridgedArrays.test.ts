@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import { toPrisma } from '../src/toPrisma';
 import { getWhere } from './fixtures/helpers';
 
@@ -8,7 +8,7 @@ import { getWhere } from './fixtures/helpers';
 // rule false — none, all, atMost, exactly, or an aggregate over the matching children — the rule
 // over-fetches every parent for check() to decide; any and atLeast only widen.
 
-const appMap: FieldMap = {
+const appMap: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -32,7 +32,7 @@ const appMap: FieldMap = {
     },
   },
 };
-const crmMap: FieldMap = {
+const crmMap: LensFieldMap = {
   models: {
     Event: {
       fields: {

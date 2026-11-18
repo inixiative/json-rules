@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
   createLens,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   lensVisit,
   materializeSourceQuery,
@@ -19,7 +20,7 @@ import { map, openRails } from './rails/harness';
 // The adversarial review of 3.4 (round 8): each finding's repro, failing first.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 const rel = (t: string, relationName: string, isList = false, fk?: [string, string]) =>
   ({
     kind: 'object',
@@ -63,7 +64,7 @@ const refusedBy = (lens: LensNarrowing, rows?: Record<string, unknown>[]): strin
   return null;
 };
 
-const userPosts: FieldMap = {
+const userPosts: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -385,7 +386,7 @@ describe('R8-4: refusals the planners make are lens refusals, and validation rep
   });
 });
 
-const windowSchema: FieldMap = {
+const windowSchema: LensFieldMap = {
   models: {
     User: { fields: { id: s('String'), posts: rel('Post', 'UP', true) } },
     Post: {
@@ -410,7 +411,7 @@ const windowSchema: FieldMap = {
 
 describe('R8-5: the default-tree cache keys on the base lens a narrowing stands on', () => {
   const o = (t: string) => rel(t, t);
-  const schema: FieldMap = {
+  const schema: LensFieldMap = {
     models: {
       U: { fields: { id: s('String'), a: o('P'), b: o('Q') } },
       V: { fields: { id: s('String'), a: o('P') } },

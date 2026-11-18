@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, DateOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
 
-const db: FieldMap = {
+const db: LensFieldMap = {
   models: {
     Event: {
       fields: {
@@ -22,7 +22,8 @@ const db: FieldMap = {
         blob: { kind: 'scalar', type: 'Bytes' },
         tags: { kind: 'scalar', type: 'String', isList: true },
         nums: { kind: 'scalar', type: 'Int', isList: true },
-        legacy: { kind: 'scalar', type: 'Text' },
+        // An untyped map can still carry a type outside SCALAR_TYPES.
+        legacy: { kind: 'scalar', type: 'Text' } as never,
         crmId: { kind: 'scalar', type: 'String' },
         account: { kind: 'object', type: 'Account', isList: false },
         items: { kind: 'object', type: 'Item', isList: true },
@@ -44,7 +45,7 @@ const db: FieldMap = {
   enums: { Status: ['OPEN', 'CLOSED'] },
 };
 
-const crm: FieldMap = {
+const crm: LensFieldMap = {
   models: {
     Contact: {
       fields: {

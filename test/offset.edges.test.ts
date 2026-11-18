@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { bindRule, check, toPrisma, toSql, validateRule } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
@@ -312,7 +312,7 @@ describe('shifts run in the configured zone, across DST, on every rail', () => {
 });
 
 describe('lens: a magnitude ref is judged by its role, not its string', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: {
       E: {
         fields: {

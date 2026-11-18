@@ -1,7 +1,7 @@
+import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { declaredEnumValues, isRelationEntry } from '../fieldMap/entry';
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
-import { fieldOf, modelOf, own } from '../own';
 import type { Condition } from '../types.ts';
 import {
   throwIfInvalid,
@@ -169,7 +169,7 @@ const validateModelNode = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: ModelNarrowing[],
   sameLayerDefaults: ModelDefaultNarrowing | undefined,
-  maps: Record<string, FieldMap>,
+  maps: Record<string, LensFieldMap>,
   mapName: string,
   modelFields: Record<string, FieldMapEntry>,
   modelName: string,
@@ -490,7 +490,7 @@ const validateNode = (
   ancestorChain: ModelNarrowing[],
   current: LensNarrowing,
   chain: LensNarrowing[],
-  maps: Record<string, FieldMap>,
+  maps: Record<string, LensFieldMap>,
   mapName: string,
   modelName: string,
   position: string,

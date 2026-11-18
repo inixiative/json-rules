@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap, LensNarrowing } from '../index';
+import type { LensFieldMap, LensNarrowing } from '../index';
 import { createLens, Operator, projectLens } from '../index';
 import { enumOptions, sortedOptions } from './fixtures/helpers';
 
-const socialMap: FieldMap = {
+const socialMap: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -134,7 +134,7 @@ describe('projectModels — model-default narrowing applied', () => {
 });
 
 describe('projectModels — multi-source bridges', () => {
-  const prismaMap: FieldMap = {
+  const prismaMap: LensFieldMap = {
     models: {
       FanUser: {
         fields: {
@@ -144,7 +144,7 @@ describe('projectModels — multi-source bridges', () => {
       },
     },
   };
-  const salesforceMap: FieldMap = {
+  const salesforceMap: LensFieldMap = {
     models: {
       Contact: {
         fields: {
@@ -188,7 +188,7 @@ describe('projectModels — multi-source bridges', () => {
   test('eliminates a bridge that touches unexposed surface (no surviving bridge field)', () => {
     // FanUser bridges to Contact directly, and Org bridges to Contact too — so
     // Contact stays reachable via Org even if FanUser's bridge fields are omitted.
-    const prisma: FieldMap = {
+    const prisma: LensFieldMap = {
       models: {
         FanUser: {
           fields: {
@@ -205,7 +205,7 @@ describe('projectModels — multi-source bridges', () => {
         },
       },
     };
-    const sf: FieldMap = {
+    const sf: LensFieldMap = {
       models: { Contact: { fields: { id: { kind: 'scalar', type: 'String' } } } },
     };
     const lens = createLens({
@@ -261,7 +261,7 @@ describe('projectModels — multi-source bridges', () => {
 
 describe('projectModels — root narrowing must not leak (server→client surface)', () => {
   // Anchor with NO inbound edge: User → posts → Post, Post does not point back.
-  const acyclicMap: FieldMap = {
+  const acyclicMap: LensFieldMap = {
     models: {
       User: {
         fields: {

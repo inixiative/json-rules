@@ -5,7 +5,7 @@ import { isDateExpr, resolveDateExprRange, resolvePointForOperator } from '../da
 import { noCompiledForm, rangeExprRequired, unknownOperator } from '../errors';
 import { isRelationEntry } from '../fieldMap/entry';
 import { entryKind, ruleShape } from '../fieldMap/shape';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { fieldEntry } from '../fieldMap/walk';
 import { orderPair, readPair } from '../number';
 import { DateOperator } from '../operator';
@@ -28,7 +28,7 @@ import { dateConfigOf, prismaRead, readSource } from './valueSource';
 export const buildDateRule = (rule: DateRule, options?: ToPrismaOptions): PrismaWhere => {
   // Prisma filters a date only on a DateTime column: Json and String compare text, a number a
   // number.
-  const map = options?.map as FieldMap | undefined;
+  const map = options?.map as LensFieldMap | undefined;
   const shape = ruleShape({ field: rule.field }, map, options?.model);
   if (shape === 'json' || shape === 'json-path')
     throw noCompiledForm(

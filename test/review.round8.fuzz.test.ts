@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
+import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   bindLens,
   type Condition,
   createLens,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   lensVisit,
   materializeSources,
@@ -44,7 +45,7 @@ type Node = {
 };
 type Row = { [key: string]: unknown };
 
-const genSchema = (): { schema: Schema; maps: Record<string, FieldMap> } => {
+const genSchema = (): { schema: Schema; maps: Record<string, LensFieldMap> } => {
   const names = Array.from({ length: 4 + Math.floor(rnd() * 4) }, (_, i) => `M${i}`);
   const schema: Schema = { app: {}, crm: {} };
   const bridged = rnd() < 0.4;
@@ -66,17 +67,17 @@ const genSchema = (): { schema: Schema; maps: Record<string, FieldMap> } => {
     schema.crm.K0 = [{ name: 'k', map: 'crm', model: 'K1', isList: false, bridge: false }];
     schema.crm.K1 = [{ name: 'back', map: 'crm', model: 'K0', isList: true, bridge: false }];
   }
-  const maps: Record<string, FieldMap> = {};
+  const maps: Record<string, LensFieldMap> = {};
   for (const [mapName, models] of Object.entries(schema)) {
     if (!Object.keys(models).length) continue;
-    const map: FieldMap = { models: {} };
+    const map: { models: Record<string, LensModelEntry> } = { models: {} };
     for (const [m, rels] of Object.entries(models)) {
       const order = [...COLS, 'd', 'n', ...rels.map((r) => r.name)];
       for (let i = order.length - 1; i > 0; i--) {
         const j = Math.floor(rnd() * (i + 1));
         [order[i], order[j]] = [order[j], order[i]];
       }
-      const fields: FieldMap['models'][string]['fields'] = {};
+      const fields: Record<string, FieldMapEntry> = {};
       for (const name of order) {
         const r = rels.find((x) => x.name === name);
         fields[name] = !r

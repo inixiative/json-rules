@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
+import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   bindLens,
   type Condition,
   createLens,
   describeRule,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   lensVisit,
   projectLens,
@@ -22,7 +24,7 @@ import { map, openRails } from './rails/harness';
 // The adversarial review of 3.4 (round 7): each finding's repro, failing first.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 const rel = (t: string, relationName: string, isList = false) =>
   ({ kind: 'object', type: t, isList, relationName }) as const;
 const now = new Date('2026-10-08T00:00:00Z');
@@ -35,7 +37,7 @@ afterAll(async () => {
   await rails.close();
 });
 
-const userPosts: FieldMap = {
+const userPosts: LensFieldMap = {
   models: {
     User: { fields: { id: s('String'), posts: rel('Post', 'UP', true) } },
     Post: {
@@ -121,7 +123,7 @@ describe('R7-1: the validators return a result, never throw', () => {
 });
 
 describe('R7-2: off-tree visits are found from the clamps themselves, bound or not', () => {
-  const schema: FieldMap = {
+  const schema: LensFieldMap = {
     models: {
       User: {
         fields: { id: s('String'), posts: rel('Post', 'UP', true), org: rel('Org', 'UO') },
@@ -175,7 +177,7 @@ describe('R7-2: off-tree visits are found from the clamps themselves, bound or n
 });
 
 describe('R7-3: a later clamp that never applies is not refused', () => {
-  const schema: FieldMap = {
+  const schema: LensFieldMap = {
     models: {
       User: { fields: { id: s('String'), name: s('String'), org: rel('Org', 'UO') } },
       Org: { fields: { id: s('String'), plan: s('String'), users: rel('User', 'UO', true) } },
@@ -236,9 +238,9 @@ describe('R7-5: supportedTargets matches what toSql compiles for a column ref', 
 describe('PERF: walking one visit at a time stays cheap', () => {
   // Spelled-heavy: every path four deep spelled, plus the defaults on every model.
   const names = ['A', 'B', 'C', 'D'];
-  const schema: FieldMap = { models: {} };
+  const schema: { models: Record<string, LensModelEntry> } = { models: {} };
   for (const n of names) {
-    const fields: FieldMap['models'][string]['fields'] = { id: s('String'), x: s('String') };
+    const fields: Record<string, FieldMapEntry> = { id: s('String'), x: s('String') };
     for (const t of names) if (t !== n) fields[t.toLowerCase()] = rel(t, `${n}${t}`);
     schema.models[n] = { fields };
   }

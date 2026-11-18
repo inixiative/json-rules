@@ -1,5 +1,5 @@
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { compileWithLens } from '../lens/compileUnderLens';
 import type { Condition } from '../types';
 import { buildCondition } from './condition';
@@ -52,7 +52,7 @@ const compilePrisma = (condition: Condition, options?: ToPrismaOptions): ToPrism
   // One relation filter per to-one hop: Prisma joins once per filter object.
   const where = foldRelationFilters(
     buildCondition(condition, normalized, state),
-    normalized?.map as FieldMap | undefined,
+    normalized?.map as LensFieldMap | undefined,
     normalized?.model,
   );
   // Each step records where its own references sit; nothing else is ever resolved.

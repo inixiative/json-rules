@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import type { FieldMap } from '../index';
+import type { LensFieldMap } from '../index';
 import { ArrayOperator, DateOperator, Operator, toSql } from '../index';
 
-const nativeArrayMap: FieldMap = {
+const nativeArrayMap: LensFieldMap = {
   models: {
     Test: {
       fields: {
-        tags: { kind: 'scalar', type: 'Text', isList: true },
-        items: { kind: 'scalar', type: 'Text', isList: true },
+        tags: { kind: 'scalar', type: 'String', isList: true },
+        items: { kind: 'scalar', type: 'String', isList: true },
       },
     },
   },

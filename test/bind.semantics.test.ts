@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { bindRule, check, Operator } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { toPrisma } from '../src/toPrisma';
 import { toSql } from '../src/toSql';
 import { getWhere } from './fixtures/helpers';
@@ -48,7 +48,7 @@ describe('bindRule — normalize nullish, leave absent as tokens', () => {
 });
 
 describe('compilers reject an unresolved bind', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: { FanUser: { fields: { email: { kind: 'scalar', type: 'String' } } } },
   };
   const bindRule = { field: 'email', operator: Operator.equals, bind: 'x' };
@@ -73,7 +73,7 @@ describe('bindOptional — absence resolves to null at the seam where absence is
     bind: 'region',
     bindOptional: true,
   };
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: { FanUser: { fields: { region: { kind: 'scalar', type: 'String' } } } },
   };
 

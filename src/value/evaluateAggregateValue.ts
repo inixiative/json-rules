@@ -1,23 +1,13 @@
 import { isPlainObject } from 'lodash-es';
 import { aggregateItems, aggregateValues, type EvalOptions, sumOrAverage } from '../check';
-import { resolveDateConfig } from '../date';
-import { DEFAULT_ZONE } from '../dateExpr';
+import { coercionZone } from '../date';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { unknownValueAggregateMode, valueTakesNoComparison } from '../errors';
-import { type FieldKind, isValueAggregateMode } from '../operatorCatalog';
+import { isValueAggregateMode } from '../operatorCatalog';
 import type { AggregateValue } from '../types';
-import { readValueSource } from '../valueSource';
 import { coerceAggregateValue, numericObject } from './coerceAggregateValue';
 import { distinctValues } from './distinctValues';
 import { namesComparison } from './namesComparison';
-
-/** The zone a value's `coerceType` reads dates in: the evaluation's zone for a DateTime coercion,
- *  as in check(); no other kind reads one. */
-export const coercionZone = (kind: FieldKind | undefined, opts: EvalOptions): string =>
-  kind === 'DateTime'
-    ? resolveDateConfig(opts, (source) => readValueSource(source, opts.scopes, opts.bindings))
-        .timeZone
-    : DEFAULT_ZONE;
 
 // A value min / max orders: the value as stored, the key it orders by, and its kind.
 type Ordered = { value: unknown; key: number | bigint; kind: 'number' | 'date' };

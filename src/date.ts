@@ -4,6 +4,7 @@ import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { resolveExpr, resolveUnits } from './amount';
+import type { EvalOptions } from './check';
 import { clockFloorError } from './clock';
 import {
   DEFAULT_ZONE,
@@ -22,6 +23,7 @@ import {
   DATE_RANGE_OPERATORS,
   DAY_LIST_OPERATORS,
   DAY_NAMES,
+  type FieldKind,
   NEGATED_OPERATORS,
   WINDOW_OPERATORS,
 } from './operatorCatalog';
@@ -233,6 +235,14 @@ export const resolveDateConfig = (config: DateConfig, read: ReadSource): Resolve
     throw new UsageError(`timeZone reads a zone name (got ${String(read_)})`);
   return { ...config, timeZone: knownZone(read_ ?? DEFAULT_ZONE) };
 };
+
+/** The zone a `coerceType` reads dates in: the evaluation's zone for a DateTime coercion, as
+ *  check() reads one; no other kind reads a zone. */
+export const coercionZone = (kind: FieldKind | undefined, opts: EvalOptions): string =>
+  kind === 'DateTime'
+    ? resolveDateConfig(opts, (source) => readValueSource(source, opts.scopes, opts.bindings))
+        .timeZone
+    : DEFAULT_ZONE;
 
 // A zone the runtime knows, checked once per name: an unknown one is the caller's input.
 const KNOWN_ZONES = new Set<string>();

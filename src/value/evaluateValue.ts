@@ -1,5 +1,6 @@
 import type { CheckOptions, EvalOptions } from '../check';
 import { holdsIn } from '../check';
+import { coercionZone } from '../date';
 import { invalidValueExpression, valueTakesNoComparison } from '../errors';
 import { isCoercedLiteral, listItems, valueExpressionShape } from '../traverse';
 import type {
@@ -13,7 +14,7 @@ import type {
 import { readValueSource } from '../valueSource';
 import { coerceAggregateValue } from './coerceAggregateValue';
 import { distinctValues, isDistinct } from './distinctValues';
-import { coercionZone, evaluateAggregateValue } from './evaluateAggregateValue';
+import { evaluateAggregateValue } from './evaluateAggregateValue';
 import { namesComparison } from './namesComparison';
 
 type Branch = { expr: unknown; path: string };

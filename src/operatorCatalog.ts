@@ -333,19 +333,21 @@ export const isOperatorSupportedForTarget = (
 export const getOperatorsForKind = (
   kind: FieldKind,
   target?: RuleTarget,
+  options: { positive?: boolean } = {},
 ): { field: Operator[]; date: DateOperator[] } => {
-  const field = (Object.keys(FIELD_OPERATOR_CATALOG) as Operator[]).filter((op) => {
-    const entry = FIELD_OPERATOR_CATALOG[op as Operator];
-    if (!entry.kinds.includes(kind)) return false;
-    if (target && !entry.targets.includes(target)) return false;
-    return true;
-  });
-  const date = (Object.keys(DATE_OPERATOR_CATALOG) as DateOperator[]).filter((op) => {
-    const entry = DATE_OPERATOR_CATALOG[op];
-    if (!entry.kinds.includes(kind)) return false;
-    if (target && !entry.targets.includes(target)) return false;
-    return true;
-  });
+  const offered = (
+    op: string,
+    entry: { kinds: readonly FieldKind[]; targets: readonly RuleTarget[] },
+  ) =>
+    entry.kinds.includes(kind) &&
+    (!target || entry.targets.includes(target)) &&
+    (!options.positive || !HOLDS_ON_ABSENT_OPERATORS.includes(op));
+  const field = (Object.keys(FIELD_OPERATOR_CATALOG) as Operator[]).filter((op) =>
+    offered(op, FIELD_OPERATOR_CATALOG[op]),
+  );
+  const date = (Object.keys(DATE_OPERATOR_CATALOG) as DateOperator[]).filter((op) =>
+    offered(op, DATE_OPERATOR_CATALOG[op]),
+  );
   return { field, date };
 };
 
@@ -400,21 +402,51 @@ export const AGGREGATE_OPERATORS = [
   Operator.notExists,
 ] as readonly Operator[];
 
+/** The kinds `min` / `max` order: numbers and dates. A string column orders through `coerceType`,
+ *  never by character code. */
+export const ORDERED_VALUE_KINDS: readonly FieldKind[] = [...NUMERIC_KINDS, 'DateTime'];
+
+/** The kinds `distinct` lists: strings, enums, dates, booleans and numbers — each compared as
+ *  stored, so `1` and `Decimal('1')` stay two values unless `coerceType` reads them as one. */
+export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = [
+  'String',
+  'Enum',
+  'DateTime',
+  'Boolean',
+  ...NUMERIC_KINDS,
+];
+
 /** What an aggregate computes over its items, and what it gives back: a number, a count, one of
  *  the items' own values (the least or greatest; null over no items), or the list of their
  *  distinct values. `comparable` modes are the ones an aggregate rule compares against a threshold
- *  on every rail; the rest are value expressions only (`evaluateValue`), evaluated in memory. */
+ *  on every rail; the rest are value expressions only (`evaluateValue`), evaluated in memory.
+ *  `kinds` are the kinds of value each mode reads, as read (after any `coerceType`). */
 export const AGGREGATE_MODE_CATALOG: Record<
   ValueAggregateMode,
-  { result: 'number' | 'count' | 'element' | 'list'; comparable: boolean }
+  {
+    result: 'number' | 'count' | 'element' | 'list';
+    comparable: boolean;
+    kinds: readonly FieldKind[];
+  }
 > = {
-  sum: { result: 'number', comparable: true },
-  avg: { result: 'number', comparable: true },
-  count: { result: 'count', comparable: false },
-  min: { result: 'element', comparable: false },
-  max: { result: 'element', comparable: false },
-  distinct: { result: 'list', comparable: false },
+  sum: { result: 'number', comparable: true, kinds: NUMERIC_KINDS },
+  avg: { result: 'number', comparable: true, kinds: NUMERIC_KINDS },
+  count: { result: 'count', comparable: false, kinds: ALL_KINDS },
+  min: { result: 'element', comparable: false, kinds: ORDERED_VALUE_KINDS },
+  max: { result: 'element', comparable: false, kinds: ORDERED_VALUE_KINDS },
+  distinct: { result: 'list', comparable: false, kinds: DISTINCT_VALUE_KINDS },
 };
+
+/** The aggregate modes that read values of `kind`; `{ comparable: true }` keeps the ones an
+ *  aggregate rule compares. */
+export const aggregateModesForKind = (
+  kind: FieldKind,
+  options: { comparable?: boolean } = {},
+): ValueAggregateMode[] =>
+  (Object.keys(AGGREGATE_MODE_CATALOG) as ValueAggregateMode[]).filter((mode) => {
+    const entry = AGGREGATE_MODE_CATALOG[mode];
+    return entry.kinds.includes(kind) && (!options.comparable || entry.comparable);
+  });
 
 /** The modes an aggregate rule compares (`sum`, `avg`). */
 export const AGGREGATE_MODES = Object.keys(AGGREGATE_MODE_CATALOG).filter(
@@ -429,20 +461,6 @@ export const VALUE_AGGREGATE_MODES = Object.keys(
 /** Whether a name is a value expression's aggregate mode (own-property: `toString` is not). */
 export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode =>
   typeof mode === 'string' && Object.hasOwn(AGGREGATE_MODE_CATALOG, mode);
-
-/** The kinds `min` / `max` order: numbers and dates. A string column orders through `coerceType`,
- *  never by character code. */
-export const ORDERED_VALUE_KINDS: readonly FieldKind[] = [...NUMERIC_KINDS, 'DateTime'];
-
-/** The kinds `distinct` lists: strings, enums, dates, booleans and numbers — each compared as
- *  stored, so `1` and `Decimal('1')` stay two values unless `coerceType` reads them as one. */
-export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = [
-  'String',
-  'Enum',
-  'DateTime',
-  'Boolean',
-  ...NUMERIC_KINDS,
-];
 
 /** The comparisons an aggregate rule takes; every target compiles all of them. */
 export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;

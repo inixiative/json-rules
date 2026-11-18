@@ -1,3 +1,23 @@
+## 4.2.0 — what a builder reads: describeCategorization, per-kind aggregate modes, positive operators
+
+Unreleased. Why: rules-builder 0.33 composes one editor per primitive (conditions, value
+expressions, categorizations) for Zealot's derived enrichments and Kingdom's Signet grants, and an
+editor may only offer what the engine admits, read from here, never a copy of its own.
+
+- **`describeCategorization(categorization, lens)`**, as `describeValue` describes a value: the type
+  `categorize` returns (every case's `then` and the `default` unified; a list of them under
+  `match: 'all'`; nullable with no default), the paths its conditions and values read, its clock
+  unit, and every issue (shape, lens gate on each `if`, each value's own, type mismatch) at the case
+  it is in. A list value under `match: 'all'` is `nested_list`: `categorize` returns one list.
+  `validateCategorization` stays shape only.
+- **`aggregateModesForKind(kind, { comparable? })`**: the modes that read values of a kind.
+  `AGGREGATE_MODE_CATALOG` entries now carry `kinds`, and `inferValueType` refuses a mode by the
+  same table, so the lookup and the type check can't disagree.
+- **`getOperatorsForKind(kind, target, { positive: true })`** leaves out the operators that hold
+  on a missing value, the ones `validateRule({ positive })` refuses.
+- **Exported:** `valueExpressionShape`, `listItems`, `AGGREGATE_MODES`, `ORDERED_VALUE_KINDS`,
+  `DISTINCT_VALUE_KINDS`, and the `ValueExpressionShape` and `CategorizationDescription` types.
+
 ## 4.1.0 — `categorize`: a row's category from ordered cases
 
 - **`categorize(categorization, row, options)`**: `{ cases: [{ if, then }], match?, default? }`.

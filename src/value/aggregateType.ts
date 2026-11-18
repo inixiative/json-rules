@@ -1,15 +1,8 @@
 import { isRelationEntry } from '../fieldMap/entry';
 import type { Lens, LensNarrowing } from '../lens/types';
-import {
-  AGGREGATE_MODE_CATALOG,
-  DISTINCT_VALUE_KINDS,
-  FieldKind,
-  NUMERIC_KINDS,
-  ORDERED_VALUE_KINDS,
-} from '../operatorCatalog';
+import { AGGREGATE_MODE_CATALOG, FieldKind, NUMERIC_KINDS } from '../operatorCatalog';
 import type { AggregateValue, ValueAggregateMode, ValueType } from '../types';
 import { columnKind, needLens, resolveValuePath, rowPath } from './resolveValuePath';
-import { isNumeric } from './unifyValueTypes';
 import { refuse } from './valueTypeIssue';
 
 // What a coerceType can read: a string as anything it parses to, a number or date as another
@@ -108,8 +101,9 @@ export const aggregateType = (
   // A coerced aggregate returns the values as its coerceType reads them.
   const kind = node.coerceType ?? stored;
   const at = `${path}.aggregate.field`;
+  const reads = kind !== null && AGGREGATE_MODE_CATALOG[mode].kinds.includes(kind);
   if (adds) {
-    if (!isNumeric(kind))
+    if (!reads)
       refuse(
         at,
         'aggregate_kind_mismatch',
@@ -120,7 +114,7 @@ export const aggregateType = (
     return { kind: sumKind, isList: false, nullable: mode === 'avg' };
   }
   if (mode === 'distinct') {
-    if (kind === null || !DISTINCT_VALUE_KINDS.includes(kind))
+    if (!reads)
       refuse(
         at,
         'aggregate_kind_mismatch',
@@ -128,7 +122,7 @@ export const aggregateType = (
       );
     return { kind, isList: true, nullable: false };
   }
-  if (kind === null || !ORDERED_VALUE_KINDS.includes(kind))
+  if (!reads)
     refuse(
       at,
       'aggregate_kind_mismatch',

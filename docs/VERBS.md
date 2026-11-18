@@ -40,6 +40,9 @@ modules allowed to implement it, and every exported function must appear in this
 | describe | `inferValueType` | The type a value expression returns (`{ kind, isList, nullable }`), from the lens where it reads a column; throws when it has none. |
 | describe | `valueClockUnit` | `clockUnit` over every condition a value expression holds. |
 | describe | `describeValue` | A value expression under a lens: its type, the dotted paths it reads, its clock unit, and every issue (shape, lens gate, type), without throwing. |
+| describe | `describeCategorization` | A categorization under a lens, as `describeValue` describes a value: the type `categorize` returns (every case's value and the default unified, a list under `match: 'all'`, nullable with no default), the paths it reads, its clock unit, and every issue at the case it is in. |
+| describe | `valueExpressionShape` | Which value-expression shape a node is: `literal`, `source`, `aggregate`, `if`, `list`, or null. |
+| describe | `listItems` | A list value's items, bare or `{ list }`. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |
 | materialize | `materializeSources`, `materializeSourceQuery` | Turn fetched rows into source option sets — sorted by value, or (`materializeSourceQuery` with `order: SourceOptionOrder.query`) in the order the query returned its rows. |
 | create | `createLens` | Build a lens from field maps and bridges. |
@@ -49,12 +52,13 @@ modules allowed to implement it, and every exported function must appear in this
 | index | `indexBridges` | Index raw rows (keyed `<fieldMap>:<Model>`) by each bridge endpoint's `on` value, for embedding under bridge keys. |
 | read | `parseScopeRef`, `readScopeRef`, `pathSegments` | Parse a `$`-prefixed ref; read which scope it names; split a path into the keys `check()` reads. |
 | order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths, NULLs last, stable. |
-| look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. |
+| look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. `getOperatorsForKind(kind, target, { positive: true })` leaves out the operators that hold on a missing value, the ones `validateRule({ positive })` refuses. |
+| look up | `aggregateModesForKind` | The aggregate modes that read values of a kind; `{ comparable: true }` keeps the ones an aggregate rule compares. |
 
 `engineGlobals` (configure) holds process-wide defaults, one store per process however many
 copies are loaded; `registerEngineGlobals` adds a library's own namespace to it; `Operator`, `DateOperator`,
 `ArrayOperator`, `FieldKind`, `RuleTarget`, `ValueShape`, `ConditionShape`, `NUMERIC_KINDS`, `ALL_KINDS`,
-`CLOCK_UNITS` and `VALUE_AGGREGATE_MODES` are
+`CLOCK_UNITS`, `AGGREGATE_MODES`, `VALUE_AGGREGATE_MODES`, `ORDERED_VALUE_KINDS` and `DISTINCT_VALUE_KINDS` are
 the catalog's constants; `SqlDialect` names the inline predicates' dialects and
 `SourceOptionOrder` the order a source's options come back in.
 

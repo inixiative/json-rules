@@ -6,6 +6,7 @@ import type {
   All,
   Any,
   ArrayRule,
+  CoercedLiteral,
   Condition,
   DateRule,
   IfThenElse,
@@ -364,6 +365,10 @@ export const listItems = (expr: unknown): unknown[] => {
   const items = (expr as { list?: unknown }).list;
   return Array.isArray(items) ? items : [];
 };
+
+/** A `{ value, coerceType }` source: a literal read as a kind, as a field rule's value is. */
+export const isCoercedLiteral = (expr: unknown): expr is CoercedLiteral =>
+  isPlainObject(expr) && 'value' in (expr as object) && 'coerceType' in (expr as object);
 
 /** What a value expression node is — a bare literal, a list, if / then / else, an aggregate, or a
  *  value source — or null when it is none of them or names more than one. */

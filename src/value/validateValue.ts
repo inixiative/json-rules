@@ -1,4 +1,5 @@
 import { invalidValueExpression, valueTakesNoComparison } from '../errors';
+import { FieldKind, isFieldKind } from '../operatorCatalog';
 import { listItems, type ValueExpressionShape, valueExpressionShape } from '../traverse';
 import {
   throwIfInvalid,
@@ -14,7 +15,7 @@ import { namesComparison } from './namesComparison';
 type Node = Record<string, unknown>;
 
 const SHAPE_KEYS: Record<Exclude<ValueExpressionShape, 'literal'>, readonly string[]> = {
-  source: ['value', 'path', 'bind', 'bindOptional'],
+  source: ['value', 'path', 'bind', 'bindOptional', 'coerceType'],
   if: ['if', 'then', 'else'],
   aggregate: [
     'field',
@@ -103,6 +104,34 @@ const validateAggregate = (node: Node, path: string): ValidationIssue[] => [
   ...prefixed(validateAggregateValue(node).errors, path),
 ];
 
+// A source's coerceType reads a literal only: a path's kind comes from the lens, a binding's from
+// what is bound.
+const literalCoercionIssues = (
+  node: Node,
+  coerceType: unknown,
+  path: string,
+): ValidationIssue[] => {
+  if (coerceType === undefined) return [];
+  const at = `${path}.coerceType`;
+  if (!('value' in node))
+    return [
+      {
+        path: at,
+        code: 'unexpected_coerce_type',
+        message: 'coerceType reads a literal { value }; a path or binding has its own kind',
+      },
+    ];
+  if (!isFieldKind(coerceType))
+    return [
+      {
+        path: at,
+        code: 'invalid_coerce_type',
+        message: `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
+      },
+    ];
+  return [];
+};
+
 const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIssue[] => {
   const node = expr as Node;
   switch (valueExpressionShape(expr)) {
@@ -114,11 +143,14 @@ const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIss
       return validateIf(node, path, inList);
     case 'aggregate':
       return validateAggregate(node, path);
-    case 'source':
+    case 'source': {
+      const { coerceType, ...source } = node;
       return [
         ...unknownKeys(node, 'source', path),
-        ...prefixed(validateValueSource(node).errors, path),
+        ...prefixed(validateValueSource(source).errors, path),
+        ...literalCoercionIssues(node, coerceType, path),
       ];
+    }
     default: {
       const isComparison = namesComparison(node);
       const error = isComparison ? valueTakesNoComparison(path) : invalidValueExpression(path);

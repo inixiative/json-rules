@@ -439,12 +439,20 @@ export type ListValue = ValueExpression[] | { list: ValueExpression[]; distinct?
 /** A scalar written as itself, as a stored value is: `5`, `'gold'`, `true`, `null`, a Date. */
 export type BareLiteral = string | number | boolean | bigint | Date | null;
 
-/** A value computed from a row: a literal (bare, or `{ value }` — an object literal needs the
- *  wrapper), a path read (`{ path }`), a binding (`{ bind }`), an aggregate over a relation's rows,
- *  if / then / else, or a list. */
+/** A literal read as a kind, with the field rule's own key: `{ value: '2027-01-01', coerceType:
+ *  'DateTime' }` evaluates to a Date. Its kind is stamped by whoever knows it (the editor, from
+ *  the caller's target); json-rules never guesses it. */
+export type CoercedLiteral = { value: RuleValue; coerceType: FieldKind } & Never<
+  'path' | 'bind' | 'bindOptional'
+>;
+
+/** A value computed from a row: a literal (bare, `{ value }` — an object literal needs the
+ *  wrapper — or a `CoercedLiteral`), a path read (`{ path }`), a binding (`{ bind }`), an
+ *  aggregate over a relation's rows, if / then / else, or a list. */
 export type ValueExpression =
   | BareLiteral
   | ValueSourceOf<RuleValue>
+  | CoercedLiteral
   | AggregateValue
   | IfThenElseValue
   | ListValue;

@@ -1,9 +1,15 @@
 import { invalidValueExpression } from '../errors';
 import type { Lens, LensNarrowing } from '../lens/types';
 import { FieldKind } from '../operatorCatalog';
-import { listItems, valueExpressionShape } from '../traverse';
-import type { AggregateValue, IfThenElseValue, ValueExpression, ValueType } from '../types';
-import { aggregateType } from './aggregateType';
+import { isCoercedLiteral, listItems, valueExpressionShape } from '../traverse';
+import type {
+  AggregateValue,
+  CoercedLiteral,
+  IfThenElseValue,
+  ValueExpression,
+  ValueType,
+} from '../types';
+import { aggregateType, coerceMismatch, coerces } from './aggregateType';
 import { isDistinct } from './distinctValues';
 import { literalType } from './literalType';
 import { pathType } from './pathType';
@@ -14,7 +20,20 @@ import { refuse } from './valueTypeIssue';
 
 type Lensish = Lens | LensNarrowing | undefined;
 
+// A literal typed as its coerceType, refused when that kind can't read what is written.
+const coercedLiteralType = (node: CoercedLiteral, path: string): ValueType => {
+  const written = literalType(node.value, `${path}.value`);
+  if (!coerces(written.kind, node.coerceType))
+    refuse(
+      `${path}.coerceType`,
+      'coerce_kind_mismatch',
+      coerceMismatch(written.kind, node.coerceType),
+    );
+  return { ...written, kind: node.coerceType };
+};
+
 const sourceType = (node: Record<string, unknown>, lens: Lensish, path: string): ValueType => {
+  if (isCoercedLiteral(node)) return coercedLiteralType(node, path);
   if (node.value !== undefined) return literalType(node.value, `${path}.value`);
   if (typeof node.bind === 'string')
     return refuse(

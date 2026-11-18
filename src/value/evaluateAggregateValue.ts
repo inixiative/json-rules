@@ -4,12 +4,20 @@ import { resolveDateConfig } from '../date';
 import { DEFAULT_ZONE } from '../dateExpr';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { unknownValueAggregateMode, valueTakesNoComparison } from '../errors';
-import { isValueAggregateMode } from '../operatorCatalog';
+import { type FieldKind, isValueAggregateMode } from '../operatorCatalog';
 import type { AggregateValue } from '../types';
 import { readValueSource } from '../valueSource';
 import { coerceAggregateValue, numericObject } from './coerceAggregateValue';
 import { distinctValues } from './distinctValues';
 import { namesComparison } from './namesComparison';
+
+/** The zone a value's `coerceType` reads dates in: the evaluation's zone for a DateTime coercion,
+ *  as in check(); no other kind reads one. */
+export const coercionZone = (kind: FieldKind | undefined, opts: EvalOptions): string =>
+  kind === 'DateTime'
+    ? resolveDateConfig(opts, (source) => readValueSource(source, opts.scopes, opts.bindings))
+        .timeZone
+    : DEFAULT_ZONE;
 
 // A value min / max orders: the value as stored, the key it orders by, and its kind.
 type Ordered = { value: unknown; key: number | bigint; kind: 'number' | 'date' };
@@ -56,13 +64,7 @@ export const evaluateAggregateValue = (
   if (typeof node.field !== 'string' || node.field === '')
     throw new Error(`${path}.field: an aggregate value reads a list field`);
   const items = aggregateItems(node, opts);
-  // Only a DateTime coercion reads the zone, as in check().
-  const zone =
-    node.coerceType === 'DateTime'
-      ? resolveDateConfig(opts, (source) => readValueSource(source, opts.scopes, opts.bindings))
-          .timeZone
-      : DEFAULT_ZONE;
-  const coerce = coerceAggregateValue(node.coerceType, zone);
+  const coerce = coerceAggregateValue(node.coerceType, coercionZone(node.coerceType, opts));
   switch (mode) {
     case 'count':
       // COUNT(*) over the items, or COUNT(field) — the items whose field has a value.

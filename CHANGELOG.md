@@ -10,6 +10,13 @@ editor may only offer what the engine admits, read from here, never a copy of it
   unit, and every issue (shape, lens gate on each `if`, each value's own, type mismatch) at the case
   it is in. A list value under `match: 'all'` is `nested_list`: `categorize` returns one list.
   `validateCategorization` stays shape only.
+- **A literal can name its kind** (`tickets/FEAT-008`): `{ value: '2027-01-01', coerceType:
+  'DateTime' }`, the field rule's own key. `evaluateValue` (and so `categorize`) reads it as that
+  kind with the reader aggregates use; `inferValueType` types it as that kind, refusing one that
+  can't read what is written (`coerce_kind_mismatch`); `validateValue` takes `coerceType` on a
+  `{ value }` source only. Nothing in json-rules stamps it: as `check()` honours a rule's
+  `coerceType`, these honour a literal's, and the editor stamps it from the caller's target kind.
+  New type `CoercedLiteral`.
 - **`aggregateModesForKind(kind, { comparable? })`**: the modes that read values of a kind.
   `AGGREGATE_MODE_CATALOG` entries now carry `kinds`, and `inferValueType` refuses a mode by the
   same table, so the lookup and the type check can't disagree.

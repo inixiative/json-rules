@@ -167,6 +167,7 @@ export type {
   CategorizationMatch,
   Category,
   CheckData,
+  CoercedLiteral,
   CompileOptions,
   Condition,
   DateConfig,

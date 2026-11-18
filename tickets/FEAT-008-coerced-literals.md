@@ -1,6 +1,6 @@
 # FEAT-008: coerced literals in value expressions
 
-**Status:** spec, for Aron's yes before code (a semantic change: `CLAUDE.md` § Lens rulings, last line).
+**Status:** built (Aron, 2026-11-18: "lets build").
 
 ## Intent
 
@@ -46,7 +46,8 @@ ruling): `coerceType` already means "read this value as that kind", on field rul
    `{ path: 'renewedAt' }` returns a `Date` from either case; `describeCategorization` types
    DateTime.
 6. The same categorization with the first literal unstamped (`'2027-01-01'`) is reported by
-   `describeCategorization` as `value_type_mismatch` at `$.cases[0].then`: nothing guesses it.
+   `describeCategorization` as `value_type_mismatch` (at `$.default`, the branch that disagrees
+   with the ones before it, as `unify` reports): nothing guesses it.
 7. `coerceValue` leaves a literal as it is (no sibling stamping).
 
 ## Not in it

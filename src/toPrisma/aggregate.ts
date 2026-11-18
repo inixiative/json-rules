@@ -1,7 +1,8 @@
+import { fieldOf } from '@inixiative/field-map';
 import { aggregatePathUnsupported, unknownAggregateMode, windowUnsupported } from '../errors';
 import { checkField, hasNoOperand } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { conditionTouchesBridge } from '../fieldMap/walk';
 import { negate } from '../negate';
 import { Operator } from '../operator';
@@ -14,7 +15,6 @@ import {
   NO_VALUE_OPERATORS,
   NUMERIC_KINDS,
 } from '../operatorCatalog';
-import { fieldOf } from '../own';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasPath } from '../valueSource';
 import { hasWindow, windowRewrite } from '../window';
@@ -35,7 +35,7 @@ export const aggregateFieldRequired = (): Error =>
 /** Why Prisma can't aggregate `itemField` on the related model, or null: it reads a numeric
  *  column as stored — a coerceType can't cast it. */
 export const aggregateItemError = (
-  map: FieldMap,
+  map: LensFieldMap,
   target: string,
   itemField: string,
 ): Error | null => {
@@ -67,7 +67,7 @@ export const buildAggregateRule = (
 
   if (!options?.map || !options?.model || !state) {
     throw new Error(
-      `Aggregate rules require a FieldMap and model to generate a Prisma plan. ` +
+      `Aggregate rules require a LensFieldMap and model to generate a Prisma plan. ` +
         `Pass { map, model } options to toPrisma().`,
     );
   }
@@ -78,14 +78,14 @@ export const buildAggregateRule = (
 
   return buildAggregateStep(
     rule,
-    options as ToPrismaOptions & { map: FieldMap; model: string },
+    options as ToPrismaOptions & { map: LensFieldMap; model: string },
     state,
   );
 };
 
 const buildAggregateStep = (
   rule: AggregateRule,
-  options: ToPrismaOptions & { map: FieldMap; model: string },
+  options: ToPrismaOptions & { map: LensFieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
   const path = groupPath(rule.field, options.map, options.model, 'Aggregate rules');
@@ -149,7 +149,7 @@ const presence = (
   exists: boolean,
   where: () => PrismaWhere,
   path: ReturnType<typeof groupPath>,
-  options: ToPrismaOptions & { map: FieldMap; model: string },
+  options: ToPrismaOptions & { map: LensFieldMap; model: string },
   state: PrismaBuildState,
 ): PrismaWhere => {
   if (rule.aggregate.mode === 'sum') return exists ? matchAll() : matchNothing();

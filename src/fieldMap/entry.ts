@@ -1,4 +1,4 @@
-import { own } from '../own';
+import { own } from '@inixiative/field-map';
 import type { FieldMapEntry } from './types';
 
 /**

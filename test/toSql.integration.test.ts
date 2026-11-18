@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { FieldMap } from '../index';
+import type { LensFieldMap } from '../index';
 import { ArrayOperator, Operator, toSql } from '../index';
 
-const usersMap: FieldMap = {
+const usersMap: LensFieldMap = {
   models: {
     User: {
       fields: {
-        roles: { kind: 'scalar', type: 'Text', isList: true },
+        roles: { kind: 'scalar', type: 'String', isList: true },
         tags: { kind: 'scalar', type: 'Json' },
       },
     },

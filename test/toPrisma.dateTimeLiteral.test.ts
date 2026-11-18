@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { bindRule } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import type { Rule } from '../src/types';
@@ -11,7 +11,7 @@ import { getWhere } from './fixtures/helpers';
 // and an epoch-ms number all threw at query time ("Expected ISO-8601 DateTime" / "Expected
 // DateTime, provided Int") while the lens gate and check() accepted them. The literal now
 // compiles through check()'s own DateTime coercion to a Date.
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Event: {
       fields: {

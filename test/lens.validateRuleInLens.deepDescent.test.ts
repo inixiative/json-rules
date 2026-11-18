@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
 import type { LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, Operator } from '../src/operator';
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

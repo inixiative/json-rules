@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { assertValidNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -12,7 +12,7 @@ import { ArrayOperator, Operator } from '../src/operator';
 // fields and enum values accepted) and false-rejected legitimate nested relation conditions.
 // One lens-aware walk at the where's anchor visit, against the parent policy, closes both.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Customer: {
       fields: {

@@ -1,10 +1,10 @@
-import type { FieldMap } from '../../index';
+import type { LensFieldMap } from '../../index';
 
 /**
  * Post ↔ Category with no explicit @relation (implicit many-to-many).
  * Both sides have empty fromFields/toFields — no FK discoverable.
  */
-export const implicitM2MMap: FieldMap = {
+export const implicitM2MMap: LensFieldMap = {
   models: {
     Post: {
       fields: {

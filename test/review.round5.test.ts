@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { isDeepStrictEqual } from 'node:util';
+import type { ScalarType } from '@inixiative/field-map';
+import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   type Condition,
   createLens,
   describeRule,
   describeRuleSources,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   lensVisit,
   narrowRule,
@@ -27,7 +29,7 @@ import { agree, map, NOW, openRails } from './rails/harness';
 // The adversarial review of 3.4 (round 5): each finding's repro, failing first.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 const o = (t: string, isList = false) => ({ kind: 'object', type: t, isList }) as const;
 
 let rails: Awaited<ReturnType<typeof openRails>>;
@@ -41,7 +43,7 @@ afterAll(async () => {
 });
 
 describe('F1/F2: model defaults expose a tree — each model once, at its nearest reach', () => {
-  const abcd: FieldMap = {
+  const abcd: LensFieldMap = {
     models: {
       A: { fields: { id: s('String'), b: o('B'), d: o('D') } },
       D: { fields: { id: s('String'), b: o('B') } },
@@ -188,7 +190,7 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
   });
 
   test('ties go to field declaration order; spell a path to reach a model another way', () => {
-    const tie: FieldMap = {
+    const tie: LensFieldMap = {
       models: {
         A: { fields: { id: s('String'), p: o('P'), q: o('Q') } },
         P: { fields: { id: s('String'), t: o('T') } },
@@ -219,10 +221,10 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
   // A schema whose models relate at random, every relation turned on at the defaults.
   const randomSchema = (models: number, perModel: number, seed: number): LensNarrowing => {
     const rnd = mulberry32(seed);
-    const schema: FieldMap = { models: {} };
+    const schema: { models: Record<string, LensModelEntry> } = { models: {} };
     const defaults: Record<string, { relations: Record<string, object> }> = {};
     for (let i = 0; i < models; i++) {
-      const fields: FieldMap['models'][string]['fields'] = { id: s('String') };
+      const fields: Record<string, FieldMapEntry> = { id: s('String') };
       const relations: Record<string, object> = {};
       for (let k = 0; k < perModel; k++) {
         let to = Math.floor(rnd() * models);
@@ -277,9 +279,9 @@ describe('F1/F2: model defaults expose a tree — each model once, at its neares
         ['c', 'C', true],
       ],
     };
-    const schema: FieldMap = { models: {} };
+    const schema: { models: Record<string, LensModelEntry> } = { models: {} };
     for (const n of names) {
-      const fields: FieldMap['models'][string]['fields'] = {
+      const fields: Record<string, FieldMapEntry> = {
         id: s('String'),
         x: s('String'),
         y: s('String'),

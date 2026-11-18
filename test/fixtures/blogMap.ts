@@ -1,7 +1,7 @@
-import type { FieldMap } from '../../index';
+import type { LensFieldMap } from '../../index';
 
 /** Core blog schema: User / Post / Profile. */
-export const blogMap: FieldMap = {
+export const blogMap: LensFieldMap = {
   models: {
     User: {
       fields: {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { bindRule, check, listBindings, toPrisma, toSql } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
@@ -241,7 +241,7 @@ describe('a date offset from each source', () => {
   });
 
   test('describeRule: a row date-offset path keeps check only', () => {
-    const map: FieldMap = {
+    const map: LensFieldMap = {
       models: {
         E: {
           fields: {

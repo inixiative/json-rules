@@ -1,7 +1,7 @@
-import type { FieldMap } from '../../index';
+import type { LensFieldMap } from '../../index';
 
 /** Order schema for aggregate rule testing. */
-export const orderMap: FieldMap = {
+export const orderMap: LensFieldMap = {
   models: {
     User: {
       fields: {

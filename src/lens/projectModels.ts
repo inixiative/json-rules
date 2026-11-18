@@ -1,6 +1,13 @@
+import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { endpointKey } from '../fieldMap/endpointKey.ts';
-import type { Bridge, FieldMap, FieldMapEntry, FieldMapSet, SourceOption } from '../fieldMap/types';
-import { fieldOf, modelOf, own } from '../own';
+import type {
+  Bridge,
+  FieldMapEntry,
+  FieldMapSet,
+  LensFieldMap,
+  LensModelEntry,
+  SourceOption,
+} from '../fieldMap/types';
 import { LensRefusal, type Policy, resolvePolicy, shownVisits } from './policy.ts';
 import { type ProjectLensOptions, projectFields } from './projectPaths.ts';
 import { optionKey } from './sourceOptions.ts';
@@ -89,7 +96,11 @@ export const projectModelsWith = (policy: Policy, opts: ProjectLensOptions = {})
     }
   }
 
-  const maps: Record<string, FieldMap> = {};
+  // Built in place: models and enums are written, entries are copied in as they are.
+  const maps: Record<
+    string,
+    { models: Record<string, LensModelEntry>; enums?: Record<string, readonly string[]> }
+  > = {};
   for (const { mapName, modelName, fields } of surface.values()) {
     let surfaceMap = own(maps, mapName);
     if (!surfaceMap) {

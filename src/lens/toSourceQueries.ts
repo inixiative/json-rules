@@ -1,7 +1,7 @@
+import { modelOf, own } from '@inixiative/field-map';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import { walkFieldPath } from '../fieldMap/walk';
-import { modelOf, own } from '../own';
 import { pathSegments } from '../scope';
 import { toPrisma } from '../toPrisma/index.ts';
 import type { PrismaStep, PrismaWhere, WhereStep } from '../toPrisma/types.ts';
@@ -108,7 +108,7 @@ const compileOne = (
   const prismaWhere = whereStep.where;
   // A count step, or a column reference in the where, resolves through executePrismaPlan.
   const needsPlan = plan.steps.length > 1 || (whereStep.refs?.length ?? 0) > 0;
-  const map = resolveFieldMap(lens, mapName, 'toPrisma') as FieldMap;
+  const map = resolveFieldMap(lens, mapName, 'toPrisma') as LensFieldMap;
   const far = (read: string): boolean =>
     recheck !== undefined && walkFieldPath(read, map, model).kind === 'bridge';
   // A label or axis across a bridge is read from the far side; the query selects its local key.

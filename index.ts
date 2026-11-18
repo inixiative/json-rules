@@ -20,11 +20,12 @@ export {
   type BridgeCardinality,
   type BridgeDictionary,
   type BridgeEndpoint,
-  type FieldMap,
+  type BridgeEntry,
   type FieldMapEntry,
   type FieldMapSet,
   indexBridges,
-  type ModelEntry,
+  type LensFieldMap,
+  type LensModelEntry,
   type SourceOption,
   stitchFieldMaps,
   validateFieldMaps,
@@ -154,6 +155,12 @@ export {
   type ValueExpressionShape,
   valueExpressionShape,
 } from './src/traverse';
+export type {
+  ConditionOn,
+  LensNarrowingOn,
+  ModelNarrowingOn,
+  UncheckedPath,
+} from './src/typedCondition';
 export type {
   Absent,
   AggregateMode,

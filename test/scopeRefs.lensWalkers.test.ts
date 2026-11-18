@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { coerceRule } from '../src/lens/coerceRule';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
@@ -9,7 +9,7 @@ import type { LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Org: {
       fields: {

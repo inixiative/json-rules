@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // One map walk serves every leaf on both compilers: relation hops join (toSql) or nest
 // (toPrisma), a Json column's tail is a JSON path, and a path past any other column is an error.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Order: {
       fields: {

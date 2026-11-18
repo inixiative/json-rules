@@ -1,6 +1,6 @@
-import type { FieldMapEntry, ModelEntry, SourceOption } from '../fieldMap/types';
+import { modelOf, own } from '@inixiative/field-map';
+import type { FieldMapEntry, LensModelEntry, SourceOption } from '../fieldMap/types';
 import { type MapVisit, walkMaps } from '../fieldMap/walk.ts';
-import { modelOf, own } from '../own';
 import type { Condition } from '../types.ts';
 import {
   declaresModelSource,
@@ -60,7 +60,7 @@ export const projectFields = (
   policy: Policy,
   effect: VisitEffect,
   at: MapVisit,
-  model: ModelEntry,
+  model: LensModelEntry,
   fetched: (field: string) => readonly SourceOption[] | undefined,
 ): Record<string, FieldMapEntry> => {
   const fields: Record<string, FieldMapEntry> = {};
@@ -94,7 +94,7 @@ const projectVisit = (
   fetchedByPathField: ReadonlyMap<string, readonly SourceOption[]>,
 ): ProjectedVisit => {
   const { mapName, modelName } = at;
-  const model = modelOf(own(policy.lens.maps, mapName), modelName) as ModelEntry;
+  const model = modelOf(own(policy.lens.maps, mapName), modelName) as LensModelEntry;
 
   // A sourced field's fetched pairs win; then the options the map declares (labels and groups
   // kept); otherwise a value-gated field surfaces its resolved allowed-set as options, so every

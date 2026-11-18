@@ -3,19 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
-import { buildPrismaMapV7 } from '@inixiative/prisma-map';
+import { readPrismaClientV7 } from '@inixiative/field-map/prisma';
 import { PrismaPg } from '@prisma/adapter-pg';
-import type { Condition, FieldMap, Lens, LensNarrowing } from '../../index';
+import type { Condition, Lens, LensFieldMap, LensNarrowing } from '../../index';
 import { check, executePrismaPlan, narrowRule, toPrisma, toSql } from '../../index';
 import { PrismaClient } from './generated/client';
 
 // The three rails on one database: check() over the rows Prisma loads, toSql executed by
 // Postgres (PGlite), and toPrisma executed by Prisma 7 through PGlite's socket server — the
-// pipeline a consumer runs, from a FieldMap that prisma-map reads off the generated client.
+// pipeline a consumer runs, from the field map field-map reads off the generated client.
 
 const GENERATED = join(import.meta.dir, 'generated');
 
-export const map: FieldMap = { models: buildPrismaMapV7(GENERATED) as FieldMap['models'] };
+export const map: LensFieldMap = readPrismaClientV7(GENERATED).map;
 
 export const NOW = new Date('2026-10-06T12:00:00Z');
 

@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { ScalarType } from '@inixiative/field-map';
 import {
   bindLens,
   type Condition,
   createLens,
   executePrismaPlan,
-  type FieldMap,
+  type LensFieldMap,
   type LensNarrowing,
   materializeSourceQuery,
   materializeSources,
@@ -21,7 +22,7 @@ import { map, openRails } from './rails/harness';
 // failing first.
 
 const rule = (r: object): Condition => r as Condition;
-const s = (t: string) => ({ kind: 'scalar', type: t }) as const;
+const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
@@ -62,7 +63,7 @@ const onRails = async (query: SourceQuery) => {
   };
 };
 
-const userPosts: FieldMap = {
+const userPosts: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -163,7 +164,7 @@ describe('R9-P1: a source where across a bridge over-fetches, and its recheck de
         Contact: { fields: { id: s('String'), industry: s('String'), tenant: s('String') } },
       },
     },
-  } as Record<string, FieldMap>;
+  } as Record<string, LensFieldMap>;
   const bridges = [
     {
       endpoints: [

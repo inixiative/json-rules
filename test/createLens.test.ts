@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
 
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -14,7 +14,7 @@ const prismaMap: FieldMap = {
   },
 };
 
-const salesforceMap: FieldMap = {
+const salesforceMap: LensFieldMap = {
   models: {
     Contact: {
       fields: {

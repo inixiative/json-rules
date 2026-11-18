@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -16,7 +16,7 @@ const withParent = (
 //      bridge → object descent, chained narrowing of bridge path.
 // ============================================================
 
-const prismaMap: FieldMap = {
+const prismaMap: LensFieldMap = {
   models: {
     FanUser: {
       fields: {
@@ -27,7 +27,7 @@ const prismaMap: FieldMap = {
     },
   },
 };
-const salesforceMap: FieldMap = {
+const salesforceMap: LensFieldMap = {
   models: {
     Contact: {
       fields: {
@@ -119,7 +119,7 @@ describe('projectPaths — bridges', () => {
 //      to nested visits, not just the root anchor.
 // ============================================================
 
-const multiUserMap: FieldMap = {
+const multiUserMap: LensFieldMap = {
   models: {
     Post: {
       fields: {
@@ -169,7 +169,7 @@ describe('projectPaths — mapDefaults.models[X].where anchors at every visit', 
 
   test('regression guard: mapDefaults.models.User.where on a path that descends through User twice', () => {
     // Schema needs User → User self-reference. Use a different fixture below.
-    const map: FieldMap = {
+    const map: LensFieldMap = {
       models: {
         User: {
           fields: {
@@ -203,7 +203,7 @@ describe('projectPaths — mapDefaults.models[X].where anchors at every visit', 
 //      gets the declared picks/omits.
 // ============================================================
 
-const deepMap: FieldMap = {
+const deepMap: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -256,7 +256,7 @@ describe('projectPaths — narrowing only at depth', () => {
 //      narrowing declares.
 // ============================================================
 
-const selfRefMap: FieldMap = {
+const selfRefMap: LensFieldMap = {
   models: {
     User: {
       fields: {

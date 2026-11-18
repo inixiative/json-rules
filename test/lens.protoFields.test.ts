@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check, toPrisma, toSql, validateRule } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { walkFieldPath } from '../src/fieldMap/walk';
 import type { Lens } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
@@ -14,7 +14,7 @@ import { getWhere } from './fixtures/helpers';
 // fixed in 2.19.3; every field-map lookup is an own-property check.
 const PROTO_NAMES = ['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty'] as const;
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

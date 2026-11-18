@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap, LensNarrowing } from '../index';
+import type { LensFieldMap, LensNarrowing } from '../index';
 import {
   ArrayOperator,
   createLens,
@@ -9,7 +9,7 @@ import {
   validateRule,
 } from '../index';
 
-const prisma: FieldMap = {
+const prisma: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -30,7 +30,7 @@ const prisma: FieldMap = {
   },
 };
 
-const salesforce: FieldMap = {
+const salesforce: LensFieldMap = {
   models: {
     Contact: {
       fields: {

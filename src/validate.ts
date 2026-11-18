@@ -27,7 +27,7 @@ import {
 import { isJsonEntry, isRelationEntry } from './fieldMap/entry';
 import { resolveFieldMap } from './fieldMap/resolveFieldMap';
 import { comparesText } from './fieldMap/shape';
-import type { FieldMap, FieldMapSet } from './fieldMap/types';
+import type { FieldMapSet, LensFieldMap } from './fieldMap/types';
 import { fieldEntry, relationTarget } from './fieldMap/walk';
 import { isOrderedValue, readOrderedPair } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
@@ -94,7 +94,7 @@ export const throwIfInvalid = (result: ValidationResult, label: string): void =>
 type ValidationContext = {
   target: RuleTarget;
   errors: ValidationIssue[];
-  map?: FieldMap;
+  map?: LensFieldMap;
   /** The model each scope reads, outermost first (index = depth - 1), where the map knows it. */
   scopeModels: (string | undefined)[];
   /** Whether each scope sits inside a counting step (a count or relation aggregate condition). */
@@ -102,11 +102,11 @@ type ValidationContext = {
 };
 
 /** Which engine a rule must compile for; `check` (the default) accepts every rule. The schema
- *  (`map` — a FieldMap, or a FieldMapSet with `mapName` — and `model`) lets the Prisma target
+ *  (`map` — a LensFieldMap, or a FieldMapSet with `mapName` — and `model`) lets the Prisma target
  *  accept a column compared with a column it can compile. */
 export type ValidateRuleOptions = {
   target?: RuleTarget;
-  map?: FieldMap | FieldMapSet;
+  map?: LensFieldMap | FieldMapSet;
   mapName?: string;
   model?: string;
   /** Refuse every shape that can hold on a value the row doesn't carry: `if`/`then`/`else`,

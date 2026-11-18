@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
@@ -12,7 +12,7 @@ import type { Condition } from '../src/types';
 // loses the distinction. validateRuleInLens must walk the narrowing tree
 // alongside the user rule and apply path-specific narrowings per visit.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Comment: {
       fields: {
@@ -133,7 +133,7 @@ describe('validateRuleInLens — path-aware (same model, different narrowings pe
   // The path User → spaceUsers (their memberships) → user (themselves again) → spaceUsers
   // (their OTHER memberships, e.g. scoped to a different org) visits SpaceUser twice on one
   // descent path. Each visit's narrowing is independent.
-  const realMap: FieldMap = {
+  const realMap: LensFieldMap = {
     models: {
       User: {
         fields: {

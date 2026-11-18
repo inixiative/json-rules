@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { engineGlobals } from '../src/engineGlobals';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import { getWhere } from './fixtures/helpers';
@@ -15,7 +15,7 @@ const AnyNull = new (class AnyNull {})();
 beforeAll(() => engineGlobals.set('prismaOptions.anyNull', AnyNull));
 afterAll(() => engineGlobals.reset());
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Enrichment: {
       fields: {

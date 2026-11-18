@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import { toPrisma } from '../src/toPrisma';
 import { getWhere } from './fixtures/helpers';
@@ -8,7 +8,7 @@ import { getWhere } from './fixtures/helpers';
 // User has many Posts (Prisma list relation). Posts have a Json `metadata` field
 // and bridge to a CRM Event. Inner conditions in some/every/none must resolve
 // against Post (not User) so JSON-path detection and bridge detection fire.
-const userMap: FieldMap = {
+const userMap: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -26,7 +26,7 @@ const userMap: FieldMap = {
     },
   },
 };
-const crmMap: FieldMap = {
+const crmMap: LensFieldMap = {
   models: {
     Event: {
       fields: {

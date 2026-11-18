@@ -78,7 +78,7 @@ Any other Error is a rule-shape problem the validators report (`validateRule`).
 | Verb | Owner | Rule (`test/verbs.test.ts`) |
 | --- | --- | --- |
 | traverse a condition tree | `src/traverse.ts` (`visitCondition`, `someCondition`, `mapCondition`, `elementRefs`, `valueRefs`) | No `'all' in` / `.all.map(` descent elsewhere — except the evaluators and compilers, whose descent is their semantics. |
-| read a field-map record | `src/own.ts` (`own`, `modelOf`, `fieldOf`) | No `.models[` / `.fields[` / `.maps[` read elsewhere: own-property only. |
+| read a field-map record | `@inixiative/field-map` (`own`, `modelOf`, `fieldOf`) | No `.models[` / `.fields[` / `.maps[` read anywhere in json-rules: own-property only. |
 | read a path, a row by key | `src/scope.ts` (`readOwnPath`, `readPath`) | No lodash `get` / `has` / `keyBy` / `groupBy` / `property` anywhere: they read `Object.prototype`. |
 | read a binding | `src/valueSource.ts`, `src/bindings.ts` | `Object.hasOwn(bindings` only there. |
 | walk a field path | `src/fieldMap/walk.ts` (`walkMaps`, under `walkFieldPath`, the lens's `resolvePolicyPath` and `relationHops`) | No hand-split path walked against a map elsewhere. |

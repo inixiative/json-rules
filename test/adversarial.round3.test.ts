@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import { createLens } from '../src/lens/createLens';
 import { validateNarrowing } from '../src/lens/narrowing';
 import { narrowRule } from '../src/lens/narrowRule';
@@ -45,7 +45,7 @@ describe('Bug #1 — catalog rejects prototype keys', () => {
 // Bug #2: bridges must be pruned when the bridge-key field is narrowed away.
 // The user must explicitly declare the full <map>:<Model> key to retain bridge access.
 describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () => {
-  const prismaMap: FieldMap = {
+  const prismaMap: LensFieldMap = {
     models: {
       FanUser: {
         fields: {
@@ -56,7 +56,7 @@ describe('Bug #2 — bridges pruned when bridge-key removed by narrowing', () =>
       },
     },
   };
-  const salesforceMap: FieldMap = {
+  const salesforceMap: LensFieldMap = {
     models: {
       Contact: {
         fields: {
@@ -176,7 +176,7 @@ describe('Bug #6 — aggregate without mode is rejected, not silently treated as
 
 // Bug #8: validateRuleInLens must walk aggregate.field paths against the lens schema.
 describe('Bug #8 — validateRuleInLens validates aggregate sub-fields', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: {
       User: {
         fields: {

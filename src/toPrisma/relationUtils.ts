@@ -1,8 +1,8 @@
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
-import { modelOf } from '../own';
+import { modelOf } from '@inixiative/field-map';
+import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 
 const findReverseRelation = (
-  map: FieldMap,
+  map: LensFieldMap,
   targetModel: string,
   currentModel: string,
   relationName?: string,
@@ -30,7 +30,7 @@ const findReverseRelation = (
  * (back-relation). Null when the map doesn't say. A composite FK has several pairs.
  */
 export const relationKeys = (
-  map: FieldMap,
+  map: LensFieldMap,
   model: string,
   entry: FieldMapEntry,
 ): { here: string; there: string }[] | null => {
@@ -48,7 +48,7 @@ export const relationKeys = (
  *  the other side (matched by `relationName` when the map gives one). Null when the map doesn't
  *  declare it, or several fields could be it. */
 export const inverseRelation = (
-  map: FieldMap,
+  map: LensFieldMap,
   model: string,
   field: string,
   entry: FieldMapEntry,

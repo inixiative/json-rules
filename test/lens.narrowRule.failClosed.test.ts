@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import type { Condition, FieldMap, Lens, LensNarrowing } from '../index';
+import type { Condition, Lens, LensFieldMap, LensNarrowing } from '../index';
 import { narrowRule } from '../index';
 import { prefixConditionFields } from '../src/lens/narrowRule';
 
 // Where a clamp cannot be placed soundly, narrowRule throws rather than emit a rule the clamp
 // doesn't constrain.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Post: {
       fields: {

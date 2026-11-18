@@ -1,10 +1,10 @@
-import { fieldOf, modelOf, own } from '../own';
+import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { pathSegments } from '../scope';
 import { someCondition } from '../traverse';
 import type { Condition } from '../types';
 import { parseEndpointKey } from './endpointKey.ts';
 import { isJsonEntry } from './entry';
-import type { FieldMap, FieldMapEntry } from './types';
+import type { FieldMapEntry, LensFieldMap } from './types';
 
 /** A model a walk stands on, and the relation path that reached it. */
 export type MapVisit = { mapName: string; modelName: string; relPath: readonly string[] };
@@ -35,7 +35,7 @@ export const relationTargetOf = (
  * their semantics do (a bridge, a hidden field, a Json boundary).
  */
 export function* walkMaps(
-  maps: Record<string, FieldMap>,
+  maps: Record<string, LensFieldMap>,
   from: MapVisit,
   path: string,
 ): Generator<MapStep> {
@@ -61,7 +61,7 @@ export const toManyHop = <Hop extends { entry: FieldMapEntry }>(
 ): Hop | undefined => hops.find((hop) => hop.entry.isList === true);
 
 /**
- * A dot-notation field path walked through a FieldMap — the one walk both compilers use:
+ * A dot-notation field path walked through a LensFieldMap — the one walk both compilers use:
  * - `direct`      the path ends on a declared field (`entry`), a column of `model` or a relation
  * - `json-path`   it reaches a Json column (`column`) and continues as a JSON path
  * - `bridge`      it crosses a bridge to another source
@@ -84,7 +84,11 @@ export type MapWalkResult =
   | { kind: 'past-scalar'; hops: MapHop[]; column: string }
   | { kind: 'fallback'; hops: MapHop[] };
 
-export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): MapWalkResult => {
+export const walkFieldPath = (
+  field: string,
+  map: LensFieldMap,
+  rootModel: string,
+): MapWalkResult => {
   const parts = pathSegments(field);
   const hops: MapHop[] = [];
   const from = { mapName: '', modelName: rootModel, relPath: [] };
@@ -118,14 +122,14 @@ export const walkFieldPath = (field: string, map: FieldMap, rootModel: string): 
 /** A field's walk, when a map and model are given. */
 export const walkWith = (
   field: string,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): MapWalkResult | undefined => (map && model ? walkFieldPath(field, map, model) : undefined);
 
 /** The declared entry a field path ends on, when the map declares it. */
 export const fieldEntry = (
   field: string,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): FieldMapEntry | undefined => {
   const walk = walkWith(field, map, model);
@@ -137,19 +141,19 @@ export const fieldEntry = (
  * every hop at which the path can be absent as a whole. Same licensing authority as
  * `isRequired` on a column.
  */
-export const optionalToOneHops = (field: string, map: FieldMap, rootModel: string): string[] =>
+export const optionalToOneHops = (field: string, map: LensFieldMap, rootModel: string): string[] =>
   walkFieldPath(field, map, rootModel)
     .hops.filter((hop) => !hop.entry.isList && hop.entry.isRequired === false)
     .map((hop) => hop.prefix);
 
 /** The model a path of relations leads to; null when a segment isn't a declared relation. */
-export const relationTarget = (field: string, map: FieldMap, model: string): string | null => {
+export const relationTarget = (field: string, map: LensFieldMap, model: string): string | null => {
   const walk = walkFieldPath(field, map, model);
   return walk.kind === 'direct' && walk.entry.kind === 'object' ? walk.entry.type : null;
 };
 
 /** Whether a field path crosses a bridge. */
-export const hitsBridge = (field: string, map: FieldMap, model: string): boolean =>
+export const hitsBridge = (field: string, map: LensFieldMap, model: string): boolean =>
   walkFieldPath(field, map, model).kind === 'bridge';
 
 /**
@@ -160,7 +164,7 @@ export const hitsBridge = (field: string, map: FieldMap, model: string): boolean
  */
 export const conditionTouchesBridge = (
   condition: Condition,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
   model: string | undefined,
 ): boolean =>
   !!map &&

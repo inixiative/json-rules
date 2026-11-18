@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { ArrayOperator, check, executePrismaPlan, Operator, toPrisma } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import type { GroupByStep, WhereStep } from '../src/toPrisma/types';
 
 // atMost/exactly compiled to `id IN (groupBy having …)` — but a root with ZERO matching
@@ -9,7 +9,7 @@ import type { GroupByStep, WhereStep } from '../src/toPrisma/types';
 // operators now compile to the COMPLEMENT of an atLeast step (NOT IN), which keeps
 // group-less roots; `atLeast 0` is everyone; missing condition/count throw as check() does.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

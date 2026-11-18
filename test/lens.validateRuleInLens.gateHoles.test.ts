@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -12,7 +12,7 @@ const withParent = (
 
 // FIX 3(a) — path (RHS) refs must be gated the same way as field (LHS) refs.
 describe('validateRuleInLens — path (RHS) refs are gated', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: {
       Article: {
         fields: {
@@ -68,7 +68,7 @@ describe('validateRuleInLens — path (RHS) refs are gated', () => {
 
 // FIX 3(b) — a window's filter (a full Condition) and orderBy must be gated too.
 describe('validateRuleInLens — window filter/orderBy are gated', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: {
       User: {
         fields: {

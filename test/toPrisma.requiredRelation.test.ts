@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { type FieldMap, toPrisma } from '../index';
+import { type LensFieldMap, toPrisma } from '../index';
 import { getWhere } from './fixtures/helpers';
 
 // A relation's existence is `is: {}`: present where it and every hop above it are, with no
 // `null` filter Prisma rejects on a required relation and no requiredness to know.
-const map = (bRequired?: boolean): FieldMap => ({
+const map = (bRequired?: boolean): LensFieldMap => ({
   models: {
     A: {
       fields: {
@@ -31,7 +31,7 @@ describe('existence of a relation compiles without null, required or not', () =>
 });
 
 test('a required Json column keeps its null filter: it can hold JSON null', () => {
-  const jsonMap: FieldMap = {
+  const jsonMap: LensFieldMap = {
     models: { A: { fields: { meta: { kind: 'scalar', type: 'Json', isRequired: true } } } },
   };
   const exists = getWhere(

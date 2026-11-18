@@ -1,6 +1,6 @@
-import type { FieldMap } from '../fieldMap/types';
+import { modelOf } from '@inixiative/field-map';
+import type { LensFieldMap } from '../fieldMap/types';
 import { toManyHop, walkFieldPath } from '../fieldMap/walk';
-import { modelOf } from '../own';
 import { notLeaf } from './logical';
 import { relationKeys } from './relationUtils';
 import { emit } from './sentinels';
@@ -23,7 +23,7 @@ type GroupPath = {
 /** The path a group step aggregates over; `rule` names the rule kind in errors. */
 export const groupPath = (
   field: string,
-  map: FieldMap,
+  map: LensFieldMap,
   model: string,
   rule: 'Count operators' | 'Aggregate rules',
 ): GroupPath => {
@@ -60,7 +60,7 @@ export const groupPath = (
         ? `'${walk.model}.${walk.column}' is an implicit many-to-many relation. ${rule} require an ` +
             `explicit join model with a FK — convert to an explicit @relation or use prisma.$queryRaw.`
         : `Cannot determine FK relationship between '${walk.model}' and '${walk.entry.type}'. ` +
-            `Ensure the FieldMap contains both sides of the relation.`,
+            `Ensure the LensFieldMap contains both sides of the relation.`,
     );
   }
   if (keys.length > 1)

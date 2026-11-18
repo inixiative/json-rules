@@ -1,9 +1,26 @@
-## 4.2.0 — what a builder reads: describeCategorization, per-kind aggregate modes, positive operators
+## 4.2.0 — the schema map from field-map, typed conditions, and what a builder reads
 
 Unreleased. Why: rules-builder 0.33 composes one editor per primitive (conditions, value
 expressions, categorizations) for Zealot's derived enrichments and Kingdom's Signet grants, and an
 editor may only offer what the engine admits, read from here, never a copy of its own.
 
+- **The schema map comes from [`@inixiative/field-map`](https://github.com/inixiative/field-map)**
+  (Aron, 2026-11-18: one schema package, "with prisma-map folded into it as the Prisma reader",
+  and typed paths; kept a minor: "Version 4 is brand new").
+  - `FieldMap` and `ModelEntry` are field-map's and are no longer exported here; json-rules reads a
+    map as a `LensFieldMap` (`LensModelEntry`): a `FieldMap`, its bridges stitched in
+    (`BridgeEntry`), a projection's `options` / `groupBy`. A field-map map passes with no cast.
+  - `own` / `modelOf` / `fieldOf` are field-map's; `src/own.ts` is gone.
+  - Stays here: `FieldKind`, `validateFieldMaps` / `assertValidFieldMaps` (path grammar),
+    `FieldMapSet`, bridges, stitch.
+  - `field-map` is a dependency, externalized, so the building blocks share one copy.
+- **Typed spellings over a literal map**: `ConditionOn<M, Model>` (field rules name a
+  `ScalarPath`; array and aggregate rules a `RelationPath`, their condition, window and
+  `aggregate.field` read the related model; `{ path }` reads the root), `ModelNarrowingOn`,
+  `LensNarrowingOn`; scope refs, bridges, `__actor.*` and brackets pass through as `UncheckedPath`.
+  Each is assignable to its untyped twin. `createLens` over a literal map refuses an anchor model
+  the map doesn't have. `test/types/conditionOn.test-d.ts` holds them, over
+  `test/fixtures/railsMap.ts` (written by `field-map generate`, checked against the rail client).
 - **`describeCategorization(categorization, lens)`**, as `describeValue` describes a value: the type
   `categorize` returns (every case's `then` and the `default` unified; a list of them under
   `match: 'all'`; nullable with no default), the paths its conditions and values read, its clock

@@ -7,13 +7,13 @@ import {
   validateRuleInLens,
   walkLensPath,
 } from '../index';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
 import type { Condition } from '../src/types';
 
 const col = { kind: 'scalar', type: 'String' } as const;
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     Conversation: {
       fields: {

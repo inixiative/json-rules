@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { projectPaths } from '../src/lens/projectPaths';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -125,7 +125,7 @@ describe('projectPaths — path-keyed projection (v2.4)', () => {
 });
 
 // Recursive same-model in ONE path: SpaceUser at depth 1 and depth 3 are independent visits.
-const recursiveMap: FieldMap = {
+const recursiveMap: LensFieldMap = {
   models: {
     User: {
       fields: {
@@ -212,7 +212,7 @@ describe('projectPaths — recursive same model on one path', () => {
 });
 
 // Enum narrowing across both layers.
-const enumMap: FieldMap = {
+const enumMap: LensFieldMap = {
   models: {
     Inquiry: {
       fields: {

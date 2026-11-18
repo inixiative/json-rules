@@ -1,4 +1,4 @@
-import type { FieldMap } from '../fieldMap/types';
+import type { LensFieldMap } from '../fieldMap/types';
 import type { CompileOptions, DateConfig } from '../types';
 
 export type ToSqlResult = {
@@ -12,7 +12,7 @@ export type BuilderState = {
   paramIndex: number;
   dateConfig?: DateConfig;
   // Map-aware state (only populated when map+model are provided)
-  map?: FieldMap;
+  map?: LensFieldMap;
   currentModel?: string;
   currentAlias?: string;
   joinCounter?: { n: number };

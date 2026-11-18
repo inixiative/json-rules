@@ -1,6 +1,6 @@
 import { resolveCaseInsensitive } from './engineGlobals';
 import { declaredEnumValues } from './fieldMap/entry';
-import type { FieldMap, FieldMapEntry } from './fieldMap/types';
+import type { FieldMapEntry, LensFieldMap } from './fieldMap/types';
 import { splitNull } from './number';
 import { EQUALITY_OPERATORS, EXACT_OPERATORS, NEGATED_OPERATORS } from './operatorCatalog';
 import type { Rule } from './types';
@@ -18,7 +18,7 @@ export const enumMatches = (
   rule: Rule,
   value: unknown,
   entry: FieldMapEntry,
-  map: FieldMap | undefined,
+  map: LensFieldMap | undefined,
 ): { values: string[]; matchesNull: boolean } | null => {
   if (!EXACT_OPERATORS.includes(rule.operator))
     throw new Error(

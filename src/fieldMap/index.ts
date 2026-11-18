@@ -5,10 +5,11 @@ export type {
   Bridge,
   BridgeCardinality,
   BridgeEndpoint,
-  FieldMap,
+  BridgeEntry,
   FieldMapEntry,
   FieldMapSet,
-  ModelEntry,
+  LensFieldMap,
+  LensModelEntry,
   SourceOption,
 } from './types';
 export { assertValidFieldMaps, validateFieldMaps } from './validate';

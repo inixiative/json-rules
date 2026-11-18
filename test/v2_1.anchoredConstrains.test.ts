@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { narrowRule } from '../src/lens/narrowRule';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -14,7 +14,7 @@ import type { Condition } from '../src/types';
 //   2. mapDefaults[X].models[M].where      — wherever M appears in map X
 //   3. root.relations[R]...relations[R].where — when descending into R (rule subtree)
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import type { Condition, FieldMap } from '../index';
+import type { Condition, LensFieldMap } from '../index';
 import { check, Operator, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
 
@@ -120,7 +120,7 @@ describe('NULL semantics — toSql shapes', () => {
   });
 });
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

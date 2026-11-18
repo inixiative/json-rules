@@ -1,8 +1,8 @@
+import { modelOf } from '@inixiative/field-map';
 import { pastScalarError, toManyHopError } from '../errors';
 import { type FieldShape, fieldShape } from '../fieldMap/shape';
-import type { FieldMap, FieldMapEntry } from '../fieldMap/types';
+import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { type MapHop, toManyHop, walkFieldPath } from '../fieldMap/walk';
-import { modelOf } from '../own';
 import { relationKeys } from '../toPrisma/relationUtils';
 import { escapeIdentifier } from './escape';
 import { quoteField } from './quoting';
@@ -83,7 +83,7 @@ const joinAlias = (state: BuilderState, fromAlias: string, hop: MapHop): string 
  * Returns null when the FK cannot be determined.
  */
 const buildJoinClause = (
-  map: FieldMap,
+  map: LensFieldMap,
   currentModel: string,
   currentAlias: string,
   fieldEntry: FieldMapEntry,

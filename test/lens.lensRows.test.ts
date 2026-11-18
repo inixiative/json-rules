@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import {
   type Condition,
-  type FieldMap,
   type Lens,
+  type LensFieldMap,
   type LensNarrowing,
   projectRows,
   toLensSelect,
 } from '../index';
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

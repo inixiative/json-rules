@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { ArrayOperator, check, Operator, toPrisma } from '../index';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
-import type { Bridge, FieldMap } from '../src/fieldMap/types';
+import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import type { GroupByStep } from '../src/toPrisma/types';
 import { getWhere } from './fixtures/helpers';
 
@@ -139,7 +139,7 @@ describe('toPrisma never nests a constant under OR or NOT', () => {
 // sentinel used to be dropped by Prisma, silently UNDER-fetching; folding it as `true`
 // over-fetches the whole disjunction, which is the contract check() relies on.
 describe('toPrisma bridge sentinel inside `any` over-fetches', () => {
-  const prismaMap: FieldMap = {
+  const prismaMap: LensFieldMap = {
     models: {
       FanUser: {
         fields: {
@@ -150,7 +150,7 @@ describe('toPrisma bridge sentinel inside `any` over-fetches', () => {
       },
     },
   };
-  const salesforceMap: FieldMap = {
+  const salesforceMap: LensFieldMap = {
     models: {
       Contact: {
         fields: {
@@ -187,7 +187,7 @@ describe('toPrisma bridge sentinel inside `any` over-fetches', () => {
 // must not build an arm twice (duplicate steps) and must leave every emitted step ref
 // pointing at the step that produced it.
 describe('toPrisma folding keeps groupBy step state coherent', () => {
-  const map: FieldMap = {
+  const map: LensFieldMap = {
     models: {
       User: {
         fields: {

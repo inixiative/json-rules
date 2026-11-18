@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { ArrayOperator, Operator } from '../src/operator';
@@ -10,7 +10,7 @@ import { ArrayOperator, Operator } from '../src/operator';
 // validation time. (toPrisma/check still execute against the base lens —
 // they're not the boundary; validateRuleInLens is.)
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

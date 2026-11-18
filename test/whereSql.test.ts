@@ -25,7 +25,7 @@ const maps: FieldMapSet['maps'] = {
           deletedAt: { kind: 'scalar', type: 'DateTime' },
           meta: { kind: 'scalar', type: 'Json' },
           tags: { kind: 'scalar', type: 'String', isList: true },
-          toString: { kind: 'scalar' as const, type: 'String' },
+          toString: { kind: 'scalar' as const, type: 'String' as const },
           brandReferenceRequestFanUsers: {
             kind: 'object',
             type: 'BrandReferenceRequestFanUser',

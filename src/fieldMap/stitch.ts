@@ -1,4 +1,4 @@
-import { modelOf, own } from '../own';
+import { type Draft, modelOf, own } from '@inixiative/field-map';
 import { endpointKey } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
@@ -6,8 +6,8 @@ import type { FieldMapSet } from './types.ts';
  *  after the other endpoint (`<fieldMap>:<Model>`). Throws on a missing endpoint or `on` field, a
  *  self-bridge, or a bridge stitched twice. */
 export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
-  const out: FieldMapSet = {
-    maps: structuredClone(set.maps),
+  const out: { maps: Draft<FieldMapSet['maps']>; bridges: FieldMapSet['bridges'] } = {
+    maps: structuredClone(set.maps) as Draft<FieldMapSet['maps']>,
     bridges: set.bridges ? structuredClone(set.bridges) : undefined,
   };
 

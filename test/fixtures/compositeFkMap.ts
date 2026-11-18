@@ -1,10 +1,10 @@
-import type { FieldMap } from '../../index';
+import type { LensFieldMap } from '../../index';
 
 /**
  * Order / OrderItem with a composite FK (orderId + productId → id + code).
  * Tests multi-condition ON clauses in JOINs and count-step error handling.
  */
-export const compositeFkMap: FieldMap = {
+export const compositeFkMap: LensFieldMap = {
   models: {
     Order: {
       fields: {

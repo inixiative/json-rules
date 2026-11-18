@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { assertValidNarrowing, validateNarrowing } from '../src/lens/narrowing';
 import type { Lens, LensNarrowing } from '../src/lens/types';
 import { Operator } from '../src/operator';
@@ -9,7 +9,7 @@ import { Operator } from '../src/operator';
 // from the layers above it. Catches developer errors loudly at construction
 // instead of silently producing empty effective sets.
 
-const map: FieldMap = {
+const map: LensFieldMap = {
   models: {
     User: {
       fields: {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldMap } from '../src/fieldMap/types';
+import type { LensFieldMap } from '../src/fieldMap/types';
 import { assertValidFieldMaps } from '../src/fieldMap/validate';
 
 describe('validateFieldMaps', () => {
@@ -116,7 +116,7 @@ describe('validateFieldMaps — stitched bridges', () => {
 
 describe('assertValidFieldMaps — a single map', () => {
   test('passes for clean map', () => {
-    const fm: FieldMap = {
+    const fm: LensFieldMap = {
       models: {
         FanUser: { fields: { id: { kind: 'scalar', type: 'String' } } },
       },
@@ -125,7 +125,7 @@ describe('assertValidFieldMaps — a single map', () => {
   });
 
   test('names the map in each issue', () => {
-    const fm: FieldMap = {
+    const fm: LensFieldMap = {
       models: {
         FanUser: { fields: { 'a.b': { kind: 'scalar', type: 'String' } } },
       },

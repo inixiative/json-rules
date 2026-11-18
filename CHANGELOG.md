@@ -1,6 +1,6 @@
 ## 4.2.0 — the schema map from field-map, typed conditions, and what a builder reads
 
-Unreleased. Why: rules-builder 0.33 composes one editor per primitive (conditions, value
+Why: rules-builder 0.33 composes one editor per primitive (conditions, value
 expressions, categorizations) for Zealot's derived enrichments and Kingdom's Signet grants, and an
 editor may only offer what the engine admits, read from here, never a copy of its own.
 

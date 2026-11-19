@@ -769,9 +769,10 @@ for real rows (a pseudo record a grant is checked against), so a rule passes onl
 pins. `check()` only; the compilers read real columns.
 
 `validateRule(rule, { positive: true })` refuses every shape that can hold on a missing value
-(`if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists`), so a rule
-checked that way passes only on what the row carries. A rule that means "no value" says `equals
-null`.
+(`if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists`) and every
+null check (`equals null`, `in` with null among its values), so a rule checked that way passes only
+on what the row carries. A null check holds on every row without a value, which is how a rule ends
+up granting everything; name the value that is there instead (a kind, an explicit `'none'`).
 
 ## Engine Globals
 

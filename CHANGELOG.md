@@ -12,6 +12,10 @@ by a key; it is the presented credential.
   bridge only and refuses an `on` on one side or a supplied bridge that is not one-to-one;
   `indexBridges` skips a supplied bridge; a source read across one fetches no local key.
 - A type change for code that read `endpoint.on` off any `Bridge`: narrow with `isJoinedBridge`.
+- **The positive gate refuses a null check** (`equals null`, `in` with null, a `{ value: null }`
+  literal). Aron 2026-11-19: "It's just too easy to make a role that gives you access to
+  everything. If you have a null check, everything that matches that null check matches." Name the
+  value that is there instead. `check` without `{ positive }` still evaluates them.
 
 ## 4.2.0 — the schema map from field-map, typed conditions, and what a builder reads
 

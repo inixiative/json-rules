@@ -195,6 +195,20 @@ export const validateValueSource = (source: unknown): ValidationResult => {
 
 const NOT_POSITIVE_SHAPES = ['if', 'array', 'aggregate'];
 
+// A rule that names a missing value: `equals null`, or `in` with null among its values. It holds on
+// every row without one, so it is not positive (Aron 2026-11-19: "If you have a null check,
+// everything that matches that null check matches").
+const namesMissingValue = (node: Record<string, unknown>): boolean => {
+  const value =
+    isPlainObject(node.value) && 'value' in (node.value as object)
+      ? (node.value as { value: unknown }).value
+      : node.value;
+  if (!('value' in node)) return false;
+  if (node.operator === 'equals') return value === null;
+  if (node.operator === 'in') return Array.isArray(value) && value.includes(null);
+  return false;
+};
+
 const validatePositive = (condition: unknown, context: ValidationContext): void =>
   visitCondition(condition as Condition, (node) => {
     const shape = conditionShape(node);
@@ -208,6 +222,13 @@ const validatePositive = (condition: unknown, context: ValidationContext): void 
         '$',
         'notPositive',
         `${shape === 'field' || shape === 'date' ? operator : shape} can hold on a missing value`,
+      );
+    else if (shape === 'field' && namesMissingValue(node as Record<string, unknown>))
+      pushIssue(
+        context,
+        '$',
+        'notPositive',
+        `${operator} null holds on every row without a value: name the value that is there`,
       );
     return false;
   });

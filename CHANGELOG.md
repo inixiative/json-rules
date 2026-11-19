@@ -1,3 +1,18 @@
+## 4.3.0 — supplied bridges: a bridge with no join
+
+Why: permissions reads who is acting as a bridge to an `actor` map (`actor:User.email`, Aron
+2026-11-19: "a different type of bridging where it doesn't need the `on`"). The actor is not found
+by a key; it is the presented credential.
+
+- **`Bridge` is `JoinedBridge | SuppliedBridge`.** `JoinedBridge` is the bridge as it was
+  (`endpoints` carry `on`, now `JoinedBridgeEndpoint`). `SuppliedBridge` has endpoints with no `on`
+  and is `oneToOne`: the caller puts the far row on the record under its endpoint key.
+  `BridgeEndpoint` is now `{ fieldMap, model }`.
+- **`isJoinedBridge(bridge)`** tells them apart. `stitchFieldMaps` checks join fields for a joined
+  bridge only and refuses an `on` on one side or a supplied bridge that is not one-to-one;
+  `indexBridges` skips a supplied bridge; a source read across one fetches no local key.
+- A type change for code that read `endpoint.on` off any `Bridge`: narrow with `isJoinedBridge`.
+
 ## 4.2.0 — the schema map from field-map, typed conditions, and what a builder reads
 
 Why: rules-builder 0.33 composes one editor per primitive (conditions, value

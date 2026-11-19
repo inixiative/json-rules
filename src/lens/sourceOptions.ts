@@ -1,5 +1,5 @@
 import { fieldOf, own } from '@inixiative/field-map';
-import { endpointKey } from '../fieldMap/endpointKey';
+import { endpointKey, isJoinedBridge } from '../fieldMap/endpointKey';
 import { isRelationEntry } from '../fieldMap/entry';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { LensFieldMap, SourceOption } from '../fieldMap/types';
@@ -181,20 +181,27 @@ export const sortOptions = (byKey: Map<string, SourceOption>): SourceOption[] =>
   });
 
 // The local column a read across a bridge needs: the near endpoint's `on` key, under the local
-// relations the read crosses before the bridge ('org.crm:Account.tier' → 'org.crmId').
-const bridgeKey = (lens: Lens, map: LensFieldMap, mapName: string, model: string, read: string) => {
+// relations the read crosses before the bridge ('org.crm:Account.tier' → 'org.crmId'). A supplied
+// bridge needs none (null): its far row comes on the record.
+const bridgeKey = (
+  lens: Lens,
+  map: LensFieldMap,
+  mapName: string,
+  model: string,
+  read: string,
+): string | null => {
   const { hops } = walkFieldPath(read, map, model);
   const parts = read.split('.');
   const near = hops.at(-1)?.entry.type ?? model;
   const farKey = parts[hops.length];
-  for (const { endpoints } of lens.bridges ?? []) {
-    const [a, b] = endpoints;
+  for (const bridge of lens.bridges ?? []) {
+    const [a, b] = bridge.endpoints;
     for (const [here, there] of [
       [a, b],
       [b, a],
-    ])
+    ] as const)
       if (here.fieldMap === mapName && here.model === near && endpointKey(there) === farKey)
-        return [...parts.slice(0, hops.length), here.on].join('.');
+        return 'on' in here ? [...parts.slice(0, hops.length), here.on].join('.') : null;
   }
   throw new LensRefusal(`'${read}' crosses no bridge the lens declares on ${near}`, 'not_in_lens');
 };
@@ -210,9 +217,12 @@ export const localReads = (
   const map = resolveFieldMap(lens, mapName, 'toPrisma') as LensFieldMap;
   return [
     ...new Set(
-      reads.map((read) =>
-        hitsBridge(read, map, model) ? bridgeKey(lens, map, mapName, model, read) : read,
-      ),
+      reads.flatMap((read) => {
+        const local = hitsBridge(read, map, model)
+          ? bridgeKey(lens, map, mapName, model, read)
+          : read;
+        return local === null ? [] : [local];
+      }),
     ),
   ];
 };

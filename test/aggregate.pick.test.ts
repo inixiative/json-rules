@@ -159,6 +159,41 @@ describe('pick in a rule', () => {
   });
 });
 
+describe('a pick that cuts its window needs an order', () => {
+  const unordered = (window: Record<string, unknown>) => {
+    const { orderBy: _order, ...rest } = jobTitles;
+    return { ...rest, ...window };
+  };
+  const codes = (result: { errors: { code: string; path: string }[] }) =>
+    result.errors.map((e) => `${e.code} ${e.path}`);
+
+  test.each<[string, Record<string, unknown>]>([
+    ['take 1', { take: 1 }],
+    ['take 3', { take: 3 }],
+    ['skip 1', { skip: 1 }],
+    ['an empty orderBy', { take: 1, orderBy: [] }],
+  ])('%s without orderBy is refused, as a rule and as a value', (_, window) => {
+    const value = unordered(window) as unknown as ValueExpression;
+    expect(codes(validateValue(value))).toEqual(['pick_needs_order_by $.orderBy']);
+    expect(() => inferValueType(value)).toThrow('$.orderBy: A pick with take or skip');
+    const rule = { ...unordered(window), operator: 'contains', value: 'CTO' };
+    expect(codes(validateRule(rule))).toContain('pick_needs_order_by $.orderBy');
+    const nested = { all: [rule] };
+    expect(codes(validateRule(nested))).toContain('pick_needs_order_by $.all[0].orderBy');
+  });
+
+  test('with an orderBy it is accepted', () => {
+    expect(validateValue(pick({ take: 1 })).ok).toBe(true);
+    expect(validateValue(pick({ take: 2, skip: 1 })).ok).toBe(true);
+    expect(validateRule({ ...jobTitles, take: 1, operator: 'equals', value: 'CTO' }).ok).toBe(true);
+  });
+
+  test('every value of the window (no take, no skip) needs none', () => {
+    expect(validateValue(unordered({}) as unknown as ValueExpression).ok).toBe(true);
+    expect(validateRule({ ...unordered({}), operator: 'contains', value: 'CTO' }).ok).toBe(true);
+  });
+});
+
 describe('pick on the compiled rails: refused when the rule is validated', () => {
   const rule = {
     ...jobTitles,

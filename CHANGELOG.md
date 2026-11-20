@@ -16,6 +16,11 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   `negate()` adds the "no value" arm, as for `avg`. `inferValueType` / `describeValue` type it as
   the column's kind, nullable for take 1, else a list; `coerceValue` stamps it over a DateTime
   column.
+- **A pick that cuts its window needs an `orderBy`.** With `take` or `skip` and no (or an empty)
+  `orderBy`, "the first row" is whichever came first in the input, so `validateRule` and
+  `validateValue` (and so `inferValueType` / `describeValue`) refuse it: `pick_needs_order_by` at
+  the rule's `orderBy` path. A pick of every value (no `take`, no `skip`) needs none: its list
+  pick's `contains` / `notContains` don't read the order.
 - **`pick` is check() only, refused when the rule is validated.** It is what its window orders, and
   neither compiler compiles an ordered window: `toSql` compiles no window and no relation aggregate,
   and a Prisma `where` has no "first row of a relation by X" read. `validateRule({ target })`

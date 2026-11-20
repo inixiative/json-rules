@@ -242,7 +242,8 @@ values, as SQL's `AVG`, and in an aggregate rule), `count` (the rows; with `aggr
 `min` and `max` (numbers or dates, the value as stored; null over no rows), and `distinct`
 (strings, enums, dates, booleans or numbers: the values without repeats, first seen first, NULLs
 skipped; `[]` over no rows), and `pick` (any kind: the rows' values themselves, in the window's
-order, NULLs skipped — one value for `take: 1`, null over no row; a list otherwise, `[]` over none).
+order, NULLs skipped — one value for `take: 1`, null over no row; a list otherwise, `[]` over none;
+a pick with `take` or `skip` needs an `orderBy`, refused as `pick_needs_order_by` without one).
 The window runs first (filter → order → skip → take), then `condition`. An aggregate rule compares
 `sum`, `avg` and `pick`.
 

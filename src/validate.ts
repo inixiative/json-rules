@@ -771,6 +771,22 @@ const validateAggregateReads = (
     );
   }
 
+  // A pick that cuts its window (take / skip) picks by the window's order: with none, "the first
+  // row" is whichever came first in the input. Every value (no take, no skip) needs no order —
+  // a list pick's contains / notContains don't read it.
+  const orderBy = rule.orderBy;
+  if (
+    agg.mode === 'pick' &&
+    (rule.take !== undefined || rule.skip !== undefined) &&
+    !(Array.isArray(orderBy) && orderBy.length > 0)
+  )
+    pushIssue(
+      context,
+      `${path}.orderBy`,
+      'pick_needs_order_by',
+      'A pick with take or skip picks by the window order: give it an orderBy',
+    );
+
   if ('condition' in rule && rule.condition !== undefined) {
     if (context.target === 'toSql') {
       pushIssue(

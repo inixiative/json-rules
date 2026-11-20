@@ -1,5 +1,10 @@
 import { fieldOf } from '@inixiative/field-map';
-import { aggregatePathUnsupported, unknownAggregateMode, windowUnsupported } from '../errors';
+import {
+  aggregateModeNotCompiled,
+  aggregatePathUnsupported,
+  unknownAggregateMode,
+  windowUnsupported,
+} from '../errors';
 import { checkField, hasNoOperand } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import type { LensFieldMap } from '../fieldMap/types';
@@ -10,6 +15,7 @@ import {
   AGGREGATE_MODES,
   EQUALITY_OPERATORS,
   type FieldKind,
+  isCompiledAggregateMode,
   NEGATED_OPERATORS,
   NEGATED_RANGE_OPERATORS,
   NO_VALUE_OPERATORS,
@@ -58,6 +64,11 @@ export const buildAggregateRule = (
   options?: ToPrismaOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
+    throw unknownAggregateMode(rule.aggregate.mode);
+  // validateRule refuses it first (`unsupported_prisma_aggregate_mode`).
+  if (!isCompiledAggregateMode(rule.aggregate.mode))
+    throw aggregateModeNotCompiled(rule.aggregate.mode, 'toPrisma');
   if (hasPath(rule)) throw aggregatePathUnsupported(rule.path);
   if (hasWindow(rule)) {
     const rewritten = windowRewrite(rule);
@@ -72,8 +83,6 @@ export const buildAggregateRule = (
     );
   }
 
-  if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
-    throw unknownAggregateMode(rule.aggregate.mode);
   if (!rule.aggregate.field) throw aggregateFieldRequired();
 
   return buildAggregateStep(

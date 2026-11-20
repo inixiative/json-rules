@@ -11,6 +11,10 @@ export const hasWindow = (rule: WindowFields): boolean =>
   rule.take !== undefined ||
   rule.skip !== undefined;
 
+/** Whether a `pick` returns one value: its window takes one row. Any other `take`, or none, picks
+ *  a list. */
+export const picksOne = (rule: WindowFields): boolean => rule.take === 1;
+
 const conditionOpAndField = (condition: unknown): { op: string; field: string } | null => {
   if (typeof condition !== 'object' || condition === null) return null;
   const c = condition as Record<string, unknown>;
@@ -99,12 +103,17 @@ export const applyWindow = <T>(
 /**
  * Records sorted by an `OrderBy`, the way every rail orders a window: each key in turn, read as an
  * own-property path, `dir` order, a NULL (or absent) value last in either direction; ties keep their
- * input order. A new array; the input is not mutated.
+ * input order. A new array; the input is not mutated. `read` reads a key off a record (a lens
+ * reads a Decimal column as its number).
  */
-export const orderRecords = <T>(items: readonly T[], orderBy: OrderBy): T[] =>
+export const orderRecords = <T>(
+  items: readonly T[],
+  orderBy: OrderBy,
+  read: (item: T, field: string) => unknown = readOwnPath,
+): T[] =>
   [...items].sort((a, b) => {
     for (const { field, dir } of orderBy) {
-      const order = compareNullsLast(readOwnPath(a, field), readOwnPath(b, field), dir);
+      const order = compareNullsLast(read(a, field), read(b, field), dir);
       if (order !== 0) return order;
     }
     return 0;

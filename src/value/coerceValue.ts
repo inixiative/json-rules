@@ -6,9 +6,9 @@ import { inferValueType } from './inferValueType';
 import { assertValidValue } from './validateValue';
 import { ValueTypeIssue } from './valueTypeIssue';
 
-const READS_VALUES = ['distinct', 'min', 'max'];
+const READS_VALUES = ['distinct', 'min', 'max', 'pick'];
 
-// A distinct / min / max over a DateTime column reads its values as dates, so rows that carry a
+// A distinct / min / max / pick over a DateTime column reads its values as dates, so rows that carry a
 // date as an ISO string (plain JSON) order and dedupe as dates. The kind comes from the lens,
 // through inferValueType; an aggregate it can't type is left as it is.
 const stampAggregate = (node: AggregateValue, lens: Lens | LensNarrowing): AggregateValue => {

@@ -618,6 +618,7 @@ type ModelDefaultNarrowing = {
   where?: Condition;                                      // data: row-level filter (filter-first)
   sources?: Record<string, SourceEntry>;                  // per-field option sources (see README)
   relations?: Record<string, ModelNarrowing>;             // turn these on wherever the model is visited
+  orderBy?: { field: string; dir: 'asc' | 'desc' }[];     // a to-many relation's row order (numbers, dates)
 };
 
 /** A `sources` entry: a bare eligibility Condition, a spec with a label and/or groupBy, or —
@@ -904,6 +905,17 @@ dropped (a to-one row becomes `null`). With
 those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the clamps as the
 database does, for any rule the lens admits; that output carries hidden values and is never for a viewer. See the README,
 "Fetching Under a Lens".
+
+A to-many relation's rows come back in its `orderBy` (on the relation object, or on the model
+default for every to-many visit of the model): `toLensSelect` writes it as Prisma's `orderBy` (a
+nullable column `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, so rows fetched
+in any order project as the database returns them. It is a window's order: each key in turn, a NULL
+last either way, ties kept as fetched. Ordering narrows nothing, so a later layer's replaces an
+earlier one's (and, in one layer, the path's the model default's); like everything a layer names,
+its columns must be ones its parent shows. Only number and date columns order a relation: a string
+column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
+disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not
+the lens's.
 
 ```ts
 const where = await executePrismaPlan(toPrisma(true, { lens: narrowing, now }), prisma);

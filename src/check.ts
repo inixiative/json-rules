@@ -1,5 +1,5 @@
 import { isObject, some } from 'lodash-es';
-import { checkDate } from './date';
+import { checkDate, coercionZone } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import {
   ambiguousCondition,
@@ -34,7 +34,7 @@ import type {
   WindowFields,
 } from './types';
 import { coerceAggregateValue } from './value/coerceAggregateValue';
-import { applyWindow } from './window';
+import { applyWindow, picksOne } from './window';
 
 /** `bindings`: the caller's values, read by `{ bind }`. The rest is the clock and zone. */
 export type CheckOptions = {
@@ -232,6 +232,19 @@ export const sumOrAverage = (
   return numbers.length === 0 ? null : sum / numbers.length;
 };
 
+/** The values a `pick` returns: each item's `aggregate.field` (or the item itself), in the window's
+ *  order, read through `read`; NULLs skipped, as every mode skips them. One value (null over none)
+ *  for `take: 1`, else the list (`[]` over none). */
+export const pickValues = (
+  node: WindowFields & { field: string },
+  items: unknown[],
+  itemField: string | undefined,
+  read: (raw: unknown) => unknown,
+): unknown => {
+  const values = aggregateValues(items, node.field, itemField, read);
+  return picksOne(node) ? (values[0] ?? null) : values;
+};
+
 const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
   const { mode, field: itemField } = condition.aggregate;
   // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
@@ -239,7 +252,15 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   const items = aggregateItems(condition, opts);
   // An aggregate compares like a field whose value it computes.
   const { coerceType, ...comparison } = condition;
-  const result = sumOrAverage(mode, items, condition.field, itemField, coerceType);
+  const result =
+    mode === 'pick'
+      ? pickValues(
+          condition,
+          items,
+          itemField,
+          coerceAggregateValue(coerceType, coercionZone(coerceType, opts)),
+        )
+      : sumOrAverage(mode, items, condition.field, itemField, coerceType);
   const labelled = { ...comparison, field: `${condition.field} ${mode}` } as unknown as Rule;
   return checkField(labelled, opts.scopes, opts.bindings, opts, { value: result });
 };

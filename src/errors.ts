@@ -76,6 +76,12 @@ export const unorderedOperand = (operator: string, value: unknown): Error | null
 export const unknownAggregateMode = (mode: unknown): Error =>
   new Error(`aggregate.mode must be one of ${AGGREGATE_MODES.join(' / ')}, not '${String(mode)}'`);
 
+/** An aggregate rule in a mode a compiler has no form for (`pick`): check() evaluates it. */
+export const aggregateModeNotCompiled = (mode: unknown, target: 'toSql' | 'toPrisma'): Error =>
+  new Error(
+    `aggregate.mode '${String(mode)}' has no ${target}() form — evaluate it in memory with check().`,
+  );
+
 /** A value expression's aggregate mode outside VALUE_AGGREGATE_MODES. */
 export const unknownValueAggregateMode = (mode: unknown): Error =>
   new Error(

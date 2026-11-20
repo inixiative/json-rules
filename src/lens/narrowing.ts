@@ -2,6 +2,7 @@ import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { declaredEnumValues, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
+import { type FieldKind, ORDERED_VALUE_KINDS } from '../operatorCatalog';
 import type { Condition } from '../types.ts';
 import {
   throwIfInvalid,
@@ -165,6 +166,71 @@ const hiddenBy = (
   return null;
 };
 
+// A relation's row order: each key a number or date column of the model its parent shows. A string
+// column is refused, as min / max refuse one: code-unit order in memory would disagree with the
+// database's collation.
+const validateOrderBy = (
+  orderBy: unknown,
+  modelFields: Record<string, FieldMapEntry>,
+  ancestors: readonly ModelNarrowing[],
+  defaults: ModelDefaultNarrowing | undefined,
+  position: string,
+  errors: ValidationIssue[],
+): void => {
+  if (orderBy === undefined) return;
+  const at = `${position}.orderBy`;
+  if (!Array.isArray(orderBy)) {
+    errors.push({
+      path: at,
+      code: 'invalid_order_by',
+      message: 'orderBy must be an array of { field, dir }',
+    });
+    return;
+  }
+  orderBy.forEach((key: unknown, index) => {
+    const { field, dir } = (typeof key === 'object' && key !== null ? key : {}) as {
+      field?: unknown;
+      dir?: unknown;
+    };
+    if (typeof field !== 'string' || (dir !== 'asc' && dir !== 'desc')) {
+      errors.push({
+        path: `${at}[${index}]`,
+        code: 'invalid_order_by',
+        message: "each orderBy item must be { field: string, dir: 'asc' | 'desc' }",
+      });
+      return;
+    }
+    const entry = own(modelFields, field);
+    if (!entry) {
+      errors.push({
+        path: `${at}[${index}]`,
+        code: 'not_in_lens',
+        message: `field '${field}' not on model`,
+      });
+      return;
+    }
+    if (
+      entry.kind !== 'scalar' ||
+      entry.isList ||
+      !ORDERED_VALUE_KINDS.includes(entry.type as FieldKind)
+    ) {
+      errors.push({
+        path: `${at}[${index}]`,
+        code: 'wrong_kind',
+        message: `'${field}' is not a number or date column: a relation's rows order by numbers and dates`,
+      });
+      return;
+    }
+    const hidden = hiddenBy(field, false, ancestors, defaults);
+    if (hidden)
+      errors.push({
+        path: `${at}[${index}]`,
+        code: 'not_visible',
+        message: `'${field}' ${hidden}`,
+      });
+  });
+};
+
 const validateModelNode = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: ModelNarrowing[],
@@ -264,6 +330,14 @@ const validateModelNode = (
   }
 
   validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
+  validateOrderBy(
+    narrowing.orderBy,
+    modelFields,
+    ancestorChain,
+    sameLayerDefaults,
+    position,
+    errors,
+  );
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     const sourced = own(modelFields, field);

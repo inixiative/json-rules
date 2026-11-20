@@ -5,7 +5,7 @@ import type { FieldMapEntry, LensFieldMap, LensModelEntry } from '../fieldMap/ty
 import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
-import type { Condition } from '../types.ts';
+import type { Condition, OrderBy } from '../types.ts';
 import type { ValidationIssue } from '../validate';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
@@ -54,6 +54,9 @@ export type VisitEffect = {
   relations: Set<string>;
   /** Every relation field of the visit's model: what `picks` never governs. */
   relationFields: Set<string>;
+  /** The order this visit's rows come back in when it is a to-many relation: the last `orderBy`
+   *  declared (a later layer over an earlier, the path over the model default), or null. */
+  orderBy: OrderBy | null;
 };
 
 /** Normalize a `groupBy` declaration to its axes array (a bare string is one axis). */
@@ -270,6 +273,7 @@ const accumulateInto = (
   ownDefault: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
+  if (n.orderBy?.length) out.orderBy = n.orderBy;
   if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
@@ -557,6 +561,7 @@ export const resolveVisit = (
     sourcesFromMapDefaults: new Map(),
     relations: new Set(),
     relationFields: new Set(),
+    orderBy: null,
   };
 
   const fieldMap: LensFieldMap | undefined = own(policy.lens.maps, mapName);

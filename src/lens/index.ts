@@ -8,6 +8,7 @@ export { describeRule } from './describeRule';
 export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
 export type {
+  LensOrderBy,
   LensRelationSelect,
   LensSelect,
   LensSelectOptions,

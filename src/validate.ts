@@ -13,6 +13,7 @@ import {
 } from './dateExpr';
 import { resolveCaseInsensitive } from './engineGlobals';
 import {
+  aggregateModeNotCompiled,
   aggregatePathUnsupported,
   ambiguousCondition,
   conditionRequired,
@@ -33,15 +34,16 @@ import { isOrderedValue, readOrderedPair } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
   AGGREGATE_MODES,
-  AGGREGATE_OPERATORS,
   CONTAINS_OPERATORS,
   catalogEntry,
   countsInAStep,
   DAY_NAMES,
   EQUALITY_OPERATORS,
   FieldKind,
+  getAggregateOperators,
   getValueShape,
   HOLDS_ON_ABSENT_OPERATORS,
+  isCompiledAggregateMode,
   isDayName,
   isFieldKind,
   isOperatorSupportedForTarget,
@@ -66,7 +68,7 @@ import { conditionShape, visitCondition } from './traverse';
 import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
 import { coerceMismatch, coerces } from './value/aggregateType';
 import { rowRef, SOURCE_FORMS } from './valueSource';
-import { hasWindow, windowRewrite } from './window';
+import { hasWindow, picksOne, windowRewrite } from './window';
 
 export type ValidationIssue = {
   path: string;
@@ -159,12 +161,12 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
         'invalid_coerce_type',
         `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
       );
-    else if (!['distinct', 'min', 'max'].includes(mode as string))
+    else if (!['distinct', 'min', 'max', 'pick'].includes(mode as string))
       pushIssue(
         context,
         '$.coerceType',
         'unexpected_coerce_type',
-        'coerceType reads the values sum, avg, distinct, min and max read',
+        'coerceType reads the values sum, avg, distinct, min, max and pick read',
       );
   }
   if (value.caseInsensitive !== undefined) {
@@ -709,6 +711,9 @@ const validateGroupStep = (
   const model = context.scopeModels[depth - 1];
   if (context.target !== 'toPrisma' || !context.map || !model || typeof rule.field !== 'string')
     return;
+  // A mode with no compiled form is refused by its mode; it builds no step to check.
+  const mode = (rule.aggregate as { mode?: unknown } | undefined)?.mode;
+  if (kind === 'Aggregate rules' && !isCompiledAggregateMode(mode)) return;
   let target: string;
   try {
     target = groupPath(rule.field, context.map, model, kind).target;
@@ -821,6 +826,58 @@ const validateAggregateCoercion = (
     pushIssue(context, at, 'coerce_kind_mismatch', coerceMismatch(stored, coerceType));
 };
 
+// A pick reads each picked value as its coerceType when it names one: any kind.
+const validatePickCoercion = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+): void => {
+  if (rule.coerceType !== undefined && !isFieldKind(rule.coerceType))
+    pushIssue(
+      context,
+      `${path}.coerceType`,
+      'invalid_coerce_type',
+      `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
+    );
+};
+
+// A pick compares the picked value as a field holding it is compared: by the operator's own value
+// shape, a null against equals / notEquals the is-null sentinel. A list pick's contains /
+// notContains ask for a member, any one value.
+const validatePickValue = (
+  rule: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+  depth: number,
+  list: boolean,
+): void => {
+  const operator = rule.operator as Operator;
+  if (NO_VALUE_OPERATORS.includes(operator)) {
+    forbidValueAndPath(rule, path, context);
+    return;
+  }
+  if (validateSource(rule, path, context, depth, true) === null) return;
+  if (typeof rule.path === 'string' || typeof rule.bind === 'string') return;
+  if (list) {
+    if (Array.isArray(rule.value))
+      pushIssue(
+        context,
+        `${path}.value`,
+        'invalid_aggregate_value',
+        `'${operator}' asks whether the picked values hold one value, not a list`,
+      );
+    return;
+  }
+  if (rule.value === null && EQUALITY_OPERATORS.includes(operator)) return;
+  validateValueShape(
+    getValueShape(operator, 'field'),
+    rule.value,
+    operator,
+    `${path}.value`,
+    context,
+  );
+};
+
 const validateAggregateRule = (
   rule: Record<string, unknown>,
   path: string,
@@ -836,16 +893,33 @@ const validateAggregateRule = (
       'invalid_aggregate_mode',
       unknownAggregateMode(agg.mode).message,
     );
+  else if (context.target !== 'check' && !isCompiledAggregateMode(agg.mode))
+    pushIssue(
+      context,
+      `${path}.aggregate.mode`,
+      `unsupported_${targetSlug(context.target)}_aggregate_mode`,
+      aggregateModeNotCompiled(agg.mode, context.target).message,
+    );
 
-  validateAggregateCoercion(rule, path, context, depth);
+  const pick = agg.mode === 'pick';
+  if (pick) validatePickCoercion(rule, path, context);
+  else validateAggregateCoercion(rule, path, context, depth);
 
-  if (!AGGREGATE_OPERATORS.includes(rule.operator as Operator)) {
+  const list = pick && !picksOne(rule as WindowFields);
+  const operators = getAggregateOperators(pick ? 'pick' : undefined, { list });
+  if (!operators.includes(rule.operator as Operator)) {
     pushIssue(
       context,
       `${path}.operator`,
       'invalid_aggregate_operator',
-      `Aggregate rules only support: ${AGGREGATE_OPERATORS.join(', ')}`,
+      pick
+        ? `A ${list ? 'list pick (any take but 1)' : 'pick'} only supports: ${operators.join(', ')}`
+        : `Aggregate rules only support: ${operators.join(', ')}`,
     );
+    return;
+  }
+  if (pick) {
+    validatePickValue(rule, path, context, depth, list);
     return;
   }
   if (NO_VALUE_OPERATORS.includes(rule.operator as string)) {

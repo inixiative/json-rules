@@ -1,3 +1,38 @@
+## 4.4.0 — `pick`: the window's values; a lens orders a to-many relation
+
+Why: a window could filter, order and cut a relation's rows, but a value over it could only be an
+aggregate of them, so neither a template nor a rule could say "the winning value" or "the top 3
+values". Aron: "a pick-N aggregate on the existing window (`orderBy` / `take` / `skip` / `filter`)
+that returns the picked values: one value for take 1, a list otherwise. Usable as a value expression
+and in rules", and "`orderBy` on to-many relations in the lens".
+
+- **`aggregate: { mode: 'pick', field? }`** returns the window's `aggregate.field` values (or the
+  items themselves) in its order, NULLs skipped as every mode skips them: one value for `take: 1`
+  (null over no row), else a list (`[]` over none). Any kind; `coerceType` reads each value as its
+  kind. A value expression (`evaluateValue`, `categorize`) and an aggregate rule: a take-1 pick
+  compares as a field holding the value does (the aggregate comparisons, `in` / `notIn`,
+  `contains` / `notContains`, `equals null` the is-null sentinel); a list pick takes `contains` /
+  `notContains` of one value. Over no row a positive comparison fails and a negated one holds;
+  `negate()` adds the "no value" arm, as for `avg`. `inferValueType` / `describeValue` type it as
+  the column's kind, nullable for take 1, else a list; `coerceValue` stamps it over a DateTime
+  column.
+- **`pick` is check() only, refused when the rule is validated.** It is what its window orders, and
+  neither compiler compiles an ordered window: `toSql` compiles no window and no relation aggregate,
+  and a Prisma `where` has no "first row of a relation by X" read. `validateRule({ target })`
+  reports `unsupported_sql_aggregate_mode` / `unsupported_prisma_aggregate_mode`, and `toSql` /
+  `toPrisma` throw the same message before anything else. `AGGREGATE_MODE_CATALOG` entries carry
+  `compiled`; `aggregateModesForKind(kind, { compiled: true })` and `isCompiledAggregateMode(mode)`
+  read it. `getAggregateOperators(mode?, { list? })` gives a pick's operators.
+- **A lens orders a to-many relation**: `orderBy: [{ field, dir }]` on a relation object or a model
+  default. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
+  `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, a NULL last either way, ties
+  as fetched, so the database and in-memory rails return the same order (PGlite differential in
+  `test/rails.lens.test.ts`). A later layer's order replaces an earlier one's; it names only
+  columns its parent shows (`not_visible`), and only number and date columns (`wrong_kind`: a
+  string's code-unit order would disagree with a collation, as for `min` / `max`).
+  `validateNarrowing` checks it. New type `LensOrderBy`.
+- `AggregateMode` is `'sum' | 'avg' | 'pick'`; `orderRecords` takes an optional key reader.
+
 ## 4.3.0 — supplied bridges: a bridge with no join
 
 Why: permissions reads who is acting as a bridge to an `actor` map (`actor:User.email`, Aron

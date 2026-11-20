@@ -169,7 +169,8 @@ Supported comparison operators for aggregate rules: `equals`, `notEquals`, `less
 
 ### Aggregate Rule
 
-Computes `sum` or `avg` of an array and compares the result to a value.
+Computes `sum` or `avg` of an array and compares the result to a value — or picks the window's
+values (`pick`, check() only; see Value Expressions) and compares those.
 
 ```ts
 // Primitive numeric array
@@ -240,9 +241,30 @@ already use. `evaluateValue(expression, row, options)` takes what `check()` take
 values, as SQL's `AVG`, and in an aggregate rule), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
 `min` and `max` (numbers or dates, the value as stored; null over no rows), and `distinct`
 (strings, enums, dates, booleans or numbers: the values without repeats, first seen first, NULLs
-skipped; `[]` over no rows). The window
-runs first (filter → order → skip → take), then `condition`. An aggregate rule still compares
-`sum` / `avg` only.
+skipped; `[]` over no rows), and `pick` (any kind: the rows' values themselves, in the window's
+order, NULLs skipped — one value for `take: 1`, null over no row; a list otherwise, `[]` over none).
+The window runs first (filter → order → skip → take), then `condition`. An aggregate rule compares
+`sum`, `avg` and `pick`.
+
+```ts
+// The winning source's job title: the jobTitle row with the lowest sourceRank
+{
+  field: 'enrichments',
+  filter: { field: 'field', operator: 'equals', value: 'jobTitle' },
+  orderBy: [{ field: 'sourceRank', dir: 'asc' }],
+  take: 1,
+  aggregate: { mode: 'pick', field: 'value' },
+}
+// As a rule: add a comparison. A take-1 pick compares as a field holding the value does;
+// a list pick (any take but 1) takes contains / notContains of one value.
+{ ...winningJobTitle, operator: 'equals', value: 'CTO' }
+```
+
+`pick` is check() / `evaluateValue` only: it is what its window orders, and neither compiler
+compiles an ordered window — `toSql` compiles no window, and a Prisma `where` can't read "the
+first row by X" of a relation. `validateRule` refuses it for `toSql` / `toPrisma`
+(`unsupported_sql_aggregate_mode` / `unsupported_prisma_aggregate_mode`), and the compilers throw
+the same message.
 
 Values compare as stored, kind by kind: `distinct` keeps `1`, `Decimal('1')`, `1n` and `'1'` as
 four values, which shows mixed data rather than hiding it. To read them as one kind, give
@@ -296,7 +318,7 @@ What a consumer checks before saving one:
 | Function | Purpose |
 | --- | --- |
 | `validateValue(expr)` / `assertValidValue(expr)` | The shape, without data: each node exactly one kind, known keys, a known mode, and every condition it holds valid as `validateRule` sees it. |
-| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null); with `coerceType`, that kind. Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
+| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null), `pick` → the column's kind (nullable) for `take: 1`, else a list of it; with `coerceType`, that kind. Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
 | `valueClockUnit(expr)` | `clockUnit` over every condition the expression holds: a 90-day window reads `day`. |
 | `describeValue(expr, lens)` | Its type, the dotted paths it reads (`brandReferenceRequestFanUsers.activatedAt`), its clock unit, and every issue (shape, lens gate, type) as `{ path, code, message }`, without throwing. |
 
@@ -1534,7 +1556,7 @@ Composition across chained narrowings is pure intersection: relations are turned
 | `readLensValue(lens, row, path, options?)` | One value off a row, as the lens shows it: `{ ok: true, value }`, or `{ ok: false, reason }`, where `reason` is `hidden` / `missing` / `pastScalar` (the walk `validateRuleInLens` gates a field with), `relation` (the path ends on rows, not a value) or `list` (it crosses a to-many). Each row on the way, the root included, is checked against its visit's clamps: one a clamp hides, or a missing one, reads `null`. Only own properties are read, into a Json column too. `options` is what each clamp is checked with (`now`, `bindings`). For values a template interpolates. |
 | `orderRecords(items, orderBy)` | Records sorted by an `OrderBy` exactly as a window orders them on every rail: each key in turn, own-property path reads, `dir` order, NULL or absent last in either direction, ties in input order. Returns a new array. Strings sort in JavaScript code-unit order, which can differ from a database's collation (see [Where the Rails Differ](#where-the-rails-differ)). |
 | `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the clamp goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
-| `coerceValue(expression, lens)` | Stamps each `distinct` / `min` / `max` over a DateTime column with `coerceType: 'DateTime'`, so rows that carry dates as ISO strings (plain JSON) read them as dates. Leaves other kinds (a Decimal `min` / `max` still returns the value as stored), an aggregate that names its own `coerceType`, and one the lens can't type. |
+| `coerceValue(expression, lens)` | Stamps each `distinct` / `min` / `max` / `pick` over a DateTime column with `coerceType: 'DateTime'`, so rows that carry dates as ISO strings (plain JSON) read them as dates. Leaves other kinds (a Decimal `min` / `max` still returns the value as stored), an aggregate that names its own `coerceType`, and one the lens can't type. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
 
 ```ts

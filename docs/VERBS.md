@@ -54,7 +54,8 @@ modules allowed to implement it, and every exported function must appear in this
 | read | `parseScopeRef`, `readScopeRef`, `pathSegments` | Parse a `$`-prefixed ref; read which scope it names; split a path into the keys `check()` reads. |
 | order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths, NULLs last, stable. |
 | look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. `getOperatorsForKind(kind, target, { positive: true })` leaves out the operators that hold on a missing value, the ones `validateRule({ positive })` refuses. |
-| look up | `aggregateModesForKind` | The aggregate modes that read values of a kind; `{ comparable: true }` keeps the ones an aggregate rule compares. |
+| look up | `aggregateModesForKind` | The aggregate modes that read values of a kind; `{ comparable: true }` keeps the ones an aggregate rule compares, `{ compiled: true }` the ones it compiles to SQL and Prisma. |
+| look up | `isCompiledAggregateMode` | Whether an aggregate rule in a mode compiles on `toSql` / `toPrisma` (`sum`, `avg`; `pick` is check() only). |
 
 `engineGlobals` (configure) holds process-wide defaults, one store per process however many
 copies are loaded; `registerEngineGlobals` adds a library's own namespace to it; `Operator`, `DateOperator`,

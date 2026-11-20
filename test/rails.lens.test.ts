@@ -372,3 +372,82 @@ describe('fetch, project, re-check: the documented pipeline answers as the datab
     expect(await recheck(lens, rule)).toEqual(await database(lens, rule));
   });
 });
+
+describe("a to-many relation's orderBy: rows come back in its order on every rail", () => {
+  const ordered = (orderBy: { field: string; dir: 'asc' | 'desc' }[]): LensNarrowing => ({
+    parent: base,
+    root: { picks: ['id'], relations: { posts: { picks: ['id', 'views'], orderBy } } },
+  });
+  const postIds = (rows: Record<string, unknown>[]) =>
+    rows.map((row) => (row.posts as { id: number }[]).map((post) => post.id));
+  const fetchUnder = async (lens: LensNarrowing) =>
+    (await rails.prisma.user.findMany({
+      select: toLensSelect(lens).select as never,
+      orderBy: { id: 'asc' },
+    })) as Record<string, unknown>[];
+
+  test('toLensSelect orders the relation, a nullable column NULLs last', () => {
+    expect(toLensSelect(ordered([{ field: 'views', dir: 'desc' }])).select.posts).toEqual({
+      select: { id: true, views: true },
+      orderBy: [{ views: { sort: 'desc', nulls: 'last' } }],
+    });
+    // A required column takes Prisma's bare direction.
+    expect(toLensSelect(ordered([{ field: 'id', dir: 'desc' }])).select.posts).toMatchObject({
+      orderBy: [{ id: 'desc' }],
+    });
+  });
+
+  test.each<['asc' | 'desc', number[]]>([
+    ['desc', [100, 101, 103]],
+    ['asc', [101, 100, 103]],
+  ])('views %s: the database, projectRows over its rows and over the full rows agree', async (dir, user1) => {
+    const lens = ordered([
+      { field: 'views', dir },
+      { field: 'id', dir: 'asc' },
+    ]);
+    const fetched = await fetchUnder(lens);
+    expect(postIds(fetched)[0]).toEqual(user1);
+    const full = rails.rows as unknown as Record<string, unknown>[];
+    // The full rows, loaded in id order, come back in the lens's order.
+    expect(postIds(projectRows(lens, full))).toEqual(postIds(fetched));
+    expect(projectRows(lens, fetched)).toEqual(projectRows(lens, full));
+  });
+
+  test('a later layer replaces the order; it names only what its parent shows', () => {
+    const first = ordered([{ field: 'views', dir: 'desc' }]);
+    const second: LensNarrowing = {
+      parent: first,
+      root: { relations: { posts: { orderBy: [{ field: 'id', dir: 'desc' }] } } },
+    };
+    expect(validateNarrowing(second).ok).toBe(true);
+    expect(postIds(projectRows(second, rails.rows as never))[0]).toEqual([103, 101, 100]);
+    const hidden: LensNarrowing = {
+      parent: { parent: base, root: { relations: { posts: { omits: ['views'] } } } },
+      root: { relations: { posts: { orderBy: [{ field: 'views', dir: 'asc' }] } } },
+    };
+    expect(validateNarrowing(hidden).errors.map((e) => e.code)).toEqual(['not_visible']);
+  });
+
+  test('orders by numbers and dates only: a string, a relation, or an unknown column is refused', () => {
+    const codes = (orderBy: unknown) =>
+      validateNarrowing({
+        parent: base,
+        root: { relations: { posts: { orderBy: orderBy as never } } },
+      }).errors.map((e) => e.code);
+    expect(codes([{ field: 'title', dir: 'asc' }])).toEqual(['wrong_kind']);
+    expect(codes([{ field: 'author', dir: 'asc' }])).toEqual(['wrong_kind']);
+    expect(codes([{ field: 'nope', dir: 'asc' }])).toEqual(['not_in_lens']);
+    expect(codes([{ field: 'views', dir: 'up' }])).toEqual(['invalid_order_by']);
+    expect(codes({ field: 'views', dir: 'asc' })).toEqual(['invalid_order_by']);
+  });
+
+  test('a model default orders the model wherever a to-many relation reaches it', () => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: { picks: ['id'], relations: { posts: { picks: ['id'] } } },
+      mapDefaults: { prisma: { models: { Post: { orderBy: [{ field: 'id', dir: 'desc' }] } } } },
+    };
+    expect(postIds(projectRows(lens, rails.rows as never))[0]).toEqual([103, 101, 100]);
+    expect(toLensSelect(lens).select.posts).toMatchObject({ orderBy: [{ id: 'desc' }] });
+  });
+});

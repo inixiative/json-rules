@@ -1,0 +1,227 @@
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import {
+  type Condition,
+  check,
+  createLens,
+  evaluateValue,
+  getAggregateOperators,
+  inferValueType,
+  type LensNarrowing,
+  toPrisma,
+  toSql,
+  type ValueExpression,
+  validateRule,
+  validateValue,
+} from '../index';
+import { negate } from '../src/negate';
+import { map, openRails } from './rails/harness';
+
+// `pick`: the window's `aggregate.field` values, in its order — one for `take: 1` (null over no
+// row), a list otherwise (`[]` over none). A value expression, and an aggregate rule's comparison.
+
+const row = {
+  enrichments: [
+    { field: 'jobTitle', value: 'CTO', sourceRank: 2 },
+    { field: 'email', value: 'a@b.co', sourceRank: 0 },
+    { field: 'jobTitle', value: 'VP Sales', sourceRank: 1 },
+    { field: 'jobTitle', value: 'Founder', sourceRank: 3 },
+    { field: 'jobTitle', value: null, sourceRank: 4 },
+  ],
+};
+
+const jobTitles = {
+  field: 'enrichments',
+  filter: { field: 'field', operator: 'equals', value: 'jobTitle' },
+  orderBy: [{ field: 'sourceRank', dir: 'asc' }],
+  aggregate: { mode: 'pick', field: 'value' },
+} as const;
+
+const pick = (window: Record<string, unknown>) =>
+  ({ ...jobTitles, ...window }) as unknown as ValueExpression;
+
+describe('pick as a value expression', () => {
+  test('take 1 is the winning value', () => {
+    expect(evaluateValue(pick({ take: 1 }), row)).toBe('VP Sales');
+  });
+
+  test('take N is the values in the window order', () => {
+    expect(evaluateValue(pick({ take: 2 }), row)).toEqual(['VP Sales', 'CTO']);
+    expect(evaluateValue(pick({ take: 3, skip: 1 }), row)).toEqual(['CTO', 'Founder']);
+  });
+
+  test('no take is every value of the window, NULLs skipped as every mode skips them', () => {
+    expect(evaluateValue(pick({}), row)).toEqual(['VP Sales', 'CTO', 'Founder']);
+  });
+
+  test('the filter picks among the rows it keeps', () => {
+    const email = { field: 'field', operator: 'equals', value: 'email' };
+    expect(evaluateValue(pick({ take: 1, filter: email }), row)).toBe('a@b.co');
+  });
+
+  test('an empty window is null for take 1 and [] otherwise', () => {
+    for (const data of [row, { enrichments: [] }, {}]) {
+      expect(evaluateValue(pick({ take: 1, skip: 9 }), data)).toBeNull();
+      expect(evaluateValue(pick({ take: 2, skip: 9 }), data)).toEqual([]);
+    }
+  });
+
+  test('the winning row with a NULL value picks null', () => {
+    const desc = { orderBy: [{ field: 'sourceRank', dir: 'desc' }], take: 1 };
+    expect(evaluateValue(pick(desc), row)).toBeNull();
+  });
+
+  test('coerceType reads each picked value as its kind', () => {
+    const dates = { visits: [{ at: '2026-01-02T00:00:00Z' }, { at: '2026-03-04T00:00:00Z' }] };
+    const latest = {
+      field: 'visits',
+      orderBy: [{ field: 'at', dir: 'desc' }],
+      take: 1,
+      aggregate: { mode: 'pick', field: 'at' },
+      coerceType: 'DateTime',
+    } as unknown as ValueExpression;
+    expect(evaluateValue(latest, dates)).toEqual(new Date('2026-03-04T00:00:00Z'));
+    expect(validateValue(latest).ok).toBe(true);
+  });
+
+  test('its type is the column kind: nullable for take 1, a list otherwise', () => {
+    const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+    const lens: LensNarrowing = { parent: base, root: { relations: { posts: {} } } };
+    const views = { field: 'posts', orderBy: [{ field: 'views', dir: 'desc' }] };
+    const one = { ...views, take: 1, aggregate: { mode: 'pick', field: 'title' } };
+    expect(inferValueType(one as unknown as ValueExpression, lens)).toEqual({
+      kind: 'String',
+      isList: false,
+      nullable: true,
+    });
+    expect(inferValueType({ ...one, take: 3 } as unknown as ValueExpression, lens)).toEqual({
+      kind: 'String',
+      isList: true,
+      nullable: false,
+    });
+  });
+});
+
+describe('pick in a rule', () => {
+  const winner = (rest: Record<string, unknown>) =>
+    ({ ...jobTitles, take: 1, ...rest }) as unknown as Condition;
+  const top = (rest: Record<string, unknown>) =>
+    ({ ...jobTitles, take: 2, ...rest }) as unknown as Condition;
+
+  test('the winning value equals X', () => {
+    expect(check(winner({ operator: 'equals', value: 'VP Sales' }), row)).toBe(true);
+    expect(check(winner({ operator: 'equals', value: 'CTO' }), row)).not.toBe(true);
+    expect(check(winner({ operator: 'in', value: ['VP Sales', 'CEO'] }), row)).toBe(true);
+    expect(check(winner({ operator: 'contains', value: 'Sales' }), row)).toBe(true);
+    expect(validateRule(winner({ operator: 'equals', value: 'VP Sales' })).ok).toBe(true);
+  });
+
+  test('the top values contain X', () => {
+    expect(check(top({ operator: 'contains', value: 'CTO' }), row)).toBe(true);
+    expect(check(top({ operator: 'contains', value: 'Founder' }), row)).not.toBe(true);
+    expect(check(top({ operator: 'notContains', value: 'Founder' }), row)).toBe(true);
+    expect(validateRule(top({ operator: 'contains', value: 'CTO' })).ok).toBe(true);
+  });
+
+  test('a list pick takes contains / notContains of one value only', () => {
+    expect(getAggregateOperators('pick', { list: true })).toEqual(['contains', 'notContains']);
+    expect(
+      validateRule(top({ operator: 'equals', value: 'CTO' })).errors.map((e) => e.code),
+    ).toEqual(['invalid_aggregate_operator']);
+    expect(
+      validateRule(top({ operator: 'contains', value: ['CTO'] })).errors.map((e) => e.code),
+    ).toEqual(['invalid_aggregate_value']);
+  });
+
+  test('a value is checked against the operator, as on a field', () => {
+    expect(
+      validateRule(winner({ operator: 'in', value: 'CTO' })).errors.map((e) => e.code),
+    ).toEqual(['invalid_membership_value']);
+    expect(validateRule(winner({ operator: 'equals', value: null })).ok).toBe(true);
+    expect(
+      validateRule(winner({ coerceType: 'Nope', operator: 'exists' })).errors.map((e) => e.code),
+    ).toEqual(['invalid_coerce_type']);
+  });
+
+  test('over an empty window: a positive comparison fails, a negated one holds', () => {
+    const empty = { skip: 9 };
+    expect(check(winner({ ...empty, operator: 'equals', value: 'CTO' }), row)).not.toBe(true);
+    expect(check(winner({ ...empty, operator: 'notEquals', value: 'CTO' }), row)).toBe(true);
+    expect(check(winner({ ...empty, operator: 'notExists' }), row)).toBe(true);
+    expect(check(top({ ...empty, operator: 'notContains', value: 'CTO' }), row)).toBe(true);
+  });
+
+  test('negate() is the complement, the no-value case included', () => {
+    const ordered = (rest: Record<string, unknown>) =>
+      winner({ operator: 'lessThan', value: 'W', ...rest });
+    for (const rule of [ordered({}), ordered({ skip: 9 }), ordered({ value: 'A' })]) {
+      expect(check(negate(rule), row) === true).toBe(check(rule, row) !== true);
+    }
+  });
+});
+
+describe('pick on the compiled rails: refused when the rule is validated', () => {
+  const rule = {
+    ...jobTitles,
+    take: 1,
+    operator: 'equals',
+    value: 'VP Sales',
+  } as unknown as Condition;
+  // No window: the refusal is the mode's alone.
+  const bare = {
+    field: 'tags',
+    aggregate: { mode: 'pick' },
+    operator: 'contains',
+    value: 'a',
+  } as unknown as Condition;
+
+  test('validateRule names the mode for toSql and toPrisma', () => {
+    for (const [target, slug] of [
+      ['toSql', 'sql'],
+      ['toPrisma', 'prisma'],
+    ] as const) {
+      const codes = validateRule(bare, { target, map, model: 'User' }).errors.map((e) => e.code);
+      expect(codes).toEqual([`unsupported_${slug}_aggregate_mode`]);
+      expect(validateRule(rule, { target }).errors.map((e) => e.code)).toContain(
+        `unsupported_${slug}_aggregate_mode`,
+      );
+    }
+  });
+
+  test('the compilers throw the same refusal', () => {
+    expect(() => toSql(bare, { map, model: 'User' })).toThrow(
+      "aggregate.mode 'pick' has no toSql() form",
+    );
+    expect(() => toPrisma(bare, { map, model: 'User' })).toThrow(
+      "aggregate.mode 'pick' has no toPrisma() form",
+    );
+  });
+
+  describe('over one database', () => {
+    let rails: Awaited<ReturnType<typeof openRails>>;
+    beforeAll(async () => {
+      rails = await openRails();
+    });
+    afterAll(async () => {
+      await rails.close();
+    });
+
+    test("check() picks each user's most viewed post title; the compilers refuse", async () => {
+      const mostViewed = {
+        field: 'posts',
+        orderBy: [{ field: 'views', dir: 'desc' }],
+        take: 1,
+        aggregate: { mode: 'pick', field: 'title' },
+        operator: 'equals',
+        value: 'hello',
+      } as unknown as Condition;
+      const result = await rails.run(mostViewed);
+      expect(result.check).toEqual([1]);
+      expect(result.sql).toBe(
+        "throws: aggregate.mode 'pick' has no toSql() form — evaluate it in memory with check().",
+      );
+      expect(result.prisma).toBe(
+        "throws: aggregate.mode 'pick' has no toPrisma() form — evaluate it in memory with check().",
+      );
+    });
+  });
+});

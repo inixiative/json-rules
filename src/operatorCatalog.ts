@@ -417,38 +417,54 @@ export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = [
 ];
 
 /** What an aggregate computes over its items, and what it gives back: a number, a count, one of
- *  the items' own values (the least or greatest; null over no items), or the list of their
- *  distinct values. `comparable` modes are the ones an aggregate rule compares against a threshold
- *  on every rail; the rest are value expressions only (`evaluateValue`), evaluated in memory.
- *  `kinds` are the kinds of value each mode reads, as read (after any `coerceType`). */
+ *  the items' own values (the least or greatest; null over no items), the list of their distinct
+ *  values, or the picked values (`pick`: the window's values in its order, one for `take: 1` and
+ *  null over no items, else a list, `[]` over none). `comparable` modes are the ones an aggregate
+ *  rule compares; the rest are value expressions only (`evaluateValue`), evaluated in memory.
+ *  `compiled` comparable modes compile on `toSql` / `toPrisma` too; an aggregate rule in any other
+ *  is check() only, and `validateRule` refuses it for a compiler. `kinds` are the kinds of value
+ *  each mode reads, as read (after any `coerceType`). */
 export const AGGREGATE_MODE_CATALOG: Record<
   ValueAggregateMode,
   {
-    result: 'number' | 'count' | 'element' | 'list';
+    result: 'number' | 'count' | 'element' | 'list' | 'pick';
     comparable: boolean;
+    compiled: boolean;
     kinds: readonly FieldKind[];
   }
 > = {
-  sum: { result: 'number', comparable: true, kinds: NUMERIC_KINDS },
-  avg: { result: 'number', comparable: true, kinds: NUMERIC_KINDS },
-  count: { result: 'count', comparable: false, kinds: ALL_KINDS },
-  min: { result: 'element', comparable: false, kinds: ORDERED_VALUE_KINDS },
-  max: { result: 'element', comparable: false, kinds: ORDERED_VALUE_KINDS },
-  distinct: { result: 'list', comparable: false, kinds: DISTINCT_VALUE_KINDS },
+  sum: { result: 'number', comparable: true, compiled: true, kinds: NUMERIC_KINDS },
+  avg: { result: 'number', comparable: true, compiled: true, kinds: NUMERIC_KINDS },
+  count: { result: 'count', comparable: false, compiled: false, kinds: ALL_KINDS },
+  min: { result: 'element', comparable: false, compiled: false, kinds: ORDERED_VALUE_KINDS },
+  max: { result: 'element', comparable: false, compiled: false, kinds: ORDERED_VALUE_KINDS },
+  distinct: { result: 'list', comparable: false, compiled: false, kinds: DISTINCT_VALUE_KINDS },
+  pick: { result: 'pick', comparable: true, compiled: false, kinds: ALL_KINDS },
 };
 
 /** The aggregate modes that read values of `kind`; `{ comparable: true }` keeps the ones an
- *  aggregate rule compares. */
+ *  aggregate rule compares, `{ compiled: true }` the ones an aggregate rule compiles to SQL and
+ *  Prisma. */
 export const aggregateModesForKind = (
   kind: FieldKind,
-  options: { comparable?: boolean } = {},
+  options: { comparable?: boolean; compiled?: boolean } = {},
 ): ValueAggregateMode[] =>
   (Object.keys(AGGREGATE_MODE_CATALOG) as ValueAggregateMode[]).filter((mode) => {
     const entry = AGGREGATE_MODE_CATALOG[mode];
-    return entry.kinds.includes(kind) && (!options.comparable || entry.comparable);
+    return (
+      entry.kinds.includes(kind) &&
+      (!options.comparable || entry.comparable) &&
+      (!options.compiled || entry.compiled)
+    );
   });
 
-/** The modes an aggregate rule compares (`sum`, `avg`). */
+/** Whether an aggregate rule in `mode` compiles on `toSql` / `toPrisma` (`sum`, `avg`). */
+export const isCompiledAggregateMode = (mode: unknown): boolean =>
+  typeof mode === 'string' &&
+  Object.hasOwn(AGGREGATE_MODE_CATALOG, mode) &&
+  AGGREGATE_MODE_CATALOG[mode as ValueAggregateMode].compiled;
+
+/** The modes an aggregate rule compares (`sum`, `avg`, `pick`). */
 export const AGGREGATE_MODES = Object.keys(AGGREGATE_MODE_CATALOG).filter(
   (mode) => AGGREGATE_MODE_CATALOG[mode as ValueAggregateMode].comparable,
 ) as readonly AggregateMode[];
@@ -462,8 +478,26 @@ export const VALUE_AGGREGATE_MODES = Object.keys(
 export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode =>
   typeof mode === 'string' && Object.hasOwn(AGGREGATE_MODE_CATALOG, mode);
 
-/** The comparisons an aggregate rule takes; every target compiles all of them. */
-export const getAggregateOperators = (): readonly Operator[] => AGGREGATE_OPERATORS;
+/** What a `pick` rule asks of the value it picks, as a field holding it is asked: the aggregate
+ *  comparisons, and membership and containment. A list pick (any `take` but 1) takes
+ *  `contains` / `notContains` only: whether the picked values hold a member. */
+export const PICK_OPERATORS = [
+  ...AGGREGATE_OPERATORS,
+  Operator.in,
+  Operator.notIn,
+  Operator.contains,
+  Operator.notContains,
+] as readonly Operator[];
+/** The operators a list pick takes. */
+export const LIST_PICK_OPERATORS: readonly Operator[] = [Operator.contains, Operator.notContains];
+
+/** The comparisons an aggregate rule takes — in `mode` when given (`pick` takes more; a list pick
+ *  fewer, `{ list: true }`). `sum` / `avg` compile all of them on every target. */
+export const getAggregateOperators = (
+  mode?: AggregateMode,
+  options: { list?: boolean } = {},
+): readonly Operator[] =>
+  mode === 'pick' ? (options.list ? LIST_PICK_OPERATORS : PICK_OPERATORS) : AGGREGATE_OPERATORS;
 
 /** Equality with one value: `equals` / `notEquals`. */
 export const EQUALITY_OPERATORS = withShape('scalar');

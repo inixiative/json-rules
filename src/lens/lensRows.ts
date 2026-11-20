@@ -3,11 +3,13 @@ import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
+import { readOwnPath } from '../scope';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
-import type { Row } from '../types';
+import type { OrderBy, Row } from '../types';
+import { orderRecords } from '../window';
 import { decimalValue } from './decimalValue.ts';
 import {
   isFieldVisible,
@@ -21,9 +23,29 @@ import { readPaths } from './readPaths.ts';
 import { localReads, type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
-/** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where`. */
+/** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where` and
+ *  `orderBy`. */
 export type LensSelect = { [field: string]: true | LensRelationSelect };
-export type LensRelationSelect = { select?: LensSelect; where?: PrismaWhere };
+export type LensRelationSelect = {
+  select?: LensSelect;
+  where?: PrismaWhere;
+  orderBy?: LensOrderBy;
+};
+/** Prisma's `orderBy` for a relation's rows: a nullable column sorts its NULLs last, as check()
+ *  orders a window. */
+export type LensOrderBy = Record<
+  string,
+  'asc' | 'desc' | { sort: 'asc' | 'desc'; nulls: 'last' }
+>[];
+
+// A visit's `orderBy` as Prisma reads it, over the columns of the visit's model.
+const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy => {
+  const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields;
+  return orderBy.map(({ field, dir }) => {
+    const entry = own(fields, field);
+    return { [field]: entry?.isRequired ? dir : { sort: dir, nulls: 'last' as const } };
+  });
+};
 
 /** What a clamp's compile reads: the clock, never a schema (the lens is it). */
 export type LensSelectOptions = Omit<ToPrismaOptions, 'map' | 'mapName' | 'model' | 'lens'>;
@@ -202,7 +224,15 @@ const selectAt = (
       : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
-    select[field] = { select: shown, ...(where && { where }) };
+    const orderBy =
+      entry.isList && childMode !== 'paths'
+        ? resolveVisit(policy, child.mapName, child.modelName, child.relPath).orderBy
+        : null;
+    select[field] = {
+      select: shown,
+      ...(where && { where }),
+      ...(orderBy && { orderBy: prismaOrderBy(policy, child, orderBy) }),
+    };
   }
   return select;
 };
@@ -305,8 +335,17 @@ const cutRow = (
       // to-one row, or a list row a clamp reads — as its clamp columns alone, so the narrowed
       // rule's clamp fails on it while an unnarrowed clamp still counts it.
       const readWhole = !Array.isArray(row[field]) || below !== undefined;
+      // A to-many relation's rows come back in its order, as toLensSelect fetches them.
+      const order = Array.isArray(row[field])
+        ? resolveVisit(policy, child.mapName, child.modelName, child.relPath).orderBy
+        : null;
+      const childFields = modelOf(own(policy.lens.maps, child.mapName), child.modelName)?.fields;
       out[field] = mapRelation(
-        row[field],
+        order
+          ? orderRecords(row[field] as unknown[], order, (r, key) =>
+              decimalValue(own(childFields, key), readOwnPath(r, key)),
+            )
+          : row[field],
         (r) =>
           cutRow(policy, child, r, below ?? {}, keepClamps, options, reads) ??
           (keepClamps && readWhole

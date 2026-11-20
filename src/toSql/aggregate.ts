@@ -1,7 +1,7 @@
-import { unknownAggregateMode, windowUnsupported } from '../errors';
+import { aggregateModeNotCompiled, unknownAggregateMode, windowUnsupported } from '../errors';
 import { ruleShape } from '../fieldMap/shape';
 import { fieldEntry } from '../fieldMap/walk';
-import { AGGREGATE_MODES } from '../operatorCatalog';
+import { AGGREGATE_MODES, isCompiledAggregateMode } from '../operatorCatalog';
 import type { AggregateRule, Rule } from '../types';
 import { hasWindow } from '../window';
 import { buildFieldRule } from './field';
@@ -10,6 +10,10 @@ import { jsonKey } from './quoting';
 import type { BuilderState } from './types';
 
 export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): string => {
+  const { mode } = rule.aggregate;
+  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
+  // validateRule refuses it first (`unsupported_sql_aggregate_mode`).
+  if (!isCompiledAggregateMode(mode)) throw aggregateModeNotCompiled(mode, 'toSql');
   if (hasWindow(rule)) throw windowUnsupported('toSql');
   if (rule.condition) {
     throw new Error(
@@ -32,7 +36,6 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
 
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {
   const { mode, field: itemField } = rule.aggregate;
-  if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const fn = mode === 'sum' ? 'SUM' : 'AVG';
   // The sum of nothing is 0, as check() reads it; the average of nothing stays NULL (FEAT-007).
   const total = (expr: string) =>

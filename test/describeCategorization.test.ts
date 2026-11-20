@@ -167,11 +167,18 @@ describe('the catalog lookups a builder reads', () => {
       'min',
       'max',
       'distinct',
+      'pick',
     ]);
-    expect(aggregateModesForKind('String')).toEqual(['count', 'distinct']);
-    expect(aggregateModesForKind('DateTime')).toEqual(['count', 'min', 'max', 'distinct']);
-    expect(aggregateModesForKind('Json')).toEqual(['count']);
+    expect(aggregateModesForKind('String')).toEqual(['count', 'distinct', 'pick']);
+    expect(aggregateModesForKind('DateTime')).toEqual(['count', 'min', 'max', 'distinct', 'pick']);
+    expect(aggregateModesForKind('Json')).toEqual(['count', 'pick']);
     expect(aggregateModesForKind('Int', { comparable: true })).toEqual([...AGGREGATE_MODES]);
+    // A pick compares in check() only: the compiled rails take sum and avg.
+    expect(aggregateModesForKind('Int', { comparable: true, compiled: true })).toEqual([
+      'sum',
+      'avg',
+    ]);
+    expect(aggregateModesForKind('String', { comparable: true })).toEqual(['pick']);
   });
 
   test('getOperatorsForKind with positive: true offers only what validateRule({ positive }) admits', () => {

@@ -59,8 +59,10 @@ const negateLeaf = (node: Node, settle: Settle, depth: number): Condition => {
     const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
     if (flip) return { ...leaf, operator: flip } as Condition;
     const opposite = { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) };
-    // A sum is never NULL; an average over no values is, and the opposite comparison is false there.
-    return (leaf.aggregate as { mode?: unknown }).mode === 'avg'
+    // A sum is never NULL; an average over no values is, as a pick of no row is, and the opposite
+    // comparison is false there.
+    const mode = (leaf.aggregate as { mode?: unknown }).mode;
+    return mode === 'avg' || mode === 'pick'
       ? anyOf([opposite as Condition, presence(leaf, 'notExists')])
       : (opposite as Condition);
   }

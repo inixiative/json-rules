@@ -59,16 +59,19 @@ export type LensFieldMap = {
   readonly enums?: { readonly [enumName: string]: readonly string[] };
 };
 
+/** One end of a bridge: a model of a map, named `map:Model` (`endpointKey`). */
 export type BridgeEndpoint = {
   fieldMap: string;
   model: string;
-  on: string;
 };
+
+/** One end of a joined bridge: the endpoint and the field its rows join on. */
+export type JoinedBridgeEndpoint = BridgeEndpoint & { on: string };
 
 export type BridgeCardinality = 'oneToOne' | 'oneToMany';
 
 /**
- * A cross-source edge between two endpoints.
+ * A cross-source edge joined on a field of each side.
  *
  * Endpoint ordering convention for `oneToMany`:
  *   - `endpoints[0]` is the "one" side — its `on` field must be unique per row
@@ -82,10 +85,22 @@ export type BridgeCardinality = 'oneToOne' | 'oneToMany';
  *
  * For `oneToOne`, both `on` fields must be unique; endpoint order is symmetric.
  */
-export type Bridge = {
-  endpoints: [BridgeEndpoint, BridgeEndpoint];
+export type JoinedBridge = {
+  endpoints: [JoinedBridgeEndpoint, JoinedBridgeEndpoint];
   cardinality: BridgeCardinality;
 };
+
+/**
+ * A cross-source edge with no join: the caller supplies the far row on the record under its
+ * endpoint key (`map:Model`), as it would after `indexBridges` for a joined one. For data that is
+ * not found by a key, such as who is acting. One row each way.
+ */
+export type SuppliedBridge = {
+  endpoints: [BridgeEndpoint, BridgeEndpoint];
+  cardinality: 'oneToOne';
+};
+
+export type Bridge = JoinedBridge | SuppliedBridge;
 
 export type FieldMapSet = {
   maps: Record<string, LensFieldMap>;

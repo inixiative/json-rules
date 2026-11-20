@@ -1,9 +1,10 @@
 import { type Draft, modelOf, own } from '@inixiative/field-map';
-import { endpointKey } from './endpointKey.ts';
+import { endpointKey, isJoinedBridge } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
 /** A copy of the set where each bridge's endpoint models gain a `kind: 'bridge'` field named
- *  after the other endpoint (`<fieldMap>:<Model>`). Throws on a missing endpoint or `on` field, a
+ *  after the other endpoint (`<fieldMap>:<Model>`). Throws on a missing endpoint, a joined bridge's
+ *  missing `on` field, an `on` on one side only, a supplied bridge that is not one-to-one, a
  *  self-bridge, or a bridge stitched twice. */
 export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
   const out: { maps: Draft<FieldMapSet['maps']>; bridges: FieldMapSet['bridges'] } = {
@@ -26,11 +27,18 @@ export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
     if (a.fieldMap === b.fieldMap && a.model === b.model) {
       throw new Error(`stitchFieldMaps: self-bridge '${aKey}' to itself is not supported`);
     }
-    if (!own(aOwner.fields, a.on)) {
-      throw new Error(`stitchFieldMaps: endpoint '${aKey}' has no field '${a.on}' for join`);
-    }
-    if (!own(bOwner.fields, b.on)) {
-      throw new Error(`stitchFieldMaps: endpoint '${bKey}' has no field '${b.on}' for join`);
+    if (isJoinedBridge(bridge)) {
+      const [aOn, bOn] = bridge.endpoints.map((endpoint) => endpoint.on);
+      if (!own(aOwner.fields, aOn)) {
+        throw new Error(`stitchFieldMaps: endpoint '${aKey}' has no field '${aOn}' for join`);
+      }
+      if (!own(bOwner.fields, bOn)) {
+        throw new Error(`stitchFieldMaps: endpoint '${bKey}' has no field '${bOn}' for join`);
+      }
+    } else if (bridge.cardinality !== 'oneToOne' || bridge.endpoints.some((e) => 'on' in e)) {
+      throw new Error(
+        `stitchFieldMaps: bridge '${aKey}' ↔ '${bKey}' joins on one side only, or is a supplied bridge that is not oneToOne`,
+      );
     }
 
     if (own(aOwner.fields, bKey)) {

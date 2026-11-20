@@ -24,9 +24,13 @@ export {
   type FieldMapEntry,
   type FieldMapSet,
   indexBridges,
+  isJoinedBridge,
+  type JoinedBridge,
+  type JoinedBridgeEndpoint,
   type LensFieldMap,
   type LensModelEntry,
   type SourceOption,
+  type SuppliedBridge,
   stitchFieldMaps,
   validateFieldMaps,
 } from './src/fieldMap';

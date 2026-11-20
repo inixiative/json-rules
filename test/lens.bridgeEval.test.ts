@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { check } from '../src/check';
+import { isJoinedBridge } from '../src/fieldMap/endpointKey';
 import { stitchFieldMaps } from '../src/fieldMap/stitch';
 import type { Bridge, LensFieldMap } from '../src/fieldMap/types';
 import type { Lens } from '../src/lens/types';
@@ -211,10 +212,11 @@ describe('bridge schema — on fields are reachable for callers', () => {
   test('stitched set retains bridges array with on fields', () => {
     expect(stitched.bridges).toBeDefined();
     expect(stitched.bridges).toHaveLength(2);
-    const oneToOne = stitched.bridges?.find((b) => b.cardinality === 'oneToOne');
+    const joined = (stitched.bridges ?? []).filter(isJoinedBridge);
+    const oneToOne = joined.find((b) => b.cardinality === 'oneToOne');
     expect(oneToOne?.endpoints[0].on).toBe('id');
     expect(oneToOne?.endpoints[1].on).toBe('crmId');
-    const oneToMany = stitched.bridges?.find((b) => b.cardinality === 'oneToMany');
+    const oneToMany = joined.find((b) => b.cardinality === 'oneToMany');
     expect(oneToMany?.endpoints[0].on).toBe('id');
     expect(oneToMany?.endpoints[1].on).toBe('userId');
   });

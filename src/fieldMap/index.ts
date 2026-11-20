@@ -1,3 +1,4 @@
+export { isJoinedBridge } from './endpointKey';
 export type { BridgeDictionary } from './indexBridges';
 export { indexBridges } from './indexBridges';
 export { stitchFieldMaps } from './stitch';
@@ -8,8 +9,11 @@ export type {
   BridgeEntry,
   FieldMapEntry,
   FieldMapSet,
+  JoinedBridge,
+  JoinedBridgeEndpoint,
   LensFieldMap,
   LensModelEntry,
   SourceOption,
+  SuppliedBridge,
 } from './types';
 export { assertValidFieldMaps, validateFieldMaps } from './validate';

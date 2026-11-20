@@ -1,6 +1,6 @@
 import { own, ownEntry } from '@inixiative/field-map';
 import type { Row } from '../types';
-import { endpointKey } from './endpointKey.ts';
+import { endpointKey, isJoinedBridge } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
 export type BridgeDictionary = Record<
@@ -55,7 +55,8 @@ export const indexBridges = (
   rawData: Record<string, Row[]>,
 ): BridgeDictionary => {
   const out: BridgeDictionary = {};
-  for (const bridge of set.bridges ?? []) {
+  // A supplied bridge has no key to index by: its far row is already on the record.
+  for (const bridge of (set.bridges ?? []).filter(isJoinedBridge)) {
     const [a, b] = bridge.endpoints;
     const aKey = endpointKey(a);
     const bKey = endpointKey(b);

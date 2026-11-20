@@ -4,19 +4,27 @@ import { ArrayOperator, DateOperator, Operator, validateRule } from '../index';
 const positive = (rule: unknown) => validateRule(rule, { positive: true }).ok;
 
 describe('validateRule positive: a rule that only holds on what the row carries', () => {
-  test('equals, in and equals null are positive', () => {
+  test('equals and in are positive', () => {
     expect(positive({ field: 'role', operator: Operator.equals, value: 'owner' })).toBe(true);
     expect(positive({ field: 'role', operator: Operator.in, value: ['owner', 'admin'] })).toBe(
       true,
     );
-    expect(positive({ field: 'role', operator: Operator.equals, value: null })).toBe(true);
+  });
+
+  test('a null check is refused: it holds on every row without a value', () => {
+    expect(positive({ field: 'role', operator: Operator.equals, value: null })).toBe(false);
+    expect(positive({ field: 'role', operator: Operator.in, value: ['owner', null] })).toBe(false);
+    expect(
+      positive({ field: 'role', operator: Operator.equals, value: { value: null } } as never),
+    ).toBe(false);
+    expect(positive({ field: 'role', operator: Operator.exists })).toBe(true);
   });
 
   test('all and any of positive rules are positive', () => {
     expect(
       positive({
         any: [
-          { field: 'role', operator: Operator.equals, value: null },
+          { field: 'role', operator: Operator.equals, value: 'owner' },
           { all: [{ field: 'type', operator: Operator.in, value: ['a'] }] },
         ],
       }),

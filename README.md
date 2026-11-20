@@ -769,9 +769,10 @@ for real rows (a pseudo record a grant is checked against), so a rule passes onl
 pins. `check()` only; the compilers read real columns.
 
 `validateRule(rule, { positive: true })` refuses every shape that can hold on a missing value
-(`if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists`), so a rule
-checked that way passes only on what the row carries. A rule that means "no value" says `equals
-null`.
+(`if`/`then`/`else`, array and aggregate rules, the negations, `isEmpty` and `notExists`) and every
+null check (`equals null`, `in` with null among its values), so a rule checked that way passes only
+on what the row carries. A null check holds on every row without a value, which is how a rule ends
+up granting everything; name the value that is there instead (a kind, an explicit `'none'`).
 
 ## Engine Globals
 
@@ -1750,6 +1751,28 @@ const holds = forRecheck.filter((row) => check(narrowRule(rule, narrowing), row,
 | --- | --- |
 | `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's clamps compiled as its `where`, so related rows come pre-narrowed, unless a clamp reads that list: a clamp reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its clamp hides. A relation that shows no column (one turned on with all its columns hidden, or one a clamp reads only for presence or a count) is fetched by its key alone (the join key, else `id`), even a hidden one, as a clamp's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads (the value, its label and axes, and every column and relation its option query's condition reads), as it does a clamp's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. For a source across a bridge that is its local reads: what it reads on this side, hidden or not, and each crossed bridge's local `on` key, so the rows plus the far side loaded under its bridge field answer it. A to-many relation's clamp that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the clamps. The root's own clamps are the query's `where`: `toPrisma(rule, { lens })`. |
 | `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns, and relations that are off or omitted, are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepClampColumns: true` keeps the columns those `where`s and the projected sources read, even hidden ones, and a hidden to-one row, or a hidden row of a list a clamp reads, as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the clamps as the database does, for any rule the lens admits; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. A `Decimal` column's value, whether a Decimal.js-like object such as Prisma's `Decimal` (anything with `toNumber()`) or a numeric string, comes back a number, a list column element by element; a non-numeric value passes through. Plain JSON out. |
+
+### Supplied bridges (no join)
+
+A bridge usually joins on a field of each side (`on`). A **supplied bridge** has none: its far row
+is not found by a key, the caller puts it on the record under its endpoint key, and the lens reads
+it like any bridge. Who is acting is the case it exists for (permissions' `actor:` rows).
+
+```ts
+const bridge: Bridge = {
+  endpoints: [{ fieldMap: 'app', model: 'Doc' }, { fieldMap: 'actor', model: 'User' }],
+  cardinality: 'oneToOne',
+};
+// lens root: relations: { 'actor:User': {} }
+check({ field: 'ownerId', operator: Operator.equals, path: 'actor:User.id' }, {
+  ...doc,
+  'actor:User': user,
+});
+```
+
+A supplied bridge is one-to-one; an `on` on one side only is refused (`stitchFieldMaps`).
+`indexBridges` skips it, and a source read across it fetches no local key. `isJoinedBridge`
+tells the two apart (`JoinedBridge`, `SuppliedBridge`).
 
 ### Evaluating Across Bridges
 

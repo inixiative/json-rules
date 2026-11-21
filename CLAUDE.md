@@ -109,16 +109,20 @@ recursion — their descent IS their semantics — and are guarded by differenti
   throws, rather than silently answer differently from check(). The fix is in the lens: move the
   clamp up a layer. The guard runs on to-many reads only; the same gap on a joined to-one relation
   is older than join mode and out of this ruling's scope.
-- **A lens `orderBy` follows a `where`'s rule** (Aron, 2026-11-20: "you shouldn't be able to
-  access things that you don't have access to via lens"). A layer orders only by number and date
-  columns its parent shows at every visit of the node, on the path or as a model default; it may
-  order by a column it hides itself, as its own `where` may read one. `orderByIssues` is the one
-  check of the columns: `validateNarrowing` reports it and every posture throws it as a
-  `LensRefusal`, never applies it. It orders wherever the lens reads many rows: the
-  root's (`toLensSelect` returns `{ select, orderBy }`) and a to-many relation's (Aron,
-  2026-11-21: "I want the all-order-by to be working"). A to-one relation is one row; an `orderBy`
-  written there orders nothing, and over valid columns is reported by `validateNarrowing` alone. The select fetches the
-  order's columns even when the visit hides them; `projectRows` orders, then cuts them.
+- **A lens `orderBy` follows a `where`'s rule** (Aron, 2026-11-20 / 21: "you shouldn't be able to
+  access things that you don't have access to via lens"; "I want the all-order-by to be working";
+  "it should only be able to reach down into things that are to 1 across the lens… and then a
+  scalar value that is a valid value"; "it's always just values and direction"). `orderBy` is a
+  list of `{ field, dir }`, applied in turn, on the root, a to-many relation, or a model default:
+  wherever the lens reads many rows. A field is a number or date column of the node's model, or of
+  one reached through to-one relations the map declares. A later layer names only what its parent
+  shows at every visit of the node, with no clamped relation on the way (the order would follow
+  rows the clamp hides); a layer may order by a column it hides itself, as its own `where` may
+  read one. A required column behind an optional relation is refused: no rail can be told where a
+  row with no related one goes. `orderByIssues` is the one check: `validateNarrowing` reports it
+  and every posture throws it as a `LensRefusal`, never applies it. `toLensSelect` returns
+  `{ select, orderBy }` and fetches the order's paths even where hidden; `projectRows` orders,
+  then cuts them. A to-one relation is one row: an `orderBy` written there orders nothing.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled
   in May 2026; 3.4's first cut contradicted it because nobody looked.

@@ -2,8 +2,8 @@ import { modelOf, own, ownEntry } from '@inixiative/field-map';
 import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
-import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
-import { readOwnPath } from '../scope';
+import { fieldEntry, type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
+import { pathSegments, readOwnPath } from '../scope';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
@@ -34,36 +34,50 @@ export type LensRelationSelect = {
   where?: PrismaWhere;
   orderBy?: LensOrderBy;
 };
-/** Prisma's `orderBy` for a relation's rows: a nullable column sorts its NULLs last, as check()
- *  orders a window. */
-export type LensOrderBy = Record<string, SortDir | { sort: SortDir; nulls: 'last' }>[];
+/** Prisma's `orderBy` for a node's rows: each key a column, nested under the to-one relations its
+ *  path crosses; a nullable column sorts its NULLs last, as check() orders a window. */
+export type LensOrderBy = Record<string, LensOrderKey>[];
+export type LensOrderKey =
+  | SortDir
+  | { sort: SortDir; nulls: 'last' }
+  | { [relation: string]: LensOrderKey };
+
+// The column an order key ends on, through the to-one relations its path crosses.
+const orderKeyEntry = (policy: Policy, at: MapVisit, field: string): FieldMapEntry | undefined =>
+  fieldEntry(field, own(policy.lens.maps, at.mapName), at.modelName);
 
 // A visit's rows in its order, as the database returns them under `toLensSelect`: a Decimal key
 // orders as its number.
 const inVisitOrder = <T>(policy: Policy, at: MapVisit, rows: readonly T[]): readonly T[] => {
   const order = resolveVisit(policy, at.mapName, at.modelName, at.relPath).orderBy;
   if (!order) return rows;
-  const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields;
   return orderRecords(rows, order, (row, key) =>
-    decimalValue(own(fields, key), readOwnPath(row, key)),
+    decimalValue(orderKeyEntry(policy, at, key), readOwnPath(row, key)),
   );
 };
 
-// A select with its order's own columns, shown or not: projectRows orders by them and cuts the
-// ones the visit hides, as it does a clamp's.
-const withOrderColumns = (select: LensSelect, orderBy: OrderBy | null | undefined): LensSelect => ({
-  ...select,
-  ...Object.fromEntries((orderBy ?? []).map((key) => [key.field, true as const])),
-});
+// A select tree with an order's own paths: the fetch carries them, shown or not, for projectRows
+// to order by and cut. Only where the order applies — the root and a to-many relation's visit.
+const withOrderPaths = (tree: PathTree, orderBy: OrderBy | null | undefined): PathTree =>
+  orderBy
+    ? addPaths(
+        mergeTrees({}, tree),
+        orderBy.map((key) => key.field),
+      )
+    : tree;
 
-// A visit's `orderBy` as Prisma reads it, over the columns of the visit's model.
-const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy => {
-  const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields;
-  return orderBy.map(({ field, dir }) => {
-    const entry = own(fields, field);
-    return { [field]: entry?.isRequired ? dir : { sort: dir, nulls: 'last' as const } };
+// A visit's `orderBy` as Prisma reads it: each key nested under the relations its path crosses.
+const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy =>
+  orderBy.map(({ field, dir }) => {
+    const leaf: LensOrderKey = orderKeyEntry(policy, at, field)?.isRequired
+      ? dir
+      : { sort: dir, nulls: 'last' };
+    const [column, ...relations] = pathSegments(field).reverse();
+    return relations.reduce<Record<string, LensOrderKey>>(
+      (inner, relation) => ({ [relation]: inner }),
+      { [column as string]: leaf },
+    );
   });
-};
 
 /** What a clamp's compile reads: the clock, never a schema (the lens is it). */
 export type LensSelectOptions = Omit<ToPrismaOptions, 'map' | 'mapName' | 'model' | 'lens'>;
@@ -224,12 +238,20 @@ const selectAt = (
     // A relation that is off, and that no clamp reads, is not fetched.
     if (childMode === 'paths' && below === undefined) continue;
     const child = childVisit(at, field, { mapName: at.mapName, modelName: entry.type });
-    const childSelect = selectAt(policy, child, childMode, below ?? {}, options, reads);
-    // A clamp reads a list whole, as the database does: one it reads is fetched unnarrowed.
     const shownList =
       entry.isList && childMode !== 'paths'
         ? resolveVisit(policy, child.mapName, child.modelName, child.relPath)
         : null;
+    const orderBy = shownList?.orderBy;
+    const childSelect = selectAt(
+      policy,
+      child,
+      childMode,
+      withOrderPaths(below ?? {}, orderBy),
+      options,
+      reads,
+    );
+    // A clamp reads a list whole, as the database does: one it reads is fetched unnarrowed.
     const where =
       shownList && below === undefined ? clampWhere(policy, child, shownList, options) : undefined;
     // Prisma can't select nothing: a relation that shows no column is fetched by its key alone.
@@ -239,9 +261,8 @@ const selectAt = (
       : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
-    const orderBy = shownList?.orderBy;
     select[field] = {
-      select: withOrderColumns(shown, orderBy),
+      select: shown,
       ...(where && { where }),
       ...(orderBy && { orderBy: prismaOrderBy(policy, child, orderBy) }),
     };
@@ -270,7 +291,15 @@ export const toLensSelectWith = (
   plans: readonly SourcePlan[] = sourcePlansWith(policy),
 ): LensQuery => {
   const root = rootVisit(policy);
-  const select = selectAt(policy, root, 'declared', {}, options, sourceReads(policy, plans));
+  const order = resolveVisit(policy, root.mapName, root.modelName, root.relPath).orderBy;
+  const select = selectAt(
+    policy,
+    root,
+    'declared',
+    withOrderPaths({}, order),
+    options,
+    sourceReads(policy, plans),
+  );
   // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
   // (a viewer's projection drops it). A root model with no `id` stays as it is.
   if (!Object.values(select).some((selected) => selected === true)) {
@@ -280,11 +309,7 @@ export const toLensSelectWith = (
     );
     if (id && !isRelationEntry(id)) select.id = true;
   }
-  const order = resolveVisit(policy, root.mapName, root.modelName, root.relPath).orderBy;
-  return {
-    select: withOrderColumns(select, order),
-    ...(order && { orderBy: prismaOrderBy(policy, root, order) }),
-  };
+  return { select, ...(order && { orderBy: prismaOrderBy(policy, root, order) }) };
 };
 
 // A relation's value, each related row through `cut`: a list keeps the rows it returns, a single

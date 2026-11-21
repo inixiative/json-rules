@@ -606,6 +606,198 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
     });
   });
 
+  describe('an order key may reach a column through to-one relations', () => {
+    const ids = (rows: Record<string, unknown>[]) => rows.map((row) => row.id);
+    const fetchRoot = async (lens: LensNarrowing) =>
+      (await rails.prisma.user.findMany(toLensSelect(lens) as never)) as Record<string, unknown>[];
+    const shuffled = () => [...(rails.rows as unknown as Record<string, unknown>[])].reverse();
+    const rootBy = (
+      orderBy: { field: string; dir: 'asc' | 'desc' }[],
+      root: Record<string, unknown> = { picks: ['id'] },
+    ): LensNarrowing => ({ parent: base, root: { ...root, orderBy } }) as LensNarrowing;
+    const codes = (lens: LensNarrowing) =>
+      validateNarrowing(lens).errors.map((e) => `${e.code} ${e.path}`);
+
+    test('toLensSelect nests the key under its relations and fetches the path', () => {
+      const lens = rootBy([{ field: 'org.seats', dir: 'desc' }]);
+      const query = toLensSelect(lens);
+      expect(query.orderBy).toEqual([{ org: { seats: { sort: 'desc', nulls: 'last' } } }]);
+      expect(query.select).toMatchObject({ id: true, org: { select: { seats: true } } });
+    });
+
+    test.each<[string, { field: string; dir: 'asc' | 'desc' }[]]>([
+      [
+        'one hop asc',
+        [
+          { field: 'org.seats', dir: 'asc' },
+          { field: 'id', dir: 'asc' },
+        ],
+      ],
+      [
+        'one hop desc',
+        [
+          { field: 'org.seats', dir: 'desc' },
+          { field: 'id', dir: 'asc' },
+        ],
+      ],
+      [
+        'two hops desc',
+        [
+          { field: 'org.parent.seats', dir: 'desc' },
+          { field: 'id', dir: 'asc' },
+        ],
+      ],
+      [
+        'a date',
+        [
+          { field: 'org.foundedAt', dir: 'asc' },
+          { field: 'id', dir: 'desc' },
+        ],
+      ],
+      [
+        'an own column, then a path',
+        [
+          { field: 'age', dir: 'desc' },
+          { field: 'org.seats', dir: 'asc' },
+          { field: 'id', dir: 'asc' },
+        ],
+      ],
+    ])('%s: the database and projectRows agree, a row with no related one last', async (_, order) => {
+      const lens = rootBy(order);
+      const fetched = await fetchRoot(lens);
+      expect(ids(projectRows(lens, shuffled()))).toEqual(ids(fetched));
+      // The relation is off in this lens: fetched for the order, cut from the projection.
+      const projected = projectRows(lens, fetched);
+      expect(ids(projected)).toEqual(ids(fetched));
+      expect(projected[0]).toEqual({ id: fetched[0]?.id });
+    });
+
+    test('a to-many relation orders its rows through a to-one hop', async () => {
+      const lens: LensNarrowing = {
+        parent: createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' }),
+        root: {
+          picks: ['id'],
+          relations: {
+            users: {
+              picks: ['id'],
+              orderBy: [
+                { field: 'org.parent.seats', dir: 'desc' },
+                { field: 'age', dir: 'asc' },
+                { field: 'id', dir: 'asc' },
+              ],
+            },
+          },
+        },
+      };
+      expect(validateNarrowing(lens).ok).toBe(true);
+      const fetched = (await rails.prisma.org.findMany({
+        ...(toLensSelect(lens) as object),
+        orderBy: { id: 'asc' },
+      } as never)) as Record<string, unknown>[];
+      const userIds = (rows: Record<string, unknown>[]) =>
+        rows.map((row) => (row.users as { id: number }[]).map((user) => user.id));
+      const projected = projectRows(lens, fetched);
+      expect(userIds(projected)).toEqual(userIds(fetched));
+      expect(projected.flatMap((row) => row.users as object[])[0]).toHaveProperty('id');
+      expect(projected.flatMap((row) => row.users as object[]).every((u) => !('org' in u))).toBe(
+        true,
+      );
+    });
+
+    test('refused, by validateNarrowing and by every posture', () => {
+      const refused: [string, LensNarrowing, string][] = [
+        [
+          'a to-many hop',
+          rootBy([{ field: 'posts.views', dir: 'asc' }]),
+          'wrong_kind root.orderBy[0]',
+        ],
+        [
+          'a string at the end',
+          rootBy([{ field: 'org.name', dir: 'asc' }]),
+          'wrong_kind root.orderBy[0]',
+        ],
+        [
+          'a path into Json',
+          rootBy([{ field: 'org.settings.tier', dir: 'asc' }]),
+          'wrong_kind root.orderBy[0]',
+        ],
+        [
+          'a relation at the end',
+          rootBy([{ field: 'org.parent', dir: 'asc' }]),
+          'wrong_kind root.orderBy[0]',
+        ],
+        [
+          'an unknown hop',
+          rootBy([{ field: 'nope.seats', dir: 'asc' }]),
+          'not_in_lens root.orderBy[0]',
+        ],
+        [
+          'a required column behind an optional relation',
+          rootBy([{ field: 'org.id', dir: 'desc' }]),
+          'wrong_kind root.orderBy[0]',
+        ],
+        [
+          'a hop the parent does not show',
+          {
+            parent: { parent: base, root: { picks: ['id'] } },
+            root: { orderBy: [{ field: 'org.seats', dir: 'asc' }] },
+          },
+          'not_visible root.orderBy[0]',
+        ],
+        [
+          'a column the parent hides behind the hop',
+          {
+            parent: { parent: base, root: { relations: { org: { omits: ['seats'] } } } },
+            root: { orderBy: [{ field: 'org.seats', dir: 'asc' }] },
+          },
+          'not_visible root.orderBy[0]',
+        ],
+        [
+          'a hop the parent clamps',
+          {
+            parent: {
+              parent: base,
+              root: {
+                relations: { org: { where: { field: 'seats', operator: 'lessThan', value: 3 } } },
+              },
+            },
+            root: { orderBy: [{ field: 'org.seats', dir: 'desc' }] },
+          },
+          'not_visible root.orderBy[0]',
+        ],
+      ];
+      for (const [name, lens, issue] of refused) {
+        expect(codes(lens), name).toEqual([issue]);
+        expect(() => toLensSelect(lens), name).toThrow(LensRefusal);
+        expect(() => projectRows(lens, [{ id: 1 }]), name).toThrow(LensRefusal);
+      }
+    });
+
+    test('the nullable key on the row stands in for a required column behind an optional relation', async () => {
+      const lens = rootBy([
+        { field: 'orgId', dir: 'desc' },
+        { field: 'id', dir: 'asc' },
+      ]);
+      expect(validateNarrowing(lens).ok).toBe(true);
+      expect(ids(projectRows(lens, shuffled()))).toEqual(ids(await fetchRoot(lens)));
+    });
+
+    test('a later layer orders through a relation its parent shows unclamped', async () => {
+      const lens: LensNarrowing = {
+        parent: { parent: base, root: { picks: ['id'], relations: { org: { picks: ['seats'] } } } },
+        root: {
+          orderBy: [
+            { field: 'org.seats', dir: 'asc' },
+            { field: 'id', dir: 'asc' },
+          ],
+        },
+      };
+      expect(validateNarrowing(lens).ok).toBe(true);
+      const fetched = await fetchRoot(lens);
+      expect(ids(projectRows(lens, shuffled()))).toEqual(ids(fetched));
+    });
+  });
+
   test('orders by numbers and dates only: a string, a relation, or an unknown column is refused', () => {
     const codes = (orderBy: unknown) =>
       validateNarrowing({

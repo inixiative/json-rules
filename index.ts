@@ -57,6 +57,7 @@ export {
   getLensRoot,
   type LensClamps,
   type LensOrderBy,
+  type LensOrderKey,
   type LensPathHop,
   type LensPathResolution,
   type LensQuery,

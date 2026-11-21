@@ -913,7 +913,10 @@ nullable column `{ sort, nulls: 'last' }`), the root's beside `select` so `findM
 and `projectRows` sorts the rows and each list by it, so rows fetched
 in any order project as the database returns them. The select carries the order's own columns even
 when the visit hides them, and `projectRows` cuts them after ordering, so it takes rows as fetched
-(or fuller), not rows it already projected. It is a window's order: each key in turn, a NULL
+(or fuller), not rows it already projected. Each key is `{ field, dir }`, applied in turn: a
+column of the node's model, or a path to one through to-one relations (`org.seats`,
+`org.parent.seats`), written to Prisma nested under them and fetched even where the relation is off
+or hidden. A row with no related one orders last, as a NULL does. It is a window's order: each key in turn, a NULL
 last either way, ties kept as fetched: the database breaks a tie its own way, so give a total order
 (end with the key column) where the order of equal rows matters. Ordering narrows nothing, so a later layer's replaces an
 earlier one's (and, in one layer, the path's the model default's); like a `where`, its columns must
@@ -926,7 +929,12 @@ wherever its model is reached to-many). A column `validateNarrowing` refuses to 
 malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied. An `orderBy`
 on a to-one relation orders nothing on any posture: over valid columns it is reported by
 `validateNarrowing` alone. Rows order as they carry each column: a number or
-date held as a string orders as a string, so coerce the rows first. Only number and date columns order a relation: a string
+date held as a string orders as a string, so coerce the rows first. A path crosses to-one relations only (a to-many
+relation, a bridge or a path into a Json column is `wrong_kind`), and in a later layer none its
+parent clamps (`not_visible`: the order would follow rows the clamp hides, which a `where` never
+reads). A required column behind an optional relation is refused too (`wrong_kind`): a row with no
+related one has no value, and Prisma takes `nulls: 'last'` only on a nullable column, so order by a
+nullable one (the key on the row itself, as `orgId` for `org.id`). Only number and date columns order rows: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
 disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not
 the lens's.

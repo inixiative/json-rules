@@ -346,12 +346,58 @@ export const laterClampIssues = (
 ): ValidationIssue[] =>
   checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
 
+// What is wrong with one order key at a visit, on the surface the layer reads.
+const orderKeyIssue = (
+  surface: Policy,
+  at: MapVisit,
+  field: string,
+): { code: string; message: string } | null => {
+  const { resolution, effects } = resolvePolicyPath(surface, at, field);
+  if (resolution.outcome === 'hidden')
+    return { code: 'not_visible', message: `'${field}' is not shown by the parent` };
+  if (resolution.outcome !== 'resolved')
+    return { code: 'not_in_lens', message: `field '${field}' not on model` };
+  const { hops, terminal, jsonSubPath } = resolution;
+  const crossed = hops.slice(0, -1);
+  const kind = terminal.entry.isList ? undefined : entryKind(terminal.entry);
+  if (
+    crossed.some((hop) => hop.entry.isList || hop.entry.kind === 'bridge') ||
+    jsonSubPath.length > 0 ||
+    isRelationEntry(terminal.entry) ||
+    kind === undefined ||
+    !ORDERED_VALUE_KINDS.includes(kind)
+  )
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' is not a number or date column of the model, or of one it reaches through to-one relations: rows order by numbers and dates`,
+    };
+  // A row without the related one has no value to order by; the database puts it last only where
+  // the column takes `nulls: 'last'`, which a required column doesn't.
+  const optional = crossed.find((hop) => hop.entry.isRequired === false);
+  if (optional && terminal.entry.isRequired === true) {
+    const key = optional.entry.fromFields?.[0];
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' is a required column behind the optional relation '${optional.field}': a row with none has no place every rail agrees on; order by a nullable column${key ? ` (as '${key}')` : ''}`,
+    };
+  }
+  // A later layer reads a related row through its parent's clamps, and no rail can order by a
+  // clamped row: the order would follow values the clamp hides.
+  if (surface.chain.length > 0 && effects.slice(1).some((effect) => effect.whereClauses.length))
+    return {
+      code: 'not_visible',
+      message: `'${field}' crosses a relation the parent clamps: its order would follow rows the clamp hides`,
+    };
+  return null;
+};
+
 /**
- * What is wrong with an `orderBy` at a visit: its shape, a key that is not a number or
- * date column of the model (a string's code-unit order would disagree with a database collation,
- * as for `min` / `max`), or — in a later layer — a column its parent doesn't show there. The one
- * check validateNarrowing and every runtime posture make; `parent` is the layers above (none for
- * the first narrowing, which reads the menu).
+ * What is wrong with an `orderBy` at a visit: its shape, or a key that is not a number or date
+ * column (a string's code-unit order would disagree with a database collation, as for `min` /
+ * `max`) of the model or of one it reaches through to-one relations, on the surface a `where`
+ * reads: the menu for the first narrowing, and for a later layer what its parent shows there, with
+ * no clamped relation on the way. The one check validateNarrowing and every runtime posture make;
+ * `parent` is the layers above.
  */
 export const orderByIssues = (
   orderBy: unknown,
@@ -361,21 +407,9 @@ export const orderByIssues = (
 ): ValidationIssue[] => {
   const malformed = orderByShapeIssues(orderBy, path);
   if (malformed.length > 0) return malformed;
-  const fields = modelOf(own(parent.lens.maps, at.mapName), at.modelName)?.fields;
-  const shown = resolveVisit(parent, at.mapName, at.modelName, at.relPath);
+  const surface: Policy = { ...parent, clamp: parent.chain.length === 0 };
   return (orderBy as OrderBy).flatMap(({ field }, index) => {
-    const entry = own(fields, field);
-    const kind = entry && !entry.isList ? entryKind(entry) : undefined;
-    const issue = !entry
-      ? { code: 'not_in_lens', message: `field '${field}' not on model` }
-      : kind === undefined || !ORDERED_VALUE_KINDS.includes(kind)
-        ? {
-            code: 'wrong_kind',
-            message: `'${field}' is not a number or date column: rows order by numbers and dates`,
-          }
-        : !isFieldVisible(shown, field)
-          ? { code: 'not_visible', message: `'${field}' is not shown by the parent` }
-          : null;
+    const issue = orderKeyIssue(surface, at, field);
     return issue ? [{ path: `${path}[${index}]`, ...issue }] : [];
   });
 };

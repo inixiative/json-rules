@@ -1228,7 +1228,7 @@ Lens & bridges:
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`, `getLensRoot`, `clampLens`, `LensClamps`
 - `projectLens`, `walkLensPath`, `readLensValue`, `LensValue`, `describeRule`, `describeRuleSources`
-- `toLensSelect`, `projectRows`, `LensQuery`, `LensSelect`, `LensRelationSelect`, `LensOrderBy`, `LensSelectOptions`, `ProjectRowsOptions`
+- `toLensSelect`, `projectRows`, `LensQuery`, `LensSelect`, `LensRelationSelect`, `LensOrderBy`, `LensOrderKey`, `LensSelectOptions`, `ProjectRowsOptions`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
 - `toLensWhereSql`, `LensWhereSql`, `LensWhereSqlOptions`
 - `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`

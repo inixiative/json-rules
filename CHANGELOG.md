@@ -33,7 +33,12 @@ and in rules", and "`orderBy` on to-many relations in the lens".
 - **A lens orders the rows it reads**: `orderBy: [{ field, dir }]` on the root, on a to-many
   relation's object, or on a model default (which applies at the root and every to-many visit of
   its model). `toLensSelect` returns `{ select, orderBy? }` (new type `LensQuery`): spread it into
-  `findMany` and the root rows come back ordered; `projectRows` orders the root rows the same way. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
+  `findMany` and the root rows come back ordered; `projectRows` orders the root rows the same way.
+  A key's `field` is a column of the node's model or a path to one through to-one relations
+  (`org.seats`): Prisma's nested `orderBy` in the query, the path fetched even where the relation
+  is off or hidden, a row with no related one last. Refused: a to-many hop, a bridge, a path into
+  Json, a required column behind an optional relation (Prisma states NULL placement only on a
+  nullable column), and — in a later layer — a path across a relation its parent clamps. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
   `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, a NULL last either way, ties
   as fetched (a total order is the caller's to give). The select carries the order's columns even
   when the visit hides them and `projectRows` cuts them, so the database and in-memory rails return
@@ -46,7 +51,7 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   to-one relation is refused (`wrong_kind`): it is one row. `validateNarrowing` checks it, a malformed
   one included (`invalid_order_by`, the window's own shape check), and every posture refuses a
   column it refuses (`LensRefusal`) rather than order by it. An empty `orderBy` leaves an earlier
-  layer's order in place. New type `LensOrderBy`.
+  layer's order in place. New types `LensOrderBy`, `LensOrderKey`.
 - **Under a lens a pick of one is checked as a field rule on the column it picks**:
   `validateRuleInLens` checks its operator and value against that column's kind and its allowed
   values (an enum the lens narrows). A list pick tests the list, and a pick with no

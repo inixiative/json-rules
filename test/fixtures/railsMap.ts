@@ -21,6 +21,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         id: {
           kind: 'scalar',
@@ -28,6 +29,7 @@ export const prismaMap = {
           isRequired: true,
           isList: false,
           isId: true,
+          isUnique: false,
         },
         name: {
           kind: 'scalar',
@@ -35,6 +37,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         parent: {
           kind: 'object',
@@ -51,6 +54,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         plan: {
           kind: 'scalar',
@@ -58,6 +62,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         seats: {
           kind: 'scalar',
@@ -65,6 +70,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         settings: {
           kind: 'scalar',
@@ -72,6 +78,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         users: {
           kind: 'object',
@@ -102,6 +109,7 @@ export const prismaMap = {
           isRequired: true,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         id: {
           kind: 'scalar',
@@ -109,6 +117,7 @@ export const prismaMap = {
           isRequired: true,
           isList: false,
           isId: true,
+          isUnique: false,
         },
         title: {
           kind: 'scalar',
@@ -116,6 +125,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         views: {
           kind: 'scalar',
@@ -123,6 +133,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
       },
     },
@@ -135,6 +146,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         createdAt: {
           kind: 'scalar',
@@ -142,6 +154,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         id: {
           kind: 'scalar',
@@ -149,6 +162,7 @@ export const prismaMap = {
           isRequired: true,
           isList: false,
           isId: true,
+          isUnique: false,
         },
         meta: {
           kind: 'scalar',
@@ -156,6 +170,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         name: {
           kind: 'scalar',
@@ -163,6 +178,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         org: {
           kind: 'object',
@@ -179,6 +195,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         posts: {
           kind: 'object',
@@ -194,6 +211,7 @@ export const prismaMap = {
           type: 'Role',
           isRequired: false,
           isList: false,
+          isUnique: false,
           values: ['admin', 'member', 'Guest'],
         },
         score: {
@@ -202,6 +220,7 @@ export const prismaMap = {
           isRequired: false,
           isList: false,
           isId: false,
+          isUnique: false,
         },
         tags: {
           kind: 'scalar',
@@ -209,6 +228,7 @@ export const prismaMap = {
           isRequired: true,
           isList: true,
           isId: false,
+          isUnique: false,
         },
       },
     },

@@ -20,7 +20,7 @@
     "check:catalog": "bun test test/operatorCatalog.integrity.test.ts",
     "generate:rails": "cd test/rails && prisma generate && prisma migrate diff --from-empty --to-schema schema.prisma --script -o generated/schema.sql",
     "check": "bun run generate:rails && bun run typecheck && bun run lint && bun run test",
-    "prepare": "if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi && bun run generate:rails",
+    "prepare": "if git rev-parse --git-dir >/dev/null 2>&1; then root=\"$(dirname \"$(git rev-parse --path-format=absolute --git-common-dir)\")\"; if [ -x \"$root/node_modules/.bin/lefthook\" ]; then (cd \"$root\" && ./node_modules/.bin/lefthook install); fi; fi && bun run generate:rails",
     "prepublishOnly": "bun run check && bun run build"
   },
   "keywords": [

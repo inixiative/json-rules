@@ -1,4 +1,4 @@
-## 4.4.0 — the engine fills bridges; a read that may not be there needs exists
+## 4.4.0 — the engine fills bridges; a match needs exists
 
 Why: Aron 2026-11-21, on how bridge data gets into a check: "the engine should bridge your data,
 so we need to expose it", named "record with bridge data". And on rules: "write an existence check
@@ -17,10 +17,11 @@ involve existence". A review found `orgId equals path actor:User.orgId` holding 
   model, so no row anywhere in the record brings its own bridge row; a looping row graph is safe.
   `endpointKey`, `parseEndpointKey` and `declaredEnumValues` are exported. The README no longer
   tells callers to embed by hand.
-- **The positive gate refuses a read that may not be there without an `exists` beside it**
-  (`missingExists`): the field of a comparison with a `path` or `bind`, and every read across a
-  bridge, either side. The `exists` names the exact field, in an `all` above the comparison; an
-  `any`'s does not count. Null semantics are unchanged. `__actor.*` is no longer an unchecked path
+- **The positive gate refuses a match without an `exists`** (`matchWithoutExists`): a field
+  compared with a `path` or `bind` needs an `exists` on it, because two missing values match. A
+  comparison with a literal needs none: a missing value already fails it, across a bridge or not.
+  The `exists` names the exact field, in an `all` above the comparison; an `any`'s does not count.
+  Null semantics are unchanged. `__actor.*` is no longer an unchecked path
   in `ConditionOn`; a bridged read (`actor:User.id`) is.
 
 ## 4.3.0 — supplied bridges: a bridge with no join

@@ -213,25 +213,16 @@ const namesMissingValue = (node: Record<string, unknown>): boolean => {
 const readKey = (ref: string): string =>
   pathSegments(parseScopeRef(ref)?.path ?? ref).join('\u0000');
 
-// A read across a bridge: a segment naming another map's model (`actor:User`, `crm:Contact`).
-const crossesBridge = (ref: string): boolean =>
-  pathSegments(parseScopeRef(ref)?.path ?? ref).some((segment) => segment.includes(':'));
-
-// What a comparison reads that may not be there: its field when it is compared with any path or
-// bind, and every read across a bridge, on either side.
-const readsThatMustExist = (node: Record<string, unknown>): string[] => {
+// The field a match compares with another read (a path or a bind): two missing values match, so
+// it needs exists. A comparison with a literal already fails on a missing value.
+const matchedField = (node: Record<string, unknown>): string | null => {
+  if (typeof node.field !== 'string') return null;
   if (typeof node.operator === 'string' && NO_VALUE_OPERATORS.includes(node.operator as Operator))
-    return [];
-  const field = typeof node.field === 'string' ? node.field : null;
-  const paths = valueRefs(node);
-  const comparesARead =
-    paths.length > 0 || leafSources(node).some(({ source }) => typeof source.bind === 'string');
-  return [
-    ...new Set([
-      ...(field && comparesARead ? [field] : []),
-      ...[...(field ? [field] : []), ...paths].filter(crossesBridge),
-    ]),
-  ];
+    return null;
+  const matchesARead =
+    valueRefs(node).length > 0 ||
+    leafSources(node).some(({ source }) => typeof source.bind === 'string');
+  return matchesARead ? node.field : null;
 };
 
 // The fields an `all` makes exist for everything under it: its `exists` conjuncts.
@@ -244,7 +235,7 @@ const existsInAll = (children: Condition[]): string[] =>
   });
 
 // why: an `all`'s `exists` holds for its siblings but an `any`'s does not, a scope visitCondition does not carry; complete because the positive gate refuses every other shape
-const validateExistsBeside = (
+const validateExistsWithMatches = (
   condition: unknown,
   at: string,
   exists: ReadonlySet<string>,
@@ -255,30 +246,30 @@ const validateExistsBeside = (
   if (Array.isArray(node.all)) {
     const inner = new Set([...exists, ...existsInAll(node.all as Condition[])]);
     node.all.forEach((child, i) => {
-      validateExistsBeside(child, `${at}.all[${i}]`, inner, context);
+      validateExistsWithMatches(child, `${at}.all[${i}]`, inner, context);
     });
     return;
   }
   if (Array.isArray(node.any)) {
     node.any.forEach((child, i) => {
-      validateExistsBeside(child, `${at}.any[${i}]`, exists, context);
+      validateExistsWithMatches(child, `${at}.any[${i}]`, exists, context);
     });
     return;
   }
   const shape = conditionShape(node);
   if (shape !== 'field' && shape !== 'date') return;
-  for (const read of readsThatMustExist(node))
-    if (!exists.has(readKey(read)))
-      pushIssue(
-        context,
-        at,
-        'missingExists',
-        `\`${read}\` may not be there: put { field: '${read}', operator: 'exists' } beside it in an all`,
-      );
+  const field = matchedField(node);
+  if (field && !exists.has(readKey(field)))
+    pushIssue(
+      context,
+      at,
+      'matchWithoutExists',
+      `\`${field}\` is matched against another read, and two missing values match: put { field: '${field}', operator: 'exists' } beside it in an all`,
+    );
 };
 
 const validatePositive = (condition: unknown, context: ValidationContext): void => {
-  validateExistsBeside(condition, '$', new Set(), context);
+  validateExistsWithMatches(condition, '$', new Set(), context);
   visitPositiveShapes(condition, context);
 };
 

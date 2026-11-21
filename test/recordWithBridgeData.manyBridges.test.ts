@@ -154,16 +154,18 @@ describe('recordWithBridgeData across many bridges, in both directions', () => {
     expect(check(back, device)).toBe(true);
   });
 
-  test('a read across any bridge needs exists on its exact leaf', () => {
+  test('a bridged read against a literal fails on its own when missing; against a path its field needs exists', () => {
     const risky = { field: 'crm:Contact.industry', operator: Operator.equals, value: 'tech' };
-    expect(validateRule(risky, { positive: true }).errors.map((e) => e.code)).toEqual([
-      'missingExists',
+    expect(validateRule(risky, { positive: true }).errors).toEqual([]);
+    expect(check(risky, recordWithBridgeData(set, 'db:Account', { id: 'a1' }, {}))).not.toBe(true);
+    const sameOwner = {
+      field: 'crm:Contact.ownerId',
+      operator: Operator.equals,
+      path: 'actor:User.id',
+    };
+    expect(validateRule(sameOwner, { positive: true }).errors.map((e) => e.code)).toEqual([
+      'matchWithoutExists',
     ]);
-    expect(
-      validateRule({ all: [exists('crm:Contact'), risky] }, { positive: true }).errors.map(
-        (e) => e.code,
-      ),
-    ).toEqual(['missingExists']);
   });
 
   test('the stitched lens reads the chain once each hop is turned on', () => {

@@ -774,16 +774,16 @@ null check (`equals null`, `in` with null among its values), so a rule checked t
 on what the row carries. A null check holds on every row without a value, which is how a rule ends
 up granting everything; name the value that is there instead (a kind, an explicit `'none'`).
 
-It also refuses a read that may not be there unless an `exists` on it sits beside it in an `all`:
-the field of every comparison with a `path` or a `bind` (whatever the operator: `equals` and `in`
-even hold when both sides are null), and every read across a bridge (`actor:User.id`, `crm:Contact.industry`), on either side.
-The `exists` names the exact field, and counts from any `all` above the comparison, never from an
-`any`:
+It also refuses a match without an `exists`: a field compared with a `path` or a `bind` needs an
+`exists` on it beside it in an `all`, because two missing values match (`ownerId equals
+actor:User.id` holds on a record with no owner and a call with no actor). A comparison with a
+literal needs none: a missing value already fails it, bridged or not. Bridging only links a row
+that is there; a read of one that is not is missing like any other. The `exists` names the exact
+field, and counts from any `all` above the comparison, never from an `any`:
 
 ```ts
 { all: [
   { field: 'ownerId', operator: 'exists' },
-  { field: 'actor:User.id', operator: 'exists' },
   { field: 'ownerId', operator: 'equals', path: 'actor:User.id' },
 ] }
 ```

@@ -62,10 +62,10 @@ import { parseScopeRef, scopeOutOfBounds } from './scope';
 import { aggregateFieldRequired, aggregateItemError } from './toPrisma/aggregate';
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
-import { conditionShape, visitCondition } from './traverse';
+import { conditionShape, leafSources, visitCondition } from './traverse';
 import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
 import { coerceMismatch, coerces } from './value/aggregateType';
-import { rowRef, SOURCE_FORMS } from './valueSource';
+import { hasPath, rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
 
 export type ValidationIssue = {
@@ -209,7 +209,79 @@ const namesMissingValue = (node: Record<string, unknown>): boolean => {
   return false;
 };
 
-const validatePositive = (condition: unknown, context: ValidationContext): void =>
+// A read across a bridge: a segment naming another map's model (`actor:User`, `crm:Contact`).
+const crossesBridge = (ref: string): boolean =>
+  ref.split('.').some((segment) => segment.includes(':'));
+
+// What a comparison reads that may not be there: its field when it is compared with a path or a
+// bind (`equals` and `in` hold when both sides are null), and every read across a bridge.
+const readsThatMustExist = (node: Record<string, unknown>): string[] => {
+  if (typeof node.operator === 'string' && NO_VALUE_OPERATORS.includes(node.operator as Operator))
+    return [];
+  const sources = leafSources(node);
+  const field = typeof node.field === 'string' ? node.field : null;
+  const paths = sources.flatMap(({ source }) => (hasPath(source) ? [source.path] : []));
+  const comparesARead = sources.some(
+    ({ source }) => hasPath(source) || typeof source.bind === 'string',
+  );
+  return [
+    ...new Set([
+      ...(field && comparesARead ? [field] : []),
+      ...[...(field ? [field] : []), ...paths].filter(crossesBridge),
+    ]),
+  ];
+};
+
+// The fields an `all` makes exist for everything under it: its `exists` children, and those of an
+// `all` among them.
+const existsInAll = (children: unknown[]): string[] =>
+  children.flatMap((child) => {
+    if (!isPlainObject(child)) return [];
+    const node = child as Record<string, unknown>;
+    if (Array.isArray(node.all)) return existsInAll(node.all);
+    return node.operator === 'exists' && typeof node.field === 'string' ? [node.field] : [];
+  });
+
+// why: an `all`'s `exists` holds for its siblings but an `any`'s does not, a scope visitCondition does not carry
+const validateExistsBeside = (
+  condition: unknown,
+  at: string,
+  exists: ReadonlySet<string>,
+  context: ValidationContext,
+): void => {
+  if (!isPlainObject(condition)) return;
+  const node = condition as Record<string, unknown>;
+  if (Array.isArray(node.all)) {
+    const inner = new Set([...exists, ...existsInAll(node.all)]);
+    node.all.forEach((child, i) => {
+      validateExistsBeside(child, `${at}.all[${i}]`, inner, context);
+    });
+    return;
+  }
+  if (Array.isArray(node.any)) {
+    node.any.forEach((child, i) => {
+      validateExistsBeside(child, `${at}.any[${i}]`, exists, context);
+    });
+    return;
+  }
+  const shape = conditionShape(node);
+  if (shape !== 'field' && shape !== 'date') return;
+  for (const read of readsThatMustExist(node))
+    if (!exists.has(read))
+      pushIssue(
+        context,
+        at,
+        'missingExists',
+        `\`${read}\` may not be there: put { field: '${read}', operator: 'exists' } beside it in an all`,
+      );
+};
+
+const validatePositive = (condition: unknown, context: ValidationContext): void => {
+  validateExistsBeside(condition, '$', new Set(), context);
+  visitPositiveShapes(condition, context);
+};
+
+const visitPositiveShapes = (condition: unknown, context: ValidationContext): void =>
   visitCondition(condition as Condition, (node) => {
     const shape = conditionShape(node);
     const operator = node.operator ?? node.dateOperator;

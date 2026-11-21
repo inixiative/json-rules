@@ -1,3 +1,21 @@
+## 4.4.0 — the engine fills bridges; a read that may not be there needs exists
+
+Why: Aron 2026-11-21, on how bridge data gets into a check: "the engine should bridge your data,
+so we need to expose it", named "record with bridge data". And on rules: "write an existence check
+for everything that needs to exist. It's not just matches, it also exists", "make actor checks
+involve existence". A review found `orgId equals path actor:User.orgId` holding when both are null
+(R-2026-11-21-07).
+
+- **`recordWithBridgeData(set, at, record, { joined, supplied })`** returns the record with its
+  bridges filled: keys naming a model of the set's maps are dropped, each joined bridge's far row
+  (from the `indexBridges` dictionary, by `on`) and each supplied bridge's given row go under the
+  far endpoint key, far rows lose bridge keys of their own, and a supplied row no supplied bridge
+  ends at throws. `BridgeData` is exported. The README no longer tells callers to embed by hand.
+- **The positive gate refuses a read that may not be there without an `exists` beside it**
+  (`missingExists`): the field of a comparison with a `path` or `bind`, and every read across a
+  bridge, either side. The `exists` names the exact field, in an `all` above the comparison; an
+  `any`'s does not count. Null semantics are unchanged.
+
 ## 4.3.0 — supplied bridges: a bridge with no join
 
 Why: permissions reads who is acting as a bridge to an `actor` map (`actor:User.email`, Aron

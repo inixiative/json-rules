@@ -1,6 +1,8 @@
 export { isJoinedBridge } from './endpointKey';
 export type { BridgeDictionary } from './indexBridges';
 export { indexBridges } from './indexBridges';
+export type { BridgeData } from './recordWithBridgeData';
+export { recordWithBridgeData } from './recordWithBridgeData';
 export { stitchFieldMaps } from './stitch';
 export type {
   Bridge,

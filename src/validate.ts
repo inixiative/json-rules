@@ -62,11 +62,11 @@ import {
   WINDOW_OPERATORS,
 } from './operatorCatalog';
 import { patternProblem } from './pattern';
-import { parseScopeRef, scopeOutOfBounds } from './scope';
+import { parseScopeRef, pathSegments, scopeOutOfBounds } from './scope';
 import { aggregateFieldRequired, aggregateItemError } from './toPrisma/aggregate';
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
-import { conditionShape, visitCondition } from './traverse';
+import { conditionShape, conjuncts, leafSources, valueRefs, visitCondition } from './traverse';
 import type {
   AggregateMode,
   ArrayRule,
@@ -218,7 +218,71 @@ const namesMissingValue = (node: Record<string, unknown>): boolean => {
   return false;
 };
 
-const validatePositive = (condition: unknown, context: ValidationContext): void =>
+// The value a ref reads, as `check()` reads it: `$.a`, `a` and `["a"]` name one value.
+const readKey = (ref: string): string =>
+  pathSegments(parseScopeRef(ref)?.path ?? ref).join('\u0000');
+
+// The field a match compares with another read (a path or a bind): two missing values match, so
+// it needs exists. A comparison with a literal already fails on a missing value.
+const matchedField = (node: Record<string, unknown>): string | null => {
+  if (typeof node.field !== 'string') return null;
+  if (typeof node.operator === 'string' && NO_VALUE_OPERATORS.includes(node.operator as Operator))
+    return null;
+  const matchesARead =
+    valueRefs(node).length > 0 ||
+    leafSources(node).some(({ source }) => typeof source.bind === 'string');
+  return matchesARead ? node.field : null;
+};
+
+// The fields an `all` makes exist for everything under it: its `exists` conjuncts.
+const existsInAll = (children: Condition[]): string[] =>
+  conjuncts({ all: children }).flatMap((child) => {
+    const node = isPlainObject(child) ? (child as Record<string, unknown>) : {};
+    return node.operator === 'exists' && typeof node.field === 'string'
+      ? [readKey(node.field)]
+      : [];
+  });
+
+// why: an `all`'s `exists` holds for its siblings but an `any`'s does not, a scope visitCondition does not carry; complete because the positive gate refuses every other shape
+const validateExistsWithMatches = (
+  condition: unknown,
+  at: string,
+  exists: ReadonlySet<string>,
+  context: ValidationContext,
+): void => {
+  if (!isPlainObject(condition)) return;
+  const node = condition as Record<string, unknown>;
+  if (Array.isArray(node.all)) {
+    const inner = new Set([...exists, ...existsInAll(node.all as Condition[])]);
+    node.all.forEach((child, i) => {
+      validateExistsWithMatches(child, `${at}.all[${i}]`, inner, context);
+    });
+    return;
+  }
+  if (Array.isArray(node.any)) {
+    node.any.forEach((child, i) => {
+      validateExistsWithMatches(child, `${at}.any[${i}]`, exists, context);
+    });
+    return;
+  }
+  const shape = conditionShape(node);
+  if (shape !== 'field' && shape !== 'date') return;
+  const field = matchedField(node);
+  if (field && !exists.has(readKey(field)))
+    pushIssue(
+      context,
+      at,
+      'matchWithoutExists',
+      `\`${field}\` is matched against another read, and two missing values match: put { field: '${field}', operator: 'exists' } beside it in an all`,
+    );
+};
+
+const validatePositive = (condition: unknown, context: ValidationContext): void => {
+  validateExistsWithMatches(condition, '$', new Set(), context);
+  visitPositiveShapes(condition, context);
+};
+
+const visitPositiveShapes = (condition: unknown, context: ValidationContext): void =>
   visitCondition(condition as Condition, (node) => {
     const shape = conditionShape(node);
     const operator = node.operator ?? node.dateOperator;

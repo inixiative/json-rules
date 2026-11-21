@@ -1,4 +1,4 @@
-## 4.4.0 — `pick`: the window's values; a lens orders the rows it reads
+## 4.5.0 — `pick`: the window's values; a lens orders the rows it reads
 
 Why: a window could filter, order and cut a relation's rows, but a value over it could only be an
 aggregate of them, so neither a template nor a rule could say "the winning value" or "the top 3
@@ -60,6 +60,32 @@ and in rules", and "`orderBy` on to-many relations in the lens".
 - `AggregateMode` is `'sum' | 'avg' | 'pick'`; `orderRecords` takes an optional key reader.
   `AGGREGATE_MODE_CATALOG` entries also carry `nullOverNoValues`, which `negate()`, the value
   typer and both compilers read (a pick only when it picks one).
+
+## 4.4.0 — the engine fills bridges; a match needs exists
+
+Why: Aron 2026-11-21, on how bridge data gets into a check: "the engine should bridge your data,
+so we need to expose it", named "record with bridge data". And on rules: "write an existence check
+for everything that needs to exist. It's not just matches, it also exists", "make actor checks
+involve existence". A review found `orgId equals path actor:User.orgId` holding when both are null
+(R-2026-11-21-07).
+
+- **`recordWithBridgeData(set, at, record, data)`** returns the record with its bridges filled from
+  one `data` (rows keyed `map:Model`, as `indexBridges` takes them): keys naming a model of the set's
+  maps are dropped, each joined bridge's far row (by `on`, indexed once per data) and each supplied
+  bridge's one row go under the far endpoint key, and far rows lose bridge keys of their own. A
+  supplied bridge runs from its first endpoint to its second, whose row the data gives; more than
+  one row there throws. Far rows have their own bridges filled in turn, so a rule reads across a
+  chain of sources (`crm:Contact.sec:Device.risk`, and back the other way); a chain never re-enters
+  an endpoint it came through. A related row (`org`) is filled and stripped as a row of its own
+  model, so no row anywhere in the record brings its own bridge row; a looping row graph is safe.
+  `endpointKey`, `parseEndpointKey` and `declaredEnumValues` are exported. The README no longer
+  tells callers to embed by hand.
+- **The positive gate refuses a match without an `exists`** (`matchWithoutExists`): a field
+  compared with a `path` or `bind` needs an `exists` on it, because two missing values match. A
+  comparison with a literal needs none: a missing value already fails it, across a bridge or not.
+  The `exists` names the exact field, in an `all` above the comparison; an `any`'s does not count.
+  Null semantics are unchanged. `__actor.*` is no longer an unchecked path
+  in `ConditionOn`; a bridged read (`actor:User.id`) is.
 
 ## 4.3.0 — supplied bridges: a bridge with no join
 

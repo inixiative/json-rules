@@ -55,7 +55,7 @@ export const indexBridges = (
   rawData: Record<string, Row[]>,
 ): BridgeDictionary => {
   const out: BridgeDictionary = {};
-  // A supplied bridge has no key to index by: its far row is already on the record.
+  // A supplied bridge has no key to index by: recordWithBridgeData takes its one row as given.
   for (const bridge of (set.bridges ?? []).filter(isJoinedBridge)) {
     const [a, b] = bridge.endpoints;
     const aKey = endpointKey(a);

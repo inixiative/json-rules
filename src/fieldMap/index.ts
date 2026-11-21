@@ -1,6 +1,8 @@
-export { isJoinedBridge } from './endpointKey';
+export { endpointKey, isJoinedBridge, parseEndpointKey } from './endpointKey';
+export { declaredEnumValues } from './entry';
 export type { BridgeDictionary } from './indexBridges';
 export { indexBridges } from './indexBridges';
+export { recordWithBridgeData } from './recordWithBridgeData';
 export { stitchFieldMaps } from './stitch';
 export type {
   Bridge,

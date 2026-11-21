@@ -48,11 +48,11 @@ const tagList: On<'User'> = {
   condition: { field: '$', operator: Operator.equals, value: 'x' },
 };
 
-// all / any / if nest; scope refs, bridges and the actor pass through unchecked.
+// all / any / if nest; scope refs and bridges (the actor's among them) pass through unchecked.
 const nested: On<'User'> = {
   all: [
     { field: 'age', operator: Operator.greaterThan, value: 18 },
-    { any: [{ field: '__actor.record.id', operator: Operator.equals, path: 'id' }, false] },
+    { any: [{ field: 'actor:User.id', operator: Operator.equals, path: 'id' }, false] },
   ],
 };
 // @ts-expect-error a `{ path }` source reads the root model's values

@@ -1,9 +1,10 @@
 import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { toManyHopError } from '../errors';
 import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
+import { entryKind } from '../fieldMap/shape';
 import type { FieldMapEntry, LensFieldMap, LensModelEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
-import { type FieldKind, ORDERED_VALUE_KINDS } from '../operatorCatalog';
+import { ORDERED_VALUE_KINDS } from '../operatorCatalog';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition, OrderBy } from '../types.ts';
@@ -349,32 +350,30 @@ export const laterClampIssues = (
  * What is wrong with a relation's `orderBy` at a visit: its shape, a key that is not a number or
  * date column of the model (a string's code-unit order would disagree with a database collation,
  * as for `min` / `max`), or — in a later layer — a column its parent doesn't show there. The one
- * check validateNarrowing and every runtime posture make; `parent` is null for the first
- * narrowing, which reads the menu.
+ * check validateNarrowing and every runtime posture make; `parent` is the layers above (none for
+ * the first narrowing, which reads the menu).
  */
 export const orderByIssues = (
   orderBy: unknown,
-  parent: Policy | null,
+  parent: Policy,
   at: MapVisit,
   path: string,
-  lens: Lens = (parent as Policy).lens,
 ): ValidationIssue[] => {
   const malformed = orderByShapeIssues(orderBy, path);
   if (malformed.length > 0) return malformed;
-  const fields = modelOf(own(lens.maps, at.mapName), at.modelName)?.fields;
-  const shown = parent ? resolveVisit(parent, at.mapName, at.modelName, at.relPath) : null;
+  const fields = modelOf(own(parent.lens.maps, at.mapName), at.modelName)?.fields;
+  const shown = resolveVisit(parent, at.mapName, at.modelName, at.relPath);
   return (orderBy as OrderBy).flatMap(({ field }, index) => {
     const entry = own(fields, field);
+    const kind = entry && !entry.isList ? entryKind(entry) : undefined;
     const issue = !entry
       ? { code: 'not_in_lens', message: `field '${field}' not on model` }
-      : entry.kind !== 'scalar' ||
-          entry.isList ||
-          !ORDERED_VALUE_KINDS.includes(entry.type as FieldKind)
+      : kind === undefined || !ORDERED_VALUE_KINDS.includes(kind)
         ? {
             code: 'wrong_kind',
             message: `'${field}' is not a number or date column: a relation's rows order by numbers and dates`,
           }
-        : shown && !isFieldVisible(shown, field)
+        : !isFieldVisible(shown, field)
           ? { code: 'not_visible', message: `'${field}' is not shown by the parent` }
           : null;
     return issue ? [{ path: `${path}[${index}]`, ...issue }] : [];
@@ -698,7 +697,7 @@ export const resolveVisit = (
     // one is ever applied), and — vetted — the rest of validateNarrowing's check.
     vetOrderBy = (orderBy) => {
       const check = (): void => {
-        const [issue] = orderByIssues(orderBy, clampParent, at, 'orderBy', policy.lens);
+        const [issue] = orderByIssues(orderBy, parent, at, 'orderBy');
         if (issue) throw refusedOrderBy(issue);
       };
       if (policy.unvetted) unchecked.push(check);

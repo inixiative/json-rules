@@ -17,7 +17,7 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   the column's kind, nullable for take 1, else a list; `coerceValue` stamps it over a DateTime
   column.
 - **A `take: 1` pick over no row is absent**, as a path the row doesn't carry is (Aron,
-  2026-11-21): in a rule it reads as null by default and as unknown under `absent: 'unknown'`,
+  2026-11-20): in a rule it reads as null by default and as unknown under `absent: 'unknown'`,
   as is a picked row that doesn't carry the field, while a row that holds NULL is null under both. A value (`evaluateValue`) reads either as null.
 - **A pick with no `orderBy` picks in the order the rows are in**, as every other mode over a cut
   window does: there is no pick-only rule for it. A window orders its keys as the rows carry them,
@@ -33,7 +33,9 @@ and in rules", and "`orderBy` on to-many relations in the lens".
 - **A lens orders a to-many relation**: `orderBy: [{ field, dir }]` on a relation object or a model
   default. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
   `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, a NULL last either way, ties
-  as fetched, so the database and in-memory rails return the same order (PGlite differential in
+  as fetched (a total order is the caller's to give). The select carries the order's columns even
+  when the visit hides them and `projectRows` cuts them, so the database and in-memory rails return
+  the same order (PGlite differential in
   `test/rails.lens.test.ts`), when the rows carry each column as its own kind. A later layer's
   order replaces an earlier one's; it names only columns its parent shows at every visit it applies
   to, on the path or as a model default (`not_visible`: the rule a `where` follows, so a layer may

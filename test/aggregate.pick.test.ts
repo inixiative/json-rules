@@ -11,6 +11,7 @@ import {
   toSql,
   type ValueExpression,
   validateRule,
+  validateRuleInLens,
   validateValue,
 } from '../index';
 import { negate } from '../src/negate';
@@ -156,6 +157,39 @@ describe('pick in a rule', () => {
     for (const rule of [ordered({}), ordered({ skip: 9 }), ordered({ value: 'A' })]) {
       expect(check(negate(rule), row) === true).toBe(check(rule, row) !== true);
     }
+  });
+});
+
+describe('a take-1 pick compares as a field holding the value does, coerceType included', () => {
+  const stored = { items: [{ n: '5' }], n: '5' };
+  const picked = { field: 'items', take: 1, aggregate: { mode: 'pick', field: 'n' } };
+
+  test.each<[string, unknown]>([
+    ['equals', '5'],
+    ['equals', 5],
+    ['greaterThan', '4'],
+    ['in', ['5']],
+    ['notEquals', '6'],
+  ])('%s %p under coerceType Int', (operator, value) => {
+    const comparison = { operator, value, coerceType: 'Int' };
+    const asField = check({ field: 'n', ...comparison } as unknown as Condition, stored);
+    expect(asField).toBe(true);
+    expect(check({ ...picked, ...comparison } as unknown as Condition, stored)).toBe(asField);
+  });
+
+  test('under a lens the comparison is checked against the picked column, as a field rule is', () => {
+    const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
+    const lens: LensNarrowing = { parent: base, root: { relations: { posts: {} } } };
+    const top = { field: 'posts', orderBy: [{ field: 'views', dir: 'desc' }], take: 1 };
+    const codes = (rule: unknown) =>
+      validateRuleInLens(rule as Condition, lens).errors.map((e) => e.code);
+    const title = { ...top, aggregate: { mode: 'pick', field: 'title' } };
+    const views = { ...top, aggregate: { mode: 'pick', field: 'views' } };
+    expect(codes({ ...title, operator: 'equals', value: 'hello' })).toEqual([]);
+    expect(codes({ ...title, operator: 'equals', value: 5 })).not.toEqual([]);
+    expect(codes({ ...views, operator: 'contains', value: 'x' })).toEqual([
+      'operator_kind_mismatch',
+    ]);
   });
 });
 

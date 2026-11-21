@@ -909,8 +909,11 @@ database does, for any rule the lens admits; that output carries hidden values a
 A to-many relation's rows come back in its `orderBy` (on the relation object, or on the model
 default for every to-many visit of the model): `toLensSelect` writes it as Prisma's `orderBy` (a
 nullable column `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, so rows fetched
-in any order project as the database returns them. It is a window's order: each key in turn, a NULL
-last either way, ties kept as fetched. Ordering narrows nothing, so a later layer's replaces an
+in any order project as the database returns them. The select carries the order's own columns even
+when the visit hides them, and `projectRows` cuts them after ordering, so it takes rows as fetched
+(or fuller), not rows it already projected. It is a window's order: each key in turn, a NULL
+last either way, ties kept as fetched: the database breaks a tie its own way, so give a total order
+(end with the key column) where the order of equal rows matters. Ordering narrows nothing, so a later layer's replaces an
 earlier one's (and, in one layer, the path's the model default's); like a `where`, its columns must
 be ones its parent shows at every visit of the node, whether it sits on the path or on a model
 default (a model default is checked at every visit of its model, to-one ones included, as its

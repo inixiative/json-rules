@@ -536,7 +536,7 @@ export const SET_OPERATORS = withShape('array');
 
 /** What a `pick` rule asks of the value it picks, as a field holding it is asked: the aggregate
  *  comparisons, membership and containment. */
-export const PICK_OPERATORS = [
+const PICK_OPERATORS = [
   ...AGGREGATE_OPERATORS,
   ...SET_OPERATORS,
   ...CONTAINS_OPERATORS,

@@ -219,8 +219,11 @@ const selectAt = (
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
     const orderBy = shownList?.orderBy;
+    // The order's own columns are fetched too, shown or not: projectRows orders by them and
+    // cuts the ones the visit hides, as it does a clamp's.
+    const orderKeys = Object.fromEntries((orderBy ?? []).map((key) => [key.field, true as const]));
     select[field] = {
-      select: shown,
+      select: { ...shown, ...orderKeys },
       ...(where && { where }),
       ...(orderBy && { orderBy: prismaOrderBy(policy, child, orderBy) }),
     };

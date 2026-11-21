@@ -12,8 +12,9 @@ import {
   valueRefRoles,
   visitCondition,
 } from '../traverse';
-import type { Condition, DateRule, Rule } from '../types';
+import type { Condition, DateRule, Rule, WindowFields } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
+import { picksOne } from '../window';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import { narrowRule } from './narrowRule.ts';
 import type { Policy } from './policy.ts';
@@ -173,6 +174,19 @@ const visit = (
             terminalEntry ? entryKind(terminalEntry) : undefined,
           ),
         );
+      }
+
+      // A pick of one compares the picked column's value, as a field rule on that column does.
+      if (kind === 'aggregate' && !next.open) {
+        const { aggregate } = cond as unknown as { aggregate: { mode?: unknown; field?: unknown } };
+        const picked =
+          aggregate.mode === 'pick' &&
+          picksOne(cond as WindowFields) &&
+          typeof aggregate.field === 'string'
+            ? lensPathEnd(policy, next, aggregate.field)?.entry
+            : undefined;
+        if (picked && !isRelationEntry(picked))
+          issues.push(...leafFitViolations(cond as unknown as Rule, entryKind(picked)));
       }
 
       // The fields a relation node orders or aggregates by read its elements.

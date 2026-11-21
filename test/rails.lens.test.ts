@@ -414,6 +414,33 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
     expect(projectRows(lens, fetched)).toEqual(projectRows(lens, full));
   });
 
+  test('an order by a column the layer hides: the fetch carries it, the projection cuts it', async () => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: {
+        picks: ['id'],
+        relations: {
+          posts: {
+            picks: ['id'],
+            orderBy: [
+              { field: 'views', dir: 'desc' },
+              { field: 'id', dir: 'asc' },
+            ],
+          },
+        },
+      },
+    };
+    expect(validateNarrowing(lens).ok).toBe(true);
+    expect(toLensSelect(lens).select.posts).toMatchObject({ select: { id: true, views: true } });
+    const fetched = await fetchUnder(lens);
+    const projected = projectRows(lens, fetched);
+    // The database's order survives the projection, and the hidden column does not.
+    expect(postIds(projected)).toEqual(postIds(fetched));
+    expect(postIds(projected)[0]).toEqual([100, 101, 103]);
+    expect((projected[0] as { posts: object[] }).posts[0]).toEqual({ id: 100 });
+    expect(projected).toEqual(projectRows(lens, rails.rows as never));
+  });
+
   test('a later layer replaces the order; it names only what its parent shows', () => {
     const first = ordered([{ field: 'views', dir: 'desc' }]);
     const second: LensNarrowing = {

@@ -276,7 +276,10 @@ type PickContainsOperator = OperatorValues['contains'] | OperatorValues['notCont
 /** A `pick` aggregate rule: the picked value compared as a field holding it is — one value for
  *  `take: 1`, a list otherwise (which `contains` / `notContains` test for a member). */
 export type StrictPickRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields &
-  AggregateRuleBase<TRuleValue, TDateValue, 'pick'> & { coerceType?: FieldKind } & (
+  AggregateRuleBase<TRuleValue, TDateValue, 'pick'> & {
+    coerceType?: FieldKind;
+    caseInsensitive?: boolean;
+  } & (
     | ({ operator: AggregateSingleOperator } & ValueSource<OrderedRuleValue | boolean | null>)
     | ({ operator: AggregateRangeOperator } & ValueSource<[OrderedRuleValue, OrderedRuleValue]>)
     | ({ operator: PickMembershipOperator } & ValueSource<TRuleValue[]>)

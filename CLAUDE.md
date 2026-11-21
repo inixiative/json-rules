@@ -113,8 +113,10 @@ recursion — their descent IS their semantics — and are guarded by differenti
   access things that you don't have access to via lens"). A layer orders only by number and date
   columns its parent shows at every visit of the node, on the path or as a model default; it may
   order by a column it hides itself, as its own `where` may read one. `orderByIssues` is the one
-  check: `validateNarrowing` reports it and every posture throws it as a `LensRefusal`, never
-  applies it.
+  check of the columns: `validateNarrowing` reports it and every posture throws it as a
+  `LensRefusal`, never applies it. An `orderBy` written on the root or a to-one relation is
+  reported by `validateNarrowing` alone, since no posture orders there. The select fetches the
+  order's columns even when the visit hides them; `projectRows` orders, then cuts them.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled
   in May 2026; 3.4's first cut contradicted it because nobody looked.

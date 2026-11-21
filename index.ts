@@ -225,6 +225,7 @@ export type {
   StrictMembershipRule,
   StrictOrderedComparisonRule,
   StrictPatternRule,
+  StrictPickRule,
   StrictPresenceRule,
   StrictRangeRule,
   StrictRule,

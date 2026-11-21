@@ -1,5 +1,5 @@
 import { isObject, some } from 'lodash-es';
-import { checkDate, coercionZone } from './date';
+import { checkDate } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import {
   ambiguousCondition,
@@ -255,18 +255,24 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
   if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const items = aggregateItems(condition, opts);
-  // An aggregate compares like a field whose value it computes.
+  const field = `${condition.field} ${mode}`;
+  // A pick compares as a field holding the picked value does: its coerceType reads both sides.
+  if (mode === 'pick') {
+    const picked = pickValues(condition, items, itemField, (raw) => raw);
+    return checkField(
+      { ...condition, field } as unknown as Rule,
+      opts.scopes,
+      opts.bindings,
+      opts,
+      {
+        value: picked,
+      },
+    );
+  }
+  // A sum or average compares like a field whose value it computes; its coerceType parsed the items.
   const { coerceType, ...comparison } = condition;
-  const result =
-    mode === 'pick'
-      ? pickValues(
-          condition,
-          items,
-          itemField,
-          coerceAggregateValue(coerceType, coercionZone(coerceType, opts)),
-        )
-      : sumOrAverage(mode, items, condition.field, itemField, coerceType);
-  const labelled = { ...comparison, field: `${condition.field} ${mode}` } as unknown as Rule;
+  const result = sumOrAverage(mode, items, condition.field, itemField, coerceType);
+  const labelled = { ...comparison, field } as unknown as Rule;
   return checkField(labelled, opts.scopes, opts.bindings, opts, { value: result });
 };
 

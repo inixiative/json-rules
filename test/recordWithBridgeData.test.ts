@@ -2,10 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import {
   type Bridge,
   check,
+  indexBridges,
   type LensFieldMap,
   Operator,
   type Row,
   recordWithBridgeData,
+  relationTargetOf,
 } from '../index';
 
 const s = { kind: 'scalar', type: 'String' } as const;
@@ -170,5 +172,29 @@ describe('recordWithBridgeData: the far rows a record bridges to, filled by the 
     a.parent = b;
     const out = recordWithBridgeData(looping, 'app:Doc', a);
     expect(((out.parent as Row).parent as Row) === out).toBe(true);
+  });
+
+  test('a dictionary built once from the data fills many records the same', () => {
+    const data = { 'crm:Contact': contacts, 'actor:User': [{ id: 'u1' }] };
+    const dictionary = indexBridges(set, data);
+    for (const record of [
+      { id: 'd1', crmId: 'c1' },
+      { id: 'd2', crmId: 'c9' },
+    ])
+      expect(recordWithBridgeData(set, 'app:Doc', record, data, dictionary)).toEqual(
+        recordWithBridgeData(set, 'app:Doc', record, data),
+      );
+  });
+
+  test('relationTargetOf names where a relation or a bridge leads', () => {
+    expect(relationTargetOf({ kind: 'object', type: 'Org', isList: false }, 'actor')).toEqual({
+      mapName: 'actor',
+      modelName: 'Org',
+    });
+    expect(relationTargetOf({ kind: 'bridge', type: 'crm:Contact', isList: true }, 'app')).toEqual({
+      mapName: 'crm',
+      modelName: 'Contact',
+    });
+    expect(relationTargetOf(s, 'app')).toBeNull();
   });
 });

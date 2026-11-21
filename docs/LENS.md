@@ -23,7 +23,14 @@ widen it, so layers compose and the result is monotonic: adding a layer can only
 Stacking layers is the point. A layer's `where` is a **clamp**: a row is hidden unless it
 holds, so a clamp only ever narrows; it never grants access.
 
-A layer's clamps narrow what the layers after it see, never the conditions it writes itself: layer
+**A layer has everything the layer above gave it. What it takes away binds whoever reads through
+it — the layer's own user and every layer below — never the layer's own definitions.** Everything
+a layer writes — a `where`, an `orderBy`, a source's `where`, `label` or `groupBy` — reads its
+parent's surface in full, untouched by the same layer's own clamps and hiding. So a layer may
+clamp on, or order by, a column or relation it hides or clamps itself. Its user's rules, and the
+layer after it, may not: for them it is gone.
+
+For clamps that means: layer
 k's `where` reads through the clamps of layers 1…k−1, as a user rule reads through every layer.
 A clamp means "the readers below me can't see these rows", not "I can't". Carrying a later clamp
 into an earlier `where` would break the rule above: hiding rows inside a `none` or an `empty` makes
@@ -932,9 +939,9 @@ on a to-one relation orders nothing on any posture: over valid columns it is rep
 date held as a string orders as a string, so coerce the rows first. A path crosses to-one relations only (a to-many
 relation, a bridge or a path into a Json column is `wrong_kind`), and in a later layer none its
 parent clamps (`not_visible`: the order would follow rows the clamp hides, which a `where` never
-reads). A layer's own clamp on a relation does not narrow its own order, as it does not narrow
-its own `where`: a layer that clamps `org` and orders by `org.seats` orders by every org, and the
-layers below it inherit that order with the clamped rows shown as null. A key is its dotted names
+reads). A layer's own clamp on a relation does not narrow its own order (section 1: what a layer takes
+away binds its readers, never its own definitions): a layer that clamps `org` and orders by `org.seats` orders by
+every org, and the layers below it inherit that order with the clamped rows shown as null. A key is its dotted names
 and nothing else (`org..seats` or `org["seats"]` is `invalid_order_by`). A required column behind an optional relation is refused too (`wrong_kind`): a row with no
 related one has no value, and Prisma takes `nulls: 'last'` only on a nullable column, so order by a
 nullable one (the key on the row itself, as `orgId` for `org.id`). Only number and date columns order rows: a string

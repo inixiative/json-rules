@@ -89,8 +89,12 @@ recursion — their descent IS their semantics — and are guarded by differenti
   path (`root.relations.org`) or always-on at the model default (`mapDefaults…models.Org.relations`),
   never through `picks`. Adding a hop's narrowing never hides another relation; hiding is `omits`.
   (Spec and tests for 3.4 must match this; see docs/LENS.md.)
-- **A layer's clamps narrow the layers after it, never its own conditions** (Aron, 2026-10-26).
-  Layer k's `where` reads through the clamps of layers 0…k−1 (`narrowAt(condition,
+- **A layer has everything its parent gave it; its clamps bind whoever reads through it, never
+  its own definitions** (Aron, 2026-10-26; restated 2026-11-21: "In each layer, you have access to
+  everything that the above layer gave you… The clamp also affects the user of that layer. But
+  within the layer itself, it can do stuff that the clamp would be removing"). The layer's user
+  and every layer below are bound. What the layer itself writes, `where`, `orderBy` and sources
+  alike, is not narrowed by its own clamps or hiding. Layer k's `where` reads through the clamps of layers 0…k−1 (`narrowAt(condition,
   chain.slice(0, k))`): a clamp means "the readers below me can't see these rows". Every compile
   carries that same set — a same-layer or later clamp inside a `none` / `empty` would widen what
   an earlier layer admitted.
@@ -117,8 +121,8 @@ recursion — their descent IS their semantics — and are guarded by differenti
   wherever the lens reads many rows. A field is a number or date column of the node's model, or of
   one reached through to-one relations the map declares. A later layer names only what its parent
   shows at every visit of the node, with no clamped relation on the way (the order would follow
-  rows the clamp hides); a layer may order by a column it hides itself, as its own `where` may
-  read one. A required column behind an optional relation is refused: no rail can be told where a
+  rows the clamp hides); a layer may order by a column it hides itself, or through a relation it clamps itself,
+  as its own `where` may read one. A required column behind an optional relation is refused: no rail can be told where a
   row with no related one goes. `orderByIssues` is the one check: `validateNarrowing` reports it
   and every posture throws it as a `LensRefusal`, never applies it. `toLensSelect` returns
   `{ select, orderBy }` and fetches the order's paths even where hidden; `projectRows` orders,

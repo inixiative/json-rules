@@ -33,6 +33,7 @@ export {
   type LensModelEntry,
   parseEndpointKey,
   recordWithBridgeData,
+  relationTargetOf,
   type SourceOption,
   type SuppliedBridge,
   stitchFieldMaps,

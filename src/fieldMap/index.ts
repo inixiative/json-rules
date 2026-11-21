@@ -19,3 +19,4 @@ export type {
   SuppliedBridge,
 } from './types';
 export { assertValidFieldMaps, validateFieldMaps } from './validate';
+export { relationTargetOf } from './walk';

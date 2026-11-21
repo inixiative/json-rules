@@ -923,8 +923,9 @@ default (a model default is checked at every visit of its model, to-one ones inc
 and leaves an earlier layer's in place. An `orderBy` written on a to-one
 relation is refused: it is one row, with nothing to order (a model default's applies at the root and
 wherever its model is reached to-many). A column `validateNarrowing` refuses to order by (hidden, not a number or date, unknown, or a
-malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied; an `orderBy`
-on a to-one relation is reported by `validateNarrowing` alone, since no posture orders there. Rows order as they carry each column: a number or
+malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied. An `orderBy`
+on a to-one relation orders nothing on any posture: over valid columns it is reported by
+`validateNarrowing` alone. Rows order as they carry each column: a number or
 date held as a string orders as a string, so coerce the rows first. Only number and date columns order a relation: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
 disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not

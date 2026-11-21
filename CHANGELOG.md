@@ -47,6 +47,10 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   one included (`invalid_order_by`, the window's own shape check), and every posture refuses a
   column it refuses (`LensRefusal`) rather than order by it. An empty `orderBy` leaves an earlier
   layer's order in place. New type `LensOrderBy`.
+- **Under a lens a pick of one is checked as a field rule on the column it picks**:
+  `validateRuleInLens` checks its operator and value against that column's kind and its allowed
+  values (an enum the lens narrows). A list pick tests the list, and a pick with no
+  `aggregate.field` a scalar list's elements: neither is checked this way.
 - `AggregateMode` is `'sum' | 'avg' | 'pick'`; `orderRecords` takes an optional key reader.
   `AGGREGATE_MODE_CATALOG` entries also carry `nullOverNoValues`, which `negate()`, the value
   typer and both compilers read (a pick only when it picks one).

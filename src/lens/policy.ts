@@ -347,7 +347,7 @@ export const laterClampIssues = (
   checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
 
 /**
- * What is wrong with a relation's `orderBy` at a visit: its shape, a key that is not a number or
+ * What is wrong with an `orderBy` at a visit: its shape, a key that is not a number or
  * date column of the model (a string's code-unit order would disagree with a database collation,
  * as for `min` / `max`), or — in a later layer — a column its parent doesn't show there. The one
  * check validateNarrowing and every runtime posture make; `parent` is the layers above (none for
@@ -371,7 +371,7 @@ export const orderByIssues = (
       : kind === undefined || !ORDERED_VALUE_KINDS.includes(kind)
         ? {
             code: 'wrong_kind',
-            message: `'${field}' is not a number or date column: a relation's rows order by numbers and dates`,
+            message: `'${field}' is not a number or date column: rows order by numbers and dates`,
           }
         : !isFieldVisible(shown, field)
           ? { code: 'not_visible', message: `'${field}' is not shown by the parent` }
@@ -382,7 +382,7 @@ export const orderByIssues = (
 
 /** An `orderBy` validateNarrowing reports, met at runtime. */
 export const refusedOrderBy = (issue: ValidationIssue): LensRefusal =>
-  new LensRefusal(`the lens refuses a relation's orderBy: ${issue.message}`, issue.code);
+  new LensRefusal(`the lens refuses an orderBy: ${issue.message}`, issue.code);
 
 /** A later layer's clamp reading what its parent doesn't show. */
 export const unshownClamp = (issue: ValidationIssue): LensRefusal =>

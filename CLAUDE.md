@@ -117,7 +117,7 @@ recursion — their descent IS their semantics — and are guarded by differenti
   `LensRefusal`, never applies it. It orders wherever the lens reads many rows: the
   root's (`toLensSelect` returns `{ select, orderBy }`) and a to-many relation's (Aron,
   2026-11-21: "I want the all-order-by to be working"). A to-one relation is one row; an `orderBy`
-  written there is reported by `validateNarrowing` alone, since no posture orders there. The select fetches the
+  written there orders nothing, and over valid columns is reported by `validateNarrowing` alone. The select fetches the
   order's columns even when the visit hides them; `projectRows` orders, then cuts them.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled

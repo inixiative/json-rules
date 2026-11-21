@@ -177,6 +177,22 @@ describe('a take-1 pick compares as a field holding the value does, coerceType i
     expect(check({ ...picked, ...comparison } as unknown as Condition, stored)).toBe(asField);
   });
 
+  test('coerceType reads the picked values as a value expression does', () => {
+    const decimal = { toNumber: () => 2.5, toString: () => '2.5' };
+    const rows = { items: [{ n: decimal, at: new Date('2026-01-02T00:00:00.000Z') }] };
+    const one = { field: 'items', take: 1 };
+    const asDecimal = { ...one, aggregate: { mode: 'pick', field: 'n' }, coerceType: 'Decimal' };
+    expect(evaluateValue(asDecimal as unknown as ValueExpression, rows)).toBe(2.5);
+    expect(
+      check({ ...asDecimal, operator: 'equals', value: 2.5 } as unknown as Condition, rows),
+    ).toBe(true);
+    const list = { ...asDecimal, take: 3, operator: 'contains', value: 2.5 };
+    expect(check(list as unknown as Condition, rows)).toBe(true);
+    const asString = { ...one, aggregate: { mode: 'pick', field: 'at' }, coerceType: 'String' };
+    const iso = { ...asString, operator: 'equals', value: '2026-01-02T00:00:00.000Z' };
+    expect(check(iso as unknown as Condition, rows)).toBe(true);
+  });
+
   test('under a lens the comparison is checked against the picked column, as a field rule is', () => {
     const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });
     const lens: LensNarrowing = { parent: base, root: { relations: { posts: {} } } };
@@ -190,6 +206,27 @@ describe('a take-1 pick compares as a field holding the value does, coerceType i
     expect(codes({ ...views, operator: 'contains', value: 'x' })).toEqual([
       'operator_kind_mismatch',
     ]);
+  });
+
+  test('under a lens a picked enum column takes only the values the lens allows', () => {
+    const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' });
+    const lens: LensNarrowing = {
+      parent: base,
+      root: { relations: { users: { enumOmits: { role: ['Guest'] } } } },
+    };
+    const eldest = {
+      field: 'users',
+      orderBy: [{ field: 'age', dir: 'desc' }],
+      take: 1,
+      aggregate: { mode: 'pick', field: 'role' },
+      operator: 'equals',
+    };
+    const codes = (value: string) =>
+      validateRuleInLens({ ...eldest, value } as unknown as Condition, lens).errors.map(
+        (e) => e.code,
+      );
+    expect(codes('admin')).toEqual([]);
+    expect(codes('Guest')).toEqual(['value_not_allowed']);
   });
 });
 

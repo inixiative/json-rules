@@ -575,6 +575,9 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
     test('a column the layer hides is fetched for the order and cut from the projection', async () => {
       const lens = byAge('desc', ['id']);
       expect(toLensSelect(lens).select).toMatchObject({ id: true, age: true });
+      // A root that shows no column is still fetched by its id, beside its order's column.
+      const none = { ...lens, root: { ...lens.root, picks: [] } } as LensNarrowing;
+      expect(toLensSelect(none).select).toMatchObject({ id: true, age: true });
       const fetched = await fetchRoot(lens);
       const projected = projectRows(lens, fetched);
       expect(ids(projected)).toEqual(ids(fetched));

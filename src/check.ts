@@ -1,5 +1,5 @@
 import { isObject, some } from 'lodash-es';
-import { checkDate } from './date';
+import { checkDate, coercionZone } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import {
   ambiguousCondition,
@@ -256,9 +256,14 @@ const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | 
   if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const items = aggregateItems(condition, opts);
   const field = `${condition.field} ${mode}`;
-  // A pick compares as a field holding the picked value does: its coerceType reads both sides.
+  // A pick compares as a field holding the picked value does: its coerceType reads the picked
+  // values as the value evaluator reads them, and checkField the comparison's side.
   if (mode === 'pick') {
-    const picked = pickValues(condition, items, itemField, (raw) => raw);
+    const read = coerceAggregateValue(
+      condition.coerceType,
+      coercionZone(condition.coerceType, opts),
+    );
+    const picked = pickValues(condition, items, itemField, read);
     return checkField(
       { ...condition, field } as unknown as Rule,
       opts.scopes,

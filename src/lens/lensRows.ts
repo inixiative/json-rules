@@ -49,6 +49,13 @@ const inVisitOrder = <T>(policy: Policy, at: MapVisit, rows: readonly T[]): read
   );
 };
 
+// A select with its order's own columns, shown or not: projectRows orders by them and cuts the
+// ones the visit hides, as it does a clamp's.
+const withOrderColumns = (select: LensSelect, orderBy: OrderBy | null | undefined): LensSelect => ({
+  ...select,
+  ...Object.fromEntries((orderBy ?? []).map((key) => [key.field, true as const])),
+});
+
 // A visit's `orderBy` as Prisma reads it, over the columns of the visit's model.
 const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy => {
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields;
@@ -233,11 +240,8 @@ const selectAt = (
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
     const orderBy = shownList?.orderBy;
-    // The order's own columns are fetched too, shown or not: projectRows orders by them and
-    // cuts the ones the visit hides, as it does a clamp's.
-    const orderKeys = Object.fromEntries((orderBy ?? []).map((key) => [key.field, true as const]));
     select[field] = {
-      select: { ...shown, ...orderKeys },
+      select: withOrderColumns(shown, orderBy),
       ...(where && { where }),
       ...(orderBy && { orderBy: prismaOrderBy(policy, child, orderBy) }),
     };
@@ -267,9 +271,6 @@ export const toLensSelectWith = (
 ): LensQuery => {
   const root = rootVisit(policy);
   const select = selectAt(policy, root, 'declared', {}, options, sourceReads(policy, plans));
-  // The root rows' order, its columns fetched as a relation's are.
-  const order = resolveVisit(policy, root.mapName, root.modelName, root.relPath).orderBy;
-  for (const key of order ?? []) select[key.field] = true;
   // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
   // (a viewer's projection drops it). A root model with no `id` stays as it is.
   if (!Object.values(select).some((selected) => selected === true)) {
@@ -279,7 +280,11 @@ export const toLensSelectWith = (
     );
     if (id && !isRelationEntry(id)) select.id = true;
   }
-  return { select, ...(order && { orderBy: prismaOrderBy(policy, root, order) }) };
+  const order = resolveVisit(policy, root.mapName, root.modelName, root.relPath).orderBy;
+  return {
+    select: withOrderColumns(select, order),
+    ...(order && { orderBy: prismaOrderBy(policy, root, order) }),
+  };
 };
 
 // A relation's value, each related row through `cut`: a list keeps the rows it returns, a single

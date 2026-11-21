@@ -54,16 +54,10 @@ const filled = (
 ): Row => {
   const out = withoutBridgeKeys(set, record);
   const through = new Set([...came, at]);
-  const reached = new Set<string>();
   for (const bridge of set.bridges ?? []) {
     const nearIndex = bridge.endpoints.findIndex((end) => endpointKey(end) === at);
     if (nearIndex === -1) continue;
     const farKey = endpointKey(bridge.endpoints[1 - nearIndex]);
-    if (farKey === at)
-      throw new Error(`recordWithBridgeData: self-bridge '${at}' to itself is not supported`);
-    if (reached.has(farKey))
-      throw new Error(`recordWithBridgeData: two bridges from '${at}' reach '${farKey}'`);
-    reached.add(farKey);
     if (through.has(farKey)) continue;
     const rows = farRowsOf(set, bridge, nearIndex, record, data, dictionary);
     if (rows === undefined) continue;
@@ -75,7 +69,7 @@ const filled = (
 };
 
 /**
- * `record`, a row of the endpoint `at` (`app:Doc`), with every bridge filled from `data` (rows keyed
+ * `record`, a row of the endpoint `at` (`app:Doc`) of a stitched set, with every bridge filled from `data` (rows keyed
  * by endpoint, `<fieldMap>:<Model>`, as `indexBridges` takes them), and the far rows' bridges in
  * turn, so a rule can read across a chain of sources (`crm:Contact.sec:Device.risk`). Every key a
  * row carries that names a model of the set's maps is dropped before its bridges are filled, so no

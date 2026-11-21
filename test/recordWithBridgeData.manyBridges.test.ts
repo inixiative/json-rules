@@ -210,13 +210,6 @@ describe('recordWithBridgeData across many bridges, in both directions', () => {
     ).toBe('retail');
   });
 
-  test('two bridges from a record to one far endpoint, or a self-bridge, throw', () => {
-    const twice = { ...set, bridges: [...set.bridges, { ...accountToContact }] };
-    expect(() => recordWithBridgeData(twice, 'db:Account', account, data)).toThrow(
-      /two bridges from '(db:Account' reach 'crm:Contact|crm:Contact' reach 'db:Account)'/,
-    );
-  });
-
   test('the same device row is reached two ways, each filled on its own path', () => {
     const contact = filled['crm:Contact'] as Record<string, unknown>;
     const viaContact = (contact['sec:Device'] as Record<string, unknown>[])[0];

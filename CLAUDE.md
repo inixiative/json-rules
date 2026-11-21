@@ -64,6 +64,17 @@ recursion — their descent IS their semantics — and are guarded by differenti
   "no values" arm to opposite-operator flips — the aggregate's `notExists`. Shipped as a minor:
   Aron ruled it not a major change (2026-11-06).
 
+- **`pick` returns the window's values; a take over nothing is absent** (Aron, 2026-11-13 and
+  2026-11-20). "A pick-N aggregate on the existing window… one value for take 1, a list otherwise."
+  A `take: 1` pick over no row, or over a row that doesn't carry the field, is absent and reads
+  through `check()`'s `absent` option like any path the row doesn't carry (null by default, unknown
+  under `'unknown'`); a row holding NULL is null. `evaluateValue` returns null. check() only: both
+  compilers refuse it when the rule is validated.
+- **A window orders values as the rows carry them** (Aron, 2026-11-20): "If you order by things
+  that you haven't touched, expect it to be weird." Order keys are never normalised; numbers or
+  dates held as strings are the caller's to coerce first. No mode has its own "needs an orderBy"
+  rule: a cut window with no order reads the rows in the order they are in.
+
 ## Lens rulings (Aron, 2026-10-08)
 
 - **Layers only get darker.** A lens is a stack of filters: each layer can only narrow what the
@@ -98,6 +109,12 @@ recursion — their descent IS their semantics — and are guarded by differenti
   throws, rather than silently answer differently from check(). The fix is in the lens: move the
   clamp up a layer. The guard runs on to-many reads only; the same gap on a joined to-one relation
   is older than join mode and out of this ruling's scope.
+- **A relation's `orderBy` follows a `where`'s rule** (Aron, 2026-11-20: "you shouldn't be able to
+  access things that you don't have access to via lens"). A layer orders only by number and date
+  columns its parent shows at every visit of the node, on the path or as a model default; it may
+  order by a column it hides itself, as its own `where` may read one. `orderByIssues` is the one
+  check: `validateNarrowing` reports it and every posture throws it as a `LensRefusal`, never
+  applies it.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled
   in May 2026; 3.4's first cut contradicted it because nobody looked.

@@ -50,10 +50,11 @@ modules allowed to implement it, and every exported function must appear in this
 | compose | `composeLens` | A stored layer and the records it lists, resolved into the composed lens every other function takes. |
 | stitch | `stitchFieldMaps` | Join field maps across bridges: a joined bridge on a field of each side, a supplied bridge with none. |
 | name | `endpointKey`, `parseEndpointKey` | The `map:Model` name of a bridge endpoint, and the map and model a name holds. |
+| name | `relationTargetOf` | The model a relation or bridge entry leads to, in its map or across a bridge; null for a column. |
 | classify | `isJoinedBridge` | Whether a bridge joins on a field of each side (`JoinedBridge`), or its far row is supplied on the record (`SuppliedBridge`). |
 | index | `indexBridges` | Index raw rows (keyed `<fieldMap>:<Model>`) by each joined bridge endpoint's `on` value, for `recordWithBridgeData`. |
 | read | `declaredEnumValues` | An enum field's values: its own, else the map's for its type. |
-| embed | `recordWithBridgeData` | A record with its bridges filled: every key it carries naming a model of the set's maps dropped, each bridge's far row put under its endpoint key from the one `data` `indexBridges` takes (joined by `on`, supplied as the one row given), far rows without bridge keys of their own. |
+| embed | `recordWithBridgeData` | A record with its bridges filled: every key it carries naming a model of the set's maps dropped, each bridge's far row put under its endpoint key from the one `data` `indexBridges` takes (joined by `on`, supplied as the one row given), far rows without bridge keys of their own; a caller filling many records passes the dictionary it built once. |
 | read | `parseScopeRef`, `readScopeRef`, `pathSegments` | Parse a `$`-prefixed ref; read which scope it names; split a path into the keys `check()` reads. |
 | order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths (or the caller's key reader), NULLs last, stable. |
 | look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. `getOperatorsForKind(kind, target, { positive: true })` leaves out the operators that hold on a missing value, the ones `validateRule({ positive })` refuses. |

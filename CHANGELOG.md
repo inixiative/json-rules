@@ -80,6 +80,9 @@ involve existence". A review found `orgId equals path actor:User.orgId` holding 
   model, so no row anywhere in the record brings its own bridge row; a looping row graph is safe.
   `endpointKey`, `parseEndpointKey` and `declaredEnumValues` are exported. The README no longer
   tells callers to embed by hand.
+- **`recordWithBridgeData` takes the `indexBridges` dictionary** as an optional fifth argument, so a
+  caller filling many records from one `data` (a permission check, a rule per node) indexes it
+  once. **`relationTargetOf(entry, map)`** is exported: the model a relation or bridge entry leads to.
 - **The positive gate refuses a match without an `exists`** (`matchWithoutExists`): a field
   compared with a `path` or `bind` needs an `exists` on it, because two missing values match. A
   comparison with a literal needs none: a missing value already fails it, across a bridge or not.

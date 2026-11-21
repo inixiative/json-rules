@@ -428,6 +428,56 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
     expect(validateNarrowing(hidden).errors.map((e) => e.code)).toEqual(['not_visible']);
   });
 
+  test('a model default may not order by a column an earlier layer hid on the path', () => {
+    const hiding: LensNarrowing = {
+      parent: base,
+      root: { relations: { posts: { omits: ['views'] } } },
+    };
+    const byDefault: LensNarrowing = {
+      parent: hiding,
+      mapDefaults: {
+        prisma: { models: { Post: { orderBy: [{ field: 'views', dir: 'asc' }] } } },
+      },
+    };
+    expect(validateNarrowing(byDefault).errors.map((e) => `${e.code} ${e.path}`)).toEqual([
+      'not_visible mapDefaults.prisma.models.Post.orderBy[0]',
+    ]);
+  });
+
+  test('a layer may order by a column it hides itself, as its own where may read one', () => {
+    const lens: LensNarrowing = {
+      parent: base,
+      root: {
+        picks: ['id'],
+        relations: { posts: { omits: ['views'], orderBy: [{ field: 'views', dir: 'asc' }] } },
+      },
+    };
+    expect(validateNarrowing(lens).ok).toBe(true);
+  });
+
+  test('a malformed orderBy is an issue, never a throw', () => {
+    const codes = (orderBy: unknown) =>
+      validateNarrowing({
+        parent: base,
+        root: { relations: { posts: { orderBy: orderBy as never } } },
+      }).errors.map((e) => `${e.code} ${e.path}`);
+    expect(codes('views')).toEqual(['invalid_order_by root.relations.posts.orderBy']);
+    expect(codes([null])).toEqual(['invalid_order_by root.relations.posts.orderBy[0]']);
+  });
+
+  test('the root and a to-one relation have no rows to order', () => {
+    const order = [{ field: 'id', dir: 'asc' as const }];
+    expect(
+      validateNarrowing({ parent: base, root: { orderBy: order } }).errors.map((e) => e.path),
+    ).toEqual(['root.orderBy']);
+    expect(
+      validateNarrowing({
+        parent: base,
+        root: { relations: { org: { orderBy: order } } },
+      }).errors.map((e) => `${e.code} ${e.path}`),
+    ).toEqual(['wrong_kind root.relations.org.orderBy']);
+  });
+
   test('orders by numbers and dates only: a string, a relation, or an unknown column is refused', () => {
     const codes = (orderBy: unknown) =>
       validateNarrowing({

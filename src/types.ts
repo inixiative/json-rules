@@ -237,9 +237,13 @@ export type StrictDateDayRule =
 
 export type StrictDateRule = StrictDateComparisonRule | StrictDateRangeRule | StrictDateDayRule;
 
-type AggregateRuleBase<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
+type AggregateRuleBase<
+  TRuleValue = RuleValue,
+  TDateValue = DateRuleValue,
+  TMode extends AggregateMode = Exclude<AggregateMode, 'pick'>,
+> = {
   field: string;
-  aggregate: { mode: Exclude<AggregateMode, 'pick'>; field?: string };
+  aggregate: { mode: TMode; field?: string };
   condition?: StrictCondition<TRuleValue, TDateValue>;
   error?: string;
 };
@@ -271,13 +275,8 @@ type PickContainsOperator = OperatorValues['contains'] | OperatorValues['notCont
 
 /** A `pick` aggregate rule: the picked value compared as a field holding it is — one value for
  *  `take: 1`, a list otherwise (which `contains` / `notContains` test for a member). */
-export type StrictPickRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields & {
-  field: string;
-  aggregate: { mode: 'pick'; field?: string };
-  condition?: StrictCondition<TRuleValue, TDateValue>;
-  error?: string;
-  coerceType?: FieldKind;
-} & (
+export type StrictPickRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields &
+  AggregateRuleBase<TRuleValue, TDateValue, 'pick'> & { coerceType?: FieldKind } & (
     | ({ operator: AggregateSingleOperator } & ValueSource<OrderedRuleValue | boolean | null>)
     | ({ operator: AggregateRangeOperator } & ValueSource<[OrderedRuleValue, OrderedRuleValue]>)
     | ({ operator: PickMembershipOperator } & ValueSource<TRuleValue[]>)

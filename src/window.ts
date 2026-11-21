@@ -1,3 +1,4 @@
+import { isPlainObject } from 'lodash-es';
 import { ArrayOperator, Operator } from './operator';
 import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
 import { readOwnPath } from './scope';
@@ -10,6 +11,21 @@ export const hasWindow = (rule: WindowFields): boolean =>
   !!rule.orderBy?.length ||
   rule.take !== undefined ||
   rule.skip !== undefined;
+
+/** What is wrong with an `orderBy`'s shape: one entry per bad item (`index` null for the list
+ *  itself); none when it is a list of `{ field, dir }`. */
+export const orderByShapeIssues = (
+  orderBy: unknown,
+): { index: number | null; message: string }[] =>
+  Array.isArray(orderBy)
+    ? orderBy.flatMap((item, index) =>
+        isPlainObject(item) &&
+        typeof item.field === 'string' &&
+        (item.dir === 'asc' || item.dir === 'desc')
+          ? []
+          : [{ index, message: "orderBy entries must be { field: string, dir: 'asc' | 'desc' }" }],
+      )
+    : [{ index: null, message: 'orderBy must be an array of { field, dir }' }];
 
 /** Whether a `pick` returns one value: its window takes one row. Any other `take`, or none, picks
  *  a list. */

@@ -8,7 +8,7 @@ import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
 import { allOf } from '../traverse';
-import type { OrderBy, Row } from '../types';
+import type { OrderBy, Row, SortDir } from '../types';
 import { orderRecords } from '../window';
 import { decimalValue } from './decimalValue.ts';
 import {
@@ -33,10 +33,7 @@ export type LensRelationSelect = {
 };
 /** Prisma's `orderBy` for a relation's rows: a nullable column sorts its NULLs last, as check()
  *  orders a window. */
-export type LensOrderBy = Record<
-  string,
-  'asc' | 'desc' | { sort: 'asc' | 'desc'; nulls: 'last' }
->[];
+export type LensOrderBy = Record<string, SortDir | { sort: SortDir; nulls: 'last' }>[];
 
 // A visit's `orderBy` as Prisma reads it, over the columns of the visit's model.
 const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy => {
@@ -208,15 +205,12 @@ const selectAt = (
     const child = childVisit(at, field, { mapName: at.mapName, modelName: entry.type });
     const childSelect = selectAt(policy, child, childMode, below ?? {}, options, reads);
     // A clamp reads a list whole, as the database does: one it reads is fetched unnarrowed.
+    const shownList =
+      entry.isList && childMode !== 'paths'
+        ? resolveVisit(policy, child.mapName, child.modelName, child.relPath)
+        : null;
     const where =
-      entry.isList && childMode !== 'paths' && below === undefined
-        ? clampWhere(
-            policy,
-            child,
-            resolveVisit(policy, child.mapName, child.modelName, child.relPath),
-            options,
-          )
-        : undefined;
+      shownList && below === undefined ? clampWhere(policy, child, shownList, options) : undefined;
     // Prisma can't select nothing: a relation that shows no column is fetched by its key alone.
     // A relation that shows no column is fetched by its key alone, or — with no key — not at all.
     const key = Object.keys(childSelect).length
@@ -224,10 +218,7 @@ const selectAt = (
       : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
-    const orderBy =
-      entry.isList && childMode !== 'paths'
-        ? resolveVisit(policy, child.mapName, child.modelName, child.relPath).orderBy
-        : null;
+    const orderBy = shownList?.orderBy;
     select[field] = {
       select: shown,
       ...(where && { where }),

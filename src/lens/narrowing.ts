@@ -3,13 +3,14 @@ import { declaredEnumValues, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
 import { type FieldKind, ORDERED_VALUE_KINDS } from '../operatorCatalog';
-import type { Condition } from '../types.ts';
+import type { Condition, OrderBy } from '../types.ts';
 import {
   throwIfInvalid,
   type ValidationIssue,
   type ValidationResult,
   validationResult,
 } from '../validate';
+import { orderByShapeIssues } from '../window';
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
 import { toLensSelectWith } from './lensRows.ts';
@@ -21,6 +22,7 @@ import {
   escapingClampRef,
   hiddenHop,
   intersectStringSet,
+  isFieldVisible,
   isSourceSpec,
   LensRefusal,
   misanchoredPath,
@@ -166,40 +168,29 @@ const hiddenBy = (
   return null;
 };
 
-// A relation's row order: each key a number or date column of the model its parent shows. A string
-// column is refused, as min / max refuse one: code-unit order in memory would disagree with the
-// database's collation.
+// A relation's row order: each key a number or date column of the model, one the parent shows at
+// every visit the node applies to (a `where`'s rule: the parent's surface, never this layer's own
+// picks / omits). A string column is refused, as min / max refuse one: code-unit order in memory
+// would disagree with the database's collation.
 const validateOrderBy = (
   orderBy: unknown,
   modelFields: Record<string, FieldMapEntry>,
-  ancestors: readonly ModelNarrowing[],
-  defaults: ModelDefaultNarrowing | undefined,
+  parentPolicy: Policy,
+  visits: readonly WhereVisit[],
   position: string,
   errors: ValidationIssue[],
 ): void => {
   if (orderBy === undefined) return;
   const at = `${position}.orderBy`;
-  if (!Array.isArray(orderBy)) {
+  const malformed = orderByShapeIssues(orderBy);
+  for (const { index, message } of malformed)
     errors.push({
-      path: at,
+      path: index === null ? at : `${at}[${index}]`,
       code: 'invalid_order_by',
-      message: 'orderBy must be an array of { field, dir }',
+      message,
     });
-    return;
-  }
-  orderBy.forEach((key: unknown, index) => {
-    const { field, dir } = (typeof key === 'object' && key !== null ? key : {}) as {
-      field?: unknown;
-      dir?: unknown;
-    };
-    if (typeof field !== 'string' || (dir !== 'asc' && dir !== 'desc')) {
-      errors.push({
-        path: `${at}[${index}]`,
-        code: 'invalid_order_by',
-        message: "each orderBy item must be { field: string, dir: 'asc' | 'desc' }",
-      });
-      return;
-    }
+  if (malformed.length > 0) return;
+  (orderBy as OrderBy).forEach(({ field }, index) => {
     const entry = own(modelFields, field);
     if (!entry) {
       errors.push({
@@ -221,12 +212,17 @@ const validateOrderBy = (
       });
       return;
     }
-    const hidden = hiddenBy(field, false, ancestors, defaults);
-    if (hidden)
+    const shown = visits.every((visit) =>
+      isFieldVisible(
+        resolveVisit(parentPolicy, visit.mapName, visit.modelName, visit.relPath),
+        field,
+      ),
+    );
+    if (!shown)
       errors.push({
         path: `${at}[${index}]`,
         code: 'not_visible',
-        message: `'${field}' ${hidden}`,
+        message: `'${field}' is not shown by the parent`,
       });
   });
 };
@@ -330,14 +326,7 @@ const validateModelNode = (
   }
 
   validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
-  validateOrderBy(
-    narrowing.orderBy,
-    modelFields,
-    ancestorChain,
-    sameLayerDefaults,
-    position,
-    errors,
-  );
+  validateOrderBy(narrowing.orderBy, modelFields, parentPolicy, whereVisits, position, errors);
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     const sourced = own(modelFields, field);
@@ -690,6 +679,12 @@ const validateNode = (
       });
       continue;
     }
+    if (sub.orderBy !== undefined && !entry.isList)
+      errors.push({
+        path: `${position}.relations.${relField}.orderBy`,
+        code: 'wrong_kind',
+        message: `'${relField}' is a to-one relation: it has no rows to order`,
+      });
     const target = relationTargetOf(entry, mapName);
     if (!target) continue;
     if (!modelOf(own(maps, target.mapName), target.modelName)) {
@@ -853,6 +848,12 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
       const ancestorChainForRoot = ancestors
         .map((anc) => anc.root)
         .filter((x): x is ModelNarrowing => x !== undefined);
+      if (narrowing.root.orderBy !== undefined)
+        errors.push({
+          path: 'root.orderBy',
+          code: 'wrong_kind',
+          message: 'the root is the row the lens stands on: it has no rows to order',
+        });
       const anchor = { mapName: lensMapName, modelName: lensModel, relPath: [] };
       guarded(() =>
         validateNode(

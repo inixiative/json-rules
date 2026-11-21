@@ -16,7 +16,7 @@ import {
 import { negate } from '../src/negate';
 import { map, openRails } from './rails/harness';
 
-// `pick`: the window's `aggregate.field` values, in its order — one for `take: 1` (null over no
+// `pick`: the window's `aggregate.field` values, in its order — one for `take: 1` (absent over no
 // row), a list otherwise (`[]` over none). A value expression, and an aggregate rule's comparison.
 
 const row = {
@@ -159,38 +159,48 @@ describe('pick in a rule', () => {
   });
 });
 
-describe('a pick that cuts its window needs an order', () => {
-  const unordered = (window: Record<string, unknown>) => {
-    const { orderBy: _order, ...rest } = jobTitles;
-    return { ...rest, ...window };
-  };
-  const codes = (result: { errors: { code: string; path: string }[] }) =>
-    result.errors.map((e) => `${e.code} ${e.path}`);
+describe('a pick with no orderBy picks in the order the rows are in', () => {
+  const { orderBy: _order, ...unordered } = jobTitles;
 
-  test.each<[string, Record<string, unknown>]>([
-    ['take 1', { take: 1 }],
-    ['take 3', { take: 3 }],
-    ['skip 1', { skip: 1 }],
-    ['an empty orderBy', { take: 1, orderBy: [] }],
-  ])('%s without orderBy is refused, as a rule and as a value', (_, window) => {
-    const value = unordered(window) as unknown as ValueExpression;
-    expect(codes(validateValue(value))).toEqual(['pick_needs_order_by $.orderBy']);
-    expect(() => inferValueType(value)).toThrow('$.orderBy: A pick with take or skip');
-    const rule = { ...unordered(window), operator: 'contains', value: 'CTO' };
-    expect(codes(validateRule(rule))).toContain('pick_needs_order_by $.orderBy');
-    const nested = { all: [rule] };
-    expect(codes(validateRule(nested))).toContain('pick_needs_order_by $.all[0].orderBy');
+  test('it validates, as every other mode over a cut window does', () => {
+    const value = { ...unordered, take: 1 } as unknown as ValueExpression;
+    expect(validateValue(value).ok).toBe(true);
+    expect(validateRule({ ...unordered, take: 1, operator: 'equals', value: 'CTO' }).ok).toBe(true);
+    expect(validateRule({ ...unordered, skip: 1, operator: 'contains', value: 'CTO' }).ok).toBe(
+      true,
+    );
   });
 
-  test('with an orderBy it is accepted', () => {
-    expect(validateValue(pick({ take: 1 })).ok).toBe(true);
-    expect(validateValue(pick({ take: 2, skip: 1 })).ok).toBe(true);
-    expect(validateRule({ ...jobTitles, take: 1, operator: 'equals', value: 'CTO' }).ok).toBe(true);
+  test('take 1 is the first row as stored', () => {
+    expect(evaluateValue({ ...unordered, take: 1 } as unknown as ValueExpression, row)).toBe('CTO');
+    const firstTag = { field: 'tags', take: 1, aggregate: { mode: 'pick' } };
+    expect(evaluateValue(firstTag as unknown as ValueExpression, { tags: ['b', 'a'] })).toBe('b');
+  });
+});
+
+describe('a take-1 pick over no row is absent; a row holding NULL is null', () => {
+  const winner = { ...jobTitles, take: 1 };
+  const noRow = { enrichments: [] };
+  const nullRow = { enrichments: [{ field: 'jobTitle', value: null, sourceRank: 1 }] };
+  const unknown = { absent: 'unknown' } as const;
+  const isNull = { ...winner, operator: 'equals', value: null } as unknown as Condition;
+
+  test('a value reads both as null', () => {
+    expect(evaluateValue(winner as unknown as ValueExpression, noRow)).toBeNull();
+    expect(evaluateValue(winner as unknown as ValueExpression, nullRow)).toBeNull();
   });
 
-  test('every value of the window (no take, no skip) needs none', () => {
-    expect(validateValue(unordered({}) as unknown as ValueExpression).ok).toBe(true);
-    expect(validateRule({ ...unordered({}), operator: 'contains', value: 'CTO' }).ok).toBe(true);
+  test('by default check() reads no row as null, as it reads an absent path', () => {
+    expect(check(isNull, noRow)).toBe(true);
+    expect(check(isNull, nullRow)).toBe(true);
+  });
+
+  test("under absent: 'unknown' no row is unknown, and a NULL the row holds is still null", () => {
+    expect(check(isNull, noRow, unknown)).not.toBe(true);
+    expect(check(isNull, nullRow, unknown)).toBe(true);
+    // The operators that hold on a missing value keep their meaning.
+    const missing = { ...winner, operator: 'notExists' } as unknown as Condition;
+    expect(check(missing, noRow, unknown)).toBe(true);
   });
 });
 

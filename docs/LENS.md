@@ -911,8 +911,11 @@ default for every to-many visit of the model): `toLensSelect` writes it as Prism
 nullable column `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, so rows fetched
 in any order project as the database returns them. It is a window's order: each key in turn, a NULL
 last either way, ties kept as fetched. Ordering narrows nothing, so a later layer's replaces an
-earlier one's (and, in one layer, the path's the model default's); like everything a layer names,
-its columns must be ones its parent shows. Only number and date columns order a relation: a string
+earlier one's (and, in one layer, the path's the model default's); like a `where`, its columns must
+be ones its parent shows at every visit it applies to, whether it sits on the path or on a model
+default, and a layer may order by a column it hides itself. The root and a to-one relation have no
+rows to order, and an `orderBy` there is refused. Rows order as they carry each column: a number or
+date held as a string orders as a string, so coerce the rows first. Only number and date columns order a relation: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
 disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not
 the lens's.

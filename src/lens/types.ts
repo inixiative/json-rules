@@ -54,8 +54,8 @@ export type ModelDefaultNarrowing = {
    * `toLensSelect` (Prisma's `orderBy`) and `projectRows` (in memory). The window's own order: each
    * key in turn, by a column of this model, a NULL last in either direction, ties as fetched.
    * Ordering narrows nothing: a later layer's (or, in one layer, the path's over the model
-   * default's) replaces it, and it may only name a column its parent shows. On a visit that is not
-   * a to-many relation (the root, a to-one hop) there are no rows to order.
+   * default's) replaces it, and it may only name a column its parent shows. The root and a to-one
+   * hop have no rows to order: an `orderBy` there is refused.
    */
   orderBy?: OrderBy;
 };

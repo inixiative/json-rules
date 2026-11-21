@@ -72,7 +72,8 @@ export const evaluateAggregateValue = (
     case 'avg':
       return sumOrAverage(mode, items, node.field, itemField, node.coerceType);
     case 'pick':
-      return pickValues(node, items, itemField, coerce);
+      // A value reads an absent pick as null, as it reads an absent path.
+      return pickValues(node, items, itemField, coerce) ?? null;
     case 'distinct':
       return distinctValues(
         aggregateValues(items, node.field, itemField, coerce),

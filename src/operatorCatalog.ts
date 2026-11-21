@@ -422,24 +422,69 @@ export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = [
  *  null over no items, else a list, `[]` over none). `comparable` modes are the ones an aggregate
  *  rule compares; the rest are value expressions only (`evaluateValue`), evaluated in memory.
  *  `compiled` comparable modes compile on `toSql` / `toPrisma` too; an aggregate rule in any other
- *  is check() only, and `validateRule` refuses it for a compiler. `kinds` are the kinds of value
- *  each mode reads, as read (after any `coerceType`). */
+ *  is check() only, and `validateRule` refuses it for a compiler. `nullOverNoValues` modes give
+ *  no value over no items (`avg`, `min` / `max`, a `take: 1` pick), where `sum` and `count` give 0
+ *  and a list is empty. `kinds` are the kinds of value each mode reads, as read (after any
+ *  `coerceType`). */
 export const AGGREGATE_MODE_CATALOG: Record<
   ValueAggregateMode,
   {
     result: 'number' | 'count' | 'element' | 'list' | 'pick';
     comparable: boolean;
     compiled: boolean;
+    nullOverNoValues: boolean;
     kinds: readonly FieldKind[];
   }
 > = {
-  sum: { result: 'number', comparable: true, compiled: true, kinds: NUMERIC_KINDS },
-  avg: { result: 'number', comparable: true, compiled: true, kinds: NUMERIC_KINDS },
-  count: { result: 'count', comparable: false, compiled: false, kinds: ALL_KINDS },
-  min: { result: 'element', comparable: false, compiled: false, kinds: ORDERED_VALUE_KINDS },
-  max: { result: 'element', comparable: false, compiled: false, kinds: ORDERED_VALUE_KINDS },
-  distinct: { result: 'list', comparable: false, compiled: false, kinds: DISTINCT_VALUE_KINDS },
-  pick: { result: 'pick', comparable: true, compiled: false, kinds: ALL_KINDS },
+  sum: {
+    result: 'number',
+    comparable: true,
+    compiled: true,
+    nullOverNoValues: false,
+    kinds: NUMERIC_KINDS,
+  },
+  avg: {
+    result: 'number',
+    comparable: true,
+    compiled: true,
+    nullOverNoValues: true,
+    kinds: NUMERIC_KINDS,
+  },
+  count: {
+    result: 'count',
+    comparable: false,
+    compiled: false,
+    nullOverNoValues: false,
+    kinds: ALL_KINDS,
+  },
+  min: {
+    result: 'element',
+    comparable: false,
+    compiled: false,
+    nullOverNoValues: true,
+    kinds: ORDERED_VALUE_KINDS,
+  },
+  max: {
+    result: 'element',
+    comparable: false,
+    compiled: false,
+    nullOverNoValues: true,
+    kinds: ORDERED_VALUE_KINDS,
+  },
+  distinct: {
+    result: 'list',
+    comparable: false,
+    compiled: false,
+    nullOverNoValues: false,
+    kinds: DISTINCT_VALUE_KINDS,
+  },
+  pick: {
+    result: 'pick',
+    comparable: true,
+    compiled: false,
+    nullOverNoValues: true,
+    kinds: ALL_KINDS,
+  },
 };
 
 /** The aggregate modes that read values of `kind`; `{ comparable: true }` keeps the ones an
@@ -478,31 +523,39 @@ export const VALUE_AGGREGATE_MODES = Object.keys(
 export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode =>
   typeof mode === 'string' && Object.hasOwn(AGGREGATE_MODE_CATALOG, mode);
 
-/** What a `pick` rule asks of the value it picks, as a field holding it is asked: the aggregate
- *  comparisons, and membership and containment. A list pick (any `take` but 1) takes
- *  `contains` / `notContains` only: whether the picked values hold a member. */
-export const PICK_OPERATORS = [
-  ...AGGREGATE_OPERATORS,
-  Operator.in,
-  Operator.notIn,
-  Operator.contains,
-  Operator.notContains,
-] as readonly Operator[];
-/** The operators a list pick takes. */
-export const LIST_PICK_OPERATORS: readonly Operator[] = [Operator.contains, Operator.notContains];
+/** The modes that give back their items' own values, read through `coerceType` (`min`, `max`,
+ *  `distinct`, `pick`): the ones whose result is not a number they compute. */
+export const VALUE_READING_AGGREGATE_MODES = VALUE_AGGREGATE_MODES.filter(
+  (mode) => !['number', 'count'].includes(AGGREGATE_MODE_CATALOG[mode].result),
+);
 
-/** The comparisons an aggregate rule takes — in `mode` when given (`pick` takes more; a list pick
- *  fewer, `{ list: true }`). `sum` / `avg` compile all of them on every target. */
-export const getAggregateOperators = (
-  mode?: AggregateMode,
-  options: { list?: boolean } = {},
-): readonly Operator[] =>
-  mode === 'pick' ? (options.list ? LIST_PICK_OPERATORS : PICK_OPERATORS) : AGGREGATE_OPERATORS;
+/** Whether a mode gives no value over no items (`avg`, `min` / `max`, a `take: 1` pick). */
+export const isNullOverNoValues = (mode: unknown): boolean =>
+  isValueAggregateMode(mode) && AGGREGATE_MODE_CATALOG[mode].nullOverNoValues;
 
 /** Equality with one value: `equals` / `notEquals`. */
 export const EQUALITY_OPERATORS = withShape('scalar');
 /** Membership in a list: `in` / `notIn`. */
 export const SET_OPERATORS = withShape('array');
+
+/** What a `pick` rule asks of the value it picks, as a field holding it is asked: the aggregate
+ *  comparisons, membership and containment. */
+export const PICK_OPERATORS = [
+  ...AGGREGATE_OPERATORS,
+  ...SET_OPERATORS,
+  ...CONTAINS_OPERATORS,
+] as readonly Operator[];
+
+/** The comparisons an aggregate rule takes — in `mode` when given (`pick` takes more; a list
+ *  pick, any `take` but 1, only whether the picked values hold a member: `{ list: true }`).
+ *  `sum` / `avg` compile all of them on every target. */
+export const getAggregateOperators = (
+  mode?: AggregateMode,
+  options: { list?: boolean } = {},
+): readonly Operator[] => {
+  if (mode !== 'pick') return AGGREGATE_OPERATORS;
+  return options.list ? (CONTAINS_OPERATORS as readonly Operator[]) : PICK_OPERATORS;
+};
 /** Exact equality and membership: what a column answers by value, case-sensitively. */
 export const EXACT_OPERATORS = withShape('scalar', 'array');
 /** Weekday lists: `dayIn` / `dayNotIn`. */

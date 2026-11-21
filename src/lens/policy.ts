@@ -7,6 +7,7 @@ import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition, OrderBy } from '../types.ts';
 import type { ValidationIssue } from '../validate';
+import { orderByShapeIssues } from '../window';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
@@ -273,7 +274,8 @@ const accumulateInto = (
   ownDefault: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
-  if (n.orderBy?.length) out.orderBy = n.orderBy;
+  if (n.orderBy !== undefined && orderByShapeIssues(n.orderBy).length === 0 && n.orderBy.length)
+    out.orderBy = n.orderBy;
   if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));

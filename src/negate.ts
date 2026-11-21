@@ -6,6 +6,7 @@ import { ArrayOperator } from './operator';
 import {
   COMPLEMENT_DATE_OPERATORS,
   COMPLEMENT_OPERATORS,
+  isNullOverNoValues,
   NEGATED_OPERATORS,
   OPPOSITE_OPERATORS,
 } from './operatorCatalog';
@@ -61,8 +62,7 @@ const negateLeaf = (node: Node, settle: Settle, depth: number): Condition => {
     const opposite = { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) };
     // A sum is never NULL; an average over no values is, as a pick of no row is, and the opposite
     // comparison is false there.
-    const mode = (leaf.aggregate as { mode?: unknown }).mode;
-    return mode === 'avg' || mode === 'pick'
+    return isNullOverNoValues((leaf.aggregate as { mode?: unknown }).mode)
       ? anyOf([opposite as Condition, presence(leaf, 'notExists')])
       : (opposite as Condition);
   }

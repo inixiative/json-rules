@@ -243,7 +243,11 @@ values, as SQL's `AVG`, and in an aggregate rule), `count` (the rows; with `aggr
 (strings, enums, dates, booleans or numbers: the values without repeats, first seen first, NULLs
 skipped; `[]` over no rows), and `pick` (any kind: the rows' values themselves, in the window's
 order, NULLs skipped — one value for `take: 1`, null over no row; a list otherwise, `[]` over none;
-a pick with `take` or `skip` needs an `orderBy`, refused as `pick_needs_order_by` without one).
+with no `orderBy` it picks in the order the rows are in). A window orders its keys as the rows
+carry them: values in mixed forms (numbers as strings, dates as strings in differing formats) order
+oddly, so coerce the rows first (`coerceValue` stamps the picked values, not the order keys).
+In a rule, a `take: 1` pick over no row is absent, as a path the row doesn't carry: null by
+default, unknown under `absent: 'unknown'`; a row that holds NULL is null either way.
 The window runs first (filter → order → skip → take), then `condition`. An aggregate rule compares
 `sum`, `avg` and `pick`.
 

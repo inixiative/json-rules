@@ -9,7 +9,7 @@ modules allowed to implement it, and every exported function must appear in this
 | Verb | Name | What it does |
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
-| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal (a `{ value, coerceType }` one read as that kind), a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` through its window), the branch an `if` picks, a list (experimental). |
+| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal (a `{ value, coerceType }` one read as that kind), a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` / `pick` through its window), the branch an `if` picks, a list (experimental). |
 | categorize | `categorize` | Put a row in a category: the value of the first case whose rule holds (or, with `match: 'all'`, of every one), else the default. |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
 | compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s. |

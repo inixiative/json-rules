@@ -113,7 +113,11 @@ export const aggregateType = (
       );
     const sumKind = mode === 'sum' || kind === FieldKind.Decimal ? kind : FieldKind.Float;
     // sum over no rows is 0; avg over none is null.
-    return { kind: sumKind, isList: false, nullable: mode === 'avg' };
+    return {
+      kind: sumKind,
+      isList: false,
+      nullable: AGGREGATE_MODE_CATALOG[mode].nullOverNoValues,
+    };
   }
   // A pick returns the values as they are: one (null over no rows) for take 1, else a list.
   if (mode === 'pick') {

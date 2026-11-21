@@ -56,6 +56,7 @@ import {
   RANGE_OPERATORS,
   type RuleTarget,
   SET_OPERATORS,
+  VALUE_READING_AGGREGATE_MODES,
   type ValueShape,
   WINDOW_OPERATORS,
 } from './operatorCatalog';
@@ -65,10 +66,18 @@ import { aggregateFieldRequired, aggregateItemError } from './toPrisma/aggregate
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
 import { conditionShape, visitCondition } from './traverse';
-import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
+import type {
+  AggregateMode,
+  ArrayRule,
+  Condition,
+  DateExpr,
+  Rule,
+  ValueAggregateMode,
+  WindowFields,
+} from './types';
 import { coerceMismatch, coerces } from './value/aggregateType';
 import { rowRef, SOURCE_FORMS } from './valueSource';
-import { hasWindow, picksOne, windowRewrite } from './window';
+import { hasWindow, orderByShapeIssues, picksOne, windowRewrite } from './window';
 
 export type ValidationIssue = {
   path: string;
@@ -154,14 +163,10 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
   // sum / avg parse each item as their aggregate rule does.
   if (mode === 'sum' || mode === 'avg') validateAggregateCoercion(value, '$', context, 1);
   else if (value.coerceType !== undefined) {
-    if (!isFieldKind(value.coerceType))
-      pushIssue(
-        context,
-        '$.coerceType',
-        'invalid_coerce_type',
-        `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
-      );
-    else if (!['distinct', 'min', 'max', 'pick'].includes(mode as string))
+    if (
+      validateCoerceTypeName(value, '$', context) &&
+      !VALUE_READING_AGGREGATE_MODES.includes(mode as ValueAggregateMode)
+    )
       pushIssue(
         context,
         '$.coerceType',
@@ -535,14 +540,7 @@ const validateFieldRule = (
     );
   }
 
-  if (rule.coerceType !== undefined && !isFieldKind(rule.coerceType)) {
-    pushIssue(
-      context,
-      `${path}.coerceType`,
-      'invalid_coerce_type',
-      `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
-    );
-  }
+  validateCoerceTypeName(rule, path, context);
 
   const shape = getValueShape(operator, 'field');
 
@@ -771,22 +769,6 @@ const validateAggregateReads = (
     );
   }
 
-  // A pick that cuts its window (take / skip) picks by the window's order: with none, "the first
-  // row" is whichever came first in the input. Every value (no take, no skip) needs no order —
-  // a list pick's contains / notContains don't read it.
-  const orderBy = rule.orderBy;
-  if (
-    agg.mode === 'pick' &&
-    (rule.take !== undefined || rule.skip !== undefined) &&
-    !(Array.isArray(orderBy) && orderBy.length > 0)
-  )
-    pushIssue(
-      context,
-      `${path}.orderBy`,
-      'pick_needs_order_by',
-      'A pick with take or skip picks by the window order: give it an orderBy',
-    );
-
   if ('condition' in rule && rule.condition !== undefined) {
     if (context.target === 'toSql') {
       pushIssue(
@@ -814,16 +796,8 @@ const validateAggregateCoercion = (
   const { coerceType } = rule;
   if (coerceType === undefined) return;
   const at = `${path}.coerceType`;
-  if (!isFieldKind(coerceType)) {
-    pushIssue(
-      context,
-      at,
-      'invalid_coerce_type',
-      `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
-    );
-    return;
-  }
-  if (!NUMERIC_KINDS.includes(coerceType)) {
+  if (!validateCoerceTypeName(rule, path, context)) return;
+  if (!NUMERIC_KINDS.includes(coerceType as FieldKind)) {
     pushIssue(context, at, 'aggregate_kind_mismatch', `sum and avg add numbers, not ${coerceType}`);
     return;
   }
@@ -838,23 +812,24 @@ const validateAggregateCoercion = (
     : fieldEntry(rule.field, context.map, model);
   const stored =
     item && item.kind === 'scalar' && !isJsonEntry(item) ? (item.type as FieldKind) : null;
-  if (!coerces(stored, coerceType))
-    pushIssue(context, at, 'coerce_kind_mismatch', coerceMismatch(stored, coerceType));
+  if (!coerces(stored, coerceType as FieldKind))
+    pushIssue(context, at, 'coerce_kind_mismatch', coerceMismatch(stored, coerceType as FieldKind));
 };
 
-// A pick reads each picked value as its coerceType when it names one: any kind.
-const validatePickCoercion = (
-  rule: Record<string, unknown>,
+// Whether a node's coerceType, when it names one, is a field kind.
+const validateCoerceTypeName = (
+  node: Record<string, unknown>,
   path: string,
   context: ValidationContext,
-): void => {
-  if (rule.coerceType !== undefined && !isFieldKind(rule.coerceType))
-    pushIssue(
-      context,
-      `${path}.coerceType`,
-      'invalid_coerce_type',
-      `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
-    );
+): boolean => {
+  if (node.coerceType === undefined || isFieldKind(node.coerceType)) return true;
+  pushIssue(
+    context,
+    `${path}.coerceType`,
+    'invalid_coerce_type',
+    `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
+  );
+  return false;
 };
 
 // A pick compares the picked value as a field holding it is compared: by the operator's own value
@@ -884,7 +859,6 @@ const validatePickValue = (
       );
     return;
   }
-  if (rule.value === null && EQUALITY_OPERATORS.includes(operator)) return;
   validateValueShape(
     getValueShape(operator, 'field'),
     rule.value,
@@ -918,7 +892,8 @@ const validateAggregateRule = (
     );
 
   const pick = agg.mode === 'pick';
-  if (pick) validatePickCoercion(rule, path, context);
+  // A pick reads each picked value as its coerceType: any kind.
+  if (pick) validateCoerceTypeName(rule, path, context);
   else validateAggregateCoercion(rule, path, context, depth);
 
   const list = pick && !picksOne(rule as WindowFields);
@@ -1351,31 +1326,14 @@ const validateWindow = (
   }
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {
-    const ob = rule.orderBy;
     // An empty orderBy orders nothing: no window, as hasWindow reads it.
-    if (!Array.isArray(ob)) {
+    for (const { index, message } of orderByShapeIssues(rule.orderBy))
       pushIssue(
         context,
-        `${path}.orderBy`,
+        index === null ? `${path}.orderBy` : `${path}.orderBy[${index}]`,
         'invalid_order_by',
-        'orderBy must be an array of { field, dir }',
+        message,
       );
-    } else {
-      ob.forEach((o, i) => {
-        if (
-          !isPlainObject(o) ||
-          typeof o.field !== 'string' ||
-          (o.dir !== 'asc' && o.dir !== 'desc')
-        ) {
-          pushIssue(
-            context,
-            `${path}.orderBy[${i}]`,
-            'invalid_order_by',
-            'orderBy entries must be { field: string, dir: "asc" | "desc" }',
-          );
-        }
-      });
-    }
   }
 
   for (const key of ['take', 'skip'] as const) {

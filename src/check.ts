@@ -233,8 +233,9 @@ export const sumOrAverage = (
 };
 
 /** The values a `pick` returns: each item's `aggregate.field` (or the item itself), in the window's
- *  order, read through `read`; NULLs skipped, as every mode skips them. One value (null over none)
- *  for `take: 1`, else the list (`[]` over none). */
+ *  order, read through `read`; NULLs skipped, as every mode skips them. For `take: 1`, the one
+ *  row's value (null when it holds none), and undefined over no row: absent, as a path the row
+ *  doesn't carry is. Else the list (`[]` over none). */
 export const pickValues = (
   node: WindowFields & { field: string },
   items: unknown[],
@@ -242,7 +243,8 @@ export const pickValues = (
   read: (raw: unknown) => unknown,
 ): unknown => {
   const values = aggregateValues(items, node.field, itemField, read);
-  return picksOne(node) ? (values[0] ?? null) : values;
+  if (!picksOne(node)) return values;
+  return items.length === 0 ? undefined : (values[0] ?? null);
 };
 
 const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {

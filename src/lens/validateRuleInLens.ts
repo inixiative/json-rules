@@ -12,8 +12,9 @@ import {
   valueRefRoles,
   visitCondition,
 } from '../traverse';
-import type { Condition, DateRule, Rule } from '../types';
+import type { Condition, DateRule, Rule, WindowFields } from '../types';
 import { type ValidationIssue, type ValidationResult, validationResult } from '../validate';
+import { picksOne } from '../window';
 import { arrayFitViolation, leafFitViolations, ruleLiterals } from './fieldFit.ts';
 import { narrowRule } from './narrowRule.ts';
 import type { Policy } from './policy.ts';
@@ -76,14 +77,27 @@ const visit = (
         }
       }
       const terminalEntry: FieldMapEntry | null = walked?.entry ?? null;
-      const terminalFieldName = walked?.terminalFieldName ?? null;
-      const terminalIsEnum = walked?.entry.kind === 'enum';
-      const terminalEnumType = walked?.entry.type ?? null;
+      // What the comparison reads: the rule's field, or — a pick of one — the column it picks,
+      // compared as a field rule on that column is. A list pick tests the list and a pick with
+      // no `aggregate.field` a scalar list's elements: neither names one column to check.
+      const { aggregate } = cond as unknown as { aggregate?: { mode?: unknown; field?: unknown } };
+      const pickedColumn =
+        kind === 'aggregate' &&
+        !next.open &&
+        aggregate?.mode === 'pick' &&
+        picksOne(cond as WindowFields) &&
+        typeof aggregate.field === 'string'
+          ? aggregate.field
+          : null;
+      const compared = pickedColumn === null ? walked : lensPathEnd(policy, next, pickedColumn);
+      const terminalFieldName = compared?.terminalFieldName ?? null;
+      const terminalIsEnum = compared?.entry.kind === 'enum';
+      const terminalEnumType = compared?.entry.type ?? null;
       // Below a Json boundary the value is undeclared, so the column's own allowed set says
       // nothing about it — only gate a path that ends ON the declared entry.
       const terminalAllowedValues =
-        walked && walked.jsonSubPath.length === 0
-          ? allowedEnumValues(walked.terminalEffect, walked.terminalFieldName)
+        compared && compared.jsonSubPath.length === 0
+          ? allowedEnumValues(compared.terminalEffect, compared.terminalFieldName)
           : null;
 
       // Gate every value-side ref — the RHS `path`, an offset `{ path }`, each magnitude `{ path }` —
@@ -174,6 +188,14 @@ const visit = (
           ),
         );
       }
+
+      if (pickedColumn !== null && compared && !isRelationEntry(compared.entry))
+        issues.push(
+          ...leafFitViolations(
+            { ...cond, field: pickedColumn } as unknown as Rule,
+            entryKind(compared.entry),
+          ),
+        );
 
       // The fields a relation node orders or aggregates by read its elements.
       if (!next.open)

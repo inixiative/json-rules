@@ -1,5 +1,10 @@
 import { fieldOf } from '@inixiative/field-map';
-import { aggregatePathUnsupported, unknownAggregateMode, windowUnsupported } from '../errors';
+import {
+  aggregateModeNotCompiled,
+  aggregatePathUnsupported,
+  unknownAggregateMode,
+  windowUnsupported,
+} from '../errors';
 import { checkField, hasNoOperand } from '../field';
 import { isJsonEntry } from '../fieldMap/entry';
 import type { LensFieldMap } from '../fieldMap/types';
@@ -10,6 +15,7 @@ import {
   AGGREGATE_MODES,
   EQUALITY_OPERATORS,
   type FieldKind,
+  isCompiledAggregateMode,
   NEGATED_OPERATORS,
   NEGATED_RANGE_OPERATORS,
   NO_VALUE_OPERATORS,
@@ -17,7 +23,7 @@ import {
 } from '../operatorCatalog';
 import type { AggregateRule, Condition, Rule } from '../types';
 import { hasPath } from '../valueSource';
-import { hasWindow, windowRewrite } from '../window';
+import { hasWindow, isNullOverNoValues, windowRewrite } from '../window';
 import { nestedScope } from './columnRef';
 import { comparisonFilter, hopArms } from './field';
 import { groupMembership, groupPath } from './groupStep';
@@ -58,6 +64,11 @@ export const buildAggregateRule = (
   options?: ToPrismaOptions,
   state?: PrismaBuildState,
 ): PrismaWhere => {
+  if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
+    throw unknownAggregateMode(rule.aggregate.mode);
+  // validateRule refuses it first (`unsupported_prisma_aggregate_mode`).
+  if (!isCompiledAggregateMode(rule.aggregate.mode))
+    throw aggregateModeNotCompiled(rule.aggregate.mode, 'toPrisma');
   if (hasPath(rule)) throw aggregatePathUnsupported(rule.path);
   if (hasWindow(rule)) {
     const rewritten = windowRewrite(rule);
@@ -72,8 +83,6 @@ export const buildAggregateRule = (
     );
   }
 
-  if (!AGGREGATE_MODES.includes(rule.aggregate.mode))
-    throw unknownAggregateMode(rule.aggregate.mode);
   if (!rule.aggregate.field) throw aggregateFieldRequired();
 
   return buildAggregateStep(
@@ -128,7 +137,7 @@ const buildAggregateStep = (
     return NEGATED_OPERATORS.includes(rule.operator)
       ? presence(rule, false, where, path, options, state)
       : matchNothing();
-  const empty = rule.aggregate.mode === 'sum' ? 0 : null;
+  const empty = isNullOverNoValues(rule) ? null : 0;
   const holdsEmpty =
     checkField(leaf as unknown as Rule, [{}], undefined, {}, { value: empty }) === true;
   const target = (holdsEmpty ? negate(leaf as Condition) : leaf) as unknown as Rule;

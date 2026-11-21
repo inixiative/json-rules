@@ -2,6 +2,7 @@ import { isRelationEntry } from '../fieldMap/entry';
 import type { Lens, LensNarrowing } from '../lens/types';
 import { AGGREGATE_MODE_CATALOG, FieldKind, NUMERIC_KINDS } from '../operatorCatalog';
 import type { AggregateValue, ValueAggregateMode, ValueType } from '../types';
+import { isNullOverNoValues, picksOne } from '../window';
 import { columnKind, needLens, resolveValuePath, rowPath } from './resolveValuePath';
 import { refuse } from './valueTypeIssue';
 
@@ -79,7 +80,8 @@ const elementKind = (
 
 /** An aggregate value's type: `count` an `Int`; `sum` its column's numeric kind, never null;
  *  `avg` a `Float` (`Decimal` stays `Decimal`), null over no rows; `min` / `max` their column's
- *  kind, nullable; `distinct` a list of its column's kind, never null (`[]` over no rows). For
+ *  kind, nullable; `distinct` a list of its column's kind, never null (`[]` over no rows); `pick`
+ *  its column's kind, nullable for `take: 1`, else a list of it, never null (`[]`). For
  *  every mode but `count` a `coerceType` is the kind. */
 export const aggregateType = (
   lens: Lens | LensNarrowing | undefined,
@@ -94,7 +96,8 @@ export const aggregateType = (
   }
   const stored = elementKind(needLens(lens, `${mode} over '${node.field}'`), node, path);
   // sum / avg parse Json items as an aggregate rule over a Json array does: their kind is undeclared.
-  const adds = mode === 'sum' || mode === 'avg';
+  const adds = AGGREGATE_MODE_CATALOG[mode].result === 'number';
+  const nullable = isNullOverNoValues(node);
   const declared = adds && stored === FieldKind.Json ? null : stored;
   if (node.coerceType !== undefined)
     refuseCoercion(declared, node.coerceType, `${path}.coerceType`);
@@ -111,8 +114,10 @@ export const aggregateType = (
       );
     const sumKind = mode === 'sum' || kind === FieldKind.Decimal ? kind : FieldKind.Float;
     // sum over no rows is 0; avg over none is null.
-    return { kind: sumKind, isList: false, nullable: mode === 'avg' };
+    return { kind: sumKind, isList: false, nullable };
   }
+  // A pick returns the values as they are: one (null over no rows) for take 1, else a list.
+  if (mode === 'pick') return { kind, isList: !picksOne(node), nullable };
   if (mode === 'distinct') {
     if (!reads)
       refuse(
@@ -120,7 +125,7 @@ export const aggregateType = (
         'aggregate_kind_mismatch',
         `distinct lists strings, enums, dates, booleans and numbers, not ${kind ?? 'untyped'} values`,
       );
-    return { kind, isList: true, nullable: false };
+    return { kind, isList: true, nullable };
   }
   if (!reads)
     refuse(
@@ -128,5 +133,5 @@ export const aggregateType = (
       'aggregate_kind_mismatch',
       `${mode} orders numbers and dates, not ${kind ?? 'untyped'} values; read strings with coerceType`,
     );
-  return { kind, isList: false, nullable: true };
+  return { kind, isList: false, nullable };
 };

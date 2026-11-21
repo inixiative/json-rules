@@ -26,6 +26,7 @@ import {
   normalizeGroupBy,
   normalizeSource,
   OFF_PATH,
+  orderByIssues,
   type Policy,
   resolvePolicy,
   resolveVisit,
@@ -165,6 +166,26 @@ const hiddenBy = (
   return null;
 };
 
+// A relation's row order, checked at every visit the node applies to on the parent's surface (a
+// `where`'s rule: never this layer's own picks / omits).
+const validateOrderBy = (
+  orderBy: unknown,
+  parentPolicy: Policy,
+  visits: readonly WhereVisit[],
+  position: string,
+  errors: ValidationIssue[],
+): void => {
+  if (orderBy === undefined) return;
+  const seen = new Set<string>();
+  for (const visit of visits)
+    for (const issue of orderByIssues(orderBy, parentPolicy, visit, `${position}.orderBy`)) {
+      const key = `${issue.path}|${issue.code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      errors.push(issue);
+    }
+};
+
 const validateModelNode = (
   narrowing: ModelNarrowing | ModelDefaultNarrowing,
   ancestorChain: ModelNarrowing[],
@@ -264,6 +285,7 @@ const validateModelNode = (
   }
 
   validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
+  validateOrderBy(narrowing.orderBy, parentPolicy, whereVisits, position, errors);
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     const sourced = own(modelFields, field);
@@ -616,6 +638,12 @@ const validateNode = (
       });
       continue;
     }
+    if (sub.orderBy !== undefined && !entry.isList)
+      errors.push({
+        path: `${position}.relations.${relField}.orderBy`,
+        code: 'wrong_kind',
+        message: `'${relField}' is a to-one relation: it has no rows to order`,
+      });
     const target = relationTargetOf(entry, mapName);
     if (!target) continue;
     if (!modelOf(own(maps, target.mapName), target.modelName)) {

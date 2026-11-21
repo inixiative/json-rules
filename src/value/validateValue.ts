@@ -1,7 +1,7 @@
 import { invalidValueExpression, valueTakesNoComparison } from '../errors';
-import { FieldKind, isFieldKind } from '../operatorCatalog';
 import { listItems, type ValueExpressionShape, valueExpressionShape } from '../traverse';
 import {
+  coerceTypeNameIssue,
   throwIfInvalid,
   type ValidationIssue,
   type ValidationResult,
@@ -121,15 +121,8 @@ const literalCoercionIssues = (
         message: 'coerceType reads a literal { value }; a path or binding has its own kind',
       },
     ];
-  if (!isFieldKind(coerceType))
-    return [
-      {
-        path: at,
-        code: 'invalid_coerce_type',
-        message: `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
-      },
-    ];
-  return [];
+  const issue = coerceTypeNameIssue(coerceType, at);
+  return issue ? [issue] : [];
 };
 
 const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIssue[] => {

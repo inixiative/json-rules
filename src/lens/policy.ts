@@ -1,12 +1,15 @@
 import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { toManyHopError } from '../errors';
 import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
+import { entryKind } from '../fieldMap/shape';
 import type { FieldMapEntry, LensFieldMap, LensModelEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
+import { ORDERED_VALUE_KINDS } from '../operatorCatalog';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
-import type { Condition } from '../types.ts';
+import type { Condition, OrderBy } from '../types.ts';
 import type { ValidationIssue } from '../validate';
+import { orderByShapeIssues } from '../window';
 import { collectChain, getLensRoot, isLens } from './chain.ts';
 import { narrowAt } from './narrowRule.ts';
 import type {
@@ -54,6 +57,9 @@ export type VisitEffect = {
   relations: Set<string>;
   /** Every relation field of the visit's model: what `picks` never governs. */
   relationFields: Set<string>;
+  /** The order this visit's rows come back in when it is a to-many relation: the last `orderBy`
+   *  declared (a later layer over an earlier, the path over the model default), or null. */
+  orderBy: OrderBy | null;
 };
 
 /** Normalize a `groupBy` declaration to its axes array (a bare string is one axis). */
@@ -265,11 +271,13 @@ const accumulateInto = (
   narrow: (condition: Condition) => Condition,
   layer: number,
   vet: (condition: Condition, source?: boolean) => void,
+  vetOrderBy: (orderBy: unknown) => boolean,
   clamps: boolean,
   hiding: boolean,
   ownDefault: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
+  if (n.orderBy !== undefined && vetOrderBy(n.orderBy) && n.orderBy.length) out.orderBy = n.orderBy;
   if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
@@ -337,6 +345,96 @@ export const laterClampIssues = (
   at: MapVisit,
 ): ValidationIssue[] =>
   checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
+
+// What is wrong with one order key at a visit, on the surface the layer reads.
+const orderKeyIssue = (
+  surface: Policy,
+  at: MapVisit,
+  field: string,
+): { code: string; message: string } | null => {
+  // Every reader takes the key as its dotted names: one spelling, so the fetch, the query and the
+  // in-memory order read the same path.
+  if (pathSegments(field).join('.') !== field)
+    return {
+      code: 'invalid_order_by',
+      message: `'${field}' is not a column or a dotted path of names to one`,
+    };
+  const { resolution, effects } = resolvePolicyPath(surface, at, field);
+  if (resolution.outcome === 'hidden')
+    return { code: 'not_visible', message: `'${field}' is not shown by the parent` };
+  if (resolution.outcome !== 'resolved')
+    return { code: 'not_in_lens', message: `field '${field}' not on model` };
+  const { hops, terminal } = resolution;
+  const crossed = hops.slice(0, -1);
+  const toMany = toManyHop(crossed);
+  if (toMany)
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' crosses the to-many relation '${toMany.field}': an order key reaches a column through to-one relations only`,
+    };
+  const bridge = crossed.find((hop) => hop.entry.kind === 'bridge');
+  if (bridge)
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' crosses the bridge '${bridge.field}' to another source: an order key stays in one`,
+    };
+  const kind = entryKind(terminal.entry);
+  if (kind === undefined || !ORDERED_VALUE_KINDS.includes(kind))
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' is not a number or date column: rows order by numbers and dates`,
+    };
+  // A row without the related one has no value to order by; the database puts it last only where
+  // the column takes `nulls: 'last'`, which a required column doesn't.
+  const optional = crossed.findIndex((hop) => hop.entry.isRequired === false);
+  if (optional !== -1 && terminal.entry.isRequired === true) {
+    const relation = crossed
+      .slice(0, optional + 1)
+      .map((hop) => hop.field)
+      .join('.');
+    const key = optional === 0 ? crossed[0]?.entry.fromFields?.[0] : undefined;
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' is a required column behind the optional relation '${relation}': a row with none has no place every rail agrees on; order by a nullable column${key ? ` (as '${key}')` : ''}`,
+    };
+  }
+  // A later layer reads a related row through its parent's clamps, and no rail can order by a
+  // clamped row: the order would follow values the clamp hides. (The first narrowing has no
+  // parent, so nothing above it clamps.)
+  if (effects.slice(1).some((effect) => effect.whereClauses.length))
+    return {
+      code: 'not_visible',
+      message: `'${field}' crosses a relation the parent clamps: its order would follow rows the clamp hides`,
+    };
+  return null;
+};
+
+/**
+ * What is wrong with an `orderBy` at a visit: its shape, or a key that is not a number or date
+ * column (a string's code-unit order would disagree with a database collation, as for `min` /
+ * `max`) of the model or of one it reaches through to-one relations, on the surface a `where`
+ * reads: the menu for the first narrowing, and for a later layer what its parent shows there, with
+ * no clamped relation on the way. The one check validateNarrowing and every runtime posture make;
+ * `parent` is the layers above.
+ */
+export const orderByIssues = (
+  orderBy: unknown,
+  parent: Policy,
+  at: MapVisit,
+  path: string,
+): ValidationIssue[] => {
+  const malformed = orderByShapeIssues(orderBy, path);
+  if (malformed.length > 0) return malformed;
+  const surface: Policy = { ...parent, clamp: parent.chain.length === 0 };
+  return (orderBy as OrderBy).flatMap(({ field }, index) => {
+    const issue = orderKeyIssue(surface, at, field);
+    return issue ? [{ path: `${path}[${index}]`, ...issue }] : [];
+  });
+};
+
+/** An `orderBy` validateNarrowing reports, met at runtime. */
+export const refusedOrderBy = (issue: ValidationIssue): LensRefusal =>
+  new LensRefusal(`the lens refuses an orderBy: ${issue.message}`, issue.code);
 
 /** A later layer's clamp reading what its parent doesn't show. */
 export const unshownClamp = (issue: ValidationIssue): LensRefusal =>
@@ -557,6 +655,7 @@ export const resolveVisit = (
     sourcesFromMapDefaults: new Map(),
     relations: new Set(),
     relationFields: new Set(),
+    orderBy: null,
   };
 
   const fieldMap: LensFieldMap | undefined = own(policy.lens.maps, mapName);
@@ -589,10 +688,11 @@ export const resolveVisit = (
   let narrow = (condition: Condition): Condition => condition;
   let current = 0;
   let vet: (condition: Condition, source?: boolean) => void = () => {};
+  let vetOrderBy: (orderBy: unknown) => boolean = () => true;
   let clamps = true;
   let hiding = true;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing, ownDefault = false): void => {
-    accumulateInto(out, n, narrow, current, vet, clamps, hiding, ownDefault);
+    accumulateInto(out, n, narrow, current, vet, vetOrderBy, clamps, hiding, ownDefault);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
@@ -645,6 +745,17 @@ export const resolveVisit = (
         else check();
       };
     vet = vetClamp(false);
+    // An orderBy refused at construction is refused here too: whether it is well formed (only that
+    // one is ever applied), and — vetted — the rest of validateNarrowing's check.
+    vetOrderBy = (orderBy) => {
+      const check = (): void => {
+        const [issue] = orderByIssues(orderBy, parent, at, 'orderBy');
+        if (issue) throw refusedOrderBy(issue);
+      };
+      if (policy.unvetted) unchecked.push(check);
+      else check();
+      return orderByShapeIssues(orderBy, 'orderBy').length === 0;
+    };
     const ownDefault = own(own(narrowing.mapDefaults, mapName)?.models, modelName);
     for (const node of defaults) applyNode(node, node === ownDefault);
     if (path) {

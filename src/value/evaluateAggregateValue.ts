@@ -1,5 +1,11 @@
 import { isPlainObject } from 'lodash-es';
-import { aggregateItems, aggregateValues, type EvalOptions, sumOrAverage } from '../check';
+import {
+  aggregateItems,
+  aggregateValues,
+  type EvalOptions,
+  pickValues,
+  sumOrAverage,
+} from '../check';
 import { coercionZone } from '../date';
 import { resolveCaseInsensitive } from '../engineGlobals';
 import { unknownValueAggregateMode, valueTakesNoComparison } from '../errors';
@@ -40,7 +46,8 @@ const extreme = (values: Ordered[], mode: 'min' | 'max', field: string): unknown
 /** The value an aggregate computes over its relation's rows, through its window and condition:
  *  `count`, `sum` (0 over none), `avg`, `min`, `max` (numbers and dates; null over none),
  *  `distinct` (the values without repeats, first seen first; NULLs skipped as every mode skips
- *  them; `[]` over none). Every mode but `count` reads each value through `coerceType`;
+ *  them; `[]` over none), `pick` (the values in the window's order: one for `take: 1`, null over
+ *  none; else a list, `[]` over none). Every mode but `count` reads each value through `coerceType`;
  *  `distinct` folds case under `caseInsensitive` (default `string.caseInsensitive`). */
 export const evaluateAggregateValue = (
   node: AggregateValue,
@@ -64,6 +71,9 @@ export const evaluateAggregateValue = (
     case 'sum':
     case 'avg':
       return sumOrAverage(mode, items, node.field, itemField, node.coerceType);
+    case 'pick':
+      // A value reads an absent pick as null, as it reads an absent path.
+      return pickValues(node, items, itemField, coerce) ?? null;
     case 'distinct':
       return distinctValues(
         aggregateValues(items, node.field, itemField, coerce),

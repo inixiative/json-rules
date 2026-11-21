@@ -3,7 +3,8 @@ import { endpointKey, isJoinedBridge } from './endpointKey.ts';
 import type { FieldMapSet } from './types.ts';
 
 /** A copy of the set where each bridge's endpoint models gain a `kind: 'bridge'` field named
- *  after the other endpoint (`<fieldMap>:<Model>`). Throws on a missing endpoint, a joined bridge's
+ *  after the other endpoint (`<fieldMap>:<Model>`); a supplied bridge runs one way, so only its
+ *  first endpoint gains one. Throws on a missing endpoint, a joined bridge's
  *  missing `on` field, an `on` on one side only, a supplied bridge that is not one-to-one, a
  *  self-bridge, or a bridge stitched twice. */
 export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
@@ -44,13 +45,13 @@ export const stitchFieldMaps = (set: FieldMapSet): FieldMapSet => {
     if (own(aOwner.fields, bKey)) {
       throw new Error(`stitchFieldMaps: bridge '${bKey}' already injected on '${aKey}'`);
     }
-    if (own(bOwner.fields, aKey)) {
+    if (isJoinedBridge(bridge) && own(bOwner.fields, aKey)) {
       throw new Error(`stitchFieldMaps: bridge '${aKey}' already injected on '${bKey}'`);
     }
 
     const isOneToMany = bridge.cardinality === 'oneToMany';
     aOwner.fields[bKey] = { kind: 'bridge', type: bKey, isList: isOneToMany };
-    bOwner.fields[aKey] = { kind: 'bridge', type: aKey, isList: false };
+    if (isJoinedBridge(bridge)) bOwner.fields[aKey] = { kind: 'bridge', type: aKey, isList: false };
   }
 
   return out;

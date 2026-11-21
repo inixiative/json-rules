@@ -83,6 +83,11 @@ involve existence". A review found `orgId equals path actor:User.orgId` holding 
 - **`recordWithBridgeData` takes the `indexBridges` dictionary** as an optional fifth argument, so a
   caller filling many records from one `data` (a permission check, a rule per node) indexes it
   once. **`relationTargetOf(entry, map)`** is exported: the model a relation or bridge entry leads to.
+- **A supplied bridge stitches one way.** `stitchFieldMaps` gave its second endpoint a field back to
+  the first, which `recordWithBridgeData` never fills (a supplied bridge fills from its first
+  endpoint only), so a lens accepted a rule through it that could never hold. Only the first
+  endpoint gains the field now. **`readOwnPath(root, path)`** is exported: the engine's own path
+  read, own properties only.
 - **The positive gate refuses a match without an `exists`** (`matchWithoutExists`): a field
   compared with a `path` or `bind` needs an `exists` on it, because two missing values match. A
   comparison with a literal needs none: a missing value already fails it, across a bridge or not.

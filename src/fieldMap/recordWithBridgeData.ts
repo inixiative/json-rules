@@ -69,7 +69,12 @@ const filled = (fill: Fill, at: string, record: Row, came: ReadonlySet<string>):
     modelOf(own(set.maps, mapName), modelName)?.fields ?? {},
   ))
     if (entry.kind === 'object' && (isRow(out[name]) || Array.isArray(out[name])))
-      out[name] = filledRows(fill, `${mapName}:${entry.type}`, out[name] as Row | Row[], came);
+      out[name] = filledRows(
+        fill,
+        endpointKey({ fieldMap: mapName, model: entry.type }),
+        out[name] as Row | Row[],
+        came,
+      );
   const through = new Set([...came, at]);
   for (const bridge of set.bridges ?? []) {
     const nearIndex = bridge.endpoints.findIndex((end) => endpointKey(end) === at);

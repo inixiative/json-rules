@@ -732,6 +732,21 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
           'not_in_lens root.orderBy[0]',
         ],
         [
+          'an empty segment',
+          rootBy([{ field: 'org..seats', dir: 'asc' }]),
+          'invalid_order_by root.orderBy[0]',
+        ],
+        [
+          'a leading dot',
+          rootBy([{ field: '.age', dir: 'asc' }]),
+          'invalid_order_by root.orderBy[0]',
+        ],
+        [
+          'a bracketed segment',
+          rootBy([{ field: 'org["seats"]', dir: 'asc' }]),
+          'invalid_order_by root.orderBy[0]',
+        ],
+        [
           'a required column behind an optional relation',
           rootBy([{ field: 'org.id', dir: 'desc' }]),
           'wrong_kind root.orderBy[0]',

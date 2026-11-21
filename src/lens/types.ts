@@ -57,7 +57,7 @@ export type ModelDefaultNarrowing = {
    * (`org.seats`), a NULL or a row with no related one last in either direction, ties as fetched.
    * Ordering narrows nothing: a later layer's (or, in one layer, the path's over the model
    * default's) replaces it, and it may only name a column its parent shows. A to-one hop is one
-   * row, with nothing to order: an `orderBy` there is refused.
+   * row, with nothing to order: `validateNarrowing` reports an `orderBy` written there.
    */
   orderBy?: OrderBy;
 };

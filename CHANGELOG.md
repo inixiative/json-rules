@@ -36,7 +36,8 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   `findMany` and the root rows come back ordered; `projectRows` orders the root rows the same way.
   A key's `field` is a column of the node's model or a path to one through to-one relations
   (`org.seats`): Prisma's nested `orderBy` in the query, the path fetched even where the relation
-  is off or hidden, a row with no related one last. Refused: a to-many hop, a bridge, a path into
+  is off or hidden, a row with no related one last. A key is its dotted names (`invalid_order_by` otherwise).
+  Refused: a to-many hop, a bridge, a path into
   Json, a required column behind an optional relation (Prisma states NULL placement only on a
   nullable column), and — in a later layer — a path across a relation its parent clamps. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
   `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, a NULL last either way, ties

@@ -618,7 +618,7 @@ type ModelDefaultNarrowing = {
   where?: Condition;                                      // data: row-level filter (filter-first)
   sources?: Record<string, SourceEntry>;                  // per-field option sources (see README)
   relations?: Record<string, ModelNarrowing>;             // turn these on wherever the model is visited
-  orderBy?: { field: string; dir: 'asc' | 'desc' }[];     // a to-many relation's row order (numbers, dates)
+  orderBy?: { field: string; dir: 'asc' | 'desc' }[];     // the order of the rows read here: own columns or to-one paths (numbers, dates)
 };
 
 /** A `sources` entry: a bare eligibility Condition, a spec with a label and/or groupBy, or —
@@ -925,14 +925,17 @@ default (a model default is checked at every visit of its model, to-one ones inc
 `where` is), and a layer may order by a column it hides itself. An empty `orderBy` states no order
 and leaves an earlier layer's in place. An `orderBy` written on a to-one
 relation is refused: it is one row, with nothing to order (a model default's applies at the root and
-wherever its model is reached to-many). A column `validateNarrowing` refuses to order by (hidden, not a number or date, unknown, or a
-malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied. An `orderBy`
+wherever its model is reached to-many). A key `validateNarrowing` refuses to order by (hidden, not a number or date, unknown, a path
+it may not cross, or a malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied. An `orderBy`
 on a to-one relation orders nothing on any posture: over valid columns it is reported by
 `validateNarrowing` alone. Rows order as they carry each column: a number or
 date held as a string orders as a string, so coerce the rows first. A path crosses to-one relations only (a to-many
 relation, a bridge or a path into a Json column is `wrong_kind`), and in a later layer none its
 parent clamps (`not_visible`: the order would follow rows the clamp hides, which a `where` never
-reads). A required column behind an optional relation is refused too (`wrong_kind`): a row with no
+reads). A layer's own clamp on a relation does not narrow its own order, as it does not narrow
+its own `where`: a layer that clamps `org` and orders by `org.seats` orders by every org, and the
+layers below it inherit that order with the clamped rows shown as null. A key is its dotted names
+and nothing else (`org..seats` or `org["seats"]` is `invalid_order_by`). A required column behind an optional relation is refused too (`wrong_kind`): a row with no
 related one has no value, and Prisma takes `nulls: 'last'` only on a nullable column, so order by a
 nullable one (the key on the row itself, as `orgId` for `org.id`). Only number and date columns order rows: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would

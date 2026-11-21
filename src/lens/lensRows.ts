@@ -3,10 +3,11 @@ import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { fieldEntry, type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
-import { pathSegments, readOwnPath } from '../scope';
+import { readOwnPath } from '../scope';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
+import { nestUnderPath } from '../toPrisma/utils';
 import { allOf } from '../traverse';
 import type { OrderBy, Row, SortDir } from '../types';
 import { orderRecords } from '../window';
@@ -60,8 +61,8 @@ const inVisitOrder = <T>(policy: Policy, at: MapVisit, rows: readonly T[]): read
 // to order by and cut. Only where the order applies — the root and a to-many relation's visit.
 const withOrderPaths = (tree: PathTree, orderBy: OrderBy | null | undefined): PathTree =>
   orderBy
-    ? addPaths(
-        mergeTrees({}, tree),
+    ? withPaths(
+        tree,
         orderBy.map((key) => key.field),
       )
     : tree;
@@ -72,11 +73,7 @@ const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrde
     const leaf: LensOrderKey = orderKeyEntry(policy, at, field)?.isRequired
       ? dir
       : { sort: dir, nulls: 'last' };
-    const [column, ...relations] = pathSegments(field).reverse();
-    return relations.reduce<Record<string, LensOrderKey>>(
-      (inner, relation) => ({ [relation]: inner }),
-      { [column as string]: leaf },
-    );
+    return nestUnderPath(field, leaf) as Record<string, LensOrderKey>;
   });
 
 /** What a clamp's compile reads: the clock, never a schema (the lens is it). */
@@ -96,6 +93,10 @@ const addPaths = (tree: PathTree, paths: readonly string[]): PathTree => {
   }
   return tree;
 };
+
+// A copy of a tree with more paths in it.
+const withPaths = (tree: PathTree, paths: readonly string[]): PathTree =>
+  addPaths(mergeTrees({}, tree), paths);
 
 const mergeTrees = (into: PathTree, from: PathTree): PathTree => {
   for (const [segment, below] of Object.entries(from))
@@ -142,10 +143,7 @@ const readsAt = (reads: SourceReads, at: MapVisit): readonly string[] =>
 
 // The columns a visit's clamps read, with any already asked for below it.
 const clampTree = (policy: Policy, at: MapVisit, below: PathTree | undefined): PathTree =>
-  addPaths(
-    mergeTrees({}, below ?? {}),
-    clampPaths(resolveVisit(policy, at.mapName, at.modelName, at.relPath)),
-  );
+  withPaths(below ?? {}, clampPaths(resolveVisit(policy, at.mapName, at.modelName, at.relPath)));
 
 // A visit the lens shows (`declared`: its visible columns, the relations turned on), or one only a
 // clamp reads (`paths`: the columns the clamp reads).
@@ -220,9 +218,7 @@ const selectAt = (
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
   const paths =
-    mode === 'paths'
-      ? extra
-      : addPaths(mergeTrees({}, extra), [...clampPaths(effect), ...readsAt(reads, at)]);
+    mode === 'paths' ? extra : withPaths(extra, [...clampPaths(effect), ...readsAt(reads, at)]);
   const select: LensSelect = {};
   for (const [field, entry] of Object.entries(fields)) {
     const visible = mode !== 'paths' && isFieldVisible(effect, field);
@@ -351,9 +347,7 @@ const cutRow = (
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
   if (!effect.whereClauses.every((where) => check(where, row, options) === true)) return null;
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
-  const keep = keepClamps
-    ? addPaths(mergeTrees({}, extra), [...clampPaths(effect), ...readsAt(reads, at)])
-    : {};
+  const keep = keepClamps ? withPaths(extra, [...clampPaths(effect), ...readsAt(reads, at)]) : {};
   const out: Row = {};
   for (const [field, entry] of Object.entries(fields)) {
     if (!Object.hasOwn(row, field)) continue;

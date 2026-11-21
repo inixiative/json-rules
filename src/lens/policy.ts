@@ -352,38 +352,56 @@ const orderKeyIssue = (
   at: MapVisit,
   field: string,
 ): { code: string; message: string } | null => {
+  // Every reader takes the key as its dotted names: one spelling, so the fetch, the query and the
+  // in-memory order read the same path.
+  if (pathSegments(field).join('.') !== field)
+    return {
+      code: 'invalid_order_by',
+      message: `'${field}' is not a column or a dotted path of names to one`,
+    };
   const { resolution, effects } = resolvePolicyPath(surface, at, field);
   if (resolution.outcome === 'hidden')
     return { code: 'not_visible', message: `'${field}' is not shown by the parent` };
   if (resolution.outcome !== 'resolved')
     return { code: 'not_in_lens', message: `field '${field}' not on model` };
-  const { hops, terminal, jsonSubPath } = resolution;
+  const { hops, terminal } = resolution;
   const crossed = hops.slice(0, -1);
-  const kind = terminal.entry.isList ? undefined : entryKind(terminal.entry);
-  if (
-    crossed.some((hop) => hop.entry.isList || hop.entry.kind === 'bridge') ||
-    jsonSubPath.length > 0 ||
-    isRelationEntry(terminal.entry) ||
-    kind === undefined ||
-    !ORDERED_VALUE_KINDS.includes(kind)
-  )
+  const toMany = toManyHop(crossed);
+  if (toMany)
     return {
       code: 'wrong_kind',
-      message: `'${field}' is not a number or date column of the model, or of one it reaches through to-one relations: rows order by numbers and dates`,
+      message: `'${field}' crosses the to-many relation '${toMany.field}': an order key reaches a column through to-one relations only`,
+    };
+  const bridge = crossed.find((hop) => hop.entry.kind === 'bridge');
+  if (bridge)
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' crosses the bridge '${bridge.field}' to another source: an order key stays in one`,
+    };
+  const kind = entryKind(terminal.entry);
+  if (kind === undefined || !ORDERED_VALUE_KINDS.includes(kind))
+    return {
+      code: 'wrong_kind',
+      message: `'${field}' is not a number or date column: rows order by numbers and dates`,
     };
   // A row without the related one has no value to order by; the database puts it last only where
   // the column takes `nulls: 'last'`, which a required column doesn't.
-  const optional = crossed.find((hop) => hop.entry.isRequired === false);
-  if (optional && terminal.entry.isRequired === true) {
-    const key = optional.entry.fromFields?.[0];
+  const optional = crossed.findIndex((hop) => hop.entry.isRequired === false);
+  if (optional !== -1 && terminal.entry.isRequired === true) {
+    const relation = crossed
+      .slice(0, optional + 1)
+      .map((hop) => hop.field)
+      .join('.');
+    const key = optional === 0 ? crossed[0]?.entry.fromFields?.[0] : undefined;
     return {
       code: 'wrong_kind',
-      message: `'${field}' is a required column behind the optional relation '${optional.field}': a row with none has no place every rail agrees on; order by a nullable column${key ? ` (as '${key}')` : ''}`,
+      message: `'${field}' is a required column behind the optional relation '${relation}': a row with none has no place every rail agrees on; order by a nullable column${key ? ` (as '${key}')` : ''}`,
     };
   }
   // A later layer reads a related row through its parent's clamps, and no rail can order by a
-  // clamped row: the order would follow values the clamp hides.
-  if (surface.chain.length > 0 && effects.slice(1).some((effect) => effect.whereClauses.length))
+  // clamped row: the order would follow values the clamp hides. (The first narrowing has no
+  // parent, so nothing above it clamps.)
+  if (effects.slice(1).some((effect) => effect.whereClauses.length))
     return {
       code: 'not_visible',
       message: `'${field}' crosses a relation the parent clamps: its order would follow rows the clamp hides`,

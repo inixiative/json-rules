@@ -528,17 +528,79 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
     expect(codes([null])).toEqual(['invalid_order_by root.relations.posts.orderBy[0]']);
   });
 
-  test('the root and a to-one relation have no rows to order', () => {
+  test('a to-one relation is one row: an orderBy there is refused', () => {
     const order = [{ field: 'id', dir: 'asc' as const }];
-    expect(
-      validateNarrowing({ parent: base, root: { orderBy: order } }).errors.map((e) => e.path),
-    ).toEqual(['root.orderBy']);
     expect(
       validateNarrowing({
         parent: base,
         root: { relations: { org: { orderBy: order } } },
       }).errors.map((e) => `${e.code} ${e.path}`),
     ).toEqual(['wrong_kind root.relations.org.orderBy']);
+  });
+
+  describe("the root rows order as a relation's do", () => {
+    const byAge = (dir: 'asc' | 'desc', picks = ['id', 'age']): LensNarrowing => ({
+      parent: base,
+      root: {
+        picks,
+        orderBy: [
+          { field: 'age', dir },
+          { field: 'id', dir: 'asc' },
+        ],
+      },
+    });
+    const ids = (rows: Record<string, unknown>[]) => rows.map((row) => row.id);
+    const fetchRoot = async (lens: LensNarrowing) =>
+      (await rails.prisma.user.findMany(toLensSelect(lens) as never)) as Record<string, unknown>[];
+
+    test('toLensSelect hands the query its orderBy, a nullable column NULLs last', () => {
+      expect(toLensSelect(byAge('desc')).orderBy).toEqual([
+        { age: { sort: 'desc', nulls: 'last' } },
+        { id: 'asc' },
+      ]);
+      expect(toLensSelect({ parent: base, root: { picks: ['id'] } })).not.toHaveProperty('orderBy');
+    });
+
+    test.each([
+      'asc',
+      'desc',
+    ] as const)('age %s: the database and projectRows agree', async (dir) => {
+      const lens = byAge(dir);
+      const fetched = await fetchRoot(lens);
+      const reversed = [...(rails.rows as unknown as Record<string, unknown>[])].reverse();
+      expect(ids(projectRows(lens, reversed))).toEqual(ids(fetched));
+      expect(projectRows(lens, fetched)).toEqual(projectRows(lens, reversed));
+    });
+
+    test('a column the layer hides is fetched for the order and cut from the projection', async () => {
+      const lens = byAge('desc', ['id']);
+      expect(toLensSelect(lens).select).toMatchObject({ id: true, age: true });
+      const fetched = await fetchRoot(lens);
+      const projected = projectRows(lens, fetched);
+      expect(ids(projected)).toEqual(ids(fetched));
+      expect(projected[0]).toEqual({ id: fetched[0]?.id });
+    });
+
+    test('a model default on the root model orders the root rows too', () => {
+      const lens: LensNarrowing = {
+        parent: base,
+        mapDefaults: { prisma: { models: { User: { orderBy: [{ field: 'id', dir: 'desc' }] } } } },
+      };
+      expect(validateNarrowing(lens).ok).toBe(true);
+      expect(toLensSelect(lens).orderBy).toEqual([{ id: 'desc' }]);
+    });
+
+    test('a later layer may not order the root by a column its parent hides', () => {
+      const lens: LensNarrowing = {
+        parent: { parent: base, root: { omits: ['age'] } },
+        root: { orderBy: [{ field: 'age', dir: 'asc' }] },
+      };
+      expect(validateNarrowing(lens).errors.map((e) => `${e.code} ${e.path}`)).toEqual([
+        'not_visible root.orderBy[0]',
+      ]);
+      expect(() => toLensSelect(lens)).toThrow(LensRefusal);
+      expect(() => projectRows(lens, [{ id: 1, age: 3 }])).toThrow(LensRefusal);
+    });
   });
 
   test('orders by numbers and dates only: a string, a relation, or an unknown column is refused', () => {

@@ -894,7 +894,7 @@ const plan = toPrisma(anyPublishedRule, { lens: narrowing });
 
 ### Fetching rows under a lens
 
-`toLensSelect(narrowing, options?)` gives the `findMany` `select` for the rows a lens shows: each
+`toLensSelect(narrowing, options?)` gives the `findMany` `select` (and the root's `orderBy`, when the lens gives one) for the rows a lens shows: each
 shown visit's visible columns and the relations turned on, and every column a `where` on the way
 reads, and every column a declared source reads (hidden or not). A relation that is off is not fetched. A to-many
 relation carries its clamps as its `where`, unless a clamp reads that list — a clamp reads a list
@@ -906,9 +906,11 @@ those columns alone, so `check(narrowRule(rule, narrowing), row)` re-tests the c
 database does, for any rule the lens admits; that output carries hidden values and is never for a viewer. See the README,
 "Fetching Under a Lens".
 
-A to-many relation's rows come back in its `orderBy` (on the relation object, or on the model
-default for every to-many visit of the model): `toLensSelect` writes it as Prisma's `orderBy` (a
-nullable column `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, so rows fetched
+Wherever a lens reads many rows they come back in the node's `orderBy`: the root's rows
+(`root.orderBy`) and a to-many relation's (on the relation object), or a model default's for the
+root and every to-many visit of its model. `toLensSelect` writes it as Prisma's `orderBy` (a
+nullable column `{ sort, nulls: 'last' }`), the root's beside `select` so `findMany` takes both,
+and `projectRows` sorts the rows and each list by it, so rows fetched
 in any order project as the database returns them. The select carries the order's own columns even
 when the visit hides them, and `projectRows` cuts them after ordering, so it takes rows as fetched
 (or fuller), not rows it already projected. It is a window's order: each key in turn, a NULL
@@ -918,12 +920,11 @@ earlier one's (and, in one layer, the path's the model default's); like a `where
 be ones its parent shows at every visit of the node, whether it sits on the path or on a model
 default (a model default is checked at every visit of its model, to-one ones included, as its
 `where` is), and a layer may order by a column it hides itself. An empty `orderBy` states no order
-and leaves an earlier layer's in place. An `orderBy` written on the root or on a to-one
-relation is refused: there are no rows to order (a model default's applies wherever its model is
-reached to-many). A column `validateNarrowing` refuses to order by (hidden, not a number or date, unknown, or a
+and leaves an earlier layer's in place. An `orderBy` written on a to-one
+relation is refused: it is one row, with nothing to order (a model default's applies at the root and
+wherever its model is reached to-many). A column `validateNarrowing` refuses to order by (hidden, not a number or date, unknown, or a
 malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied; an `orderBy`
-on the root or a to-one relation is reported by `validateNarrowing` alone, since no posture
-orders there. Rows order as they carry each column: a number or
+on a to-one relation is reported by `validateNarrowing` alone, since no posture orders there. Rows order as they carry each column: a number or
 date held as a string orders as a string, so coerce the rows first. Only number and date columns order a relation: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
 disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not

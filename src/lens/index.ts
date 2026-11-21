@@ -9,6 +9,7 @@ export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
 export type {
   LensOrderBy,
+  LensQuery,
   LensRelationSelect,
   LensSelect,
   LensSelectOptions,

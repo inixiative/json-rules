@@ -109,13 +109,15 @@ recursion — their descent IS their semantics — and are guarded by differenti
   throws, rather than silently answer differently from check(). The fix is in the lens: move the
   clamp up a layer. The guard runs on to-many reads only; the same gap on a joined to-one relation
   is older than join mode and out of this ruling's scope.
-- **A relation's `orderBy` follows a `where`'s rule** (Aron, 2026-11-20: "you shouldn't be able to
+- **A lens `orderBy` follows a `where`'s rule** (Aron, 2026-11-20: "you shouldn't be able to
   access things that you don't have access to via lens"). A layer orders only by number and date
   columns its parent shows at every visit of the node, on the path or as a model default; it may
   order by a column it hides itself, as its own `where` may read one. `orderByIssues` is the one
   check of the columns: `validateNarrowing` reports it and every posture throws it as a
-  `LensRefusal`, never applies it. An `orderBy` written on the root or a to-one relation is
-  reported by `validateNarrowing` alone, since no posture orders there. The select fetches the
+  `LensRefusal`, never applies it. It orders wherever the lens reads many rows: the
+  root's (`toLensSelect` returns `{ select, orderBy }`) and a to-many relation's (Aron,
+  2026-11-21: "I want the all-order-by to be working"). A to-one relation is one row; an `orderBy`
+  written there is reported by `validateNarrowing` alone, since no posture orders there. The select fetches the
   order's columns even when the visit hides them; `projectRows` orders, then cuts them.
 - **A semantic change gets a spec before code.** One paragraph + test cases + the original intent
   (`~/.claude/history.jsonl`, git log) — agreed with Aron first. The relations design was settled

@@ -59,6 +59,7 @@ export {
   type LensOrderBy,
   type LensPathHop,
   type LensPathResolution,
+  type LensQuery,
   type LensRelationSelect,
   type LensSelect,
   type LensSelectOptions,

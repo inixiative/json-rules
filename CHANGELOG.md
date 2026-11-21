@@ -1,4 +1,4 @@
-## 4.4.0 — `pick`: the window's values; a lens orders a to-many relation
+## 4.4.0 — `pick`: the window's values; a lens orders the rows it reads
 
 Why: a window could filter, order and cut a relation's rows, but a value over it could only be an
 aggregate of them, so neither a template nor a rule could say "the winning value" or "the top 3
@@ -30,8 +30,10 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   `toPrisma` throw the same message before anything else. `AGGREGATE_MODE_CATALOG` entries carry
   `compiled`; `aggregateModesForKind(kind, { compiled: true })` and `isCompiledAggregateMode(mode)`
   read it. `getAggregateOperators(mode?, { list? })` gives a pick's operators.
-- **A lens orders a to-many relation**: `orderBy: [{ field, dir }]` on a relation object or a model
-  default. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
+- **A lens orders the rows it reads**: `orderBy: [{ field, dir }]` on the root, on a to-many
+  relation's object, or on a model default (which applies at the root and every to-many visit of
+  its model). `toLensSelect` returns `{ select, orderBy? }` (new type `LensQuery`): spread it into
+  `findMany` and the root rows come back ordered; `projectRows` orders the root rows the same way. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
   `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, a NULL last either way, ties
   as fetched (a total order is the caller's to give). The select carries the order's columns even
   when the visit hides them and `projectRows` cuts them, so the database and in-memory rails return
@@ -40,8 +42,8 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   order replaces an earlier one's; it names only columns its parent shows at every visit it applies
   to, on the path or as a model default (`not_visible`: the rule a `where` follows, so a layer may
   order by a column it hides itself), and only number and date columns (`wrong_kind`: a string's
-  code-unit order would disagree with a collation, as for `min` / `max`). An `orderBy` written on the
-  root or a to-one relation is refused (`wrong_kind`). `validateNarrowing` checks it, a malformed
+  code-unit order would disagree with a collation, as for `min` / `max`). An `orderBy` written on a
+  to-one relation is refused (`wrong_kind`): it is one row. `validateNarrowing` checks it, a malformed
   one included (`invalid_order_by`, the window's own shape check), and every posture refuses a
   column it refuses (`LensRefusal`) rather than order by it. An empty `orderBy` leaves an earlier
   layer's order in place. New type `LensOrderBy`.

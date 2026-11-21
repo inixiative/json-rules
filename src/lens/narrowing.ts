@@ -807,12 +807,6 @@ const collectNarrowingIssues = (narrowing: LensNarrowing, errors: ValidationIssu
       const ancestorChainForRoot = ancestors
         .map((anc) => anc.root)
         .filter((x): x is ModelNarrowing => x !== undefined);
-      if (narrowing.root.orderBy !== undefined)
-        errors.push({
-          path: 'root.orderBy',
-          code: 'wrong_kind',
-          message: 'the root is the row the lens stands on: it has no rows to order',
-        });
       const anchor = { mapName: lensMapName, modelName: lensModel, relPath: [] };
       guarded(() =>
         validateNode(

@@ -26,6 +26,9 @@ import type { Lens, LensNarrowing } from './types.ts';
 /** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where` and
  *  `orderBy`. */
 export type LensSelect = { [field: string]: true | LensRelationSelect };
+/** What `toLensSelect` hands a `findMany`: the select, and the root rows' order when the lens
+ *  gives one. */
+export type LensQuery = { select: LensSelect; orderBy?: LensOrderBy };
 export type LensRelationSelect = {
   select?: LensSelect;
   where?: PrismaWhere;
@@ -34,6 +37,17 @@ export type LensRelationSelect = {
 /** Prisma's `orderBy` for a relation's rows: a nullable column sorts its NULLs last, as check()
  *  orders a window. */
 export type LensOrderBy = Record<string, SortDir | { sort: SortDir; nulls: 'last' }>[];
+
+// A visit's rows in its order, as the database returns them under `toLensSelect`: a Decimal key
+// orders as its number.
+const inVisitOrder = <T>(policy: Policy, at: MapVisit, rows: readonly T[]): readonly T[] => {
+  const order = resolveVisit(policy, at.mapName, at.modelName, at.relPath).orderBy;
+  if (!order) return rows;
+  const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields;
+  return orderRecords(rows, order, (row, key) =>
+    decimalValue(own(fields, key), readOwnPath(row, key)),
+  );
+};
 
 // A visit's `orderBy` as Prisma reads it, over the columns of the visit's model.
 const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy => {
@@ -244,21 +258,18 @@ const selectAt = (
 export const toLensSelect = (
   lensOrNarrowing: Lens | LensNarrowing,
   options: LensSelectOptions = {},
-): { select: LensSelect } => toLensSelectWith(resolvePolicy(lensOrNarrowing), options);
+): LensQuery => toLensSelectWith(resolvePolicy(lensOrNarrowing), options);
 
 export const toLensSelectWith = (
   policy: Policy,
   options: LensSelectOptions = {},
   plans: readonly SourcePlan[] = sourcePlansWith(policy),
-): { select: LensSelect } => {
-  const select = selectAt(
-    policy,
-    rootVisit(policy),
-    'declared',
-    {},
-    options,
-    sourceReads(policy, plans),
-  );
+): LensQuery => {
+  const root = rootVisit(policy);
+  const select = selectAt(policy, root, 'declared', {}, options, sourceReads(policy, plans));
+  // The root rows' order, its columns fetched as a relation's are.
+  const order = resolveVisit(policy, root.mapName, root.modelName, root.relPath).orderBy;
+  for (const key of order ?? []) select[key.field] = true;
   // Prisma can't select nothing: a root that shows no column is fetched by its `id`, hidden or not
   // (a viewer's projection drops it). A root model with no `id` stays as it is.
   if (!Object.values(select).some((selected) => selected === true)) {
@@ -268,7 +279,7 @@ export const toLensSelectWith = (
     );
     if (id && !isRelationEntry(id)) select.id = true;
   }
-  return { select };
+  return { select, ...(order && { orderBy: prismaOrderBy(policy, root, order) }) };
 };
 
 // A relation's value, each related row through `cut`: a list keeps the rows it returns, a single
@@ -330,16 +341,9 @@ const cutRow = (
       // rule's clamp fails on it while an unnarrowed clamp still counts it.
       const readWhole = !Array.isArray(row[field]) || below !== undefined;
       // A to-many relation's rows come back in its order, as toLensSelect fetches them.
-      const order = Array.isArray(row[field])
-        ? resolveVisit(policy, child.mapName, child.modelName, child.relPath).orderBy
-        : null;
-      const childFields = modelOf(own(policy.lens.maps, child.mapName), child.modelName)?.fields;
+      const related = row[field];
       out[field] = mapRelation(
-        order
-          ? orderRecords(row[field] as unknown[], order, (r, key) =>
-              decimalValue(own(childFields, key), readOwnPath(r, key)),
-            )
-          : row[field],
+        Array.isArray(related) ? inVisitOrder(policy, child, related) : related,
         (r) =>
           cutRow(policy, child, r, below ?? {}, keepClamps, options, reads) ??
           (keepClamps && readWhole
@@ -374,7 +378,7 @@ export const projectRows = (
   const reads = keepClampColumns
     ? sourceReads(policy, sourcePlansWith(policy))
     : new Map<string, string[]>();
-  return rows.flatMap((row) => {
+  return inVisitOrder(policy, root, rows).flatMap((row) => {
     const kept = cutRow(policy, root, row, {}, keepClampColumns, options, reads);
     return kept === null ? [] : [kept];
   });

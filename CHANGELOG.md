@@ -13,11 +13,15 @@ involve existence". A review found `orgId equals path actor:User.orgId` holding 
   supplied bridge runs from its first endpoint to its second, whose row the data gives; more than
   one row there throws. Far rows have their own bridges filled in turn, so a rule reads across a
   chain of sources (`crm:Contact.sec:Device.risk`, and back the other way); a chain never re-enters
-  an endpoint it came through. The README no longer tells callers to embed by hand.
+  an endpoint it came through. A related row (`org`) is filled and stripped as a row of its own
+  model, so no row anywhere in the record brings its own bridge row; a looping row graph is safe.
+  `endpointKey`, `parseEndpointKey` and `declaredEnumValues` are exported. The README no longer
+  tells callers to embed by hand.
 - **The positive gate refuses a read that may not be there without an `exists` beside it**
   (`missingExists`): the field of a comparison with a `path` or `bind`, and every read across a
   bridge, either side. The `exists` names the exact field, in an `all` above the comparison; an
-  `any`'s does not count. Null semantics are unchanged.
+  `any`'s does not count. Null semantics are unchanged. `__actor.*` is no longer an unchecked path
+  in `ConditionOn`; a bridged read (`actor:User.id`) is.
 
 ## 4.3.0 — supplied bridges: a bridge with no join
 

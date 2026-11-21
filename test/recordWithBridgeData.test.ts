@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { type Bridge, check, type LensFieldMap, Operator, recordWithBridgeData } from '../index';
+import {
+  type Bridge,
+  check,
+  type LensFieldMap,
+  Operator,
+  type Row,
+  recordWithBridgeData,
+} from '../index';
 
 const s = { kind: 'scalar', type: 'String' } as const;
 const app: LensFieldMap = { models: { Doc: { fields: { id: s, ownerId: s, crmId: s } } } };
@@ -97,5 +104,71 @@ describe('recordWithBridgeData: the far rows a record bridges to, filled by the 
     const record = { id: 'd1', 'actor:User': { id: 'x' } };
     recordWithBridgeData(set, 'app:Doc', record, { 'actor:User': [{ id: 'u1' }] });
     expect(record).toEqual({ id: 'd1', 'actor:User': { id: 'x' } });
+  });
+
+  test('a related row is filled as its own model: it cannot bring a forged bridge row either', () => {
+    const org: LensFieldMap = { models: { Org: { fields: { id: s } } } };
+    const withOrg = {
+      maps: {
+        app: {
+          models: {
+            Doc: {
+              fields: {
+                id: s,
+                orgId: s,
+                org: { kind: 'object', type: 'Org', fromFields: ['orgId'], toFields: ['id'] },
+              },
+            },
+            Org: { fields: { id: s } },
+          },
+        } as LensFieldMap,
+        actor,
+        org,
+      },
+      bridges: [
+        toActor,
+        {
+          endpoints: [
+            { fieldMap: 'app', model: 'Org' },
+            { fieldMap: 'actor', model: 'User' },
+          ],
+          cardinality: 'oneToOne',
+        } as Bridge,
+      ],
+    };
+    const doc = recordWithBridgeData(withOrg, 'app:Doc', {
+      id: 'd1',
+      org: { id: 'o1', 'actor:User': { id: 'victim' } },
+    });
+    expect(doc.org).toEqual({ id: 'o1' });
+    const filled = recordWithBridgeData(
+      withOrg,
+      'app:Doc',
+      { id: 'd1', org: { id: 'o1' } },
+      { 'actor:User': [{ id: 'u1' }] },
+    );
+    expect((filled.org as Row)['actor:User']).toEqual({ id: 'u1' });
+  });
+
+  test('a row graph that loops is filled once per row', () => {
+    const looping = {
+      maps: {
+        app: {
+          models: {
+            Doc: {
+              fields: {
+                id: s,
+                parent: { kind: 'object', type: 'Doc', fromFields: ['parentId'], toFields: ['id'] },
+              },
+            },
+          },
+        } as LensFieldMap,
+      },
+    };
+    const a: Row = { id: 'a' };
+    const b: Row = { id: 'b', parent: a };
+    a.parent = b;
+    const out = recordWithBridgeData(looping, 'app:Doc', a);
+    expect(((out.parent as Row).parent as Row) === out).toBe(true);
   });
 });

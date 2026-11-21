@@ -24,15 +24,14 @@ import type {
 
 /**
  * The path spellings `ConditionOn` passes through as `string`, unchecked: a scope ref into an
- * enclosing row (`$.x`, `$$.x`), a bridge into another map (`map:Model.field`), the actor
- * (`__actor.x`), and a bracket spelling (`a[0].b`). The lens gate (`validateRuleInLens`) still
+ * enclosing row (`$.x`, `$$.x`), a bridge into another map (`map:Model.field`, the actor's
+ * `actor:User.id` among them), and a bracket spelling (`a[0].b`). The lens gate (`validateRuleInLens`) still
  * reads them at run time.
  */
 export type UncheckedPath =
   | `$.${string}`
   | `$$.${string}`
   | `${string}:${string}`
-  | `__actor.${string}`
   | `${string}[${string}`;
 
 type FieldOn<M extends FieldMap, Model extends string> = ScalarPath<M, Model> | UncheckedPath;

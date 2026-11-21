@@ -243,7 +243,7 @@ const existsInAll = (children: Condition[]): string[] =>
       : [];
   });
 
-// why: an `all`'s `exists` holds for its siblings but an `any`'s does not, a scope visitCondition does not carry
+// why: an `all`'s `exists` holds for its siblings but an `any`'s does not, a scope visitCondition does not carry; complete because the positive gate refuses every other shape
 const validateExistsBeside = (
   condition: unknown,
   at: string,

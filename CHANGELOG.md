@@ -6,11 +6,14 @@ for everything that needs to exist. It's not just matches, it also exists", "mak
 involve existence". A review found `orgId equals path actor:User.orgId` holding when both are null
 (R-2026-11-21-07).
 
-- **`recordWithBridgeData(set, at, record, { joined, supplied })`** returns the record with its
-  bridges filled: keys naming a model of the set's maps are dropped, each joined bridge's far row
-  (from the `indexBridges` dictionary, by `on`) and each supplied bridge's given row go under the
-  far endpoint key, far rows lose bridge keys of their own, and a supplied row no supplied bridge
-  ends at throws. `BridgeData` is exported. The README no longer tells callers to embed by hand.
+- **`recordWithBridgeData(set, at, record, data)`** returns the record with its bridges filled from
+  one `data` (rows keyed `map:Model`, as `indexBridges` takes them): keys naming a model of the set's
+  maps are dropped, each joined bridge's far row (by `on`, indexed once per data) and each supplied
+  bridge's one row go under the far endpoint key, and far rows lose bridge keys of their own. A
+  supplied bridge runs from its first endpoint to its second, whose row the data gives; more than
+  one row there throws. Far rows have their own bridges filled in turn, so a rule reads across a
+  chain of sources (`crm:Contact.sec:Device.risk`, and back the other way); a chain never re-enters
+  an endpoint it came through. The README no longer tells callers to embed by hand.
 - **The positive gate refuses a read that may not be there without an `exists` beside it**
   (`missingExists`): the field of a comparison with a `path` or `bind`, and every read across a
   bridge, either side. The `exists` names the exact field, in an `all` above the comparison; an

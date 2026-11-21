@@ -1,12 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  type Bridge,
-  check,
-  indexBridges,
-  type LensFieldMap,
-  Operator,
-  recordWithBridgeData,
-} from '../index';
+import { type Bridge, check, type LensFieldMap, Operator, recordWithBridgeData } from '../index';
 
 const s = { kind: 'scalar', type: 'String' } as const;
 const app: LensFieldMap = { models: { Doc: { fields: { id: s, ownerId: s, crmId: s } } } };
@@ -27,7 +20,7 @@ const toCrm: Bridge = {
   cardinality: 'oneToOne',
 };
 const set = { maps: { app, actor, crm }, bridges: [toActor, toCrm] };
-const joined = indexBridges(set, { 'crm:Contact': [{ id: 'c1', industry: 'tech' }] });
+const contacts = [{ id: 'c1', industry: 'tech' }];
 
 describe('recordWithBridgeData: the far rows a record bridges to, filled by the caller-free embed', () => {
   test('a supplied bridge takes the row given for it; a joined one the row its key finds', () => {
@@ -35,7 +28,7 @@ describe('recordWithBridgeData: the far rows a record bridges to, filled by the 
       set,
       'app:Doc',
       { id: 'd1', ownerId: 'u1', crmId: 'c1' },
-      { joined, supplied: { 'actor:User': { id: 'u1' } } },
+      { 'crm:Contact': contacts, 'actor:User': [{ id: 'u1' }] },
     );
     expect(doc['actor:User']).toEqual({ id: 'u1' });
     expect(doc['crm:Contact']).toEqual({ id: 'c1', industry: 'tech' });
@@ -67,22 +60,42 @@ describe('recordWithBridgeData: the far rows a record bridges to, filled by the 
       set,
       'app:Doc',
       { id: 'd1' },
-      { supplied: { 'actor:User': { id: 'u1', 'crm:Contact': { industry: 'tech' } } } },
+      { 'actor:User': [{ id: 'u1', 'crm:Contact': { industry: 'tech' } }] },
     );
     expect(doc['actor:User']).toEqual({ id: 'u1' });
   });
 
-  test('a far end with no row is left out, and a supplied row with no bridge throws', () => {
-    const doc = recordWithBridgeData(set, 'app:Doc', { id: 'd1', crmId: 'nope' }, { joined });
+  test('a far end with no row is left out; a supplied end takes exactly one row', () => {
+    const doc = recordWithBridgeData(
+      set,
+      'app:Doc',
+      { id: 'd1', crmId: 'nope' },
+      { 'crm:Contact': contacts },
+    );
     expect('actor:User' in doc || 'crm:Contact' in doc).toBe(false);
     expect(() =>
-      recordWithBridgeData(set, 'app:Doc', { id: 'd1' }, { supplied: { 'actor:Usr': {} } }),
-    ).toThrow(/no supplied bridge ends at `actor:Usr`/);
+      recordWithBridgeData(
+        set,
+        'app:Doc',
+        { id: 'd1' },
+        { 'actor:User': [{ id: 'a' }, { id: 'b' }] },
+      ),
+    ).toThrow(/give it one row/);
+  });
+
+  test("a supplied bridge runs one way: the first endpoint gets the second one's row", () => {
+    const user = recordWithBridgeData(
+      set,
+      'actor:User',
+      { id: 'u1' },
+      { 'app:Doc': [{ id: 'd1' }] },
+    );
+    expect('app:Doc' in user).toBe(false);
   });
 
   test('the record passed in is not changed', () => {
     const record = { id: 'd1', 'actor:User': { id: 'x' } };
-    recordWithBridgeData(set, 'app:Doc', record, { supplied: { 'actor:User': { id: 'u1' } } });
+    recordWithBridgeData(set, 'app:Doc', record, { 'actor:User': [{ id: 'u1' }] });
     expect(record).toEqual({ id: 'd1', 'actor:User': { id: 'x' } });
   });
 });

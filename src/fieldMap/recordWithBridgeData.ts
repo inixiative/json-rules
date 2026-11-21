@@ -1,19 +1,11 @@
 import { own } from '@inixiative/field-map';
+import { isPlainObject } from 'lodash-es';
 import type { Row } from '../types';
 import { endpointKey, isJoinedBridge, parseEndpointKey } from './endpointKey.ts';
-import type { BridgeDictionary } from './indexBridges.ts';
+import { type BridgeDictionary, indexBridges } from './indexBridges.ts';
 import type { Bridge, FieldMapSet } from './types.ts';
 
-/** What the far ends of a record's bridges are filled from. */
-export type BridgeData = {
-  /** Far rows of the joined bridges, indexed by `indexBridges`. */
-  joined?: BridgeDictionary;
-  /** The one far row of each supplied bridge, by endpoint key (`actor:User`). */
-  supplied?: Record<string, Row>;
-};
-
-const isRow = (value: unknown): value is Row =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRow = (value: unknown): value is Row => isPlainObject(value);
 
 // A key naming a model of one of the set's maps (`actor:User`): only a bridge may put a row there.
 const namesBridgedModel = (set: FieldMapSet, key: string): boolean =>
@@ -22,57 +14,79 @@ const namesBridgedModel = (set: FieldMapSet, key: string): boolean =>
 const withoutBridgeKeys = (set: FieldMapSet, row: Row): Row =>
   Object.fromEntries(Object.entries(row).filter(([key]) => !namesBridgedModel(set, key)));
 
+// The far rows one bridge from `near` reaches, as they came in `data` (not yet filled).
 const farRowsOf = (
   set: FieldMapSet,
   bridge: Bridge,
   nearIndex: number,
   record: Row,
-  data: BridgeData,
+  data: Record<string, Row[]>,
+  dictionary: BridgeDictionary,
 ): Row | Row[] | undefined => {
   const far = bridge.endpoints[1 - nearIndex];
   if (!isJoinedBridge(bridge)) {
-    const row = own(data.supplied ?? {}, endpointKey(far));
-    return isRow(row) ? withoutBridgeKeys(set, row) : undefined;
+    // a supplied bridge's second endpoint is the one whose row the data supplies
+    if (nearIndex !== 0) return undefined;
+    const rows = own(data, endpointKey(far));
+    if (rows === undefined) return undefined;
+    if (!Array.isArray(rows) || rows.length !== 1 || !isRow(rows[0]))
+      throw new Error(
+        `recordWithBridgeData: \`${endpointKey(far)}\` is the far end of a supplied bridge: give it one row`,
+      );
+    return rows[0];
   }
-  const near = bridge.endpoints[nearIndex];
-  const farOn = bridge.endpoints[1 - nearIndex].on;
-  const key = own(record, near.on);
+  const key = own(record, bridge.endpoints[nearIndex].on);
   if (key === null || key === undefined) return undefined;
-  const byKey = own(own(own(data.joined ?? {}, far.fieldMap) ?? {}, far.model) ?? {}, farOn);
-  const found = byKey ? own(byKey, String(key)) : undefined;
-  if (Array.isArray(found)) return found.filter(isRow).map((row) => withoutBridgeKeys(set, row));
-  return isRow(found) ? withoutBridgeKeys(set, found) : undefined;
+  const byValue = own(dictionary, far.fieldMap)?.[far.model]?.[bridge.endpoints[1 - nearIndex].on];
+  const found = byValue ? own(byValue, String(key)) : undefined;
+  if (Array.isArray(found)) return found.filter(isRow);
+  return isRow(found) ? found : undefined;
+};
+
+// why: a chain may cross many sources; it never re-enters an endpoint it came through, so it ends
+const filled = (
+  set: FieldMapSet,
+  at: string,
+  record: Row,
+  data: Record<string, Row[]>,
+  dictionary: BridgeDictionary,
+  came: ReadonlySet<string>,
+): Row => {
+  const out = withoutBridgeKeys(set, record);
+  const through = new Set([...came, at]);
+  const reached = new Set<string>();
+  for (const bridge of set.bridges ?? []) {
+    const nearIndex = bridge.endpoints.findIndex((end) => endpointKey(end) === at);
+    if (nearIndex === -1) continue;
+    const farKey = endpointKey(bridge.endpoints[1 - nearIndex]);
+    if (farKey === at)
+      throw new Error(`recordWithBridgeData: self-bridge '${at}' to itself is not supported`);
+    if (reached.has(farKey))
+      throw new Error(`recordWithBridgeData: two bridges from '${at}' reach '${farKey}'`);
+    reached.add(farKey);
+    if (through.has(farKey)) continue;
+    const rows = farRowsOf(set, bridge, nearIndex, record, data, dictionary);
+    if (rows === undefined) continue;
+    out[farKey] = Array.isArray(rows)
+      ? rows.map((row) => filled(set, farKey, row, data, dictionary, through))
+      : filled(set, farKey, rows, data, dictionary, through);
+  }
+  return out;
 };
 
 /**
- * `record`, a row of the endpoint `at` (`db:Conversation`), with its bridges filled: every key it
- * carries that names a model of the set's maps is dropped, and each bridge from `at` puts its far
- * row under the far endpoint's key — a joined bridge the row its `on` value finds in `data.joined`,
- * a supplied bridge the row `data.supplied` holds for it. A far row comes without bridge keys of its
- * own, and a far end with no row is left out (a rule reading it then reads a missing value). A
- * supplied row no supplied bridge of the set ends at throws.
+ * `record`, a row of the endpoint `at` (`app:Doc`), with every bridge filled from `data` (rows keyed
+ * by endpoint, `<fieldMap>:<Model>`, as `indexBridges` takes them), and the far rows' bridges in
+ * turn, so a rule can read across a chain of sources (`crm:Contact.sec:Device.risk`). Every key a
+ * row carries that names a model of the set's maps is dropped before its bridges are filled, so no
+ * row on any side brings its own. A joined bridge gives the row its `on` value finds, a supplied
+ * bridge (from its first endpoint to its second) the one row `data` holds for its second. A chain
+ * never re-enters an endpoint it came through, and a far end with no row is left out, so a rule
+ * reading it reads a missing value.
  */
 export const recordWithBridgeData = (
   set: FieldMapSet,
   at: string,
   record: Row,
-  data: BridgeData = {},
-): Row => {
-  const bridges = set.bridges ?? [];
-  for (const key of Object.keys(data.supplied ?? {}))
-    if (
-      !bridges.some(
-        (bridge) =>
-          !isJoinedBridge(bridge) && bridge.endpoints.some((end) => endpointKey(end) === key),
-      )
-    )
-      throw new Error(`recordWithBridgeData: no supplied bridge ends at \`${key}\``);
-  const out = withoutBridgeKeys(set, record);
-  for (const bridge of bridges) {
-    const nearIndex = bridge.endpoints.findIndex((end) => endpointKey(end) === at);
-    if (nearIndex === -1) continue;
-    const rows = farRowsOf(set, bridge, nearIndex, record, data);
-    if (rows !== undefined) out[endpointKey(bridge.endpoints[1 - nearIndex])] = rows;
-  }
-  return out;
-};
+  data: Record<string, Row[]> = {},
+): Row => filled(set, at, record, data, indexBridges(set, data), new Set());

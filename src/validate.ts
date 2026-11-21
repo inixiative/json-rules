@@ -58,14 +58,14 @@ import {
   WINDOW_OPERATORS,
 } from './operatorCatalog';
 import { patternProblem } from './pattern';
-import { parseScopeRef, scopeOutOfBounds } from './scope';
+import { parseScopeRef, pathSegments, scopeOutOfBounds } from './scope';
 import { aggregateFieldRequired, aggregateItemError } from './toPrisma/aggregate';
 import { columnCompare, columnCompareError } from './toPrisma/columnRef';
 import { groupPath } from './toPrisma/groupStep';
-import { conditionShape, leafSources, visitCondition } from './traverse';
+import { conditionShape, conjuncts, leafSources, valueRefs, visitCondition } from './traverse';
 import type { AggregateMode, ArrayRule, Condition, DateExpr, Rule, WindowFields } from './types';
 import { coerceMismatch, coerces } from './value/aggregateType';
-import { hasPath, rowRef, SOURCE_FORMS } from './valueSource';
+import { rowRef, SOURCE_FORMS } from './valueSource';
 import { hasWindow, windowRewrite } from './window';
 
 export type ValidationIssue = {
@@ -209,21 +209,23 @@ const namesMissingValue = (node: Record<string, unknown>): boolean => {
   return false;
 };
 
+// The value a ref reads, as `check()` reads it: `$.a`, `a` and `["a"]` name one value.
+const readKey = (ref: string): string =>
+  pathSegments(parseScopeRef(ref)?.path ?? ref).join('\u0000');
+
 // A read across a bridge: a segment naming another map's model (`actor:User`, `crm:Contact`).
 const crossesBridge = (ref: string): boolean =>
-  ref.split('.').some((segment) => segment.includes(':'));
+  pathSegments(parseScopeRef(ref)?.path ?? ref).some((segment) => segment.includes(':'));
 
-// What a comparison reads that may not be there: its field when it is compared with a path or a
-// bind (`equals` and `in` hold when both sides are null), and every read across a bridge.
+// What a comparison reads that may not be there: its field when it is compared with any path or
+// bind, and every read across a bridge, on either side.
 const readsThatMustExist = (node: Record<string, unknown>): string[] => {
   if (typeof node.operator === 'string' && NO_VALUE_OPERATORS.includes(node.operator as Operator))
     return [];
-  const sources = leafSources(node);
   const field = typeof node.field === 'string' ? node.field : null;
-  const paths = sources.flatMap(({ source }) => (hasPath(source) ? [source.path] : []));
-  const comparesARead = sources.some(
-    ({ source }) => hasPath(source) || typeof source.bind === 'string',
-  );
+  const paths = valueRefs(node);
+  const comparesARead =
+    paths.length > 0 || leafSources(node).some(({ source }) => typeof source.bind === 'string');
   return [
     ...new Set([
       ...(field && comparesARead ? [field] : []),
@@ -232,14 +234,13 @@ const readsThatMustExist = (node: Record<string, unknown>): string[] => {
   ];
 };
 
-// The fields an `all` makes exist for everything under it: its `exists` children, and those of an
-// `all` among them.
-const existsInAll = (children: unknown[]): string[] =>
-  children.flatMap((child) => {
-    if (!isPlainObject(child)) return [];
-    const node = child as Record<string, unknown>;
-    if (Array.isArray(node.all)) return existsInAll(node.all);
-    return node.operator === 'exists' && typeof node.field === 'string' ? [node.field] : [];
+// The fields an `all` makes exist for everything under it: its `exists` conjuncts.
+const existsInAll = (children: Condition[]): string[] =>
+  conjuncts({ all: children }).flatMap((child) => {
+    const node = isPlainObject(child) ? (child as Record<string, unknown>) : {};
+    return node.operator === 'exists' && typeof node.field === 'string'
+      ? [readKey(node.field)]
+      : [];
   });
 
 // why: an `all`'s `exists` holds for its siblings but an `any`'s does not, a scope visitCondition does not carry
@@ -252,7 +253,7 @@ const validateExistsBeside = (
   if (!isPlainObject(condition)) return;
   const node = condition as Record<string, unknown>;
   if (Array.isArray(node.all)) {
-    const inner = new Set([...exists, ...existsInAll(node.all)]);
+    const inner = new Set([...exists, ...existsInAll(node.all as Condition[])]);
     node.all.forEach((child, i) => {
       validateExistsBeside(child, `${at}.all[${i}]`, inner, context);
     });
@@ -267,7 +268,7 @@ const validateExistsBeside = (
   const shape = conditionShape(node);
   if (shape !== 'field' && shape !== 'date') return;
   for (const read of readsThatMustExist(node))
-    if (!exists.has(read))
+    if (!exists.has(readKey(read)))
       pushIssue(
         context,
         at,

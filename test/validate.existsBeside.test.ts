@@ -66,4 +66,19 @@ describe('validateRule positive: what may not be there is checked with exists be
   test('a comparison with a literal on the row itself needs nothing', () => {
     expect(codes({ field: 'status', operator: Operator.equals, value: 'active' })).toEqual([]);
   });
+
+  test('the shapes the gate does not descend are refused before it, so nothing hides inside them', () => {
+    const inside = { field: 'orgId', operator: Operator.equals, path: 'ownerId' };
+    for (const shape of [
+      { if: inside, then: true },
+      { field: 'items', arrayOperator: 'any', condition: inside },
+      { field: 'items', aggregate: { mode: 'count' }, operator: 'greaterThan', value: 0 },
+    ])
+      expect(codes(shape)).toContain('notPositive');
+  });
+
+  test('spellings that read the same value guard each other', () => {
+    expect(codes({ all: [exists('$.orgId'), samePath] })).toEqual([]);
+    expect(codes({ all: [exists('["orgId"]'), samePath] })).toEqual([]);
+  });
 });

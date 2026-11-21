@@ -775,8 +775,8 @@ on what the row carries. A null check holds on every row without a value, which 
 up granting everything; name the value that is there instead (a kind, an explicit `'none'`).
 
 It also refuses a read that may not be there unless an `exists` on it sits beside it in an `all`:
-the field of a comparison with a `path` or a `bind` (`equals` and `in` hold when both sides are
-null), and every read across a bridge (`actor:User.id`, `crm:Contact.industry`), on either side.
+the field of every comparison with a `path` or a `bind` (whatever the operator: `equals` and `in`
+even hold when both sides are null), and every read across a bridge (`actor:User.id`, `crm:Contact.industry`), on either side.
 The `exists` names the exact field, and counts from any `all` above the comparison, never from an
 `any`:
 
@@ -1795,7 +1795,7 @@ tells the two apart (`JoinedBridge`, `SuppliedBridge`).
 **Limitations to know:**
 
 - **1-many bridge arrays are not iterable mid-path.** `field: 'crm:MarketingEvent.campaign'` or `path: 'crm:MarketingEvent.campaign'` returns `undefined` when the bridge value is an array: a path read follows own properties one segment at a time and doesn't fan out across array elements. Use a numeric index (`crm:MarketingEvent.0.campaign` or `crm:MarketingEvent[0].campaign`) or `arrayOperator` on the `field:` side to iterate. A name on `Object.prototype` (`constructor`, `toString`) reads as absent.
-- **Bridge keys are plain object properties.** `check()` doesn't consult `lens.bridges`; `recordWithBridgeData(set, 'app:Doc', record, { joined: indexBridges(set, raw), supplied })` fills them. It drops every key the record carries that names a model of the set's maps (a record cannot bring its own `actor:User`), puts each joined bridge's far row (found by `on`) and each supplied bridge's given row under its endpoint key, and strips bridge keys from the far rows it embeds.
+- **Bridge keys are plain object properties.** `check()` doesn't consult `lens.bridges`; `recordWithBridgeData(set, 'app:Doc', record, data)` fills them from the same `data` `indexBridges` takes (rows keyed `map:Model`; a supplied bridge's second endpoint gets one row). It drops every key the record carries that names a model of the set's maps (a record cannot bring its own `actor:User`), puts each joined bridge's far row (found by `on`) and each supplied bridge's given row under its endpoint key, and strips bridge keys from the far rows it embeds.
 
 
 `check()` itself is bridge-unaware: it walks paths via plain property access. The lens primitive is **schema metadata** (what fields exist, what bridges link them, what `on` fields join each side). The caller is responsible for structuring `data` accordingly:

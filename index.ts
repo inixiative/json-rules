@@ -18,7 +18,6 @@ export {
   assertValidFieldMaps,
   type Bridge,
   type BridgeCardinality,
-  type BridgeData,
   type BridgeDictionary,
   type BridgeEndpoint,
   type BridgeEntry,

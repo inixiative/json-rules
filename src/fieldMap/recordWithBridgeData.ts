@@ -96,17 +96,13 @@ const filled = (fill: Fill, at: string, record: Row, came: ReadonlySet<string>):
  * set's maps is dropped before its bridges are filled, so no row anywhere brings its own. A joined bridge gives the row its `on` value finds, a supplied
  * bridge (from its first endpoint to its second) the one row `data` holds for its second. A chain
  * never re-enters an endpoint it came through, and a far end with no row is left out, so a rule
- * reading it reads a missing value.
+ * reading it reads a missing value. A caller filling many records from one `data` passes the
+ * `indexBridges` dictionary it built once.
  */
 export const recordWithBridgeData = (
   set: FieldMapSet,
   at: string,
   record: Row,
   data: Record<string, Row[]> = {},
-): Row =>
-  filled(
-    { set, data, dictionary: indexBridges(set, data), filling: new Map() },
-    at,
-    record,
-    new Set(),
-  );
+  dictionary: BridgeDictionary = indexBridges(set, data),
+): Row => filled({ set, data, dictionary, filling: new Map() }, at, record, new Set());

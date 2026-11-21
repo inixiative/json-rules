@@ -3,7 +3,7 @@ import { ruleShape } from '../fieldMap/shape';
 import { fieldEntry } from '../fieldMap/walk';
 import { AGGREGATE_MODES, isCompiledAggregateMode } from '../operatorCatalog';
 import type { AggregateRule, Rule } from '../types';
-import { hasWindow } from '../window';
+import { hasWindow, isNullOverNoValues } from '../window';
 import { buildFieldRule } from './field';
 import { resolveFieldSql } from './join';
 import { jsonKey } from './quoting';
@@ -26,12 +26,7 @@ export const buildAggregateRule = (rule: AggregateRule, state: BuilderState): st
   // An aggregate compares like a field whose value the subquery computes; an average can be NULL.
   // Its coerceType parsed the items, which `::numeric` already does; the number compares as is.
   const { coerceType: _parsed, ...comparison } = rule;
-  return buildFieldRule(
-    comparison as unknown as Rule,
-    state,
-    subquery,
-    rule.aggregate.mode === 'avg',
-  );
+  return buildFieldRule(comparison as unknown as Rule, state, subquery, isNullOverNoValues(rule));
 };
 
 const buildAggregateSubquery = (rule: AggregateRule, state: BuilderState): string => {

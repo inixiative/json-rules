@@ -2,15 +2,13 @@ import { fieldOf, modelOf, own } from '@inixiative/field-map';
 import { declaredEnumValues, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
 import { relationTargetOf } from '../fieldMap/walk.ts';
-import { type FieldKind, ORDERED_VALUE_KINDS } from '../operatorCatalog';
-import type { Condition, OrderBy } from '../types.ts';
+import type { Condition } from '../types.ts';
 import {
   throwIfInvalid,
   type ValidationIssue,
   type ValidationResult,
   validationResult,
 } from '../validate';
-import { orderByShapeIssues } from '../window';
 import { validateBindNames } from './bindings.ts';
 import { collectChain, getLensRoot } from './chain.ts';
 import { toLensSelectWith } from './lensRows.ts';
@@ -22,13 +20,13 @@ import {
   escapingClampRef,
   hiddenHop,
   intersectStringSet,
-  isFieldVisible,
   isSourceSpec,
   LensRefusal,
   misanchoredPath,
   normalizeGroupBy,
   normalizeSource,
   OFF_PATH,
+  orderByIssues,
   type Policy,
   resolvePolicy,
   resolveVisit,
@@ -168,63 +166,24 @@ const hiddenBy = (
   return null;
 };
 
-// A relation's row order: each key a number or date column of the model, one the parent shows at
-// every visit the node applies to (a `where`'s rule: the parent's surface, never this layer's own
-// picks / omits). A string column is refused, as min / max refuse one: code-unit order in memory
-// would disagree with the database's collation.
+// A relation's row order, checked at every visit the node applies to on the parent's surface (a
+// `where`'s rule: never this layer's own picks / omits).
 const validateOrderBy = (
   orderBy: unknown,
-  modelFields: Record<string, FieldMapEntry>,
   parentPolicy: Policy,
   visits: readonly WhereVisit[],
   position: string,
   errors: ValidationIssue[],
 ): void => {
   if (orderBy === undefined) return;
-  const at = `${position}.orderBy`;
-  const malformed = orderByShapeIssues(orderBy);
-  for (const { index, message } of malformed)
-    errors.push({
-      path: index === null ? at : `${at}[${index}]`,
-      code: 'invalid_order_by',
-      message,
-    });
-  if (malformed.length > 0) return;
-  (orderBy as OrderBy).forEach(({ field }, index) => {
-    const entry = own(modelFields, field);
-    if (!entry) {
-      errors.push({
-        path: `${at}[${index}]`,
-        code: 'not_in_lens',
-        message: `field '${field}' not on model`,
-      });
-      return;
+  const seen = new Set<string>();
+  for (const visit of visits)
+    for (const issue of orderByIssues(orderBy, parentPolicy, visit, `${position}.orderBy`)) {
+      const key = `${issue.path}|${issue.code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      errors.push(issue);
     }
-    if (
-      entry.kind !== 'scalar' ||
-      entry.isList ||
-      !ORDERED_VALUE_KINDS.includes(entry.type as FieldKind)
-    ) {
-      errors.push({
-        path: `${at}[${index}]`,
-        code: 'wrong_kind',
-        message: `'${field}' is not a number or date column: a relation's rows order by numbers and dates`,
-      });
-      return;
-    }
-    const shown = visits.every((visit) =>
-      isFieldVisible(
-        resolveVisit(parentPolicy, visit.mapName, visit.modelName, visit.relPath),
-        field,
-      ),
-    );
-    if (!shown)
-      errors.push({
-        path: `${at}[${index}]`,
-        code: 'not_visible',
-        message: `'${field}' is not shown by the parent`,
-      });
-  });
 };
 
 const validateModelNode = (
@@ -326,7 +285,7 @@ const validateModelNode = (
   }
 
   validateWhere(narrowing.where, parentPolicy, whereVisits, `${position}.where`, errors);
-  validateOrderBy(narrowing.orderBy, modelFields, parentPolicy, whereVisits, position, errors);
+  validateOrderBy(narrowing.orderBy, parentPolicy, whereVisits, position, errors);
 
   for (const [field, entry] of Object.entries(narrowing.sources ?? {})) {
     const sourced = own(modelFields, field);

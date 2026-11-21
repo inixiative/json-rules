@@ -3,6 +3,7 @@ import { toManyHopError } from '../errors';
 import { declaredEnumValues, isJsonEntry, isRelationEntry } from '../fieldMap/entry';
 import type { FieldMapEntry, LensFieldMap, LensModelEntry } from '../fieldMap/types';
 import { type MapVisit, relationTargetOf, toManyHop, walkMaps } from '../fieldMap/walk.ts';
+import { type FieldKind, ORDERED_VALUE_KINDS } from '../operatorCatalog';
 import { parseScopeRef, pathSegments, readScopeRef } from '../scope';
 import { isLogicalNode, isRelationNode, valueRefs, visitCondition } from '../traverse';
 import type { Condition, OrderBy } from '../types.ts';
@@ -269,13 +270,13 @@ const accumulateInto = (
   narrow: (condition: Condition) => Condition,
   layer: number,
   vet: (condition: Condition, source?: boolean) => void,
+  vetOrderBy: (orderBy: unknown) => boolean,
   clamps: boolean,
   hiding: boolean,
   ownDefault: boolean,
 ): void => {
   if (hiding) accumulatePicksOmitsInto(out, n);
-  if (n.orderBy !== undefined && orderByShapeIssues(n.orderBy).length === 0 && n.orderBy.length)
-    out.orderBy = n.orderBy;
+  if (n.orderBy !== undefined && vetOrderBy(n.orderBy) && n.orderBy.length) out.orderBy = n.orderBy;
   if (n.where !== undefined && clamps) {
     vet(n.where);
     out.whereClauses.push(narrow(n.where));
@@ -343,6 +344,46 @@ export const laterClampIssues = (
   at: MapVisit,
 ): ValidationIssue[] =>
   checkConditionAtVisit(condition, parent, at.mapName, at.modelName, at.relPath);
+
+/**
+ * What is wrong with a relation's `orderBy` at a visit: its shape, a key that is not a number or
+ * date column of the model (a string's code-unit order would disagree with a database collation,
+ * as for `min` / `max`), or — in a later layer — a column its parent doesn't show there. The one
+ * check validateNarrowing and every runtime posture make; `parent` is null for the first
+ * narrowing, which reads the menu.
+ */
+export const orderByIssues = (
+  orderBy: unknown,
+  parent: Policy | null,
+  at: MapVisit,
+  path: string,
+  lens: Lens = (parent as Policy).lens,
+): ValidationIssue[] => {
+  const malformed = orderByShapeIssues(orderBy, path);
+  if (malformed.length > 0) return malformed;
+  const fields = modelOf(own(lens.maps, at.mapName), at.modelName)?.fields;
+  const shown = parent ? resolveVisit(parent, at.mapName, at.modelName, at.relPath) : null;
+  return (orderBy as OrderBy).flatMap(({ field }, index) => {
+    const entry = own(fields, field);
+    const issue = !entry
+      ? { code: 'not_in_lens', message: `field '${field}' not on model` }
+      : entry.kind !== 'scalar' ||
+          entry.isList ||
+          !ORDERED_VALUE_KINDS.includes(entry.type as FieldKind)
+        ? {
+            code: 'wrong_kind',
+            message: `'${field}' is not a number or date column: a relation's rows order by numbers and dates`,
+          }
+        : shown && !isFieldVisible(shown, field)
+          ? { code: 'not_visible', message: `'${field}' is not shown by the parent` }
+          : null;
+    return issue ? [{ path: `${path}[${index}]`, ...issue }] : [];
+  });
+};
+
+/** An `orderBy` validateNarrowing reports, met at runtime. */
+export const refusedOrderBy = (issue: ValidationIssue): LensRefusal =>
+  new LensRefusal(`the lens refuses a relation's orderBy: ${issue.message}`, issue.code);
 
 /** A later layer's clamp reading what its parent doesn't show. */
 export const unshownClamp = (issue: ValidationIssue): LensRefusal =>
@@ -596,10 +637,11 @@ export const resolveVisit = (
   let narrow = (condition: Condition): Condition => condition;
   let current = 0;
   let vet: (condition: Condition, source?: boolean) => void = () => {};
+  let vetOrderBy: (orderBy: unknown) => boolean = () => true;
   let clamps = true;
   let hiding = true;
   const applyNode = (n: ModelDefaultNarrowing | ModelNarrowing, ownDefault = false): void => {
-    accumulateInto(out, n, narrow, current, vet, clamps, hiding, ownDefault);
+    accumulateInto(out, n, narrow, current, vet, vetOrderBy, clamps, hiding, ownDefault);
     accumulateEnumFields(fieldEnumPicks, fieldEnumOmits, n);
   };
 
@@ -652,6 +694,17 @@ export const resolveVisit = (
         else check();
       };
     vet = vetClamp(false);
+    // An orderBy refused at construction is refused here too: whether it is well formed (only that
+    // one is ever applied), and — vetted — the rest of validateNarrowing's check.
+    vetOrderBy = (orderBy) => {
+      const check = (): void => {
+        const [issue] = orderByIssues(orderBy, clampParent, at, 'orderBy', policy.lens);
+        if (issue) throw refusedOrderBy(issue);
+      };
+      if (policy.unvetted) unchecked.push(check);
+      else check();
+      return orderByShapeIssues(orderBy, 'orderBy').length === 0;
+    };
     const ownDefault = own(own(narrowing.mapDefaults, mapName)?.models, modelName);
     for (const node of defaults) applyNode(node, node === ownDefault);
     if (path) {

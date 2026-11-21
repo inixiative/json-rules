@@ -1,9 +1,15 @@
 import { isPlainObject } from 'lodash-es';
 import { ArrayOperator, Operator } from './operator';
-import { LOWER_BOUND_OPERATORS, UPPER_BOUND_OPERATORS } from './operatorCatalog';
+import {
+  AGGREGATE_MODE_CATALOG,
+  isValueAggregateMode,
+  LOWER_BOUND_OPERATORS,
+  UPPER_BOUND_OPERATORS,
+} from './operatorCatalog';
 import { readOwnPath } from './scope';
 import { allOf, conditionShape } from './traverse';
 import type { AggregateRule, ArrayRule, Condition, OrderBy, WindowFields } from './types';
+import type { ValidationIssue } from './validate';
 
 /** True when a rule carries any windowing selector (filter/orderBy/take/skip). */
 export const hasWindow = (rule: WindowFields): boolean =>
@@ -12,24 +18,41 @@ export const hasWindow = (rule: WindowFields): boolean =>
   rule.take !== undefined ||
   rule.skip !== undefined;
 
-/** What is wrong with an `orderBy`'s shape: one entry per bad item (`index` null for the list
- *  itself); none when it is a list of `{ field, dir }`. */
-export const orderByShapeIssues = (
-  orderBy: unknown,
-): { index: number | null; message: string }[] =>
+/** What is wrong with the shape of the `orderBy` at `path`: an issue per bad item, or one for the
+ *  list itself; none when it is a list of `{ field, dir }`. */
+export const orderByShapeIssues = (orderBy: unknown, path: string): ValidationIssue[] =>
   Array.isArray(orderBy)
     ? orderBy.flatMap((item, index) =>
         isPlainObject(item) &&
         typeof item.field === 'string' &&
         (item.dir === 'asc' || item.dir === 'desc')
           ? []
-          : [{ index, message: "orderBy entries must be { field: string, dir: 'asc' | 'desc' }" }],
+          : [
+              {
+                path: `${path}[${index}]`,
+                code: 'invalid_order_by',
+                message: "orderBy entries must be { field: string, dir: 'asc' | 'desc' }",
+              },
+            ],
       )
-    : [{ index: null, message: 'orderBy must be an array of { field, dir }' }];
+    : [{ path, code: 'invalid_order_by', message: 'orderBy must be an array of { field, dir }' }];
 
 /** Whether a `pick` returns one value: its window takes one row. Any other `take`, or none, picks
  *  a list. */
 export const picksOne = (rule: WindowFields): boolean => rule.take === 1;
+
+/** Whether an aggregate gives no value over no items: `avg`, `min` / `max`, and a pick of one
+ *  (`sum` and `count` give 0, a list is empty). */
+export const isNullOverNoValues = (
+  node: WindowFields & { aggregate: { mode?: unknown } },
+): boolean => {
+  const { mode } = node.aggregate;
+  return (
+    isValueAggregateMode(mode) &&
+    AGGREGATE_MODE_CATALOG[mode].nullOverNoValues &&
+    (mode !== 'pick' || picksOne(node))
+  );
+};
 
 const conditionOpAndField = (condition: unknown): { op: string; field: string } | null => {
   if (typeof condition !== 'object' || condition === null) return null;

@@ -423,8 +423,8 @@ export const DISTINCT_VALUE_KINDS: readonly FieldKind[] = [
  *  rule compares; the rest are value expressions only (`evaluateValue`), evaluated in memory.
  *  `compiled` comparable modes compile on `toSql` / `toPrisma` too; an aggregate rule in any other
  *  is check() only, and `validateRule` refuses it for a compiler. `nullOverNoValues` modes give
- *  no value over no items (`avg`, `min` / `max`, a `take: 1` pick), where `sum` and `count` give 0
- *  and a list is empty. `kinds` are the kinds of value each mode reads, as read (after any
+ *  no value over no items (`avg`, `min` / `max`, and `pick` when it picks one: `isNullOverNoValues`
+ *  reads it off a node), where `sum` and `count` give 0 and a list is empty. `kinds` are the kinds of value each mode reads, as read (after any
  *  `coerceType`). */
 export const AGGREGATE_MODE_CATALOG: Record<
   ValueAggregateMode,
@@ -528,10 +528,6 @@ export const isValueAggregateMode = (mode: unknown): mode is ValueAggregateMode 
 export const VALUE_READING_AGGREGATE_MODES = VALUE_AGGREGATE_MODES.filter(
   (mode) => !['number', 'count'].includes(AGGREGATE_MODE_CATALOG[mode].result),
 );
-
-/** Whether a mode gives no value over no items (`avg`, `min` / `max`, a `take: 1` pick). */
-export const isNullOverNoValues = (mode: unknown): boolean =>
-  isValueAggregateMode(mode) && AGGREGATE_MODE_CATALOG[mode].nullOverNoValues;
 
 /** Equality with one value: `equals` / `notEquals`. */
 export const EQUALITY_OPERATORS = withShape('scalar');

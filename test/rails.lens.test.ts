@@ -6,6 +6,7 @@ import {
   createLens,
   executePrismaPlan,
   type LensNarrowing,
+  LensRefusal,
   narrowRule,
   projectRows,
   toLensSelect,
@@ -442,6 +443,41 @@ describe("a to-many relation's orderBy: rows come back in its order on every rai
     expect(validateNarrowing(byDefault).errors.map((e) => `${e.code} ${e.path}`)).toEqual([
       'not_visible mapDefaults.prisma.models.Post.orderBy[0]',
     ]);
+  });
+
+  test('an orderBy validateNarrowing refuses is refused on every posture, never applied', () => {
+    const hiding: LensNarrowing = {
+      parent: base,
+      root: { relations: { posts: { omits: ['views'] } } },
+    };
+    const byViews = [{ field: 'views', dir: 'desc' as const }];
+    const refused: [string, LensNarrowing][] = [
+      [
+        'a hidden column, on the path',
+        { parent: hiding, root: { relations: { posts: { orderBy: byViews } } } },
+      ],
+      [
+        'a hidden column, as a model default',
+        { parent: hiding, mapDefaults: { prisma: { models: { Post: { orderBy: byViews } } } } },
+      ],
+      [
+        'a string column',
+        {
+          parent: base,
+          root: { relations: { posts: { orderBy: [{ field: 'title', dir: 'asc' }] } } },
+        },
+      ],
+      [
+        'a malformed one',
+        { parent: base, root: { relations: { posts: { orderBy: 'views' as never } } } },
+      ],
+    ];
+    const rows = [{ id: 1, posts: [{ id: 1, views: 1, title: 'a' }] }];
+    for (const [name, lens] of refused) {
+      expect(validateNarrowing(lens).ok, name).toBe(false);
+      expect(() => toLensSelect(lens), name).toThrow(LensRefusal);
+      expect(() => projectRows(lens, rows), name).toThrow(LensRefusal);
+    }
   });
 
   test('a layer may order by a column it hides itself, as its own where may read one', () => {

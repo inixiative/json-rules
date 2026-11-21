@@ -195,6 +195,18 @@ describe('a take-1 pick over no row is absent; a row holding NULL is null', () =
     expect(check(isNull, nullRow)).toBe(true);
   });
 
+  test('a picked row that does not carry the field is absent too', () => {
+    const bare = { enrichments: [{ field: 'jobTitle', sourceRank: 1 }] };
+    expect(check(isNull, bare)).toBe(true);
+    expect(check(isNull, bare, unknown)).not.toBe(true);
+  });
+
+  test('a list pick over no row is an empty list, and its negation the exact complement', () => {
+    const holds = { ...jobTitles, operator: 'contains', value: 'CTO' } as unknown as Condition;
+    expect(check(holds, noRow)).not.toBe(true);
+    expect(check(negate(holds), noRow)).toBe(true);
+  });
+
   test("under absent: 'unknown' no row is unknown, and a NULL the row holds is still null", () => {
     expect(check(isNull, noRow, unknown)).not.toBe(true);
     expect(check(isNull, nullRow, unknown)).toBe(true);

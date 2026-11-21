@@ -33,6 +33,7 @@ import { fieldEntry, relationTarget } from './fieldMap/walk';
 import { isOrderedValue, readOrderedPair } from './number';
 import type { ArrayOperator, DateOperator, Operator } from './operator';
 import {
+  AGGREGATE_MODE_CATALOG,
   AGGREGATE_MODES,
   CONTAINS_OPERATORS,
   catalogEntry,
@@ -161,7 +162,8 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
   const value = (isPlainObject(node) ? node : {}) as Record<string, unknown>;
   const mode = agg?.mode;
   // sum / avg parse each item as their aggregate rule does.
-  if (mode === 'sum' || mode === 'avg') validateAggregateCoercion(value, '$', context, 1);
+  if (isValueAggregateMode(mode) && AGGREGATE_MODE_CATALOG[mode].result === 'number')
+    validateAggregateCoercion(value, '$', context, 1);
   else if (value.coerceType !== undefined) {
     if (
       validateCoerceTypeName(value, '$', context) &&
@@ -816,20 +818,26 @@ const validateAggregateCoercion = (
     pushIssue(context, at, 'coerce_kind_mismatch', coerceMismatch(stored, coerceType as FieldKind));
 };
 
+/** The issue with a `coerceType` that is not a field kind's name; null when it is one. */
+export const coerceTypeNameIssue = (coerceType: unknown, path: string): ValidationIssue | null =>
+  isFieldKind(coerceType)
+    ? null
+    : {
+        path,
+        code: 'invalid_coerce_type',
+        message: `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
+      };
+
 // Whether a node's coerceType, when it names one, is a field kind.
 const validateCoerceTypeName = (
   node: Record<string, unknown>,
   path: string,
   context: ValidationContext,
 ): boolean => {
-  if (node.coerceType === undefined || isFieldKind(node.coerceType)) return true;
-  pushIssue(
-    context,
-    `${path}.coerceType`,
-    'invalid_coerce_type',
-    `coerceType must be one of: ${Object.keys(FieldKind).join(', ')}`,
-  );
-  return false;
+  if (node.coerceType === undefined) return true;
+  const issue = coerceTypeNameIssue(node.coerceType, `${path}.coerceType`);
+  if (issue) context.errors.push(issue);
+  return issue === null;
 };
 
 // A pick compares the picked value as a field holding it is compared: by the operator's own value
@@ -1327,13 +1335,7 @@ const validateWindow = (
 
   if ('orderBy' in rule && rule.orderBy !== undefined) {
     // An empty orderBy orders nothing: no window, as hasWindow reads it.
-    for (const { index, message } of orderByShapeIssues(rule.orderBy))
-      pushIssue(
-        context,
-        index === null ? `${path}.orderBy` : `${path}.orderBy[${index}]`,
-        'invalid_order_by',
-        message,
-      );
+    context.errors.push(...orderByShapeIssues(rule.orderBy, `${path}.orderBy`));
   }
 
   for (const key of ['take', 'skip'] as const) {

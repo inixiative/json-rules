@@ -18,7 +18,7 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   column.
 - **A `take: 1` pick over no row is absent**, as a path the row doesn't carry is (Aron,
   2026-11-21): in a rule it reads as null by default and as unknown under `absent: 'unknown'`,
-  while a row that holds NULL is null under both. A value (`evaluateValue`) reads either as null.
+  as is a picked row that doesn't carry the field, while a row that holds NULL is null under both. A value (`evaluateValue`) reads either as null.
 - **A pick with no `orderBy` picks in the order the rows are in**, as every other mode over a cut
   window does: there is no pick-only rule for it. A window orders its keys as the rows carry them,
   so values in mixed forms order oddly; coerce the rows first (Aron: "If you order by things that
@@ -38,12 +38,13 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   order replaces an earlier one's; it names only columns its parent shows at every visit it applies
   to, on the path or as a model default (`not_visible`: the rule a `where` follows, so a layer may
   order by a column it hides itself), and only number and date columns (`wrong_kind`: a string's
-  code-unit order would disagree with a collation, as for `min` / `max`). The root and a to-one
-  relation have no rows to order (`wrong_kind`). `validateNarrowing` checks it, a malformed one
-  included (`invalid_order_by`, the window's own shape check). New type `LensOrderBy`.
+  code-unit order would disagree with a collation, as for `min` / `max`). An `orderBy` written on the
+  root or a to-one relation is refused (`wrong_kind`). `validateNarrowing` checks it, a malformed
+  one included (`invalid_order_by`, the window's own shape check), and every posture refuses the
+  same ones (`LensRefusal`) rather than apply them. New type `LensOrderBy`.
 - `AggregateMode` is `'sum' | 'avg' | 'pick'`; `orderRecords` takes an optional key reader.
-  `AGGREGATE_MODE_CATALOG` entries also carry `nullOverNoValues`, which `negate()` and the value
-  typer read.
+  `AGGREGATE_MODE_CATALOG` entries also carry `nullOverNoValues`, which `negate()`, the value
+  typer and both compilers read (a pick only when it picks one).
 
 ## 4.3.0 — supplied bridges: a bridge with no join
 

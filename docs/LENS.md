@@ -913,8 +913,10 @@ in any order project as the database returns them. It is a window's order: each 
 last either way, ties kept as fetched. Ordering narrows nothing, so a later layer's replaces an
 earlier one's (and, in one layer, the path's the model default's); like a `where`, its columns must
 be ones its parent shows at every visit it applies to, whether it sits on the path or on a model
-default, and a layer may order by a column it hides itself. The root and a to-one relation have no
-rows to order, and an `orderBy` there is refused. Rows order as they carry each column: a number or
+default, and a layer may order by a column it hides itself. An `orderBy` written on the root or on a to-one
+relation is refused: there are no rows to order (a model default's applies wherever its model is
+reached to-many). One `validateNarrowing` refuses is refused by every posture too (`LensRefusal`),
+never applied. Rows order as they carry each column: a number or
 date held as a string orders as a string, so coerce the rows first. Only number and date columns order a relation: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
 disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not

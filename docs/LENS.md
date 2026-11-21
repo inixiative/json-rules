@@ -912,11 +912,15 @@ nullable column `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by
 in any order project as the database returns them. It is a window's order: each key in turn, a NULL
 last either way, ties kept as fetched. Ordering narrows nothing, so a later layer's replaces an
 earlier one's (and, in one layer, the path's the model default's); like a `where`, its columns must
-be ones its parent shows at every visit it applies to, whether it sits on the path or on a model
-default, and a layer may order by a column it hides itself. An `orderBy` written on the root or on a to-one
+be ones its parent shows at every visit of the node, whether it sits on the path or on a model
+default (a model default is checked at every visit of its model, to-one ones included, as its
+`where` is), and a layer may order by a column it hides itself. An empty `orderBy` states no order
+and leaves an earlier layer's in place. An `orderBy` written on the root or on a to-one
 relation is refused: there are no rows to order (a model default's applies wherever its model is
-reached to-many). One `validateNarrowing` refuses is refused by every posture too (`LensRefusal`),
-never applied. Rows order as they carry each column: a number or
+reached to-many). A column `validateNarrowing` refuses to order by (hidden, not a number or date, unknown, or a
+malformed `orderBy`) is refused by every posture too (`LensRefusal`), never applied; an `orderBy`
+on the root or a to-one relation is reported by `validateNarrowing` alone, since no posture
+orders there. Rows order as they carry each column: a number or
 date held as a string orders as a string, so coerce the rows first. Only number and date columns order a relation: a string
 column is refused (`wrong_kind`), as `min` / `max` refuse one, since code-unit order in memory would
 disagree with the database's collation. A rule's own window (`orderBy` / `take`) is the rule's, not

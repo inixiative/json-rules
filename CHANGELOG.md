@@ -40,8 +40,9 @@ and in rules", and "`orderBy` on to-many relations in the lens".
   order by a column it hides itself), and only number and date columns (`wrong_kind`: a string's
   code-unit order would disagree with a collation, as for `min` / `max`). An `orderBy` written on the
   root or a to-one relation is refused (`wrong_kind`). `validateNarrowing` checks it, a malformed
-  one included (`invalid_order_by`, the window's own shape check), and every posture refuses the
-  same ones (`LensRefusal`) rather than apply them. New type `LensOrderBy`.
+  one included (`invalid_order_by`, the window's own shape check), and every posture refuses a
+  column it refuses (`LensRefusal`) rather than order by it. An empty `orderBy` leaves an earlier
+  layer's order in place. New type `LensOrderBy`.
 - `AggregateMode` is `'sum' | 'avg' | 'pick'`; `orderRecords` takes an optional key reader.
   `AGGREGATE_MODE_CATALOG` entries also carry `nullOverNoValues`, which `negate()`, the value
   typer and both compilers read (a pick only when it picks one).

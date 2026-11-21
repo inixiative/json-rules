@@ -16,7 +16,6 @@ const withoutBridgeKeys = (set: FieldMapSet, row: Row): Row =>
 
 // The far rows one bridge from `near` reaches, as they came in `data` (not yet filled).
 const farRowsOf = (
-  set: FieldMapSet,
   bridge: Bridge,
   nearIndex: number,
   record: Row,
@@ -81,7 +80,7 @@ const filled = (fill: Fill, at: string, record: Row, came: ReadonlySet<string>):
     if (nearIndex === -1) continue;
     const farKey = endpointKey(bridge.endpoints[1 - nearIndex]);
     if (through.has(farKey)) continue;
-    const rows = farRowsOf(set, bridge, nearIndex, record, fill.data, fill.dictionary);
+    const rows = farRowsOf(bridge, nearIndex, record, fill.data, fill.dictionary);
     if (rows !== undefined) out[farKey] = filledRows(fill, farKey, rows, through);
   }
   fill.filling.delete(record);

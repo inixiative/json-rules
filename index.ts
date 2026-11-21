@@ -131,6 +131,7 @@ export {
 export {
   parseScopeRef,
   pathSegments,
+  readOwnPath,
   readScopeRef,
   type ScopedRef,
   type ScopeOutOfBounds,

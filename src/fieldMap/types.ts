@@ -91,9 +91,9 @@ export type JoinedBridge = {
 };
 
 /**
- * A cross-source edge with no join: the caller supplies the far row on the record under its
- * endpoint key (`map:Model`), as it would after `indexBridges` for a joined one. For data that is
- * not found by a key, such as who is acting. One row each way.
+ * A cross-source edge with no join, from its first endpoint to its second: the data gives the second
+ * endpoint's one row (keyed `map:Model`, as a joined bridge's rows are), and `recordWithBridgeData`
+ * puts it on each record of the first. For data that is not found by a key, such as who is acting.
  */
 export type SuppliedBridge = {
   endpoints: [BridgeEndpoint, BridgeEndpoint];

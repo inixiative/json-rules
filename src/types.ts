@@ -10,9 +10,11 @@ type DateOperatorValues = typeof import('./operator.ts').DateOperator;
 
 export type RuleScalar = string | number | boolean | null | undefined;
 
-export type AggregateMode = 'sum' | 'avg';
-/** What a value expression's aggregate computes: an aggregate rule's modes, plus `count` and the
- *  least / greatest item value. */
+/** What an aggregate rule compares: a sum, an average, or the picked values (`pick`: the window's
+ *  `aggregate.field` values, one for `take: 1`, a list otherwise; check() only). */
+export type AggregateMode = 'sum' | 'avg' | 'pick';
+/** What a value expression's aggregate computes: an aggregate rule's modes, plus `count`, the
+ *  least / greatest item value and the distinct values. */
 export type ValueAggregateMode = AggregateMode | 'count' | 'min' | 'max' | 'distinct';
 
 export type RuleValue = RuleScalar | Date | RegExp | RuleValue[] | { [key: string]: RuleValue };
@@ -235,9 +237,13 @@ export type StrictDateDayRule =
 
 export type StrictDateRule = StrictDateComparisonRule | StrictDateRangeRule | StrictDateDayRule;
 
-type AggregateRuleBase<TRuleValue = RuleValue, TDateValue = DateRuleValue> = {
+type AggregateRuleBase<
+  TRuleValue = RuleValue,
+  TDateValue = DateRuleValue,
+  TMode extends AggregateMode = Exclude<AggregateMode, 'pick'>,
+> = {
   field: string;
-  aggregate: { mode: AggregateMode; field?: string };
+  aggregate: { mode: TMode; field?: string };
   condition?: StrictCondition<TRuleValue, TDateValue>;
   error?: string;
 };
@@ -261,7 +267,25 @@ export type StrictAggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleVal
   | (AggregateRuleBase<TRuleValue, TDateValue> & {
       operator: AggregateRangeOperator;
     } & ValueSource<[number, number]>)
-  | (AggregateRuleBase<TRuleValue, TDateValue> & { operator: AggregatePresenceOperator });
+  | (AggregateRuleBase<TRuleValue, TDateValue> & { operator: AggregatePresenceOperator })
+  | StrictPickRule<TRuleValue, TDateValue>;
+
+type PickMembershipOperator = OperatorValues['in'] | OperatorValues['notIn'];
+type PickContainsOperator = OperatorValues['contains'] | OperatorValues['notContains'];
+
+/** A `pick` aggregate rule: the picked value compared as a field holding it is — one value for
+ *  `take: 1`, a list otherwise (which `contains` / `notContains` test for a member). */
+export type StrictPickRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = WindowFields &
+  AggregateRuleBase<TRuleValue, TDateValue, 'pick'> & {
+    coerceType?: FieldKind;
+    caseInsensitive?: boolean;
+  } & (
+    | ({ operator: AggregateSingleOperator } & ValueSource<OrderedRuleValue | boolean | null>)
+    | ({ operator: AggregateRangeOperator } & ValueSource<[OrderedRuleValue, OrderedRuleValue]>)
+    | ({ operator: PickMembershipOperator } & ValueSource<TRuleValue[]>)
+    | ({ operator: PickContainsOperator } & ValueSource<TRuleValue>)
+    | { operator: AggregatePresenceOperator }
+  );
 
 // --- Windowing selector (v2.6.0) ---
 // Ordered selection on array/aggregate rules. Pipeline: order → skip → take.
@@ -281,9 +305,9 @@ export type AggregateRule<TRuleValue = RuleValue, TDateValue = DateRuleValue> = 
   operator: Operator;
   error?: string;
   // A numeric kind each item is parsed as before it is added ('3' → 3); without it items are
-  // numbers as stored.
+  // numbers as stored. Under `pick`, any kind each picked value is read as.
   coerceType?: FieldKind;
-} & ValueSourceFields<number | [number, number]>;
+} & ValueSourceFields<RuleValue>;
 
 export type Rule<TValue = RuleValue> = ValueSourceFields<TValue> & {
   field: string;
@@ -393,8 +417,8 @@ export type AggregateValue<TRuleValue = RuleValue, TDateValue = DateRuleValue> =
   field: string;
   aggregate: { mode: ValueAggregateMode; field?: string };
   condition?: Condition<TRuleValue, TDateValue>;
-  /** `distinct` / `min` / `max`: read each value as this kind first (`'10'` as 10, an ISO string
-   *  as a date, `Decimal('1')` as 1). Without it values compare as stored, kind by kind. */
+  /** `distinct` / `min` / `max` / `pick`: read each value as this kind first (`'10'` as 10, an ISO
+   *  string as a date, `Decimal('1')` as 1). Without it values compare as stored, kind by kind. */
   coerceType?: FieldKind;
   /** `distinct` over strings: `'Acme'` and `'acme'` are one value (the first seen is kept).
    *  Defaults to the engine's `string.caseInsensitive`. */

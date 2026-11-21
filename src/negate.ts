@@ -11,8 +11,9 @@ import {
 } from './operatorCatalog';
 import { parseScopeRef, readPath, type Scopes } from './scope';
 import { allOf, anyOf, conditionShape, leafSources } from './traverse';
-import type { Condition, Rule, RuleValue, ValueSourceFields } from './types';
+import type { Condition, Rule, RuleValue, ValueSourceFields, WindowFields } from './types';
 import { hasPath, matchSource, type ReadSource, readBinding } from './valueSource';
+import { isNullOverNoValues } from './window';
 
 type Node = Record<string, unknown>;
 type Source = ValueSourceFields<unknown>;
@@ -59,8 +60,9 @@ const negateLeaf = (node: Node, settle: Settle, depth: number): Condition => {
     const flip = own(COMPLEMENT_OPERATORS, leaf.operator as string);
     if (flip) return { ...leaf, operator: flip } as Condition;
     const opposite = { ...leaf, operator: own(OPPOSITE_OPERATORS, leaf.operator as string) };
-    // A sum is never NULL; an average over no values is, and the opposite comparison is false there.
-    return (leaf.aggregate as { mode?: unknown }).mode === 'avg'
+    // A sum is never NULL; an average over no values is, as a pick of no row is, and the opposite
+    // comparison is false there.
+    return isNullOverNoValues(leaf as WindowFields & { aggregate: { mode?: unknown } })
       ? anyOf([opposite as Condition, presence(leaf, 'notExists')])
       : (opposite as Condition);
   }

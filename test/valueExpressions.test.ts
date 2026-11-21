@@ -286,8 +286,16 @@ const over = (mode: string, field?: string): ValueExpression =>
 const rows = (...missions: Record<string, unknown>[]) => ({ fanMissions: missions });
 
 describe('aggregate modes', () => {
-  test('VALUE_AGGREGATE_MODES lists every mode; aggregate rules still compare sum and avg only', () => {
-    expect([...VALUE_AGGREGATE_MODES]).toEqual(['sum', 'avg', 'count', 'min', 'max', 'distinct']);
+  test('VALUE_AGGREGATE_MODES lists every mode; aggregate rules compare sum, avg and pick only', () => {
+    expect([...VALUE_AGGREGATE_MODES]).toEqual([
+      'sum',
+      'avg',
+      'count',
+      'min',
+      'max',
+      'distinct',
+      'pick',
+    ]);
     const countRule = {
       field: 'fanMissions',
       aggregate: { mode: 'count' },

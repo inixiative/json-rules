@@ -13,11 +13,15 @@ import type { PrismaWhere } from './types';
  * buildNestedFilter('user.profile.bio', { contains: 'hello' })
  * // → { user: { profile: { bio: { contains: 'hello' } } } }
  */
-export const buildNestedFilter = (field: string, filter: unknown): PrismaWhere => {
+export const nestUnderPath = (field: string, leaf: unknown): Record<string, unknown> => {
   const parts = field.split('.');
-  let result: unknown = filter;
+  let result: unknown = leaf;
   for (let i = parts.length - 1; i >= 0; i--) {
-    result = { [parts[i]]: result };
+    result = { [parts[i] as string]: result };
   }
-  return result as PrismaWhere;
+  return result as Record<string, unknown>;
 };
+
+/** A filter nested under its dotted field: `nestUnderPath`, as a Prisma where. */
+export const buildNestedFilter = (field: string, filter: unknown): PrismaWhere =>
+  nestUnderPath(field, filter) as PrismaWhere;

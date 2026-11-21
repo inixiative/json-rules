@@ -169,7 +169,8 @@ Supported comparison operators for aggregate rules: `equals`, `notEquals`, `less
 
 ### Aggregate Rule
 
-Computes `sum` or `avg` of an array and compares the result to a value.
+Computes `sum` or `avg` of an array and compares the result to a value — or picks the window's
+values (`pick`, check() only; see Value Expressions) and compares those.
 
 ```ts
 // Primitive numeric array
@@ -240,9 +241,35 @@ already use. `evaluateValue(expression, row, options)` takes what `check()` take
 values, as SQL's `AVG`, and in an aggregate rule), `count` (the rows; with `aggregate.field`, the rows whose field has a value),
 `min` and `max` (numbers or dates, the value as stored; null over no rows), and `distinct`
 (strings, enums, dates, booleans or numbers: the values without repeats, first seen first, NULLs
-skipped; `[]` over no rows). The window
-runs first (filter → order → skip → take), then `condition`. An aggregate rule still compares
-`sum` / `avg` only.
+skipped; `[]` over no rows), and `pick` (any kind: the rows' values themselves, in the window's
+order, NULLs skipped — one value for `take: 1`, null over no row; a list otherwise, `[]` over none;
+with no `orderBy` it picks in the order the rows are in). A window orders its keys as the rows
+carry them: values in mixed forms (numbers as strings, dates as strings in differing formats) order
+oddly, so coerce the rows first (`coerceValue` stamps the picked values, not the order keys).
+In a rule, a `take: 1` pick over no row is absent, as a path the row doesn't carry: null by
+default, unknown under `absent: 'unknown'`; a row that holds NULL is null either way.
+The window runs first (filter → order → skip → take), then `condition`. An aggregate rule compares
+`sum`, `avg` and `pick`.
+
+```ts
+// The winning source's job title: the jobTitle row with the lowest sourceRank
+{
+  field: 'enrichments',
+  filter: { field: 'field', operator: 'equals', value: 'jobTitle' },
+  orderBy: [{ field: 'sourceRank', dir: 'asc' }],
+  take: 1,
+  aggregate: { mode: 'pick', field: 'value' },
+}
+// As a rule: add a comparison. A take-1 pick compares as a field holding the value does;
+// a list pick (any take but 1) takes contains / notContains of one value.
+{ ...winningJobTitle, operator: 'equals', value: 'CTO' }
+```
+
+`pick` is check() / `evaluateValue` only: it is what its window orders, and neither compiler
+compiles an ordered window — `toSql` compiles no window, and a Prisma `where` can't read "the
+first row by X" of a relation. `validateRule` refuses it for `toSql` / `toPrisma`
+(`unsupported_sql_aggregate_mode` / `unsupported_prisma_aggregate_mode`), and the compilers throw
+the same message.
 
 Values compare as stored, kind by kind: `distinct` keeps `1`, `Decimal('1')`, `1n` and `'1'` as
 four values, which shows mixed data rather than hiding it. To read them as one kind, give
@@ -296,7 +323,7 @@ What a consumer checks before saving one:
 | Function | Purpose |
 | --- | --- |
 | `validateValue(expr)` / `assertValidValue(expr)` | The shape, without data: each node exactly one kind, known keys, a known mode, and every condition it holds valid as `validateRule` sees it. |
-| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null); with `coerceType`, that kind. Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
+| `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null), `pick` → the column's kind (nullable) for `take: 1`, else a list of it; with `coerceType`, that kind. Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
 | `valueClockUnit(expr)` | `clockUnit` over every condition the expression holds: a 90-day window reads `day`. |
 | `describeValue(expr, lens)` | Its type, the dotted paths it reads (`brandReferenceRequestFanUsers.activatedAt`), its clock unit, and every issue (shape, lens gate, type) as `{ path, code, message }`, without throwing. |
 
@@ -1215,7 +1242,7 @@ Lens & bridges:
 - `validateNarrowing`, `assertValidNarrowing`, `validateRuleInLens`, `narrowRule`, `coerceRule`
 - `bindLens`, `listLensBindings`, `getLensRoot`, `clampLens`, `LensClamps`
 - `projectLens`, `walkLensPath`, `readLensValue`, `LensValue`, `describeRule`, `describeRuleSources`
-- `toLensSelect`, `projectRows`, `LensSelect`, `LensRelationSelect`, `LensSelectOptions`, `ProjectRowsOptions`
+- `toLensSelect`, `projectRows`, `LensQuery`, `LensSelect`, `LensRelationSelect`, `LensOrderBy`, `LensOrderKey`, `LensSelectOptions`, `ProjectRowsOptions`
 - `toSourceQueries`, `materializeSources`, `materializeSourceQuery`
 - `toLensWhereSql`, `LensWhereSql`, `LensWhereSqlOptions`
 - `PathProjection`, `ProjectedVisit`, `ProjectLensOptions`, `LensPathHop`, `LensPathResolution`, `RuleDescription`, `RuleSourceDescription`, `SourceQuery`, `SourcePrismaQuery`, `SourceSqlQuery`, `SourceSelect`, `SourceValues`, `SourceRowShape`, `MaterializeSourceQueryOptions`
@@ -1548,7 +1575,7 @@ Composition across chained narrowings is pure intersection: relations are turned
 | `readLensValue(lens, row, path, options?)` | One value off a row, as the lens shows it: `{ ok: true, value }`, or `{ ok: false, reason }`, where `reason` is `hidden` / `missing` / `pastScalar` (the walk `validateRuleInLens` gates a field with), `relation` (the path ends on rows, not a value) or `list` (it crosses a to-many). Each row on the way, the root included, is checked against its visit's clamps: one a clamp hides, or a missing one, reads `null`. Only own properties are read, into a Json column too. `options` is what each clamp is checked with (`now`, `bindings`). For values a template interpolates. |
 | `orderRecords(items, orderBy)` | Records sorted by an `OrderBy` exactly as a window orders them on every rail: each key in turn, own-property path reads, `dir` order, NULL or absent last in either direction, ties in input order. Returns a new array. Strings sort in JavaScript code-unit order, which can differ from a database's collation (see [Where the Rails Differ](#where-the-rails-differ)). |
 | `narrowRule(rule, narrowing)` | Composes the user rule with the lens's `where` clauses, injecting each at its anchor in the rule tree. Under an `all`, the clamp goes into the rule's window `filter`, which `check()` evaluates and `toPrisma` folds into the rule (`toSql` compiles no relation arrays). Other rules pass to `check` / `toPrisma` / `toSql`. |
-| `coerceValue(expression, lens)` | Stamps each `distinct` / `min` / `max` over a DateTime column with `coerceType: 'DateTime'`, so rows that carry dates as ISO strings (plain JSON) read them as dates. Leaves other kinds (a Decimal `min` / `max` still returns the value as stored), an aggregate that names its own `coerceType`, and one the lens can't type. |
+| `coerceValue(expression, lens)` | Stamps each `distinct` / `min` / `max` / `pick` over a DateTime column with `coerceType: 'DateTime'`, so rows that carry dates as ISO strings (plain JSON) read them as dates. Leaves other kinds (a Decimal `min` / `max` still returns the value as stored), an aggregate that names its own `coerceType`, and one the lens can't type. |
 | `coerceRule(rule, lens)` | Stamps each field rule with its field's `coerceType` from the lens (`Int`, `Float`, `Decimal`, `BigInt`, `DateTime`, `Boolean`, `String`). Leaves date rules, aggregate comparisons, rules that already carry a `coerceType`, and anything below a Json column alone. |
 
 ```ts
@@ -1763,7 +1790,7 @@ const holds = forRecheck.filter((row) => check(narrowRule(rule, narrowing), row,
 
 | Function | Purpose |
 | --- | --- |
-| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's clamps compiled as its `where`, so related rows come pre-narrowed, unless a clamp reads that list: a clamp reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its clamp hides. A relation that shows no column (one turned on with all its columns hidden, or one a clamp reads only for presence or a count) is fetched by its key alone (the join key, else `id`), even a hidden one, as a clamp's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads (the value, its label and axes, and every column and relation its option query's condition reads), as it does a clamp's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. For a source across a bridge that is its local reads: what it reads on this side, hidden or not, and each crossed bridge's local `on` key, so the rows plus the far side loaded under its bridge field answer it. A to-many relation's clamp that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the clamps. The root's own clamps are the query's `where`: `toPrisma(rule, { lens })`. |
+| `toLensSelect(lensOrNarrowing, options?)` | `{ select }` for `findMany` at the base model, with `orderBy` beside it when the lens orders the root rows (`root.orderBy`, or a model default on the root model); spread both into the query. It selects each visit's visible columns and the relations turned on there (one that is off is not fetched; the model-default tree bounds it), and every column a `where` on the way reads. A to-many relation carries its visit's clamps compiled as its `where`, so related rows come pre-narrowed, unless a clamp reads that list: a clamp reads it whole, as the database does, so it is fetched whole and `projectRows` cuts it. A to-one relation takes no `where` in Prisma, so `projectRows` drops one its clamp hides. A relation that shows no column (one turned on with all its columns hidden, or one a clamp reads only for presence or a count) is fetched by its key alone (the join key, else `id`), even a hidden one, as a clamp's columns are; never another column. The fetch carries it for the re-check and a viewer's projection drops it; a model with no key is not fetched, and presence on it can't be re-checked from fetched rows. A root that shows no column is selected by its `id` likewise. Bridges are skipped. It also selects what each projected source reads (the value, its label and axes, and every column and relation its option query's condition reads), as it does a clamp's columns, so `materializeSources` over the fetched rows offers what the database does; a viewer's projection drops them. For a source across a bridge that is its local reads: what it reads on this side, hidden or not, and each crossed bridge's local `on` key, so the rows plus the far side loaded under its bridge field answer it. A to-many relation's clamp that needs a counting step (a count or an aggregate), or has a window toPrisma can't compile, is refused (a `LensRefusal`, which `validateNarrowing` reports) before anything compiles. `options` is the clock for compiling the clamps. The root's own clamps are the query's `where`: `toPrisma(rule, { lens })`. |
 | `projectRows(lensOrNarrowing, rows, options?)` | Rows cut to what the lens shows, recursively. Hidden columns, and relations that are off or omitted, are removed. A row a visit's `where` hides is dropped from the root or a list, and a to-one row becomes `null`. `keepClampColumns: true` keeps the columns those `where`s and the projected sources read, even hidden ones, and a hidden to-one row, or a hidden row of a list a clamp reads, as those columns alone, so `check(narrowRule(rule, lens), row)` re-tests the clamps as the database does, for any rule the lens admits; that output carries hidden values, so never return it to a viewer. The other options (`now`, `bindings`) are what each `where` is checked with. A `Decimal` column's value, whether a Decimal.js-like object such as Prisma's `Decimal` (anything with `toNumber()`) or a numeric string, comes back a number, a list column element by element; a non-numeric value passes through. Plain JSON out. |
 
 ### Supplied bridges (no join)

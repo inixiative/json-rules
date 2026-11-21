@@ -1,5 +1,5 @@
 import { isObject, some } from 'lodash-es';
-import { checkDate } from './date';
+import { checkDate, coercionZone } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
 import {
   ambiguousCondition,
@@ -34,7 +34,7 @@ import type {
   WindowFields,
 } from './types';
 import { coerceAggregateValue } from './value/coerceAggregateValue';
-import { applyWindow } from './window';
+import { applyWindow, picksOne } from './window';
 
 /** `bindings`: the caller's values, read by `{ bind }`. The rest is the clock and zone. */
 export type CheckOptions = {
@@ -232,15 +232,52 @@ export const sumOrAverage = (
   return numbers.length === 0 ? null : sum / numbers.length;
 };
 
+/** The values a `pick` returns: each item's `aggregate.field` (or the item itself), in the window's
+ *  order, read through `read`; NULLs skipped, as every mode skips them. For `take: 1`, the one
+ *  row's value: null when it holds NULL, and undefined over no row or a row that doesn't carry the
+ *  field — absent, as a path the row doesn't carry is. Else the list (`[]` over none). */
+export const pickValues = (
+  node: WindowFields & { field: string },
+  items: unknown[],
+  itemField: string | undefined,
+  read: (raw: unknown) => unknown,
+): unknown => {
+  const values = aggregateValues(items, node.field, itemField, read);
+  if (!picksOne(node)) return values;
+  if (values.length > 0) return values[0];
+  const [item] = items;
+  const raw = itemField ? readOwnPath(item, itemField) : item;
+  return raw === undefined ? undefined : null;
+};
+
 const checkAggregate = (condition: AggregateRule, opts: EvalOptions): boolean | string => {
   const { mode, field: itemField } = condition.aggregate;
   // An unknown mode is a malformed rule, not a failed match: a negation must not turn it true.
   if (!AGGREGATE_MODES.includes(mode)) throw unknownAggregateMode(mode);
   const items = aggregateItems(condition, opts);
-  // An aggregate compares like a field whose value it computes.
+  const field = `${condition.field} ${mode}`;
+  // A pick compares as a field holding the picked value does: its coerceType reads the picked
+  // values as the value evaluator reads them, and checkField the comparison's side.
+  if (mode === 'pick') {
+    const read = coerceAggregateValue(
+      condition.coerceType,
+      coercionZone(condition.coerceType, opts),
+    );
+    const picked = pickValues(condition, items, itemField, read);
+    return checkField(
+      { ...condition, field } as unknown as Rule,
+      opts.scopes,
+      opts.bindings,
+      opts,
+      {
+        value: picked,
+      },
+    );
+  }
+  // A sum or average compares like a field whose value it computes; its coerceType parsed the items.
   const { coerceType, ...comparison } = condition;
   const result = sumOrAverage(mode, items, condition.field, itemField, coerceType);
-  const labelled = { ...comparison, field: `${condition.field} ${mode}` } as unknown as Rule;
+  const labelled = { ...comparison, field } as unknown as Rule;
   return checkField(labelled, opts.scopes, opts.bindings, opts, { value: result });
 };
 

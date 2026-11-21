@@ -1,3 +1,66 @@
+## 4.5.0 — `pick`: the window's values; a lens orders the rows it reads
+
+Why: a window could filter, order and cut a relation's rows, but a value over it could only be an
+aggregate of them, so neither a template nor a rule could say "the winning value" or "the top 3
+values". Aron: "a pick-N aggregate on the existing window (`orderBy` / `take` / `skip` / `filter`)
+that returns the picked values: one value for take 1, a list otherwise. Usable as a value expression
+and in rules", and "`orderBy` on to-many relations in the lens".
+
+- **`aggregate: { mode: 'pick', field? }`** returns the window's `aggregate.field` values (or the
+  items themselves) in its order, NULLs skipped as every mode skips them: one value for `take: 1`
+  (null over no row), else a list (`[]` over none). Any kind; `coerceType` reads each value as its
+  kind. A value expression (`evaluateValue`, `categorize`) and an aggregate rule: a take-1 pick
+  compares as a field holding the value does (the aggregate comparisons, `in` / `notIn`,
+  `contains` / `notContains`, `equals null` the is-null sentinel); a list pick takes `contains` /
+  `notContains` of one value. Over no row a positive comparison fails and a negated one holds;
+  `negate()` adds the "no value" arm, as for `avg`. `inferValueType` / `describeValue` type it as
+  the column's kind, nullable for take 1, else a list; `coerceValue` stamps it over a DateTime
+  column.
+- **A `take: 1` pick over no row is absent**, as a path the row doesn't carry is (Aron,
+  2026-11-20): in a rule it reads as null by default and as unknown under `absent: 'unknown'`,
+  as is a picked row that doesn't carry the field, while a row that holds NULL is null under both. A value (`evaluateValue`) reads either as null.
+- **A pick with no `orderBy` picks in the order the rows are in**, as every other mode over a cut
+  window does: there is no pick-only rule for it. A window orders its keys as the rows carry them,
+  so values in mixed forms order oddly; coerce the rows first (Aron: "If you order by things that
+  you haven't touched, expect it to be weird").
+- **`pick` is check() only, refused when the rule is validated.** It is what its window orders, and
+  neither compiler compiles an ordered window: `toSql` compiles no window and no relation aggregate,
+  and a Prisma `where` has no "first row of a relation by X" read. `validateRule({ target })`
+  reports `unsupported_sql_aggregate_mode` / `unsupported_prisma_aggregate_mode`, and `toSql` /
+  `toPrisma` throw the same message before anything else. `AGGREGATE_MODE_CATALOG` entries carry
+  `compiled`; `aggregateModesForKind(kind, { compiled: true })` and `isCompiledAggregateMode(mode)`
+  read it. `getAggregateOperators(mode?, { list? })` gives a pick's operators.
+- **A lens orders the rows it reads**: `orderBy: [{ field, dir }]` on the root, on a to-many
+  relation's object, or on a model default (which applies at the root and every to-many visit of
+  its model). `toLensSelect` returns `{ select, orderBy? }` (new type `LensQuery`): spread it into
+  `findMany` and the root rows come back ordered; `projectRows` orders the root rows the same way.
+  A key's `field` is a column of the node's model or a path to one through to-one relations
+  (`org.seats`): Prisma's nested `orderBy` in the query, the path fetched even where the relation
+  is off or hidden, a row with no related one last. A key is its dotted names (`invalid_order_by` otherwise).
+  Refused: a to-many hop, a bridge, a path into
+  Json, a required column behind an optional relation (Prisma states NULL placement only on a
+  nullable column), and — in a later layer — a path across a relation its parent clamps. `toLensSelect` writes it as the relation's Prisma `orderBy` (a nullable column
+  `{ sort, nulls: 'last' }`), and `projectRows` sorts each list by it, a NULL last either way, ties
+  as fetched (a total order is the caller's to give). The select carries the order's columns even
+  when the visit hides them and `projectRows` cuts them, so the database and in-memory rails return
+  the same order (PGlite differential in
+  `test/rails.lens.test.ts`), when the rows carry each column as its own kind. A later layer's
+  order replaces an earlier one's; it names only columns its parent shows at every visit it applies
+  to, on the path or as a model default (`not_visible`: the rule a `where` follows, so a layer may
+  order by a column it hides itself), and only number and date columns (`wrong_kind`: a string's
+  code-unit order would disagree with a collation, as for `min` / `max`). An `orderBy` written on a
+  to-one relation is refused (`wrong_kind`): it is one row. `validateNarrowing` checks it, a malformed
+  one included (`invalid_order_by`, the window's own shape check), and every posture refuses a
+  column it refuses (`LensRefusal`) rather than order by it. An empty `orderBy` leaves an earlier
+  layer's order in place. New types `LensOrderBy`, `LensOrderKey`.
+- **Under a lens a pick of one is checked as a field rule on the column it picks**:
+  `validateRuleInLens` checks its operator and value against that column's kind and its allowed
+  values (an enum the lens narrows). A list pick tests the list, and a pick with no
+  `aggregate.field` a scalar list's elements: neither is checked this way.
+- `AggregateMode` is `'sum' | 'avg' | 'pick'`; `orderRecords` takes an optional key reader.
+  `AGGREGATE_MODE_CATALOG` entries also carry `nullOverNoValues`, which `negate()`, the value
+  typer and both compilers read (a pick only when it picks one).
+
 ## 4.4.0 — the engine fills bridges; a match needs exists
 
 Why: Aron 2026-11-21, on how bridge data gets into a check: "the engine should bridge your data,

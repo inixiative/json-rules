@@ -9,10 +9,10 @@ modules allowed to implement it, and every exported function must appear in this
 | Verb | Name | What it does |
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
-| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal (a `{ value, coerceType }` one read as that kind), a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` through its window), the branch an `if` picks, a list (experimental). |
+| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal (a `{ value, coerceType }` one read as that kind), a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` / `pick` through its window), the branch an `if` picks, a list (experimental). |
 | categorize | `categorize` | Put a row in a category: the value of the first case whose rule holds (or, with `match: 'all'`, of every one), else the default. |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
-| compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s. |
+| compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s, and each `orderBy` the lens gives (the root's beside `select`). |
 | compile | `toWhereSql`, `toLensWhereSql` | Compile a condition, or a lens's `where`s where the lens wrote them (`root`, `relations` by path, `mapDefaults` by map and model), to a predicate in the engine's `sql.dialect`: values inline, columns from the caller's `columns` map, no joins. Equality, membership and existence inside `all` / `any`, and `any` / `all` / `none` / `empty` / `notEmpty` on a to-many relation as an `EXISTS` subquery on the caller's `tables` — or, with `toMany: 'join'`, `notEmpty` / `any` in the root's `where` on the caller's LEFT JOIN of the relation; anything else throws. |
 | compile | `toSourceQueries` | Compile a lens's sources to option queries (Prisma and SQL). |
 | execute | `executePrismaPlan` | Run a Prisma query plan's steps and return its final WHERE. |
@@ -55,9 +55,10 @@ modules allowed to implement it, and every exported function must appear in this
 | read | `declaredEnumValues` | An enum field's values: its own, else the map's for its type. |
 | embed | `recordWithBridgeData` | A record with its bridges filled: every key it carries naming a model of the set's maps dropped, each bridge's far row put under its endpoint key from the one `data` `indexBridges` takes (joined by `on`, supplied as the one row given), far rows without bridge keys of their own. |
 | read | `parseScopeRef`, `readScopeRef`, `pathSegments` | Parse a `$`-prefixed ref; read which scope it names; split a path into the keys `check()` reads. |
-| order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths, NULLs last, stable. |
+| order | `orderRecords` | Records sorted by an `OrderBy` as every rail orders a window: own-property paths (or the caller's key reader), NULLs last, stable. |
 | look up | `getOperatorsForKind`, `getArrayOperators`, `getAggregateOperators`, `getValueShape`, `getConditionShapeKeys` | Read the operator and condition-shape catalogs. `getOperatorsForKind(kind, target, { positive: true })` leaves out the operators that hold on a missing value, the ones `validateRule({ positive })` refuses. |
-| look up | `aggregateModesForKind` | The aggregate modes that read values of a kind; `{ comparable: true }` keeps the ones an aggregate rule compares. |
+| look up | `aggregateModesForKind` | The aggregate modes that read values of a kind; `{ comparable: true }` keeps the ones an aggregate rule compares, `{ compiled: true }` the ones it compiles to SQL and Prisma. |
+| look up | `isCompiledAggregateMode` | Whether an aggregate rule in a mode compiles on `toSql` / `toPrisma` (`sum`, `avg`; `pick` is check() only). |
 
 `engineGlobals` (configure) holds process-wide defaults, one store per process however many
 copies are loaded; `registerEngineGlobals` adds a library's own namespace to it; `Operator`, `DateOperator`,

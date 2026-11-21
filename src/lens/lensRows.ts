@@ -2,12 +2,15 @@ import { modelOf, own, ownEntry } from '@inixiative/field-map';
 import { type CheckOptions, check } from '../check';
 import { isRelationEntry } from '../fieldMap/entry.ts';
 import type { FieldMapEntry, LensFieldMap } from '../fieldMap/types';
-import { type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
+import { fieldEntry, type MapVisit, relationTargetOf } from '../fieldMap/walk.ts';
+import { readOwnPath } from '../scope';
 import { toPrisma } from '../toPrisma/index.ts';
 import { inverseRelation } from '../toPrisma/relationUtils';
 import type { PrismaWhere, ToPrismaOptions, WhereStep } from '../toPrisma/types.ts';
+import { nestUnderPath } from '../toPrisma/utils';
 import { allOf } from '../traverse';
-import type { Row } from '../types';
+import type { OrderBy, Row, SortDir } from '../types';
+import { orderRecords } from '../window';
 import { decimalValue } from './decimalValue.ts';
 import {
   isFieldVisible,
@@ -21,9 +24,57 @@ import { readPaths } from './readPaths.ts';
 import { localReads, type SourcePlan, sourcePlansWith } from './sourceOptions.ts';
 import type { Lens, LensNarrowing } from './types.ts';
 
-/** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where`. */
+/** A Prisma `select` tree: a column, or a relation with its own `select` and, to-many, `where` and
+ *  `orderBy`. */
 export type LensSelect = { [field: string]: true | LensRelationSelect };
-export type LensRelationSelect = { select?: LensSelect; where?: PrismaWhere };
+/** What `toLensSelect` hands a `findMany`: the select, and the root rows' order when the lens
+ *  gives one. */
+export type LensQuery = { select: LensSelect; orderBy?: LensOrderBy };
+export type LensRelationSelect = {
+  select?: LensSelect;
+  where?: PrismaWhere;
+  orderBy?: LensOrderBy;
+};
+/** Prisma's `orderBy` for a node's rows: each key a column, nested under the to-one relations its
+ *  path crosses; a nullable column sorts its NULLs last, as check() orders a window. */
+export type LensOrderBy = Record<string, LensOrderKey>[];
+export type LensOrderKey =
+  | SortDir
+  | { sort: SortDir; nulls: 'last' }
+  | { [relation: string]: LensOrderKey };
+
+// The column an order key ends on, through the to-one relations its path crosses.
+const orderKeyEntry = (policy: Policy, at: MapVisit, field: string): FieldMapEntry | undefined =>
+  fieldEntry(field, own(policy.lens.maps, at.mapName), at.modelName);
+
+// A visit's rows in its order, as the database returns them under `toLensSelect`: a Decimal key
+// orders as its number.
+const inVisitOrder = <T>(policy: Policy, at: MapVisit, rows: readonly T[]): readonly T[] => {
+  const order = resolveVisit(policy, at.mapName, at.modelName, at.relPath).orderBy;
+  if (!order) return rows;
+  return orderRecords(rows, order, (row, key) =>
+    decimalValue(orderKeyEntry(policy, at, key), readOwnPath(row, key)),
+  );
+};
+
+// A select tree with an order's own paths: the fetch carries them, shown or not, for projectRows
+// to order by and cut. Only where the order applies — the root and a to-many relation's visit.
+const withOrderPaths = (tree: PathTree, orderBy: OrderBy | null | undefined): PathTree =>
+  orderBy
+    ? withPaths(
+        tree,
+        orderBy.map((key) => key.field),
+      )
+    : tree;
+
+// A visit's `orderBy` as Prisma reads it: each key nested under the relations its path crosses.
+const prismaOrderBy = (policy: Policy, at: MapVisit, orderBy: OrderBy): LensOrderBy =>
+  orderBy.map(({ field, dir }) => {
+    const leaf: LensOrderKey = orderKeyEntry(policy, at, field)?.isRequired
+      ? dir
+      : { sort: dir, nulls: 'last' };
+    return nestUnderPath(field, leaf) as Record<string, LensOrderKey>;
+  });
 
 /** What a clamp's compile reads: the clock, never a schema (the lens is it). */
 export type LensSelectOptions = Omit<ToPrismaOptions, 'map' | 'mapName' | 'model' | 'lens'>;
@@ -42,6 +93,10 @@ const addPaths = (tree: PathTree, paths: readonly string[]): PathTree => {
   }
   return tree;
 };
+
+// A copy of a tree with more paths in it.
+const withPaths = (tree: PathTree, paths: readonly string[]): PathTree =>
+  addPaths(mergeTrees({}, tree), paths);
 
 const mergeTrees = (into: PathTree, from: PathTree): PathTree => {
   for (const [segment, below] of Object.entries(from))
@@ -88,10 +143,7 @@ const readsAt = (reads: SourceReads, at: MapVisit): readonly string[] =>
 
 // The columns a visit's clamps read, with any already asked for below it.
 const clampTree = (policy: Policy, at: MapVisit, below: PathTree | undefined): PathTree =>
-  addPaths(
-    mergeTrees({}, below ?? {}),
-    clampPaths(resolveVisit(policy, at.mapName, at.modelName, at.relPath)),
-  );
+  withPaths(below ?? {}, clampPaths(resolveVisit(policy, at.mapName, at.modelName, at.relPath)));
 
 // A visit the lens shows (`declared`: its visible columns, the relations turned on), or one only a
 // clamp reads (`paths`: the columns the clamp reads).
@@ -166,9 +218,7 @@ const selectAt = (
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
   const paths =
-    mode === 'paths'
-      ? extra
-      : addPaths(mergeTrees({}, extra), [...clampPaths(effect), ...readsAt(reads, at)]);
+    mode === 'paths' ? extra : withPaths(extra, [...clampPaths(effect), ...readsAt(reads, at)]);
   const select: LensSelect = {};
   for (const [field, entry] of Object.entries(fields)) {
     const visible = mode !== 'paths' && isFieldVisible(effect, field);
@@ -184,17 +234,22 @@ const selectAt = (
     // A relation that is off, and that no clamp reads, is not fetched.
     if (childMode === 'paths' && below === undefined) continue;
     const child = childVisit(at, field, { mapName: at.mapName, modelName: entry.type });
-    const childSelect = selectAt(policy, child, childMode, below ?? {}, options, reads);
+    const shownList =
+      entry.isList && childMode !== 'paths'
+        ? resolveVisit(policy, child.mapName, child.modelName, child.relPath)
+        : null;
+    const orderBy = shownList?.orderBy;
+    const childSelect = selectAt(
+      policy,
+      child,
+      childMode,
+      withOrderPaths(below ?? {}, orderBy),
+      options,
+      reads,
+    );
     // A clamp reads a list whole, as the database does: one it reads is fetched unnarrowed.
     const where =
-      entry.isList && childMode !== 'paths' && below === undefined
-        ? clampWhere(
-            policy,
-            child,
-            resolveVisit(policy, child.mapName, child.modelName, child.relPath),
-            options,
-          )
-        : undefined;
+      shownList && below === undefined ? clampWhere(policy, child, shownList, options) : undefined;
     // Prisma can't select nothing: a relation that shows no column is fetched by its key alone.
     // A relation that shows no column is fetched by its key alone, or — with no key — not at all.
     const key = Object.keys(childSelect).length
@@ -202,7 +257,11 @@ const selectAt = (
       : keyColumn(own(policy.lens.maps, at.mapName), at.modelName, field, entry);
     const shown = key === undefined ? childSelect : { [key]: true as const };
     if (!Object.keys(shown).length) continue;
-    select[field] = { select: shown, ...(where && { where }) };
+    select[field] = {
+      select: shown,
+      ...(where && { where }),
+      ...(orderBy && { orderBy: prismaOrderBy(policy, child, orderBy) }),
+    };
   }
   return select;
 };
@@ -220,18 +279,20 @@ const selectAt = (
 export const toLensSelect = (
   lensOrNarrowing: Lens | LensNarrowing,
   options: LensSelectOptions = {},
-): { select: LensSelect } => toLensSelectWith(resolvePolicy(lensOrNarrowing), options);
+): LensQuery => toLensSelectWith(resolvePolicy(lensOrNarrowing), options);
 
 export const toLensSelectWith = (
   policy: Policy,
   options: LensSelectOptions = {},
   plans: readonly SourcePlan[] = sourcePlansWith(policy),
-): { select: LensSelect } => {
+): LensQuery => {
+  const root = rootVisit(policy);
+  const order = resolveVisit(policy, root.mapName, root.modelName, root.relPath).orderBy;
   const select = selectAt(
     policy,
-    rootVisit(policy),
+    root,
     'declared',
-    {},
+    withOrderPaths({}, order),
     options,
     sourceReads(policy, plans),
   );
@@ -244,7 +305,7 @@ export const toLensSelectWith = (
     );
     if (id && !isRelationEntry(id)) select.id = true;
   }
-  return { select };
+  return { select, ...(order && { orderBy: prismaOrderBy(policy, root, order) }) };
 };
 
 // A relation's value, each related row through `cut`: a list keeps the rows it returns, a single
@@ -286,9 +347,7 @@ const cutRow = (
   const effect = resolveVisit(policy, at.mapName, at.modelName, at.relPath);
   if (!effect.whereClauses.every((where) => check(where, row, options) === true)) return null;
   const fields = modelOf(own(policy.lens.maps, at.mapName), at.modelName)?.fields ?? {};
-  const keep = keepClamps
-    ? addPaths(mergeTrees({}, extra), [...clampPaths(effect), ...readsAt(reads, at)])
-    : {};
+  const keep = keepClamps ? withPaths(extra, [...clampPaths(effect), ...readsAt(reads, at)]) : {};
   const out: Row = {};
   for (const [field, entry] of Object.entries(fields)) {
     if (!Object.hasOwn(row, field)) continue;
@@ -305,8 +364,10 @@ const cutRow = (
       // to-one row, or a list row a clamp reads — as its clamp columns alone, so the narrowed
       // rule's clamp fails on it while an unnarrowed clamp still counts it.
       const readWhole = !Array.isArray(row[field]) || below !== undefined;
+      // A to-many relation's rows come back in its order, as toLensSelect fetches them.
+      const related = row[field];
       out[field] = mapRelation(
-        row[field],
+        Array.isArray(related) ? inVisitOrder(policy, child, related) : related,
         (r) =>
           cutRow(policy, child, r, below ?? {}, keepClamps, options, reads) ??
           (keepClamps && readWhole
@@ -341,7 +402,7 @@ export const projectRows = (
   const reads = keepClampColumns
     ? sourceReads(policy, sourcePlansWith(policy))
     : new Map<string, string[]>();
-  return rows.flatMap((row) => {
+  return inVisitOrder(policy, root, rows).flatMap((row) => {
     const kept = cutRow(policy, root, row, {}, keepClampColumns, options, reads);
     return kept === null ? [] : [kept];
   });

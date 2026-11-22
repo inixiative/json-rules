@@ -111,6 +111,7 @@ type ValidationContext = {
   scopeModels: (string | undefined)[];
   /** Whether each scope sits inside a counting step (a count or relation aggregate condition). */
   stepScopes: boolean[];
+  rowKey?: string;
 };
 
 /** Which engine a rule must compile for; `check` (the default) accepts every rule. The schema
@@ -124,6 +125,9 @@ export type ValidateRuleOptions = {
   /** Refuse every shape that can hold on a value the row doesn't carry: `if`/`then`/`else`,
    *  array and aggregate rules, and the operators that hold on a missing value. */
   positive?: boolean;
+  /** Under `positive`, the column every row carries (`id`): a null check is accepted with an
+   *  `exists` on its own row's key beside it in an `all`. Without it every null check is refused. */
+  rowKey?: string;
 };
 
 /** A rule's shape checked without data: every node well formed, and runnable on `target`
@@ -144,6 +148,7 @@ const newContext = (options: ValidateRuleOptions = {}): ValidationContext => ({
   map: resolveFieldMap(options.map, options.mapName, 'toPrisma'),
   scopeModels: [options.model],
   stepScopes: [false],
+  rowKey: options.rowKey,
 });
 
 /** A value expression's aggregate checked without data: what the aggregate rule over the same
@@ -234,6 +239,10 @@ const matchedField = (node: Record<string, unknown>): string | null => {
   return matchesARead ? node.field : null;
 };
 
+// The key of the row a field is read on: `org.deletedAt` is read on `org`, whose key is `org.id`.
+const rowKeyBeside = (field: string, rowKey: string): string =>
+  [...pathSegments(parseScopeRef(field)?.path ?? field).slice(0, -1), rowKey].join('\u0000');
+
 // The fields an `all` makes exist for everything under it: its `exists` conjuncts.
 const existsInAll = (children: Condition[]): string[] =>
   conjuncts({ all: children }).flatMap((child) => {
@@ -275,6 +284,19 @@ const validateExistsWithMatches = (
       'matchWithoutExists',
       `\`${field}\` is matched against another read, and two missing values match: put { field: '${field}', operator: 'exists' } beside it in an all`,
     );
+  if (
+    context.rowKey &&
+    shape === 'field' &&
+    typeof node.field === 'string' &&
+    namesMissingValue(node) &&
+    !exists.has(rowKeyBeside(node.field, context.rowKey))
+  )
+    pushIssue(
+      context,
+      at,
+      'nullCheckWithoutRowKey',
+      `\`${node.field}\` is checked for null, which also holds where its row is missing: put an exists on the row's \`${context.rowKey}\` beside it in an all`,
+    );
 };
 
 const validatePositive = (condition: unknown, context: ValidationContext): void => {
@@ -296,7 +318,11 @@ const visitPositiveShapes = (condition: unknown, context: ValidationContext): vo
         'notPositive',
         `${shape === 'field' || shape === 'date' ? operator : shape} can hold on a missing value`,
       );
-    else if (shape === 'field' && namesMissingValue(node as Record<string, unknown>))
+    else if (
+      !context.rowKey &&
+      shape === 'field' &&
+      namesMissingValue(node as Record<string, unknown>)
+    )
       pushIssue(
         context,
         '$',

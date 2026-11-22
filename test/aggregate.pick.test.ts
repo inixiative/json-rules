@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   type Condition,
   check,
@@ -328,9 +328,6 @@ describe('pick on the compiled rails: refused when the rule is validated', () =>
     let rails: Awaited<ReturnType<typeof openRails>>;
     beforeAll(async () => {
       rails = await openRails();
-    });
-    afterAll(async () => {
-      await rails.close();
     });
 
     test("check() picks each user's most viewed post title; the compilers refuse", async () => {

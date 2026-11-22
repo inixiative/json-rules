@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { beforeAll, expect, test } from 'bun:test';
 import {
   type Condition,
   createLens,
@@ -20,9 +20,6 @@ beforeAll(async () => {
   rails = await openRails(
     `INSERT INTO users (id, tags) VALUES (6, '{}'); INSERT INTO posts (id, "authorId", views, title) VALUES (104, 6, NULL, NULL), (105, 4, 4, 'x');`,
   );
-});
-afterAll(async () => {
-  await rails.close();
 });
 const ops = [
   'equals',

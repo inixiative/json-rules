@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toSql } from '../src/toSql';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // The toSql twin of test/toPrisma.isEmpty.kinds.test.ts (2.18.3, ZLT-3899): the
 // ''-branch belongs to String (and Json) columns only. Postgres rejects '' on a
@@ -67,17 +68,13 @@ describe('the emitted SQL runs against real non-String columns', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(
       `CREATE TABLE "Enrichment" (id INT, "value" TEXT, "sourceUpdatedAt" TIMESTAMP, score INT)`,
     );
     await db.exec(
       `INSERT INTO "Enrichment" VALUES (1, 'a', NOW(), 5), (2, '', NULL, NULL), (3, NULL, NOW(), 0)`,
     );
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   it('deletedAt-style isEmpty executes instead of raising invalid input syntax', async () => {

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { ScalarType } from '@inixiative/field-map';
 import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
@@ -32,9 +32,6 @@ const now = new Date('2026-10-08T00:00:00Z');
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const userPosts: LensFieldMap = {

@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { bindRule, check, toPrisma, toSql, validateRule } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { validateRuleInLens } from '../src/lens/validateRuleInLens';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // Edges where the rails could part: amounts that aren't whole or are negative, a range with one
 // missing end, row-computed range ends, bigint / Decimal / float bases, and a zone with DST.
@@ -17,7 +18,7 @@ type Row = Record<string, unknown> & { id: number };
 const table = (ddl: string, rows: Row[], columns: string[]) => {
   let db: PGlite;
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`SET TIME ZONE 'UTC'`);
     await db.exec(ddl);
     for (const r of rows) {
@@ -27,9 +28,6 @@ const table = (ddl: string, rows: Row[], columns: string[]) => {
         params,
       );
     }
-  });
-  afterAll(async () => {
-    await db.close();
   });
   return async (
     condition: Condition,

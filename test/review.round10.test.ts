@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
@@ -35,9 +35,6 @@ INSERT INTO posts (id, "authorId", views, title) VALUES (120, 30, 4, 'cy-post'),
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails(SEED);
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });

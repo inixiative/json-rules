@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
 import { bindRule, narrowRule } from '../index';
 import { agree, map, openRails, type Rails } from './rails/harness';
@@ -10,9 +10,6 @@ import { agree, map, openRails, type Rails } from './rails/harness';
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const rule = (r: object): Condition => r as Condition;
@@ -932,9 +929,6 @@ describe('an aggregate over a Json value that is not an array', () => {
       INSERT INTO users (id, meta, tags) VALUES (6, '{"list":"abc"}', '{}'), (7, '{"list":{"x":1}}', '{}');
     `);
   });
-  afterAll(async () => {
-    await odd.close();
-  });
   const cases: [string, object, number[]][] = [
     ['sum', { aggregate: { mode: 'sum' }, operator: 'equals', value: 0 }, [2, 3, 4, 5, 6, 7]],
     ['avg', { aggregate: { mode: 'avg' }, operator: 'notExists' }, [2, 3, 4, 5, 6, 7]],
@@ -975,9 +969,6 @@ describe('an aggregate over numbers stored as strings', () => {
       UPDATE users SET tags = '{}';
       INSERT INTO users (id, meta, tags) VALUES (6, '{"list":["1","2.5"]}', '{"1","2.5"}'), (7, '{"list":["4",null]}', '{}');
     `);
-  });
-  afterAll(async () => {
-    await strings.close();
   });
   const list = (r: object) => rule({ field: 'meta.list', ...r });
   test('with coerceType, every rail adds them', async () => {

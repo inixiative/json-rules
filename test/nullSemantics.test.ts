@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { check, Operator, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 const rows = [
   { name: 'Alice', company: 'acme', score: 10 },
@@ -44,13 +45,9 @@ describe('NULL semantics — check() and toSql agree on every operator', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`CREATE TABLE users (name TEXT, company TEXT, score INT)`);
     await db.exec(`INSERT INTO users VALUES ('Alice','acme',10), ('Bob',NULL,NULL)`);
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   for (const [label, rule] of Object.entries(rules)) {

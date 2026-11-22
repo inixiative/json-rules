@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // A date `path` is read the same way on every rail, a null one fails closed, and a relative
 // window's magnitude can itself be a path — from the row (`$.`, or bare for the root row) — or a
@@ -39,7 +40,7 @@ const rule = (r: object): Condition => r as never;
 let db: PGlite;
 
 beforeAll(async () => {
-  db = new PGlite();
+  db = await scratchDatabase();
   await db.exec(`CREATE TABLE t (id INT, ts TIMESTAMPTZ, cutoff TIMESTAMPTZ, "windowSeconds" INT)`);
   for (const r of rows) {
     await db.query('INSERT INTO t VALUES ($1, $2, $3, $4)', [
@@ -49,10 +50,6 @@ beforeAll(async () => {
       r.windowSeconds,
     ]);
   }
-});
-
-afterAll(async () => {
-  await db.close();
 });
 
 type Bindings = Parameters<typeof bindRule>[1];

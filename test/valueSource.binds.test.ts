@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // One reader for every rule kind: a `bind` resolves on check() for field, date and aggregate
 // rules with the same key-presence contract, and validateRule accepts it as a value source.
@@ -75,13 +76,9 @@ describe('an optional or null date bind fails closed on every rail', () => {
   ];
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec('CREATE TABLE t (id INT, ts TIMESTAMPTZ)');
     await db.exec(`INSERT INTO t VALUES (1, '2026-10-06T09:00:00Z'), (2, NULL)`);
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   const both = async (r: Condition, bindings: Record<string, unknown>, expected: number[]) => {

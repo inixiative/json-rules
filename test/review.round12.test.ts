@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   type Condition,
   check,
@@ -31,9 +31,6 @@ beforeAll(async () => {
   rails = await openRails(
     `INSERT INTO orgs (id, name, plan) VALUES (15, 'R', 'free'); INSERT INTO users (id, name, tags, "orgId") VALUES (9, 'nine', '{}', 15);`,
   );
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 describe('R12-1: rows a viewer projection nulled are refused, not read as absent', () => {

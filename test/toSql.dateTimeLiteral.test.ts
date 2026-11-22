@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import { check } from '../src/check';
 import type { LensFieldMap } from '../src/fieldMap/types';
 import { Operator } from '../src/operator';
 import { toSql } from '../src/toSql';
 import type { Condition } from '../src/types';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // The toSql twin of test/toPrisma.dateTimeLiteral.test.ts. Postgres casts an untyped string
 // parameter itself, but it reads a zoneless one in the SESSION's zone, while check() anchors it
@@ -56,7 +57,7 @@ describe('toSql DateTime literals vs check() in a non-UTC session (PGlite)', () 
   ];
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`SET TIME ZONE 'America/New_York'`);
     await db.exec(`CREATE TABLE events (name TEXT, "createdAt" TIMESTAMPTZ)`);
     // Prisma's Postgres DateTime default: no time zone, the instant stored as its UTC wall time.
@@ -68,10 +69,6 @@ describe('toSql DateTime literals vs check() in a non-UTC session (PGlite)', () 
         r.createdAt,
       ]);
     }
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   const cases: Record<string, Condition> = {

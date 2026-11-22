@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   bindRule,
   type Condition,
@@ -23,9 +23,6 @@ const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 describe('toPrisma / toSql with { lens }', () => {

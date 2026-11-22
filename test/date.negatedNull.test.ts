@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // Negation keeps NULL rows (2.19.0 ruling), including the date rail's negative-flavored
 // operators: notBetween and dayNotIn.
@@ -139,13 +140,9 @@ describe('NULL date semantics — check() and SQL agree on every date operator',
   } as never;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`CREATE TABLE users (name TEXT, "lastLoginAt" TIMESTAMPTZ)`);
     await db.exec(`INSERT INTO users VALUES ('Alice','2026-03-02T12:00:00Z'), ('Bob',NULL)`);
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   for (const [label, rule] of Object.entries(rules)) {

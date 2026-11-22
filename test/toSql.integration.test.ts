@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { LensFieldMap } from '../index';
 import { ArrayOperator, Operator, toSql } from '../index';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 const usersMap: LensFieldMap = {
   models: {
@@ -18,7 +19,7 @@ describe('toSql integration', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
 
     await db.exec(`
       CREATE TABLE users (
@@ -46,10 +47,6 @@ describe('toSql integration', () => {
         ('Deleted User', 'deleted@example.com', 40, 'user', 'inactive', false, 0, '2024-01-01', '{}', '[]', NULL),
         ('Eve', 'eve@gmail.com', 35, 'moderator', 'active', true, 75, NULL, '{"theme": "dark"}', '["vip"]', '{"moderator"}')
     `);
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   const query = async (

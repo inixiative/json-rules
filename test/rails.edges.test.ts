@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
 import { agree, openRails, type Rails } from './rails/harness';
 
@@ -19,9 +19,6 @@ INSERT INTO users (id, name, meta, tags) VALUES
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails(SEED);
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const expectRails = async (r: object, expected: Rails) =>

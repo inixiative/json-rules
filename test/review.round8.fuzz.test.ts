@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, test } from 'bun:test';
 import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   bindLens,
@@ -22,6 +22,9 @@ import {
 // Round 8: validateNarrowing runs the postures the runtime runs, so `ok` holds exactly when no
 // bound posture refuses — over random lenses with binds, relative dates, windows, aggregates,
 // nested array conditions, dotted labels and axes, pointers (`from: 'mapDefaults'`) and bridges.
+
+// why: beside PGlite's memory Bun leaves each seed's ~300 MB of garbage uncollected (2.7 GB by the last).
+afterEach(() => Bun.gc(true));
 
 let seed = 8;
 const rnd = (): number => {

@@ -7,6 +7,7 @@ import { readPrismaClientV7 } from '@inixiative/field-map/prisma';
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { Condition, Lens, LensFieldMap, LensNarrowing } from '../../index';
 import { check, executePrismaPlan, narrowRule, toPrisma, toSql } from '../../index';
+import { closeAtEndOfRun } from './atEndOfRun';
 import { PrismaClient } from './generated/client';
 
 // The three rails on one database: check() over the rows Prisma loads, toSql executed by
@@ -58,11 +59,24 @@ const attempt = async (run: () => Promise<number[]> | number[]): Promise<RailRes
   }
 };
 
-/** `seed` adds rows after the base fixture's. */
-export const openRails = async (seed = '') => {
+const INCLUDE_ALL = {
+  include: {
+    org: {
+      include: {
+        users: { include: { org: true, posts: true } },
+        parent: { include: { parent: true } },
+      },
+    },
+    posts: { include: { author: true } },
+  },
+  orderBy: { id: 'asc' },
+} as const;
+
+// why: one database for the test process (a PGlite is ~300 MB and ~0.6 s to start); the rows are
+// swapped when a caller's seed is not the one loaded.
+const startFixtureDatabase = async () => {
   const db = new PGlite();
   await db.exec(readFileSync(join(GENERATED, 'schema.sql'), 'utf8'));
-  await db.exec(SEED + seed);
   const dir = mkdtempSync(join(tmpdir(), 'json-rules-rails-'));
   const server = new PGLiteSocketServer({ db, path: join(dir, '.s.PGSQL.5432') });
   await server.start();
@@ -72,22 +86,33 @@ export const openRails = async (seed = '') => {
       max: 1,
     }),
   });
-  // check() reads the rows a consumer holds: what Prisma loads, relations included.
-  const rows = await prisma.user.findMany({
-    include: {
-      org: {
-        include: {
-          users: { include: { org: true, posts: true } },
-          parent: { include: { parent: true } },
-        },
-      },
-      posts: { include: { author: true } },
-    },
-    orderBy: { id: 'asc' },
+  closeAtEndOfRun(async () => {
+    await prisma.$disconnect();
+    await server.stop();
+    await db.close();
+    rmSync(dir, { recursive: true, force: true });
   });
+  return { db, prisma };
+};
+let fixtureDatabase: ReturnType<typeof startFixtureDatabase> | undefined;
+let loadedSeed: string | undefined;
+
+/** `seed` adds rows after the base fixture's. */
+export const openRails = async (seed = '') => {
+  fixtureDatabase ??= startFixtureDatabase();
+  const { db, prisma } = await fixtureDatabase;
+  const loadSeed = async () => {
+    if (loadedSeed === seed) return;
+    await db.exec(`TRUNCATE posts, users, orgs; ${SEED}${seed}`);
+    loadedSeed = seed;
+  };
+  await loadSeed();
+  // check() reads the rows a consumer holds: what Prisma loads, relations included.
+  const rows = await prisma.user.findMany(INCLUDE_ALL);
   const table = map.models.User?.dbName ?? 'User';
 
   const run = async (rule: Condition, options: RailOptions = {}): Promise<Rails> => {
+    await loadSeed();
     const { lens, ...opts } = { now: NOW, ...options };
     const schema = lens ? { lens } : { map, model: 'User' };
     const checked = lens ? narrowRule(rule, lens) : rule;
@@ -113,14 +138,7 @@ export const openRails = async (seed = '') => {
     };
   };
 
-  const close = async () => {
-    await prisma.$disconnect();
-    await server.stop();
-    await db.close();
-    rmSync(dir, { recursive: true, force: true });
-  };
-
-  return { run, close, rows, prisma, db };
+  return { run, rows, prisma, db };
 };
 
 /** All three rails returning `ids`. */

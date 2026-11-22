@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { LensNarrowing } from '../index';
 import { engineGlobals, SqlDialect, toLensWhereSql, toWhereSql } from '../index';
 import {
@@ -20,6 +20,7 @@ import {
   whereSqlLensColumns,
   whereSqlLensTables,
 } from './fixtures/whereSql';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // Differential for the default dialect: check() and the predicate toWhereSql writes, run by
 // PGlite, return the same rows. Postgres reads a string literal as written (no backslash
@@ -37,7 +38,7 @@ const ids = async (query: string): Promise<number[]> =>
   (await db.query<{ id: number }>(query)).rows.map((r) => Number(r.id));
 
 beforeAll(async () => {
-  db = new PGlite();
+  db = await scratchDatabase();
   await db.exec('CREATE TABLE forms (id INT PRIMARY KEY, status TEXT NULL)');
   await db.exec(
     `CREATE TABLE fan_users (id INT PRIMARY KEY, affiliation TEXT NULL, score INT NULL,
@@ -66,10 +67,6 @@ beforeAll(async () => {
       )
       .join(', ')}`,
   );
-});
-
-afterAll(async () => {
-  await db.close();
 });
 
 describe('toWhereSql (postgres, the default) — check() and PGlite agree', () => {

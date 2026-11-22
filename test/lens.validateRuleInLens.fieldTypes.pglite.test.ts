@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, Lens } from '../index';
 import {
   ArrayOperator,
@@ -10,6 +10,7 @@ import {
   toSql,
   validateRuleInLens,
 } from '../index';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // The field-kind gate must track what the rails actually do: a rule it accepts runs on
 // Postgres and agrees with check(); a rule it rejects is one Postgres cannot run. (Postgres
@@ -84,17 +85,13 @@ describe('field-kind gate vs executed SQL (PGlite)', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(
       `CREATE TABLE events (name TEXT, count INT, active BOOLEAN, "createdAt" TIMESTAMPTZ)`,
     );
     await db.exec(
       `INSERT INTO events VALUES ('a', 1, true, '2026-09-01T10:00:00Z'), ('b', 2, false, NULL)`,
     );
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   const runSql = async (rule: Condition) => {

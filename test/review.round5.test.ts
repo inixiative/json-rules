@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import { isDeepStrictEqual } from 'node:util';
 import type { ScalarType } from '@inixiative/field-map';
 import type { FieldMapEntry, LensModelEntry } from '../index';
@@ -37,9 +37,6 @@ beforeAll(async () => {
   rails = await openRails(
     `INSERT INTO users (id, tags) VALUES (6, '{}'); INSERT INTO posts (id, "authorId", views, title) VALUES (104, 6, NULL, NULL), (105, 4, 4, 'x');`,
   );
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 describe('F1/F2: model defaults expose a tree — each model once, at its nearest reach', () => {

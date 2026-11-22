@@ -7,8 +7,6 @@ export type { RuleDescription } from './describeRule';
 export { describeRule } from './describeRule';
 export type { RuleSourceDescription } from './describeRuleSources';
 export { describeRuleSources } from './describeRuleSources';
-export { invertLensPath } from './invertLensPath';
-export type { LensRead } from './lensReads';
 export type {
   LensOrderBy,
   LensOrderKey,
@@ -26,6 +24,7 @@ export {
   type SourceRowShape,
 } from './materializeSourceQuery';
 export { materializeSources } from './materializeSources';
+export type { ModelVisit } from './modelVisits';
 export { assertValidNarrowing, validateNarrowing } from './narrowing';
 export { narrowRule, prefixConditionFields } from './narrowRule';
 export { projectLens } from './projectLens';
@@ -37,6 +36,11 @@ export {
   type SourceValues,
 } from './projectPaths';
 export { type LensValue, readLensValue } from './readLensValue.ts';
+export {
+  conditionForRootRowsWithRelatedRows,
+  type RelatedRowsAtPath,
+  toPrismaForRootRowsWithRelatedRows,
+} from './rootRowsWithRelatedRows';
 export type { StoredLens } from './storedLens';
 export { composeLens, storeLens } from './storedLens';
 export { type LensWhereSql, type LensWhereSqlOptions, toLensWhereSql } from './toLensWhereSql';

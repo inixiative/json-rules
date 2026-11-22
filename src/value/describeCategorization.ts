@@ -1,5 +1,5 @@
 import { clockUnit } from '../clock';
-import { lensReads } from '../lens/lensReads';
+import { collectModelVisits } from '../lens/modelVisits';
 import { resolvePolicy } from '../lens/policy';
 import { readPaths } from '../lens/readPaths';
 import type { Lens, LensNarrowing } from '../lens/types';
@@ -8,7 +8,7 @@ import type { ClockUnit } from '../operatorCatalog';
 import { allOf, valueReads } from '../traverse';
 import type { Categorization, ValueExpression, ValueType } from '../types';
 import type { ValidationIssue } from '../validate';
-import { describeValue, type ValueDescription } from './describeValue';
+import { describeValueWith, type ValueDescription } from './describeValue';
 import { listType, NULL_TYPE, unify } from './unifyValueTypes';
 import { validateCategorization } from './validateCategorization';
 import { prefixed } from './validateValue';
@@ -56,12 +56,12 @@ export const describeCategorization = (
 ): CategorizationDescription => {
   const shapeErrors = validateCategorization(categorization).errors;
   if (shapeErrors.length > 0)
-    return { type: null, paths: [], reads: [], clockUnit: null, errors: shapeErrors };
+    return { type: null, paths: [], modelVisits: [], clockUnit: null, errors: shapeErrors };
 
   const errors: ValidationIssue[] = [];
   const values: TypedValue[] = [];
   const describeAt = (expression: ValueExpression, path: string) => {
-    const described = describeValue(expression, lensOrNarrowing);
+    const described = describeValueWith(expression, lensOrNarrowing, null);
     errors.push(...prefixed(described.errors, path));
     if (described.type) values.push({ type: described.type, path });
     return described.errors.length === 0;
@@ -99,7 +99,7 @@ export const describeCategorization = (
   return {
     type,
     paths: readPaths(reads).sort(),
-    reads: lensReads(resolvePolicy(lensOrNarrowing), reads),
+    modelVisits: collectModelVisits(resolvePolicy(lensOrNarrowing), reads),
     clockUnit: unit,
     errors,
   };

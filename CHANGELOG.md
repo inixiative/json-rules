@@ -1,7 +1,24 @@
-## Unreleased — what a rule reads, and its inverse
+## Unreleased — model visits a rule reads, and finding root rows with related rows
 
-- **`describeRule(...).reads`**, **`describeValue(...).reads`** and **`describeCategorization(...).reads`**: every model a rule, value expression or categorization reads through the lens, with the relation path from the anchor that reaches it (`{ model, path }`, `''` for the anchor itself), sorted by path. Each relation crossed is a read of the model it leads to, so a rule on `memberships.org.name` reads `Membership` at `memberships` and `Org` at `memberships.org`; a column is a read of the model it sits on. These are the rows whose change can change the rule's answer.
-- **`invertLensPath(lens, path, rows)`**: the condition on the lens anchor that selects the anchor rows whose relation `path` reaches any of `rows`. The last hop binds through the join key the rows carry (a post's `authorId`, or the key a to-one relation points at), so a one-hop path needs no related row and a deleted row's last image works; each earlier hop wraps it, with `any` over a to-many relation or the relation's prefix over a to-one. Null when no row carries the key. Refused (`LensRefusal`) for the anchor itself, a column, a relation the lens doesn't turn on, a bridge, or a relation the map gives no single join key for.
+- **`describeRule(...).modelVisits`**, **`describeValue(...).modelVisits`** and
+  **`describeCategorization(...).modelVisits`**: every model visit (`{ mapName, model, path }`,
+  with `''` for the lens root itself) a rule, value expression or categorization reads through the
+  lens, sorted by `path`, `mapName`, `model`. Uses the same lens gate as `validateRuleInLens`
+  (invalid 4.0 to-many plain paths stay silent). Each crossed relation records its target visit, and
+  a hop whose join key sits on the near model (a forward FK or a joined bridge) also records the
+  near visit so root-side FK edits invalidate rules reading through it.
+- **`conditionForRootRowsWithRelatedRows(lens, path, rows)`**: builds the root-level `Condition`
+  selecting root rows whose relation `path` reaches any of `rows` (arbitrary N-hop to-one and
+  to-many paths, single and composite FKs, or a terminal `JoinedBridge`), binding join keys with
+  `caseInsensitive: false` and `distinctValues` dedup; `null` when no row carries non-null join
+  keys; `LensRefusal` on the root path (`'root_path'`), columns, unresolved paths, supplied or
+  non-terminal bridges, or missing/ambiguous join keys.
+- **`toPrismaForRootRowsWithRelatedRows(lens, related, options?)`**: compiles one or more
+  `RelatedRowsAtPath` (`{ path, rows }`, OR-ed together) into a Prisma query plan on the lens root
+  — binding join keys even when hidden by `picks` / `omits` while narrowing through every layer of
+  the lens via `narrowRule`.
+- **`relationKeys`** now fails closed (`null`) when multiple reverse relations exist between two
+  models without a `relationName`, instead of silently picking the first field.
 
 ## 4.7.0 — a supplied bridge may start from every model of a map
 

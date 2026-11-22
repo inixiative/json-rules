@@ -991,6 +991,7 @@ export const lensPathEnd = (
   mapName: string;
   modelName: string;
   relPath: string[];
+  hops: LensPathHop[];
   entry: FieldMapEntry;
   terminalEffect: VisitEffect;
   terminalFieldName: string;
@@ -999,11 +1000,12 @@ export const lensPathEnd = (
 } | null => {
   const { resolution, effects } = resolvePolicyPath(policy, from, fieldPath);
   if (resolution.outcome !== 'resolved' || toManyHop(resolution.hops.slice(0, -1))) return null;
-  const { terminal, jsonSubPath } = resolution;
+  const { hops, terminal, jsonSubPath } = resolution;
   return {
     mapName: terminal.mapName,
     modelName: terminal.model,
     relPath: terminal.relPath,
+    hops,
     entry: terminal.entry,
     terminalEffect: effects[effects.length - 1],
     terminalFieldName: terminal.field,

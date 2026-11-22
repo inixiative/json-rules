@@ -259,7 +259,7 @@ describe('the five ZLT-6467 values', () => {
     expect(describeValue(completedMissions, lens)).toEqual({
       type: { kind: 'Int', isList: false, nullable: false },
       paths: ['fanMissions', 'fanMissions.status'],
-      reads: [{ model: 'FanMission', path: 'fanMissions' }],
+      modelVisits: [{ mapName: 'app', model: 'FanMission', path: 'fanMissions' }],
       clockUnit: null,
       errors: [],
     });
@@ -269,9 +269,14 @@ describe('the five ZLT-6467 values', () => {
       'brandReferenceRequestFanUsers.brandReferenceRequest.status',
       'brandReferenceRequestFanUsers.status',
     ]);
-    expect(describeValue(completedReferences, lens).reads).toEqual([
-      { model: 'BrandReferenceRequestFanUser', path: 'brandReferenceRequestFanUsers' },
+    expect(describeValue(completedReferences, lens).modelVisits).toEqual([
       {
+        mapName: 'app',
+        model: 'BrandReferenceRequestFanUser',
+        path: 'brandReferenceRequestFanUsers',
+      },
+      {
+        mapName: 'app',
         model: 'BrandReferenceRequest',
         path: 'brandReferenceRequestFanUsers.brandReferenceRequest',
       },

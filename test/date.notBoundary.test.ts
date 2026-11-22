@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { check, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 const NOW = new Date('2026-08-25T00:00:00Z');
 const opts = { now: NOW };
@@ -141,15 +142,11 @@ describe('NULL semantics — check() and SQL agree on every boundary operator', 
   ) as never;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`CREATE TABLE users (name TEXT, "lastLoginAt" TIMESTAMPTZ)`);
     await db.exec(
       `INSERT INTO users VALUES ('Fresh','2026-08-10T00:00:00Z'), ('Edge','2026-06-01T00:00:00Z'), ('Stale','2026-03-01T00:00:00Z'), ('Never',NULL)`,
     );
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   for (const [label, rule] of Object.entries(rules)) {

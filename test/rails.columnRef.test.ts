@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import { type Condition, createLens, describeRule, toPrisma, validateRule } from '../index';
 import { agree, map, openRails } from './rails/harness';
 
@@ -10,9 +10,6 @@ let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   // User 6: age and orgId both NULL.
   rails = await openRails(`INSERT INTO users (id, tags) VALUES (6, '{}');`);
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const rule = (r: object): Condition => r as Condition;

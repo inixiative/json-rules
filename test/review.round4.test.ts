@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { FieldMapEntry, LensModelEntry } from '../index';
 import {
   type Condition,
@@ -33,9 +33,6 @@ const codes = (n: LensNarrowing) => validateNarrowing(n).errors.map((e) => e.cod
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const ann = {

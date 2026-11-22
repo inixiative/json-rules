@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, toSql } from '../index';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // A date rule's `bind` is its comparison value supplied at evaluation time — a date or a
 // date expression — with the same key-presence contract as a field rule's bind.
@@ -58,15 +59,11 @@ describe('both rails classify the same rows for a bound window', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`CREATE TABLE t (id INT, "lastBreachedAt" TIMESTAMPTZ)`);
     await db.exec(
       `INSERT INTO t VALUES (1,'2026-10-06T09:00:00Z'), (2,'2026-10-06T11:00:00Z'), (3,NULL)`,
     );
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   it('check() with bindings matches toSql over bindRule', async () => {

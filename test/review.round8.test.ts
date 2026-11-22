@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { ScalarType } from '@inixiative/field-map';
 import {
   type Condition,
@@ -33,9 +33,6 @@ const rel = (t: string, relationName: string, isList = false, fk?: [string, stri
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 /** The first refusal any runtime posture makes over a lens, or null: every posture a narrowing's

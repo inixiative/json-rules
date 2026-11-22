@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { check, toSql } from '../index';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // dayIn/dayNotIn compiled to a bare EXTRACT(DOW FROM col): the weekday was decided by
 // the DB session's TimeZone GUC, not the evaluation's timezone policy, and diverged
@@ -20,15 +21,11 @@ describe('toSql dayIn/dayNotIn honor the timezone policy', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`CREATE TABLE t (id INT, ts TIMESTAMP)`);
     await db.exec(
       `INSERT INTO t VALUES (1,'2024-06-17T02:00:00'), (2,'2024-06-17T12:00:00'), (3,NULL)`,
     );
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   const differential = async (rule: Condition, opts: Record<string, unknown>) => {

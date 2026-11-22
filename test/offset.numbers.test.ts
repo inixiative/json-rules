@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // A numeric `offset` shifts a path or bound comparison value: `score >= avg + 5`. The offset
 // is a signed number or `{ path }`, and NULL anywhere on the right fails closed.
@@ -22,15 +23,11 @@ const rule = (r: object): Condition => r as never;
 let db: PGlite;
 
 beforeAll(async () => {
-  db = new PGlite();
+  db = await scratchDatabase();
   await db.exec('CREATE TABLE t (id INT, score INT, avg INT, delta INT)');
   for (const r of rows) {
     await db.query('INSERT INTO t VALUES ($1, $2, $3, $4)', [r.id, r.score, r.avg, r.delta]);
   }
-});
-
-afterAll(async () => {
-  await db.close();
 });
 
 type Opts = { bindings?: Record<string, unknown> };

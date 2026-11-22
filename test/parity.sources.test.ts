@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { bindRule, check, listBindings, toPrisma, toSql, validateRule } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // Where a value source reads nothing, check(), executed SQL and the Prisma filter agree.
 
@@ -18,12 +19,9 @@ const rows: Row[] = [
 
 let db: PGlite;
 beforeAll(async () => {
-  db = new PGlite();
-  await db.exec('CREATE TABLE t (id INT, a INT)');
+  db = await scratchDatabase();
+  await db.exec(`SET TIME ZONE 'UTC'; CREATE TABLE t (id INT, a INT)`);
   for (const r of rows) await db.query('INSERT INTO t VALUES ($1, $2)', [r.id, r.a]);
-});
-afterAll(async () => {
-  await db.close();
 });
 
 const both = async (
@@ -164,8 +162,7 @@ describe('a $. value path walks relations like a field', () => {
   } as never;
 
   test('the Zealot auto-resolve guard compiles and runs', async () => {
-    const pg = new PGlite();
-    await pg.exec(`SET TIME ZONE 'UTC';
+    await db.exec(`
       CREATE TABLE "Rule" (id INT, "windowSeconds" INT);
       CREATE TABLE "Incident" (id INT, "lastBreachedAt" TIMESTAMPTZ, "ruleId" INT);
       INSERT INTO "Rule" VALUES (1, 3600), (2, 86400);
@@ -178,12 +175,11 @@ describe('a $. value path walks relations like a field', () => {
     });
     const { sql, params, joins } = toSql(guard, { map, model: 'Incident', now: NOW });
     const ids = (
-      await pg.query<{ id: number }>(
+      await db.query<{ id: number }>(
         `SELECT t0.id FROM "Incident" t0 ${joins.join(' ')} WHERE ${sql} ORDER BY t0.id`,
         params,
       )
     ).rows.map((r) => r.id);
-    await pg.close();
     const inMemory = [
       { id: 1, lastBreachedAt: '2026-10-05T22:00:00Z', rule: { windowSeconds: 3600 } },
       { id: 2, lastBreachedAt: '2026-10-05T22:00:00Z', rule: { windowSeconds: 86400 } },

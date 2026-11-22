@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Condition } from '../index';
 import { andWhere, executePrismaPlan, matchAll, matchNothing, orWhere, toPrisma } from '../index';
 import { map, openRails } from './rails/harness';
@@ -12,9 +12,6 @@ import { map, openRails } from './rails/harness';
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const ids = async (where: object) =>

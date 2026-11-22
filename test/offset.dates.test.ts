@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // A date `offset` is the rolling shape anchored on the resolved value instead of now:
 // `ts before anchor − 7 days` is `{ path: '$.anchor', offset: { value: { ago: { days: 7 } } } }`.
@@ -28,16 +29,12 @@ const rule = (r: object): Condition => r as never;
 let db: PGlite;
 
 beforeAll(async () => {
-  db = new PGlite();
+  db = await scratchDatabase();
   await db.exec(`SET TIME ZONE 'UTC'`);
   await db.exec('CREATE TABLE t (id INT, ts TIMESTAMPTZ, anchor TIMESTAMPTZ, days INT)');
   for (const r of rows) {
     await db.query('INSERT INTO t VALUES ($1, $2, $3, $4)', [r.id, r.ts, r.anchor, r.days]);
   }
-});
-
-afterAll(async () => {
-  await db.close();
 });
 
 type Opts = { bindings?: Record<string, unknown> };

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { beforeAll, expect, test } from 'bun:test';
 import {
   type Condition,
   check,
@@ -46,9 +46,6 @@ const postTree = (d: number): object | boolean =>
 beforeAll(async () => {
   rails = await openRails(SEED);
   deep = (await rails.prisma.user.findMany(userTree(6) as never)) as Record<string, unknown>[];
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const base = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'User' });

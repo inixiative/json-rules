@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, it, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, toSql } from '../index';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // Date comparison values from a value source get the SAME anchoring a literal gets, on both
 // rails: a caller's value is a bind (resolved by bindRule before compiling, read from `bindings`
@@ -77,15 +78,11 @@ describe('both rails classify the same rows for a bound cutoff', () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`CREATE TABLE t (id INT, ts TIMESTAMPTZ)`);
     await db.exec(
       `INSERT INTO t VALUES (1,'2024-06-16T20:00:00Z'), (2,'2024-06-18T02:00:00Z'), (3,NULL)`,
     );
-  });
-
-  afterAll(async () => {
-    await db.close();
   });
 
   it('before via a bound cutoff', async () => {

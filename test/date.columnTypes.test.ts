@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { check, toSql } from '../index';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // The SQL rail treats DateTime as timestamptz. A plain `timestamp` column (Prisma's default)
 // holds UTC wall time and casts through the session zone, which Prisma keeps at UTC — so a
@@ -19,14 +19,13 @@ const rows = [
 ];
 
 const run = async (type: 'TIMESTAMP' | 'TIMESTAMPTZ', condition: Condition, timeZone: string) => {
-  const db = new PGlite();
+  const db = await scratchDatabase();
   await db.exec(`SET TIME ZONE 'UTC'; CREATE TABLE t (id INT, ts ${type}, anchor ${type})`);
   for (const r of rows) await db.query('INSERT INTO t VALUES ($1, $2, $3)', [r.id, r.ts, r.anchor]);
   const { sql, params } = toSql(condition, { now: NOW, timeZone });
   const ids = (
     await db.query<{ id: number }>(`SELECT id FROM t WHERE ${sql} ORDER BY id`, params)
   ).rows.map((r) => r.id);
-  await db.close();
   return ids;
 };
 

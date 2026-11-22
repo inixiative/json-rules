@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { bindRule, check, listBindings, toPrisma, toSql } from '../index';
 import { createLens } from '../src/lens/createLens';
 import { describeRule } from '../src/lens/describeRule';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // An offset is a value source of its own — `{ value }`, `{ path }` or `{ bind }` (with
 // `bindOptional`) — read with the comparison value's contract.
@@ -23,13 +24,10 @@ const golfers: Row[] = [
 
 let db: PGlite;
 beforeAll(async () => {
-  db = new PGlite();
+  db = await scratchDatabase();
   await db.exec('CREATE TABLE t (id INT, score INT, par INT, handicap INT)');
   for (const r of golfers)
     await db.query('INSERT INTO t VALUES ($1, $2, $3, $4)', [r.id, r.score, r.par, r.handicap]);
-});
-afterAll(async () => {
-  await db.close();
 });
 
 type Opts = { bindings?: Record<string, unknown> };

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { type Condition, createLens, type LensNarrowing, Operator, toPrisma } from '../index';
 import { foldRelationFilters } from '../src/toPrisma/foldRelations';
 import { getWhere } from './fixtures/helpers';
@@ -239,9 +239,6 @@ describe('foldRelationFilters — the same rows on a real database', () => {
   let rails: Awaited<ReturnType<typeof openRails>>;
   beforeAll(async () => {
     rails = await openRails();
-  });
-  afterAll(async () => {
-    await rails.close();
   });
 
   const ids = async (where: Record<string, unknown>) =>

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import type { ScalarType } from '@inixiative/field-map';
 import {
   bindLens,
@@ -27,9 +27,6 @@ const s = (t: ScalarType) => ({ kind: 'scalar', type: t }) as const;
 let rails: Awaited<ReturnType<typeof openRails>>;
 beforeAll(async () => {
   rails = await openRails();
-});
-afterAll(async () => {
-  await rails.close();
 });
 
 const refusal = (run: () => unknown): string | null => {

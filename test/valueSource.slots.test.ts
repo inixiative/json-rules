@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
+import { beforeAll, describe, expect, test } from 'bun:test';
+import type { PGlite } from '@electric-sql/pglite';
 import type { Condition } from '../index';
 import { bindRule, check, listBindings, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // One value-source type in every slot: a unit amount and the evaluation's time zone take
 // `{ value } | { path } | { bind }` like a comparison value or an offset does.
@@ -23,12 +24,9 @@ describe('a bound unit amount', () => {
   ];
   let db: PGlite;
   beforeAll(async () => {
-    db = new PGlite();
+    db = await scratchDatabase();
     await db.exec(`SET TIME ZONE 'UTC'; CREATE TABLE t (id INT, ts TIMESTAMPTZ)`);
     for (const r of rows) await db.query('INSERT INTO t VALUES ($1, $2)', [r.id, r.ts]);
-  });
-  afterAll(async () => {
-    await db.close();
   });
 
   test('check() reads it from bindings', () => {

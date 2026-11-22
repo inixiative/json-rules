@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
 import type { Condition, LensFieldMap } from '../index';
 import { check, toPrisma, toSql } from '../index';
 import { getWhere } from './fixtures/helpers';
+import { scratchDatabase } from './rails/scratchDatabase';
 
 // An `if` whose field is NULL is false, so the implication holds — on every rail. SQL's
 // NOT(NULL) and Prisma's NOT both dropped the row.
@@ -24,7 +24,7 @@ const withElse: Condition = {
 
 describe('an implication with a NULL antecedent', () => {
   test('check() and executed SQL agree', async () => {
-    const db = new PGlite();
+    const db = await scratchDatabase();
     await db.exec('CREATE TABLE t (id INT, age INT, name TEXT)');
     for (const r of rows)
       await db.query('INSERT INTO t VALUES ($1, $2, $3)', [r.id, r.age, r.name]);
@@ -37,7 +37,6 @@ describe('an implication with a NULL antecedent', () => {
       expect(viaSql).toEqual(inMemory);
     }
     expect(rows.filter((r) => check(implication, r) === true).map((r) => r.id)).toEqual([2, 3, 4]);
-    await db.close();
   });
 
   test('toPrisma keeps the NULL row the map licenses', () => {

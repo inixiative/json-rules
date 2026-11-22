@@ -801,6 +801,19 @@ null check (`equals null`, `in` with null among its values), so a rule checked t
 on what the row carries. A null check holds on every row without a value, which is how a rule ends
 up granting everything; name the value that is there instead (a kind, an explicit `'none'`).
 
+With `rowKey` (the column every row carries, `id`), a null check is accepted where an `exists` on
+its own row's key sits beside it in an `all`: the row is there, so a null read is an empty column
+as long as the row came back with its columns (the gate proves the row, not the projection). The key is
+of the row the column is read on (`org.id` for `org.deletedAt`), another column of the row does not
+stand in for it, and a null check without it is refused (`nullCheckWithoutRowKey`):
+
+```ts
+validateRule(
+  { all: [{ field: 'id', operator: 'exists' }, { field: 'role', operator: 'equals', value: null }] },
+  { positive: true, rowKey: 'id' },
+);
+```
+
 It also refuses a match without an `exists`: a field compared with a `path` or a `bind` needs an
 `exists` on it beside it in an `all`, because two missing values match (`ownerId equals
 actor:User.id` holds on a record with no owner and a call with no actor). A comparison with a

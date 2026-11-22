@@ -1,3 +1,16 @@
+## 4.6.0 — the positive gate accepts a null check beside its row's key
+
+Why: refusing every null check (4.3) left a rule no way to say "this row has no role", so apps moved
+that test out of their rules. A null check is unsafe because it also holds where the value is
+missing (a record that never loaded the column, a relation that is not there). Aron, 2026-11-22:
+"`row exists and key is null` is another valid check."
+
+- **`validateRule(rule, { positive: true, rowKey })`** accepts `equals null` and `in` with null
+  where an `exists` on the key of the row the column is read on sits beside it in an `all`
+  (`id` for `role`, `org.id` for `org.deletedAt`), counted from any `all` above and never from an
+  `any`. A null check without it is refused as `nullCheckWithoutRowKey`. Without `rowKey` every
+  null check is refused, as before; every other shape the gate refuses stays refused.
+
 ## 4.5.1 — a supplied bridge stitches one way
 
 Why: 4.5.0 was published before this fix merged (#62).

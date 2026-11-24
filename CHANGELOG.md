@@ -1,3 +1,22 @@
+## 4.7.0 — a supplied bridge may start from every model of a map
+
+Why: permissions kept a second group of field maps (the "supplied" ones) only so it could invent a
+supplied bridge from each model to each of them. Aron, 2026-11-23: "why is the supplied field map
+different than field maps?… I was hoping that we would make some sort of pseudo-bridge that just
+lets you jump to them", and "it could be from any prefix, so any map… a decoration or helper for
+one individual map." The bridge is the concept; an app declares it.
+
+- **A supplied bridge's first endpoint may name only its map** (`{ fieldMap: 'db' }`):
+  `stitchFieldMaps` puts the bridge field on every model of that map, but the far model itself
+  when both ends are in one map. It still runs one way, and its row is still the one the data gives.
+- Only a supplied bridge may leave the model out (a joined bridge gives its far end a field back to
+  one model, so a model-less joined bridge is refused), and the far end always names a model.
+- A model already bridged to the same far model is refused, as before: two bridges to one model
+  would fill one key.
+- `recordWithBridgeData`, lens projection and source reads match a bridge's near end by its map,
+  and by its model when it names one.
+- Additive: every bridge written before means what it meant.
+
 ## 4.6.0 — the positive gate accepts a null check beside its row's key
 
 Why: refusing every null check (4.3) left a rule no way to say "this row has no role", so apps moved

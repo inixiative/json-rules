@@ -1824,6 +1824,20 @@ check({ field: 'ownerId', operator: Operator.equals, path: 'actor:User.id' }, {
 });
 ```
 
+The first endpoint may name only its map. The bridge then starts from every model of that map,
+so one declaration makes the far row readable from all of them and from no other map:
+
+```ts
+const fromAnyModelOfApp: Bridge = {
+  endpoints: [{ fieldMap: 'app' }, { fieldMap: 'actor', model: 'User' }],
+  cardinality: 'oneToOne',
+};
+```
+
+Only a supplied bridge may leave the model out, since a joined bridge gives its far end a field
+back to one model; the far end always names a model. A model that already has a bridge to the
+same far model is refused, as two bridges to one model always are.
+
 A supplied bridge is one-to-one; an `on` on one side only is refused (`stitchFieldMaps`).
 `indexBridges` skips it, and a source read across it fetches no local key. `isJoinedBridge`
 tells the two apart (`JoinedBridge`, `SuppliedBridge`).

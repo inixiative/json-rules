@@ -1,5 +1,13 @@
 import type { Bridge, BridgeEndpoint, JoinedBridge } from './types.ts';
 
+/** Whether a bridge endpoint stands for `model` of `fieldMap`: it names that model, or names only the map. */
+export const endpointCoversModel = (
+  endpoint: Bridge['endpoints'][number],
+  fieldMap: string,
+  model: string,
+): boolean =>
+  endpoint.fieldMap === fieldMap && (!('model' in endpoint) || endpoint.model === model);
+
 /** The name a bridge endpoint goes by — `map:Model`: the stitched bridge field's name and the
  *  raw-data key. */
 export const endpointKey = ({ fieldMap, model }: BridgeEndpoint): string => `${fieldMap}:${model}`;

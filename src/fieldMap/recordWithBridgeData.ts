@@ -1,9 +1,14 @@
 import { modelOf, own } from '@inixiative/field-map';
 import { isPlainObject } from 'lodash-es';
 import type { Row } from '../types';
-import { endpointKey, isJoinedBridge, parseEndpointKey } from './endpointKey.ts';
+import {
+  endpointCoversModel,
+  endpointKey,
+  isJoinedBridge,
+  parseEndpointKey,
+} from './endpointKey.ts';
 import { type BridgeDictionary, indexBridges } from './indexBridges.ts';
-import type { Bridge, FieldMapSet } from './types.ts';
+import type { Bridge, FieldMapSet, JoinedBridge } from './types.ts';
 
 const isRow = (value: unknown): value is Row => isPlainObject(value);
 
@@ -22,10 +27,10 @@ const farRowsOf = (
   data: Record<string, Row[]>,
   dictionary: BridgeDictionary,
 ): Row | Row[] | undefined => {
-  const far = bridge.endpoints[1 - nearIndex];
   if (!isJoinedBridge(bridge)) {
     // a supplied bridge's second endpoint is the one whose row the data supplies
     if (nearIndex !== 0) return undefined;
+    const far = bridge.endpoints[1];
     const rows = own(data, endpointKey(far));
     if (rows === undefined) return undefined;
     if (!Array.isArray(rows) || rows.length !== 1 || !isRow(rows[0]))
@@ -34,6 +39,7 @@ const farRowsOf = (
       );
     return rows[0];
   }
+  const far = bridge.endpoints[1 - nearIndex] as JoinedBridge['endpoints'][number];
   const key = own(record, bridge.endpoints[nearIndex].on);
   if (key === null || key === undefined) return undefined;
   const byValue = own(dictionary, far.fieldMap)?.[far.model]?.[bridge.endpoints[1 - nearIndex].on];
@@ -76,9 +82,15 @@ const filled = (fill: Fill, at: string, record: Row, came: ReadonlySet<string>):
       );
   const through = new Set([...came, at]);
   for (const bridge of set.bridges ?? []) {
-    const nearIndex = bridge.endpoints.findIndex((end) => endpointKey(end) === at);
+    const here = parseEndpointKey(at, '');
+    const nearIndex = bridge.endpoints.findIndex((end) =>
+      endpointCoversModel(end, here.mapName, here.modelName),
+    );
     if (nearIndex === -1) continue;
-    const farKey = endpointKey(bridge.endpoints[1 - nearIndex]);
+    const far = bridge.endpoints[1 - nearIndex];
+    // why: a supplied bridge runs from its first endpoint only, so a first endpoint that names only its map is never a far end
+    if (!('model' in far)) continue;
+    const farKey = endpointKey(far);
     if (through.has(farKey)) continue;
     const rows = farRowsOf(bridge, nearIndex, record, fill.data, fill.dictionary);
     if (rows !== undefined) out[farKey] = filledRows(fill, farKey, rows, through);

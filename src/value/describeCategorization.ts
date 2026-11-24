@@ -47,9 +47,9 @@ const typeOfResult = (
 
 /** A categorization under a lens: the type `categorize` returns (every case's value and the
  *  default unified; a list of them under `match: 'all'`; nullable when nothing may hold and there
- *  is no default), the dotted paths its conditions and values read, its clock unit, and every
- *  problem the validator, the lens gate and type inference find, at the case it was found in.
- *  Never throws on a bad categorization. */
+ *  is no default), the dotted paths and `modelVisits` its conditions and values read, its clock
+ *  unit, and every problem the validator, the lens gate and type inference find, at the case it
+ *  was found in. Never throws on a bad categorization. */
 export const describeCategorization = (
   categorization: Categorization,
   lensOrNarrowing: Lens | LensNarrowing,

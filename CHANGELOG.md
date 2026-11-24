@@ -7,16 +7,15 @@
   (invalid 4.0 to-many plain paths stay silent). Each crossed relation records its target visit, and
   a hop whose join key sits on the near model (a forward FK or a joined bridge) also records the
   near visit so root-side FK edits invalidate rules reading through it.
-- **`conditionForRootRowsWithRelatedRows(lens, path, rows)`**: builds the root-level `Condition`
-  selecting root rows whose relation `path` reaches any of `rows` (arbitrary N-hop to-one and
-  to-many paths, single and composite FKs, or a terminal `JoinedBridge`), binding join keys with
-  `caseInsensitive: false` and `distinctValues` dedup; `null` when no row carries non-null join
-  keys; `LensRefusal` on the root path (`'root_path'`), columns, unresolved paths, supplied or
-  non-terminal bridges, or missing/ambiguous join keys.
-- **`toPrismaForRootRowsWithRelatedRows(lens, related, options?)`**: compiles one or more
-  `RelatedRowsAtPath` (`{ path, rows }`, OR-ed together) into a Prisma query plan on the lens root
-  — binding join keys even when hidden by `picks` / `omits` while narrowing through every layer of
-  the lens via `narrowRule`.
+- **`conditionForRootRowsWithRelatedRows(lens, path, rows)`**: builds the structural root-level
+  `Condition` selecting root rows whose relation `path` reaches any of `rows` (arbitrary N-hop
+  to-one and to-many paths, single and composite FKs, or a terminal `JoinedBridge`), binding join
+  keys with `caseInsensitive: false` and `distinctValues` dedup; `null` when no row carries
+  non-null join keys; `LensRefusal` on the root path (`'root_path'`), columns, unresolved paths,
+  supplied or non-terminal bridges, or missing/ambiguous join keys. Composes directly with
+  `check()`, `toPrisma(..., { map: root, mapName: root.mapName, model: root.model })`, and
+  `narrowRule(...)` (for example with an immutable tenancy/with-deleted lens so evictions are never
+  filtered out).
 - **`relationKeys`** now fails closed (`null`) when multiple reverse relations exist between two
   models without a `relationName`, instead of silently picking the first field.
 

@@ -5,14 +5,16 @@ import {
   conditionForRootRowsWithRelatedRows,
   createLens,
   executePrismaPlan,
+  getLensRoot,
   type LensNarrowing,
   narrowRule,
-  toPrismaForRootRowsWithRelatedRows,
+  toPrisma,
 } from '../index';
 import { map, openRails } from './rails/harness';
 
-// Real Prisma 7 + PGlite execution of `toPrismaForRootRowsWithRelatedRows` vs `check()` across
-// 1-, 2-, and 3-hop paths, self-relations, hidden join keys, root clamps, and intermediate clamps.
+// Real Prisma 7 + PGlite execution of `conditionForRootRowsWithRelatedRows` composed with
+// `toPrisma` (structurally and via `narrowRule`) vs `check()` across 1-, 2-, and 3-hop paths,
+// self-relations, hidden join keys, root clamps, and intermediate clamps.
 //
 // Seeded graph in `test/rails/harness.ts`:
 //   Orgs:  10 (Acme, pro, parent=null) ← 11 (acme, parent=10) ← 12 (free, parent=11)
@@ -29,9 +31,17 @@ const userBase = createLens({ maps: { prisma: map }, mapName: 'prisma', model: '
 const orgBase = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Org' });
 const postBase = createLens({ maps: { prisma: map }, mapName: 'prisma', model: 'Post' });
 
-const userIds = async (
-  plan: ReturnType<typeof toPrismaForRootRowsWithRelatedRows>,
-): Promise<number[]> => {
+const compile = (lens: LensNarrowing, cond: Condition | null, narrow = false) => {
+  if (!cond) return null;
+  const root = getLensRoot(lens);
+  return toPrisma(narrow ? narrowRule(cond, lens) : cond, {
+    map: root,
+    mapName: root.mapName,
+    model: root.model,
+  });
+};
+
+const userIds = async (plan: ReturnType<typeof compile>): Promise<number[]> => {
   if (!plan) return [];
   const where = await executePrismaPlan(plan, rails.prisma as never);
   const found = await rails.prisma.user.findMany({
@@ -42,9 +52,7 @@ const userIds = async (
   return found.map((row) => row.id);
 };
 
-const orgIds = async (
-  plan: ReturnType<typeof toPrismaForRootRowsWithRelatedRows>,
-): Promise<number[]> => {
+const orgIds = async (plan: ReturnType<typeof compile>): Promise<number[]> => {
   if (!plan) return [];
   const where = await executePrismaPlan(plan, rails.prisma as never);
   const found = await rails.prisma.org.findMany({
@@ -55,9 +63,7 @@ const orgIds = async (
   return found.map((row) => row.id);
 };
 
-const postIds = async (
-  plan: ReturnType<typeof toPrismaForRootRowsWithRelatedRows>,
-): Promise<number[]> => {
+const postIds = async (plan: ReturnType<typeof compile>): Promise<number[]> => {
   if (!plan) return [];
   const where = await executePrismaPlan(plan, rails.prisma as never);
   const found = await rails.prisma.post.findMany({
@@ -68,7 +74,7 @@ const postIds = async (
   return found.map((row) => row.id);
 };
 
-describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
+describe('rails: conditionForRootRowsWithRelatedRows + toPrisma against PGlite', () => {
   test('1-hop to-many (User -> posts) and 1-hop to-one (User -> org) with hidden join keys', async () => {
     const lens: LensNarrowing = {
       parent: userBase,
@@ -79,32 +85,22 @@ describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
     };
 
     // Deleted/changed Post row (even a synthetic post not in DB) resolves via authorId.
-    const fromPost = toPrismaForRootRowsWithRelatedRows(lens, {
-      path: 'posts',
-      rows: [
-        { id: 999, authorId: 1 },
-        { id: 102, authorId: 3 },
-      ],
-    });
-    expect(await userIds(fromPost)).toEqual([1, 3]);
+    const fromPost = conditionForRootRowsWithRelatedRows(lens, 'posts', [
+      { id: 999, authorId: 1 },
+      { id: 102, authorId: 3 },
+    ]);
+    expect(await userIds(compile(lens, fromPost))).toEqual([1, 3]);
 
-    const fromOrg = toPrismaForRootRowsWithRelatedRows(lens, {
-      path: 'org',
-      rows: [{ id: 10 }, { id: 12 }],
-    });
-    expect(await userIds(fromOrg)).toEqual([1, 3]);
+    const fromOrg = conditionForRootRowsWithRelatedRows(lens, 'org', [{ id: 10 }, { id: 12 }]);
+    expect(await userIds(compile(lens, fromOrg))).toEqual([1, 3]);
 
     // Agrees with in-memory check() over the loaded rows.
-    const cond = conditionForRootRowsWithRelatedRows(lens, 'org', [
-      { id: 10 },
-      { id: 12 },
-    ]) as Condition;
-    expect(rails.rows.filter((row) => check(cond, row) === true).map((row) => row.id)).toEqual([
-      1, 3,
-    ]);
+    expect(
+      rails.rows.filter((row) => check(fromOrg as Condition, row) === true).map((row) => row.id),
+    ).toEqual([1, 3]);
   });
 
-  test('2-hop to-one self-relation (User -> org -> parent) and multi-target OR', async () => {
+  test('2-hop to-one self-relation (User -> org -> parent) and multi-path OR', async () => {
     const lens: LensNarrowing = {
       parent: userBase,
       root: {
@@ -114,18 +110,13 @@ describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
     };
 
     // Org 10 is parent of Org 11, which holds User 2.
-    const parentOnly = toPrismaForRootRowsWithRelatedRows(lens, {
-      path: 'org.parent',
-      rows: [{ id: 10 }],
-    });
-    expect(await userIds(parentOnly)).toEqual([2]);
+    const parentOnly = conditionForRootRowsWithRelatedRows(lens, 'org.parent', [{ id: 10 }]);
+    expect(await userIds(compile(lens, parentOnly))).toEqual([2]);
 
     // Org 10 directly (User 1) OR as org.parent (User 2) in one query.
-    const both = toPrismaForRootRowsWithRelatedRows(lens, [
-      { path: 'org', rows: [{ id: 10 }] },
-      { path: 'org.parent', rows: [{ id: 10 }] },
-    ]);
-    expect(await userIds(both)).toEqual([1, 2]);
+    const direct = conditionForRootRowsWithRelatedRows(lens, 'org', [{ id: 10 }]) as Condition;
+    const both: Condition = { any: [direct, parentOnly as Condition] };
+    expect(await userIds(compile(lens, both))).toEqual([1, 2]);
   });
 
   test('2-hop to-many -> to-many (Org -> users -> posts) and 3-hop (Org -> children -> users -> posts)', async () => {
@@ -144,17 +135,15 @@ describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
     };
 
     // Post 102 belongs to User 3 → Org 12 → parent Org 11.
-    const twoHop = toPrismaForRootRowsWithRelatedRows(lens, {
-      path: 'users.posts',
-      rows: [{ id: 102, authorId: 3 }],
-    });
-    expect(await orgIds(twoHop)).toEqual([12]);
+    const twoHop = conditionForRootRowsWithRelatedRows(lens, 'users.posts', [
+      { id: 102, authorId: 3 },
+    ]);
+    expect(await orgIds(compile(lens, twoHop))).toEqual([12]);
 
-    const threeHop = toPrismaForRootRowsWithRelatedRows(lens, {
-      path: 'children.users.posts',
-      rows: [{ id: 102, authorId: 3 }],
-    });
-    expect(await orgIds(threeHop)).toEqual([11]);
+    const threeHop = conditionForRootRowsWithRelatedRows(lens, 'children.users.posts', [
+      { id: 102, authorId: 3 },
+    ]);
+    expect(await orgIds(compile(lens, threeHop))).toEqual([11]);
   });
 
   test('3-hop to-one chain (Post -> author -> org -> parent)', async () => {
@@ -172,14 +161,11 @@ describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
     };
 
     // Org 11 is parent of Org 12 → User 3 → Post 102.
-    const plan = toPrismaForRootRowsWithRelatedRows(lens, {
-      path: 'author.org.parent',
-      rows: [{ id: 11 }],
-    });
-    expect(await postIds(plan)).toEqual([102]);
+    const cond = conditionForRootRowsWithRelatedRows(lens, 'author.org.parent', [{ id: 11 }]);
+    expect(await postIds(compile(lens, cond))).toEqual([102]);
   });
 
-  test('always obeys the lens stack (root and intermediate clamps); pass a shallower layer for fewer clamps', async () => {
+  test('structural lookup finds eviction candidates while narrowRule enforces clamps when requested', async () => {
     // Layer 1: root clamp excludes Org 12 (plan != 'free'), no intermediate user clamp.
     const orgRootLens: LensNarrowing = {
       parent: orgBase,
@@ -214,37 +200,24 @@ describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
     };
 
     // Post 102 has author User 3 (age 5, in Org 12 [free], child of Org 11 [plan=null]).
-    // 1. On `users.posts`: Org 12 is excluded by root.where (plan != 'free') on both layers.
-    expect(
-      await orgIds(
-        toPrismaForRootRowsWithRelatedRows(orgRootLens, {
-          path: 'users.posts',
-          rows: [{ id: 102, authorId: 3 }],
-        }),
-      ),
-    ).toEqual([]);
+    const twoHop = conditionForRootRowsWithRelatedRows(orgRootLens, 'users.posts', [
+      { id: 102, authorId: 3 },
+    ]);
+    // Structural compile finds Org 12 even though its plan is now 'free' (eviction candidate).
+    expect(await orgIds(compile(orgRootLens, twoHop, false))).toEqual([12]);
+    // Narrowed compile applies root.where (plan != 'free') and excludes Org 12.
+    expect(await orgIds(compile(orgRootLens, twoHop, true))).toEqual([]);
 
-    // 2. On `children.users.posts`: Org 11 passes root.where, while intermediate User 3 has age 5:
-    //    - Shallower layer (orgRootLens) finds Org 11.
-    //    - Deeper layer (adultUsersOrgLens) obeys its `users.where` clamp and returns [].
-    expect(
-      await orgIds(
-        toPrismaForRootRowsWithRelatedRows(orgRootLens, {
-          path: 'children.users.posts',
-          rows: [{ id: 102, authorId: 3 }],
-        }),
-      ),
-    ).toEqual([11]);
-    expect(
-      await orgIds(
-        toPrismaForRootRowsWithRelatedRows(adultUsersOrgLens, {
-          path: 'children.users.posts',
-          rows: [{ id: 102, authorId: 3 }],
-        }),
-      ),
-    ).toEqual([]);
+    const threeHop = conditionForRootRowsWithRelatedRows(
+      adultUsersOrgLens,
+      'children.users.posts',
+      [{ id: 102, authorId: 3 }],
+    );
+    // Structural / shallower layer finds Org 11; deeper layer excludes it via users.where (age >= 20).
+    expect(await orgIds(compile(orgRootLens, threeHop, true))).toEqual([11]);
+    expect(await orgIds(compile(adultUsersOrgLens, threeHop, true))).toEqual([]);
 
-    // 3. Agrees with check(narrowRule(cond, lens)) on User -> org.parent across both layers.
+    // Agrees with check(narrowRule(cond, lens)) on User -> org.parent across both layers.
     const userRootLens: LensNarrowing = {
       parent: userBase,
       root: {
@@ -274,9 +247,7 @@ describe('rails: toPrismaForRootRowsWithRelatedRows against PGlite', () => {
       const checked = rails.rows
         .filter((row) => check(narrowRule(cond, lens), row) === true)
         .map((row) => row.id);
-      const compiled = await userIds(
-        toPrismaForRootRowsWithRelatedRows(lens, { path: 'org.parent', rows: [{ id: 11 }] }),
-      );
+      const compiled = await userIds(compile(lens, cond, true));
       expect(compiled).toEqual(checked);
       expect(compiled).toEqual([...expected]);
     }

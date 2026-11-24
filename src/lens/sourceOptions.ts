@@ -1,5 +1,5 @@
 import { fieldOf, own } from '@inixiative/field-map';
-import { endpointKey, findBridgeBetween, isJoinedBridge } from '../fieldMap/endpointKey';
+import { endpointKey, findBridgeBetween } from '../fieldMap/endpointKey';
 import { isRelationEntry } from '../fieldMap/entry';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { LensFieldMap, SourceOption } from '../fieldMap/types';

@@ -18,9 +18,11 @@ import {
   describeRule,
   describeValue,
   engineGlobals,
+  getLensRoot,
   LensRefusal,
+  narrowRule,
   Operator,
-  toPrismaForRootRowsWithRelatedRows,
+  toPrisma,
   UsageError,
   validateNarrowing,
 } from '../index';
@@ -352,7 +354,40 @@ describe('describeRule / describeValue / describeCategorization modelVisits', ()
         } as Condition,
         users,
       ).modelVisits,
-    ).toEqual([{ mapName: 'prisma', model: 'User', path: '' }]);
+    ).toEqual([]);
+
+    // To-one relation with an array operator is also invalid and stays silent.
+    expect(
+      describeRule(
+        {
+          field: 'user',
+          arrayOperator: ArrayOperator.any,
+          condition: { field: 'email', operator: Operator.equals, value: 'a@b.com' },
+        } as Condition,
+        memberships,
+      ).modelVisits,
+    ).toEqual([]);
+
+    // Relation-as-value rules rejected by validateRuleInLens stay silent (to-many exists, to-one
+    // non-existence, and value expression reading a to-many relation).
+    expect(
+      describeRule({ field: 'posts', operator: Operator.exists } as Condition, users).modelVisits,
+    ).toEqual([]);
+    expect(
+      describeRule(
+        { field: 'user', operator: Operator.equals, value: 'u1' } as Condition,
+        memberships,
+      ).modelVisits,
+    ).toEqual([]);
+    expect(describeValue({ path: 'posts' }, users).modelVisits).toEqual([]);
+    // To-one existence check IS valid in validateRuleInLens and records the visit.
+    expect(
+      describeRule({ field: 'user', operator: Operator.exists } as Condition, memberships)
+        .modelVisits,
+    ).toEqual([
+      { mapName: 'prisma', model: 'Membership', path: '' },
+      { mapName: 'prisma', model: 'User', path: 'user' },
+    ]);
 
     expect(
       describeRule({ field: 'email', operator: Operator.equals, path: 'posts' } as Condition, users)
@@ -751,7 +786,22 @@ describe('conditionForRootRowsWithRelatedRows', () => {
   });
 });
 
-describe('toPrismaForRootRowsWithRelatedRows', () => {
+describe('composing conditionForRootRowsWithRelatedRows with toPrisma and narrowRule', () => {
+  const compileForLens = (
+    lens: LensNarrowing,
+    condition: Condition,
+    options?: { now?: Date; narrow?: boolean },
+  ) => {
+    const root = getLensRoot(lens);
+    const rule = options?.narrow ? narrowRule(condition, lens) : condition;
+    return toPrisma(rule, {
+      ...(options?.now ? { now: options.now } : {}),
+      map: root,
+      mapName: root.mapName,
+      model: root.model,
+    });
+  };
+
   // Layer 1: tenant scope + relations on, hiding join keys (`id`, `crmAccountId`, `orgId`).
   const tenantScopedUsers: LensNarrowing = {
     parent: usersBase,
@@ -783,14 +833,23 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
     },
   };
 
-  test('compiles 2-hop path even when join keys are hidden by picks, obeying every layer of the lens', () => {
-    // Shallower lens (tenant-only): enforces tenantId clamp, no intermediate membership clamp.
-    expect(
-      toPrismaForRootRowsWithRelatedRows(tenantScopedUsers, {
-        path: 'memberships.org',
-        rows: [{ id: 'o1' }],
-      }),
-    ).toEqual({
+  test('compiles 2-hop path structurally (eviction-safe) or narrowed through any lens layer even when join keys are hidden', () => {
+    const cond = conditionForRootRowsWithRelatedRows(tenantScopedUsers, 'memberships.org', [
+      { id: 'o1' },
+    ]) as Condition;
+
+    // Structural compile against base lens: no mutable clamps, safe for eviction lookups.
+    expect(compileForLens(tenantScopedUsers, cond)).toEqual({
+      steps: [
+        {
+          operation: 'where',
+          where: { memberships: { some: { orgId: { in: ['o1'] } } } },
+        },
+      ],
+    });
+
+    // Narrowed through tenant-only layer: enforces tenantId clamp, no intermediate membership clamp.
+    expect(compileForLens(tenantScopedUsers, cond, { narrow: true })).toEqual({
       steps: [
         {
           operation: 'where',
@@ -804,13 +863,8 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
       ],
     });
 
-    // Deeper lens (active memberships): automatically enforces both tenantId and active clamps.
-    expect(
-      toPrismaForRootRowsWithRelatedRows(activeTenantUsers, {
-        path: 'memberships.org',
-        rows: [{ id: 'o1' }],
-      }),
-    ).toEqual({
+    // Narrowed through deeper layer: automatically enforces both tenantId and active clamps.
+    expect(compileForLens(activeTenantUsers, cond, { narrow: true })).toEqual({
       steps: [
         {
           operation: 'where',
@@ -831,11 +885,14 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
     });
   });
 
-  test('combines multiple targets with OR under one root clamp, and compiles terminal joined bridges', () => {
-    const plan = toPrismaForRootRowsWithRelatedRows(activeTenantUsers, [
-      { path: 'crm:Account', rows: [{ id: 'acc_1' }] },
-      { path: 'memberships.org.crm:Account', rows: [{ id: 'acc_1' }] },
-    ]);
+  test('combines multiple paths with any under one root clamp, and compiles terminal joined bridges', () => {
+    const arms = [
+      conditionForRootRowsWithRelatedRows(activeTenantUsers, 'crm:Account', [{ id: 'acc_1' }]),
+      conditionForRootRowsWithRelatedRows(activeTenantUsers, 'memberships.org.crm:Account', [
+        { id: 'acc_1' },
+      ]),
+    ].filter((c): c is Condition => c !== null);
+    const plan = compileForLens(activeTenantUsers, { any: arms }, { narrow: true });
     expect(plan).toEqual({
       steps: [
         {
@@ -867,11 +924,10 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
 
   test('does not emit mode: insensitive on join keys under global string.caseInsensitive: true', () => {
     engineGlobals.with({ string: { caseInsensitive: true } }, () => {
-      const plan = toPrismaForRootRowsWithRelatedRows(tenantScopedUsers, {
-        path: 'memberships.org',
-        rows: [{ id: 'Org_AbC' }],
-      });
-      expect(plan).toEqual({
+      const cond = conditionForRootRowsWithRelatedRows(tenantScopedUsers, 'memberships.org', [
+        { id: 'Org_AbC' },
+      ]) as Condition;
+      expect(compileForLens(tenantScopedUsers, cond, { narrow: true })).toEqual({
         steps: [
           {
             operation: 'where',
@@ -887,26 +943,14 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
     });
   });
 
-  test('returns null when no target carries keys, but still validates paths when rows are empty', () => {
-    expect(toPrismaForRootRowsWithRelatedRows(tenantScopedUsers, [])).toBeNull();
-    expect(
-      toPrismaForRootRowsWithRelatedRows(tenantScopedUsers, { path: 'posts', rows: [] }),
-    ).toBeNull();
+  test('validates paths even when rows are empty and respects multi-layer omits and relative-date clamps', () => {
+    expect(conditionForRootRowsWithRelatedRows(tenantScopedUsers, 'posts', [])).toBeNull();
     expect(
       refusalCode(() =>
-        toPrismaForRootRowsWithRelatedRows(tenantScopedUsers, {
-          path: 'memberships.user',
-          rows: [],
-        }),
+        conditionForRootRowsWithRelatedRows(tenantScopedUsers, 'memberships.user', []),
       ),
     ).toBe('not_in_lens');
-    // Error messages name toPrismaForRootRowsWithRelatedRows when called through it.
-    expect(() =>
-      toPrismaForRootRowsWithRelatedRows(tenantScopedUsers, { path: '', rows: [{ id: 'u1' }] }),
-    ).toThrow(/toPrismaForRootRowsWithRelatedRows/);
-  });
 
-  test('threads now for relative-date clamps and respects multi-layer omits and wheres', () => {
     const datedUsers: LensNarrowing = {
       parent: usersBase,
       root: {
@@ -919,15 +963,15 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
         relations: { posts: {}, memberships: { relations: { org: {} } } },
       },
     };
-    expect(() =>
-      toPrismaForRootRowsWithRelatedRows(datedUsers, { path: 'posts', rows: [{ authorId: 'u1' }] }),
-    ).toThrow(UsageError);
+    const postCond = conditionForRootRowsWithRelatedRows(datedUsers, 'posts', [
+      { authorId: 'u1' },
+    ]) as Condition;
+    expect(() => compileForLens(datedUsers, postCond, { narrow: true })).toThrow(UsageError);
     expect(
-      toPrismaForRootRowsWithRelatedRows(
-        datedUsers,
-        { path: 'posts', rows: [{ authorId: 'u1' }] },
-        { now: new Date('2026-11-22T00:00:00Z') },
-      ),
+      compileForLens(datedUsers, postCond, {
+        narrow: true,
+        now: new Date('2026-11-22T00:00:00Z'),
+      }),
     ).not.toBeNull();
 
     // Multi-layer narrowing: Layer 3 hides `posts` and adds a root clamp on top of activeTenantUsers.
@@ -939,15 +983,12 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
       },
     };
     expect(
-      refusalCode(() =>
-        toPrismaForRootRowsWithRelatedRows(layer3, { path: 'posts', rows: [{ authorId: 'u1' }] }),
-      ),
+      refusalCode(() => conditionForRootRowsWithRelatedRows(layer3, 'posts', [{ authorId: 'u1' }])),
     ).toBe('not_in_lens');
-    const plan = toPrismaForRootRowsWithRelatedRows(layer3, {
-      path: 'memberships.org',
-      rows: [{ id: 'o1' }],
-    });
-    expect(plan).toEqual({
+    const orgCond = conditionForRootRowsWithRelatedRows(layer3, 'memberships.org', [
+      { id: 'o1' },
+    ]) as Condition;
+    expect(compileForLens(layer3, orgCond, { narrow: true })).toEqual({
       steps: [
         {
           operation: 'where',
@@ -969,7 +1010,7 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
     });
   });
 
-  test('reverse-direction joined bridge, to-one over composite FK (with NUL-safe dedup), and caller data error classification', () => {
+  test('reverse-direction joined bridge and to-one over composite FK (with NUL-safe dedup)', () => {
     // Reverse direction of JoinedBridge: crm:Account -> prisma:User
     const crmBase = createLens({
       maps: { prisma, crm, actor },
@@ -1039,48 +1080,9 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
       { a: 'x', b: 'y\u0000p:string:z' },
     ]) as { any: unknown[] };
     expect(nulCond.any).toHaveLength(2);
-
-    // Caller row-data error (invalid DateTime join key) must NOT be misclassified as LensRefusal('unsupported_clamp').
-    const dateKeyMap: LensFieldMap = {
-      models: {
-        Day: {
-          fields: {
-            at: { kind: 'scalar', type: 'DateTime' },
-            logs: { kind: 'object', type: 'Log', isList: true, relationName: 'DayLogs' },
-          },
-        },
-        Log: {
-          fields: {
-            dayAt: { kind: 'scalar', type: 'DateTime' },
-            day: {
-              kind: 'object',
-              type: 'Day',
-              fromFields: ['dayAt'],
-              toFields: ['at'],
-              relationName: 'DayLogs',
-            },
-          },
-        },
-      },
-    };
-    const dayLens: LensNarrowing = {
-      parent: createLens({ maps: { app: dateKeyMap }, mapName: 'app', model: 'Day' }),
-      root: { relations: { logs: {} } },
-    };
-    let caught: unknown;
-    try {
-      toPrismaForRootRowsWithRelatedRows(dayLens, {
-        path: 'logs',
-        rows: [{ dayAt: 'not-a-date' }],
-      });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(Error);
-    expect(caught).not.toBeInstanceOf(LensRefusal);
   });
 
-  test('multi-owner lens stack with progressive bindLens and parent: refs enforces every layer', () => {
+  test('multi-owner lens stack with progressive bindLens and parent: refs composes with narrowRule + toPrisma', () => {
     // Owner 1 (platform): turns on relations and declares `tenantId` bind.
     const platformLens: LensNarrowing = {
       parent: usersBase,
@@ -1102,7 +1104,9 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
         },
       },
     };
-    // Owner 3 (app surface): hides join keys via `picks` and reads Owner 1's `parent:tenantId`.
+    // Owner 3 (app surface): hides join keys via `picks`, reads Owner 1's `parent:tenantId` on an
+    // intermediate hop (`memberships`), and puts a clamp on the terminal hop (`org`, which is NOT
+    // injected because `cond` binds `orgId` on `memberships` without querying `org`).
     const surfaceLens: LensNarrowing = {
       parent: orgAdminLens,
       root: {
@@ -1110,11 +1114,12 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
         where: { field: 'email', operator: Operator.endsWith, bind: 'emailSuffix' },
         relations: {
           memberships: {
-            picks: ['active'],
+            picks: ['id', 'active'],
+            where: { field: 'id', operator: Operator.notEquals, bind: 'parent:tenantId' },
             relations: {
               org: {
                 picks: ['name'],
-                where: { field: 'name', operator: Operator.notEquals, bind: 'parent:tenantId' },
+                where: { field: 'name', operator: Operator.notEquals, value: 'blocked' },
               },
             },
           },
@@ -1124,24 +1129,18 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
 
     expect(validateNarrowing(surfaceLens).ok).toBe(true);
 
-    // Partial binding (only Owner 1 bound): Owner 2 & 3 binds remain unbound -> UsageError.
+    // Partial binding (only Owner 1 bound): Owner 2 & 3 binds remain unbound -> UsageError on compile.
     const afterOwner1 = bindLens(surfaceLens, { tenantId: 't1' });
-    expect(() =>
-      toPrismaForRootRowsWithRelatedRows(afterOwner1, {
-        path: 'memberships.org',
-        rows: [{ id: 'o1' }],
-      }),
-    ).toThrow(UsageError);
+    const cond = conditionForRootRowsWithRelatedRows(afterOwner1, 'memberships.org', [
+      { id: 'o1' },
+    ]) as Condition;
+    expect(() => compileForLens(afterOwner1, cond, { narrow: true })).toThrow(UsageError);
 
-    // Progressive binding across owners 2 and 3 resolves every layer cleanly.
+    // Progressive binding across owners 2 and 3 resolves every layer cleanly, including
+    // `parent:tenantId` on `memberships` (while terminal `org.where` is not injected).
     const afterOwner2 = bindLens(afterOwner1, { onlyActive: true });
     const fullyBound = bindLens(afterOwner2, { emailSuffix: '@acme.com' });
-    expect(
-      toPrismaForRootRowsWithRelatedRows(fullyBound, {
-        path: 'memberships.org',
-        rows: [{ id: 'o1' }],
-      }),
-    ).toEqual({
+    expect(compileForLens(fullyBound, cond, { narrow: true })).toEqual({
       steps: [
         {
           operation: 'where',
@@ -1152,7 +1151,11 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
               {
                 memberships: {
                   some: {
-                    AND: [{ active: { equals: true } }, { orgId: { in: ['o1'] } }],
+                    AND: [
+                      { active: { equals: true } },
+                      { id: { not: 't1' } },
+                      { orgId: { in: ['o1'] } },
+                    ],
                   },
                 },
               },
@@ -1264,16 +1267,14 @@ describe('toPrismaForRootRowsWithRelatedRows', () => {
         },
       },
     };
-    // Contact belongs only to a User (`orgId` and `spaceId` are null); passing the same row to all
-    // three arms drops the two null arms and compiles only the matching arm.
+    // Contact belongs only to a User (`orgId` and `spaceId` are null); building per arm drops the
+    // two null arms cleanly instead of emitting `in: [null]`.
     const changedContacts = [{ id: 'c1', userId: 'u1', orgId: null, spaceId: null }];
-    expect(
-      toPrismaForRootRowsWithRelatedRows(relLens, [
-        { path: 'customerUser.contacts', rows: changedContacts },
-        { path: 'customerOrg.contacts', rows: changedContacts },
-        { path: 'customerSpace.contacts', rows: changedContacts },
-      ]),
-    ).toEqual({
+    const arms = ['customerUser.contacts', 'customerOrg.contacts', 'customerSpace.contacts']
+      .map((path) => conditionForRootRowsWithRelatedRows(relLens, path, changedContacts))
+      .filter((c): c is Condition => c !== null);
+    expect(arms).toHaveLength(1);
+    expect(compileForLens(relLens, arms[0])).toEqual({
       steps: [
         {
           operation: 'where',

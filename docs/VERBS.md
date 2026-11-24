@@ -15,7 +15,6 @@ modules allowed to implement it, and every exported function must appear in this
 | compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s, and each `orderBy` the lens gives (the root's beside `select`). |
 | compile | `toWhereSql`, `toLensWhereSql` | Compile a condition, or a lens's `where`s where the lens wrote them (`root`, `relations` by path, `mapDefaults` by map and model), to a predicate in the engine's `sql.dialect`: values inline, columns from the caller's `columns` map, no joins. Equality, membership and existence inside `all` / `any`, and `any` / `all` / `none` / `empty` / `notEmpty` on a to-many relation as an `EXISTS` subquery on the caller's `tables` — or, with `toMany: 'join'`, `notEmpty` / `any` in the root's `where` on the caller's LEFT JOIN of the relation; anything else throws. |
 | compile | `toSourceQueries` | Compile a lens's sources to option queries (Prisma and SQL). |
-| compile | `toPrismaForRootRowsWithRelatedRows` | Compile a Prisma query plan on the lens root selecting root rows that have any of the given `{ path, rows }` related rows, binding join keys even when hidden by `picks` / `omits` and narrowing through every layer of the lens (`narrowRule` — terminal rows are caller-supplied so terminal-hop clamps are not re-evaluated in the DB); null when no entry carries non-null join keys. |
 | execute | `executePrismaPlan` | Run a Prisma query plan's steps and return its final WHERE. |
 | compose | `andWhere`, `orWhere`, `matchAll`, `matchNothing` | AND / OR compiled WHEREs with a consumer's own filters, folding the boolean constants the way the compiler does — Prisma drops `{ OR: [] }` as an AND arm, so a hand-written `AND: [x, { OR: [] }]` is just `x`, not match-nothing. |
 | validate | `validateRule`, `validateRuleInLens`, `validateNarrowing`, `validateFieldMaps` | Return `{ ok, errors: { path, message, code }[] }`. |
@@ -33,7 +32,7 @@ modules allowed to implement it, and every exported function must appear in this
 | coerce | `coerceValue` | Stamp each `distinct` / `min` / `max` over a DateTime column with `coerceType: 'DateTime'` from the lens, so ISO date strings read as dates. |
 | project | `projectLens` | What a lens exposes: by path along the relations turned on (`by: 'path'`), or flattened into a Lens (`by: 'model'`). |
 | project | `projectRows` | Rows cut to what a lens shows: hidden columns, relations that are off or omitted, and hidden rows removed. |
-| project | `lensVisit` | One visit as `projectLens` (by path) gives it, at a relation path from the root, resolved on demand (nothing enumerated); null when a relation on the path isn't shown. |
+| project | `lensVisit` | One visit as `projectLens` (by path) gives it, at a relation path from the anchor, resolved on demand (nothing enumerated); null when a relation on the path isn't shown. |
 | walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop; it crosses only relations turned on. |
 | read | `readLensValue` | One value off a row, as a lens shows it: gated path, clamps checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |

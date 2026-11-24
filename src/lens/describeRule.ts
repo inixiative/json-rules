@@ -14,7 +14,7 @@ export type RuleDescription = {
   supportedTargets: RuleTarget[];
   /** Every model visit the rule reads through the lens (`{ mapName, model, path }`), sorted by
    *  `path`, `mapName`, `model`. Pass a relation `path` and changed rows to
-   *  `conditionForRootRowsWithRelatedRows` or `toPrismaForRootRowsWithRelatedRows`. */
+   *  `conditionForRootRowsWithRelatedRows`. */
   modelVisits: ModelVisit[];
   /** What the lens refuses in the rule — validateRuleInLens's issues. */
   errors: ValidationIssue[];
@@ -47,8 +47,8 @@ const visit = (rule: Condition, acc: Acc): void =>
   );
 
 /** A rule under a lens, for routing and UX: the maps it reads, whether it crosses a bridge, the
- *  targets `validateRule` passes it for (a bridge leaves `check` alone), and the lens gate's
- *  issues. `validateRuleInLens` stays the gate. */
+ *  targets `validateRule` passes it for (a bridge leaves `check` alone), the `modelVisits` it
+ *  reads, and the lens gate's issues. `validateRuleInLens` stays the gate. */
 export const describeRule = (
   rule: Condition,
   lensOrNarrowing: Lens | LensNarrowing,

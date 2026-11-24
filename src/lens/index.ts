@@ -36,11 +36,7 @@ export {
   type SourceValues,
 } from './projectPaths';
 export { type LensValue, readLensValue } from './readLensValue.ts';
-export {
-  conditionForRootRowsWithRelatedRows,
-  type RelatedRowsAtPath,
-  toPrismaForRootRowsWithRelatedRows,
-} from './rootRowsWithRelatedRows';
+export { conditionForRootRowsWithRelatedRows } from './rootRowsWithRelatedRows';
 export type { StoredLens } from './storedLens';
 export { composeLens, storeLens } from './storedLens';
 export { type LensWhereSql, type LensWhereSqlOptions, toLensWhereSql } from './toLensWhereSql';

@@ -62,6 +62,7 @@ describe('describeCategorization', () => {
     expect(describeCategorization(tiers, lens)).toEqual({
       type: { kind: 'String', isList: false, nullable: false },
       paths: ['seats', 'tier'],
+      modelVisits: [{ mapName: 'app', model: 'Account', path: '' }],
       clockUnit: null,
       errors: [],
     });

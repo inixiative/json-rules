@@ -10,24 +10,22 @@ const findReverseRelation = (
   const targetEntry = modelOf(map, targetModel);
   if (!targetEntry) return null;
 
-  for (const fieldDef of Object.values(targetEntry.fields)) {
-    if (
+  const matches = Object.values(targetEntry.fields).filter(
+    (fieldDef) =>
       fieldDef.kind === 'object' &&
       fieldDef.type === currentModel &&
       (fieldDef.fromFields?.length ?? 0) > 0 &&
       (fieldDef.toFields?.length ?? 0) > 0 &&
-      (relationName === undefined || fieldDef.relationName === relationName)
-    ) {
-      return fieldDef;
-    }
-  }
-  return null;
+      (relationName === undefined || fieldDef.relationName === relationName),
+  );
+  return matches.length === 1 ? matches[0] : null;
 };
 
 /**
  * The column pairs that link a model to the target of one of its relations — `here` on the
  * model, `there` on the target — from the relation's own FK (forward) or its reverse side
- * (back-relation). Null when the map doesn't say. A composite FK has several pairs.
+ * (back-relation). Null when the map doesn't say or multiple reverse relations match without a
+ * `relationName`. A composite FK has several pairs.
  */
 export const relationKeys = (
   map: LensFieldMap,

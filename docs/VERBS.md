@@ -26,6 +26,7 @@ modules allowed to implement it, and every exported function must appear in this
 | list fields | `listFields` | The paths a rule reads from the row it is checked on, sorted: leaf fields and value-side `{ path }`s; a relation node's inner rule is relative to its rows and not listed. |
 | narrow | `narrowRule` | Inject a lens's clamps into a rule at their anchors. |
 | re-root | `prefixConditionFields` | Move a condition onto a related record (a parent's where read from the child); refuse shapes it cannot move. |
+| re-root | `conditionForRootRowsWithRelatedRows` | Build a related-rows join-key condition and re-root it onto the lens root, selecting root rows whose relation path reaches any of the given rows (single/composite FKs, multi-hop to-one and to-many, or a terminal joined bridge); null when no row carries non-null join keys. |
 | clamp | `clampLens` | AND clamps into a lens's first narrowing over the base, where they read the whole schema; later layers kept. |
 | coerce | `coerceRule` | Stamp each field rule with its field's `coerceType` from the lens. |
 | coerce | `coerceValue` | Stamp each `distinct` / `min` / `max` over a DateTime column with `coerceType: 'DateTime'` from the lens, so ISO date strings read as dates. |
@@ -35,12 +36,12 @@ modules allowed to implement it, and every exported function must appear in this
 | walk | `walkLensPath` | Resolve a dotted path through a lens, hop by hop; it crosses only relations turned on. |
 | read | `readLensValue` | One value off a row, as a lens shows it: gated path, clamps checked per row, own properties only. |
 | walk | `getLensRoot` | The base lens a narrowing chain is rooted at. |
-| describe | `describeRule` | A rule's sources, bridge crossings and compile targets under a lens. |
+| describe | `describeRule` | A rule's sources, bridge crossings, compile targets and `modelVisits` (`{ mapName, model, path }`) under a lens. |
 | describe | `clockUnit` | The finest clock unit (`CLOCK_UNITS`) any relative date in a rule names, at any depth; null when it reads no clock. |
 | describe | `inferValueType` | The type a value expression returns (`{ kind, isList, nullable }`), from the lens where it reads a column; throws when it has none. |
 | describe | `valueClockUnit` | `clockUnit` over every condition a value expression holds. |
-| describe | `describeValue` | A value expression under a lens: its type, the dotted paths it reads, its clock unit, and every issue (shape, lens gate, type), without throwing. |
-| describe | `describeCategorization` | A categorization under a lens, as `describeValue` describes a value: the type `categorize` returns (every case's value and the default unified, a list under `match: 'all'`, nullable with no default), the paths it reads, its clock unit, and every issue at the case it is in. |
+| describe | `describeValue` | A value expression under a lens: its type, the dotted paths and `modelVisits` (`{ mapName, model, path }`) it reads, its clock unit, and every issue (shape, lens gate, type), without throwing. |
+| describe | `describeCategorization` | A categorization under a lens, as `describeValue` describes a value: the type `categorize` returns (every case's value and the default unified, a list under `match: 'all'`, nullable with no default), the paths and `modelVisits` it reads, its clock unit, and every issue at the case it is in. |
 | describe | `valueExpressionShape` | Which value-expression shape a node is: `literal`, `source`, `aggregate`, `if`, `list`, or null. |
 | describe | `listItems` | A list value's items, bare or `{ list }`. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |

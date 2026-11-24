@@ -1,3 +1,24 @@
+## Unreleased — model visits a rule reads, and finding root rows with related rows
+
+- **`describeRule(...).modelVisits`**, **`describeValue(...).modelVisits`** and
+  **`describeCategorization(...).modelVisits`**: every model visit (`{ mapName, model, path }`,
+  with `''` for the lens root itself) a rule, value expression or categorization reads through the
+  lens, sorted by `path`, `mapName`, `model`. Uses the same lens gate as `validateRuleInLens`
+  (invalid 4.0 to-many plain paths stay silent). Each crossed relation records its target visit, and
+  a hop whose join key sits on the near model (a forward FK or a joined bridge) also records the
+  near visit so root-side FK edits invalidate rules reading through it.
+- **`conditionForRootRowsWithRelatedRows(lens, path, rows)`**: builds the structural root-level
+  `Condition` selecting root rows whose relation `path` reaches any of `rows` (arbitrary N-hop
+  to-one and to-many paths, single and composite FKs, or a terminal `JoinedBridge`), binding join
+  keys with `caseInsensitive: false` and `distinctValues` dedup; `null` when no row carries
+  non-null join keys; `LensRefusal` on the root path (`'root_path'`), columns, unresolved paths,
+  supplied or non-terminal bridges, or missing/ambiguous join keys. Composes directly with
+  `check()`, `toPrisma(..., { map: root, mapName: root.mapName, model: root.model })`, and
+  `narrowRule(...)` (for example with an immutable tenancy/with-deleted lens so evictions are never
+  filtered out).
+- **`relationKeys`** now fails closed (`null`) when multiple reverse relations exist between two
+  models without a `relationName`, instead of silently picking the first field.
+
 ## 4.7.0 — a supplied bridge may start from every model of a map
 
 Why: permissions kept a second group of field maps (the "supplied" ones) only so it could invent a

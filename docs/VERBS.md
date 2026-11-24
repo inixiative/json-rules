@@ -48,7 +48,7 @@ modules allowed to implement it, and every exported function must appear in this
 | create | `createLens` | Build a lens from field maps and bridges. |
 | store | `storeLens` | A composed lens as the records it's stored in: one per layer, each listing the ids it composes with (the base lens first). |
 | compose | `composeLens` | A stored layer and the records it lists, resolved into the composed lens every other function takes. |
-| stitch | `stitchFieldMaps` | Join field maps across bridges: a joined bridge on a field of each side, a supplied bridge with none. |
+| stitch | `stitchFieldMaps` | Join field maps across bridges: a joined bridge on a field of each side, a supplied bridge with none. A supplied bridge whose first endpoint names only its map starts from every model of that map. |
 | name | `endpointKey`, `parseEndpointKey` | The `map:Model` name of a bridge endpoint, and the map and model a name holds. |
 | name | `relationTargetOf` | The model a relation or bridge entry leads to, in its map or across a bridge; null for a column. |
 | classify | `isJoinedBridge` | Whether a bridge joins on a field of each side (`JoinedBridge`), or its far row is supplied on the record (`SuppliedBridge`). |

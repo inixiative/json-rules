@@ -1,5 +1,5 @@
 import { fieldOf, own } from '@inixiative/field-map';
-import { endpointKey, isJoinedBridge } from '../fieldMap/endpointKey';
+import { endpointCoversModel, endpointKey, isJoinedBridge } from '../fieldMap/endpointKey';
 import { isRelationEntry } from '../fieldMap/entry';
 import { resolveFieldMap } from '../fieldMap/resolveFieldMap';
 import type { LensFieldMap, SourceOption } from '../fieldMap/types';
@@ -200,7 +200,11 @@ const bridgeKey = (
       [a, b],
       [b, a],
     ] as const)
-      if (here.fieldMap === mapName && here.model === near && endpointKey(there) === farKey)
+      if (
+        endpointCoversModel(here, mapName, near) &&
+        'model' in there &&
+        endpointKey(there) === farKey
+      )
         return 'on' in here ? [...parts.slice(0, hops.length), here.on].join('.') : null;
   }
   throw new LensRefusal(`'${read}' crosses no bridge the lens declares on ${near}`, 'not_in_lens');

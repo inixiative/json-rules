@@ -138,7 +138,12 @@ export const projectModelsWith = (policy: Policy, opts: ProjectLensOptions = {})
   // touches unexposed surface and its `on` keys would leak).
   const bridges: Bridge[] | undefined = lens.bridges?.filter((b) => {
     const [a, bb] = b.endpoints;
-    const aExposesB = fieldOf(own(maps, a.fieldMap), a.model, endpointKey(bb));
+    const aMap = own(maps, a.fieldMap);
+    if (!('model' in a))
+      return Object.keys(aMap?.models ?? {}).some(
+        (model) => fieldOf(aMap, model, endpointKey(bb)) !== undefined,
+      );
+    const aExposesB = fieldOf(aMap, a.model, endpointKey(bb));
     const bExposesA = fieldOf(own(maps, bb.fieldMap), bb.model, endpointKey(a));
     return aExposesB !== undefined || bExposesA !== undefined;
   });

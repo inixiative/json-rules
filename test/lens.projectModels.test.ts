@@ -254,8 +254,8 @@ describe('projectModels — multi-source bridges', () => {
     // Only the Org↔Contact bridge survives; the FanUser↔Contact bridge is eliminated.
     expect(reduced.bridges?.length).toBe(1);
     const survivor = reduced.bridges?.[0];
-    expect(survivor?.endpoints.some((e) => e.model === 'Org')).toBe(true);
-    expect(survivor?.endpoints.some((e) => e.model === 'FanUser')).toBe(false);
+    expect(survivor?.endpoints.some((e) => 'model' in e && e.model === 'Org')).toBe(true);
+    expect(survivor?.endpoints.some((e) => 'model' in e && e.model === 'FanUser')).toBe(false);
   });
 });
 

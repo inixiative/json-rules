@@ -740,7 +740,8 @@ describe('invalid expressions', () => {
     expect(codes([{ list: [1] }])).toEqual(['$[0] nested_list']);
     expect(codes({})).toEqual(['$ invalid_value_expression']);
     expect(codes({ value: 1, path: 'x' })).toEqual(['$ ambiguous_value_source']);
-    expect(codes({ value: 1, offset: 2 })).toEqual(['$.offset unknown_key']);
+    expect(codes({ value: 1, offset: 2 })).toEqual(['$.offset invalid_offset']);
+    expect(codes({ value: 1, bogus: 2 })).toEqual(['$.bogus unknown_key']);
     expect(codes({ path: '' })).toEqual(['$.path invalid_value_source']);
     expect(
       codes({

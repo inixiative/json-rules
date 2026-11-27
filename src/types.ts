@@ -42,7 +42,7 @@ export type ValueSourceFields<TValue> = Partial<SourceSlots<TValue>>;
 export type Magnitude = number | ValueSourceOf<number>;
 
 // --- Relative & calendar date expressions (v2.6.0) ---
-// Positive magnitudes only; direction lives in the keyword. Units are dayjs words.
+// Positive magnitudes only; direction lives in the keyword.
 // `TAmount` is `Magnitude` as authored, `number` once every amount is read.
 export type RelativeUnits<TAmount = Magnitude> = {
   years?: TAmount;
@@ -470,13 +470,19 @@ export type CoercedLiteral = { value: RuleValue; coerceType: FieldKind } & Never
   'path' | 'bind' | 'bindOptional'
 >;
 
+/** An offset on a value source in a value expression: a rolling date shift or a number. */
+export type ValueOffset = DateOffset | NumberOffset;
+
 /** A value computed from a row: a literal (bare, `{ value }` — an object literal needs the
- *  wrapper — or a `CoercedLiteral`), a path read (`{ path }`), a binding (`{ bind }`), an
- *  aggregate over a relation's rows, if / then / else, or a list. */
+ *  wrapper — or a `CoercedLiteral`), a date expression (`{ ahead }`, `{ ago }`, `{ next }`,
+ *  `{ start }`, `{ end }`), a path read (`{ path }`), a binding (`{ bind }`) — each source
+ *  optionally shifted by `offset` — an aggregate over a relation's rows, if / then / else, or a
+ *  list. */
 export type ValueExpression =
   | BareLiteral
-  | ValueSourceOf<RuleValue>
-  | CoercedLiteral
+  | DateExpr
+  | (ValueSourceOf<RuleValue> & { offset?: ValueOffset })
+  | (CoercedLiteral & { offset?: ValueOffset })
   | AggregateValue
   | IfThenElseValue
   | ListValue;

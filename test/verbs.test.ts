@@ -90,8 +90,13 @@ const RULES: { verb: string; pattern: RegExp; owners: string[] }[] = [
   },
   {
     verb: 'parse a date',
-    pattern: /Date\.parse\(|dayjs\.tz\(/,
+    pattern: /Date\.parse\(|fromWallUtc\(/,
     owners: ['src/date.ts', 'src/dateExpr.ts'],
+  },
+  {
+    verb: 'format a date',
+    pattern: /formatDateFns\(|ISO_DATE_FORMAT/,
+    owners: ['src/date.ts'],
   },
   {
     verb: 'shape a rolling expression',

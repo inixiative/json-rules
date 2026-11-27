@@ -1,4 +1,4 @@
-import { clockUnit } from '../clock';
+import { clockUnit, finestClockUnit } from '../clock';
 import { collectModelVisits } from '../lens/modelVisits';
 import { resolvePolicy } from '../lens/policy';
 import { readPaths } from '../lens/readPaths';
@@ -60,10 +60,12 @@ export const describeCategorization = (
 
   const errors: ValidationIssue[] = [];
   const values: TypedValue[] = [];
+  const valueClockUnits: (ClockUnit | null)[] = [];
   const describeAt = (expression: ValueExpression, path: string) => {
     const described = describeValueWith(expression, lensOrNarrowing, null);
     errors.push(...prefixed(described.errors, path));
     if (described.type) values.push({ type: described.type, path });
+    valueClockUnits.push(described.clockUnit);
     return described.errors.length === 0;
   };
 
@@ -92,7 +94,10 @@ export const describeCategorization = (
   ]);
   let unit: ClockUnit | null = null;
   try {
-    unit = clockUnit(reads);
+    unit = finestClockUnit([
+      clockUnit(allOf(categorization.cases.map((category) => category.if))),
+      ...valueClockUnits,
+    ]);
   } catch (error) {
     errors.push({ path: '$', code: 'clock_unit_below_floor', message: (error as Error).message });
   }

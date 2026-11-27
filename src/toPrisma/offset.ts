@@ -1,7 +1,4 @@
-import dayjs from 'dayjs';
-import { resolveUnits } from '../amount';
-import { shiftByUnits } from '../dateExpr';
-import { addOffset, offsetAmount, offsetShift } from '../offset';
+import { addOffset, applyDateOffset, offsetAmount } from '../offset';
 import type { DateOffset, NumberOffset } from '../types';
 import type { ToPrismaOptions } from './types';
 import { dateConfigOf, prismaRead, readSource } from './valueSource';
@@ -20,8 +17,5 @@ export const offsetDate = (
   options?: ToPrismaOptions,
 ): Date | null => {
   if (instant === null) return null;
-  const move = offsetShift(readSource(offset));
-  const units = move && resolveUnits(move[0], prismaRead);
-  if (!move || !units) return null;
-  return shiftByUnits(dayjs(instant), units, move[1], dateConfigOf(options).timeZone).toDate();
+  return applyDateOffset(instant, readSource(offset), prismaRead, dateConfigOf(options).timeZone);
 };

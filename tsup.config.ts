@@ -4,16 +4,13 @@ export default node({
   entry: ['index.ts'],
   minify: true,
   treeshake: true,
-  // dayjs is externalized (peer-like behavior); lodash-es is bundled so CJS
+  // Date libraries and field-map are externalized; lodash-es is bundled so CJS
   // consumers don't get an ExperimentalWarning (or hard failure on Node <22)
   // from require()-ing ESM.
   external: [
     // One copy across the building blocks, so its branded types and readers are the same ones.
     '@inixiative/field-map',
-    'dayjs',
-    'dayjs/plugin/isSameOrAfter',
-    'dayjs/plugin/isSameOrBefore',
-    'dayjs/plugin/timezone',
-    'dayjs/plugin/utc',
+    '@date-fns/tz',
+    'date-fns',
   ],
 });

@@ -1,3 +1,4 @@
+import { isDateExpr } from '../dateExpr';
 import { invalidValueExpression, valueTakesNoComparison } from '../errors';
 import { listItems, type ValueExpressionShape, valueExpressionShape } from '../traverse';
 import {
@@ -6,7 +7,9 @@ import {
   type ValidationIssue,
   type ValidationResult,
   validateAggregateValue,
+  validateDateExprValue,
   validateRule,
+  validateValueOffset,
   validateValueSource,
   validationResult,
 } from '../validate';
@@ -14,8 +17,8 @@ import { namesComparison } from './namesComparison';
 
 type Node = Record<string, unknown>;
 
-const SHAPE_KEYS: Record<Exclude<ValueExpressionShape, 'literal'>, readonly string[]> = {
-  source: ['value', 'path', 'bind', 'bindOptional', 'coerceType'],
+const SHAPE_KEYS: Record<Exclude<ValueExpressionShape, 'literal' | 'date'>, readonly string[]> = {
+  source: ['value', 'path', 'bind', 'bindOptional', 'coerceType', 'offset'],
   if: ['if', 'then', 'else'],
   aggregate: [
     'field',
@@ -39,7 +42,7 @@ export const prefixed = (issues: ValidationIssue[], path: string): ValidationIss
 
 const unknownKeys = (
   node: Node,
-  shape: Exclude<ValueExpressionShape, 'literal'>,
+  shape: Exclude<ValueExpressionShape, 'literal' | 'date'>,
   path: string,
 ): ValidationIssue[] =>
   Object.keys(node)
@@ -130,6 +133,8 @@ const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIss
   switch (valueExpressionShape(expr)) {
     case 'literal':
       return [];
+    case 'date':
+      return prefixed(validateDateExprValue(expr).errors, path);
     case 'list':
       return validateList(expr, path, inList);
     case 'if':
@@ -137,11 +142,17 @@ const validateAt = (expr: unknown, path: string, inList: boolean): ValidationIss
     case 'aggregate':
       return validateAggregate(node, path);
     case 'source': {
-      const { coerceType, ...source } = node;
+      const { coerceType, offset, ...source } = node;
       return [
         ...unknownKeys(node, 'source', path),
         ...prefixed(validateValueSource(source).errors, path),
         ...literalCoercionIssues(node, coerceType, path),
+        ...(offset !== undefined && isDateExpr(node.value)
+          ? prefixed(validateDateExprValue(node.value).errors, `${path}.value`)
+          : []),
+        ...(offset === undefined
+          ? []
+          : prefixed(validateValueOffset(offset, node.value).errors, `${path}.offset`)),
       ];
     }
     default: {

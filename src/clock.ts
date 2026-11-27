@@ -1,5 +1,5 @@
 import { castArray, isPlainObject } from 'lodash-es';
-import { isDateExpr, isEdgeExpr, namedPeriod, rollingShift } from './dateExpr';
+import { edgePeriod, isDateExpr, isEdgeExpr, namedPeriod, rollingShift } from './dateExpr';
 import { engineGlobals } from './engineGlobals';
 import { clockUnitBelowFloor, UsageError } from './errors';
 import {
@@ -23,7 +23,7 @@ const exprClockUnits = (expr: DateExpr<unknown>): ClockUnit[] => {
           isRelativeUnit(unit) ? [RELATIVE_UNITS[unit].clock] : [],
         )
       : [];
-  const period = isEdgeExpr(expr) ? ('start' in expr ? expr.start : expr.end) : expr;
+  const period = isEdgeExpr(expr) ? edgePeriod(expr) : expr;
   if (!isPlainObject(period)) return [];
   const unit = namedPeriod(period as PeriodExpr);
   return isPeriodUnit(unit) ? [PERIOD_CLOCK_UNITS[unit]] : [];
@@ -37,6 +37,16 @@ const comparisonUnits = (value: unknown, offset: unknown): ClockUnit[] =>
 const readsClock = (value: unknown): boolean => castArray(value).some(isDateExpr);
 
 const rank = (unit: ClockUnit): number => CLOCK_UNITS.indexOf(unit);
+
+export const finestClockUnit = (units: readonly (ClockUnit | null)[]): ClockUnit | null => {
+  let finest: number | null = null;
+  for (const unit of units) {
+    if (unit === null) continue;
+    const r = rank(unit);
+    if (finest === null || r < finest) finest = r;
+  }
+  return finest === null ? null : CLOCK_UNITS[finest];
+};
 
 // The engine's floor, singular or plural; anything else would switch the floor off unseen.
 const clockFloor = (): ClockUnit => {
@@ -62,6 +72,13 @@ export const clockFloorError = (value: unknown, offset?: unknown): Error | null 
 export const writtenOffset = (offset: unknown): unknown =>
   isPlainObject(offset) ? (offset as { value?: unknown }).value : undefined;
 
+/** Clock units a value (and optional written offset) reads; enforces `clock.finestUnit`. */
+export const clockUnitsOf = (value: unknown, offset?: unknown): ClockUnit[] => {
+  const error = clockFloorError(value, offset);
+  if (error) throw error;
+  return readsClock(value) ? comparisonUnits(value, offset) : [];
+};
+
 /**
  * The finest clock unit a rule's answer can change by while its data stays the same: the smallest
  * unit any relative date in the tree names, or the offset moving one (`{ ago: { hours: 2 } }` →
@@ -71,15 +88,10 @@ export const writtenOffset = (offset: unknown): unknown =>
  * included, is finer than the engine's `clock.finestUnit`, as evaluating the rule does.
  */
 export const clockUnit = (condition: Condition): ClockUnit | null => {
-  let finest: number | null = null;
+  const units: ClockUnit[] = [];
   visitCondition(condition, (node) => {
     if (!('dateOperator' in node)) return;
-    const offset = writtenOffset(node.offset);
-    const error = clockFloorError(node.value, offset);
-    if (error) throw error;
-    if (!readsClock(node.value)) return;
-    for (const unit of comparisonUnits(node.value, offset))
-      if (finest === null || rank(unit) < finest) finest = rank(unit);
+    units.push(...clockUnitsOf(node.value, writtenOffset(node.offset)));
   });
-  return finest === null ? null : CLOCK_UNITS[finest];
+  return finestClockUnit(units);
 };

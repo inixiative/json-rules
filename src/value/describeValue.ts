@@ -1,4 +1,3 @@
-import { clockUnit } from '../clock';
 import { collectModelVisits, type ModelVisit } from '../lens/modelVisits';
 import { type Policy, resolvePolicy } from '../lens/policy';
 import { readPaths } from '../lens/readPaths';
@@ -10,6 +9,7 @@ import type { ValueExpression, ValueType } from '../types';
 import type { ValidationIssue } from '../validate';
 import { inferValueType } from './inferValueType';
 import { validateValue } from './validateValue';
+import { valueClockUnit } from './valueClockUnit';
 import { ValueTypeIssue } from './valueTypeIssue';
 
 /** A value expression under a lens: its type, the dotted paths it reads from the row (a relation's
@@ -44,7 +44,7 @@ export const describeValueWith = (
   }
   let unit: ClockUnit | null = null;
   try {
-    unit = clockUnit(reads);
+    unit = valueClockUnit(expression);
   } catch (error) {
     errors.push({ path: '$', code: 'clock_unit_below_floor', message: (error as Error).message });
   }

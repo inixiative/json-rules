@@ -1,6 +1,6 @@
 {
   "name": "@inixiative/json-rules",
-  "version": "4.7.0",
+  "version": "4.8.0",
   "description": "Serializable JSON rules engine for TypeScript: one rule AST runs in memory (check), as a Prisma query (toPrisma) and as SQL WHERE (toSql)",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -71,8 +71,9 @@
     }
   },
   "dependencies": {
+    "@date-fns/tz": "^1.4.1",
     "@inixiative/field-map": "^0.1.2",
-    "dayjs": "^1.11.13",
+    "date-fns": "^4.4.0",
     "fastest-levenshtein": "^1.0.16",
     "re2js": "^2.8.6"
   },

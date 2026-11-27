@@ -324,7 +324,7 @@ What a consumer checks before saving one:
 | --- | --- |
 | `validateValue(expr)` / `assertValidValue(expr)` | The shape, without data: each node exactly one kind, known keys, a known mode, and every condition it holds valid as `validateRule` sees it. |
 | `inferValueType(expr, lens?)` | `{ kind, isList, nullable }`: a literal's kind, a path's column kind through the lens, `count` → `Int`, `sum` → the column's numeric kind, `avg` → `Float` (`Decimal` stays `Decimal`, nullable), `min` / `max` → the column's kind (nullable), `distinct` → a list of the column's kind (never null), `pick` → the column's kind (nullable) for `take: 1`, else a list of it; with `coerceType`, that kind. Branches and list items must agree; two numeric kinds read as `Decimal` when either is, else `Float`. Throws on an expression with no type. The lens is needed wherever a column's kind is read. |
-| `valueClockUnit(expr)` | `clockUnit` over every condition the expression holds: a 90-day window reads `day`. |
+| `valueClockUnit(expr)` | The finest clock unit over every date expression and condition the expression holds: `{ ahead: { weeks: 1 } }` reads `week`, a 90-day window reads `day`. |
 | `describeValue(expr, lens)` | Its type, the dotted paths it reads (`brandReferenceRequestFanUsers.activatedAt`), its clock unit, and every issue (shape, lens gate, type) as `{ path, code, message }`, without throwing. |
 
 Value expressions evaluate in memory only; `toPrisma` / `toSql` do not compile them.
@@ -374,7 +374,7 @@ only, like value expressions.
 
 A date rule's `value` can be a structured, serializable expression instead of an
 absolute date. Magnitudes are always **positive**; the keyword carries the direction.
-A period (`this` / `last` / `next`) names a dayjs unit: `day`, `week`, `isoWeek`, `month`,
+A period (`this` / `last` / `next`) names a calendar unit: `day`, `week`, `isoWeek`, `month`,
 `quarter`, `year`, `hour`, `minute`, `second`. A rolling amount (`ago` / `ahead`) counts
 `years`, `quarters`, `months`, `weeks`, `days`, `hours`, `minutes`, `seconds`.
 

@@ -1,13 +1,11 @@
-import dayjs from 'dayjs';
-import isoWeek from 'dayjs/plugin/isoWeek.js';
-import quarterOfYear from 'dayjs/plugin/quarterOfYear.js';
-import timezone from 'dayjs/plugin/timezone.js';
-import utc from 'dayjs/plugin/utc.js';
+import { isValid } from 'date-fns';
 import { isPlainObject } from 'lodash-es';
 import { rangeExprRequired, UsageError } from './errors';
+import { isOrderedValue } from './number';
 import {
   type INTERVAL_FIELDS,
   leafCatalogEntry,
+  PERIOD_CLOCK_UNITS,
   PERIOD_UNITS,
   RELATIVE_UNITS,
   type RelativeUnit,
@@ -16,17 +14,13 @@ import {
 import type {
   DateConfig,
   DateExpr,
+  DateInputValue,
   EdgeExpr,
   PeriodExpr,
   PeriodUnit,
   RelativeUnits,
   RollingExpr,
 } from './types';
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
-dayjs.extend(quarterOfYear);
-dayjs.extend(isoWeek);
 
 /** True when a DateRule `value` is a structured date expression rather than an absolute date. */
 export const isDateExpr = (value: unknown): value is DateExpr => {
@@ -49,11 +43,195 @@ export const DEFAULT_ZONE = 'UTC';
 /** A date config with its zone read: the expression layer never sees a value source. */
 export type ResolvedDateConfig = Omit<DateConfig, 'timeZone'> & { timeZone: string };
 
-export const requireNow = (config: ResolvedDateConfig): dayjs.Dayjs => {
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
+
+export const utcDate = (
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+  ms = 0,
+): Date => {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month, day);
+  date.setUTCHours(hour, minute, second, ms);
+  return date;
+};
+
+const WALL_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+
+const wallFormatter = (zone: string): Intl.DateTimeFormat => {
+  let formatter = WALL_FORMATTERS.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      era: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    });
+    WALL_FORMATTERS.set(zone, formatter);
+  }
+  return formatter;
+};
+
+/** Wall-clock components of `instant` in `zone`, held in a UTC Date so host TZ never leaks. */
+export const wallUtcOf = (instant: Date, zone: string): Date => {
+  if (zone === DEFAULT_ZONE) return new Date(instant.getTime());
+  const parts = wallFormatter(zone).formatToParts(instant);
+  let era = 'AD';
+  let year = 0;
+  let month = 1;
+  let day = 1;
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  for (const part of parts) {
+    switch (part.type) {
+      case 'era':
+        era = part.value;
+        break;
+      case 'year':
+        year = Number(part.value);
+        break;
+      case 'month':
+        month = Number(part.value);
+        break;
+      case 'day':
+        day = Number(part.value);
+        break;
+      case 'hour':
+        hour = Number(part.value);
+        break;
+      case 'minute':
+        minute = Number(part.value);
+        break;
+      case 'second':
+        second = Number(part.value);
+        break;
+    }
+  }
+  const isoYear = era === 'BC' || era === 'B' ? 1 - year : year;
+  const ms = ((instant.getTime() % 1000) + 1000) % 1000;
+  return utcDate(isoYear, month - 1, day, hour === 24 ? 0 : hour, minute, second, ms);
+};
+
+const zoneOffsetMs = (instantMs: number, zone: string): number =>
+  wallUtcOf(new Date(instantMs), zone).getTime() - instantMs;
+
+// Postgres AT TIME ZONE semantics: ambiguous fall-back times resolve to standard (later) time;
+// nonexistent spring-forward times shift forward using the pre-gap offset.
+export const fromWallUtc = (wall: Date, zone: string): Date => {
+  if (zone === DEFAULT_ZONE) return new Date(wall.getTime());
+  const wallMs = wall.getTime();
+  const approx = wallMs - zoneOffsetMs(wallMs, zone);
+  const oBefore = zoneOffsetMs(approx - 3 * HOUR_MS, zone);
+  const oAfter = zoneOffsetMs(approx + 3 * HOUR_MS, zone);
+  if (oBefore === oAfter) return new Date(wallMs - oBefore);
+
+  const cBefore = wallMs - oBefore;
+  const cAfter = wallMs - oAfter;
+  const okBefore = wallUtcOf(new Date(cBefore), zone).getTime() === wallMs;
+  const okAfter = wallUtcOf(new Date(cAfter), zone).getTime() === wallMs;
+  if (okBefore && okAfter) return new Date(Math.max(cBefore, cAfter));
+  if (okBefore) return new Date(cBefore);
+  if (okAfter) return new Date(cAfter);
+  return new Date(cBefore);
+};
+
+const ZONED_TIME = /\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:[zZ]|[+-]\d{2}(?::?\d{2})?)$/;
+const hasExplicitZone = (value: string): boolean =>
+  ZONED_TIME.test(value) || /\b(?:GMT|UTC)\b/.test(value);
+
+const ISO_DATE_RE =
+  /^([+-]?\d{4,6})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?(?:\s*([zZ]|[+-]\d{2}(?::?\d{2})?))?$/;
+
+const parseOffsetMs = (suffix: string): number => {
+  if (suffix === 'Z' || suffix === 'z') return 0;
+  const sign = suffix[0] === '-' ? -1 : 1;
+  const digits = suffix.slice(1).replace(':', '');
+  const hours = Number(digits.slice(0, 2));
+  const minutes = digits.length >= 4 ? Number(digits.slice(2, 4)) : 0;
+  return sign * (hours * 60 + minutes) * MINUTE_MS;
+};
+
+/**
+ * Parse a comparison/field value into an instant, given the already-resolved anchor zone.
+ * - Date object / epoch number → absolute instant, used as-is (never anchored).
+ * - String with an explicit zone (`Z` or `±HH[:MM]` after a time) → absolute.
+ * - Naive string (date-only or zoneless datetime) → anchored in `zone` (midnight for date-only).
+ */
+export const parseDateValue = (value: DateInputValue | undefined, zone: string): Date => {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value);
+  if (typeof value !== 'string') return new Date(Number.NaN);
+  const trimmed = value.trim();
+  if (!trimmed) return new Date(Number.NaN);
+  if (/^-?\d+$/.test(trimmed)) return new Date(Number(trimmed));
+
+  const iso = ISO_DATE_RE.exec(trimmed);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const hour = iso[4] ? Number(iso[4]) : 0;
+    const minute = iso[5] ? Number(iso[5]) : 0;
+    const second = iso[6] ? Number(iso[6]) : 0;
+    const ms = iso[7] ? Number(iso[7].slice(0, 3).padEnd(3, '0')) : 0;
+    if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59)
+      return new Date(Number.NaN);
+    const maxDay = utcDate(year, month, 0).getUTCDate();
+    if (day < 1 || day > maxDay) return new Date(Number.NaN);
+    const wall = utcDate(year, month - 1, day, hour, minute, second, ms);
+    if (iso[8]) return new Date(wall.getTime() - parseOffsetMs(iso[8]));
+    return fromWallUtc(wall, zone);
+  }
+
+  if (hasExplicitZone(trimmed)) return new Date(trimmed);
+  const parsed = new Date(trimmed);
+  if (!isValid(parsed)) return parsed;
+  const wall = utcDate(
+    parsed.getFullYear(),
+    parsed.getMonth(),
+    parsed.getDate(),
+    parsed.getHours(),
+    parsed.getMinutes(),
+    parsed.getSeconds(),
+    parsed.getMilliseconds(),
+  );
+  return fromWallUtc(wall, zone);
+};
+
+const addWallMonths = (wall: Date, delta: number): Date => {
+  const total = wall.getUTCFullYear() * 12 + wall.getUTCMonth() + delta;
+  const year = Math.floor(total / 12);
+  const month = ((total % 12) + 12) % 12;
+  const maxDay = utcDate(year, month + 1, 0).getUTCDate();
+  return utcDate(
+    year,
+    month,
+    Math.min(wall.getUTCDate(), maxDay),
+    wall.getUTCHours(),
+    wall.getUTCMinutes(),
+    wall.getUTCSeconds(),
+    wall.getUTCMilliseconds(),
+  );
+};
+
+export const requireNow = (config: ResolvedDateConfig): Date => {
   if (config.now === undefined)
     throw new UsageError('date expressions require `now` to be supplied to the evaluator');
-  const base = dayjs(config.now).tz(config.timeZone);
-  if (!base.isValid()) throw new UsageError(`invalid \`now\`: ${String(config.now)}`);
+  if (!isOrderedValue(config.now)) throw new UsageError(`invalid \`now\`: ${String(config.now)}`);
+  const base = parseDateValue(config.now, config.timeZone);
+  if (!isValid(base)) throw new UsageError(`invalid \`now\`: ${String(config.now)}`);
   return base;
 };
 
@@ -68,30 +246,30 @@ const intervalTotal = (
 ): number =>
   (Object.entries(units) as [RelativeUnit, number][]).reduce(
     (total, [unit, amount]) =>
-      RELATIVE_UNITS[unit].interval === field
+      Object.hasOwn(RELATIVE_UNITS, unit) && RELATIVE_UNITS[unit].interval === field
         ? total + amount * RELATIVE_UNITS[unit].factor
         : total,
     0,
   );
 
-const WALL = 'YYYY-MM-DDTHH:mm:ss.SSS';
-
-/** Move `base` by `units` on the wall clock of `zone` — forward for `ahead` (1), back for `ago` (-1). */
-export const shiftByUnits = (
-  base: dayjs.Dayjs,
-  units: RelativeUnits<number>,
-  direction: 1 | -1,
-  zone: string,
-): dayjs.Dayjs => {
+const shiftWall = (wall: Date, units: RelativeUnits<number>, direction: 1 | -1): Date => {
   const months = intervalTotal(units, 'months');
   const days = intervalTotal(units, 'days');
   const seconds = intervalTotal(units, 'secs');
-  let wall = dayjs.utc(base.tz(zone).format(WALL));
-  if (months) wall = wall.add(direction * months, 'month');
-  if (days) wall = wall.add(direction * days, 'day');
-  if (seconds) wall = wall.add(direction * seconds * 1000, 'millisecond');
-  return dayjs.tz(wall.format(WALL), zone);
+  let shifted = wall;
+  if (months) shifted = addWallMonths(shifted, direction * months);
+  if (days) shifted = new Date(shifted.getTime() + direction * days * DAY_MS);
+  if (seconds) shifted = new Date(shifted.getTime() + direction * seconds * 1000);
+  return shifted;
 };
+
+/** Move `base` by `units` on the wall clock of `zone` — forward for `ahead` (1), back for `ago` (-1). */
+export const shiftByUnits = (
+  base: Date,
+  units: RelativeUnits<number>,
+  direction: 1 | -1,
+  zone: string,
+): Date => fromWallUtc(shiftWall(wallUtcOf(base, zone), units, direction), zone);
 
 const isRollingExpr = <A>(e: DateExpr<A>): e is RollingExpr<A> => 'ago' in e || 'ahead' in e;
 /** A rolling expression from units and a direction: back (-1) is `ago`, forward (1) `ahead`. */
@@ -110,7 +288,9 @@ export const isEdgeExpr = <A>(e: DateExpr<A>): e is EdgeExpr => 'start' in e || 
 export const namedPeriod = (expr: PeriodExpr): unknown =>
   'this' in expr ? expr.this : 'last' in expr ? expr.last : expr.next;
 
-/** A period expression's unit; an unknown one throws (dayjs would read it as a millisecond). */
+/** The period an edge expression (`{ start }` / `{ end }`) wraps. */
+export const edgePeriod = (expr: EdgeExpr): PeriodExpr => ('start' in expr ? expr.start : expr.end);
+
 const periodUnit = (expr: PeriodExpr): PeriodUnit => {
   const unit = namedPeriod(expr);
   if (typeof unit !== 'string' || !PERIOD_UNITS.includes(unit))
@@ -118,42 +298,90 @@ const periodUnit = (expr: PeriodExpr): PeriodUnit => {
   return unit as PeriodUnit;
 };
 
-// `week` is governed by weekStart (default monday → isoWeek). `isoWeek` is always Monday.
-const effectivePeriodUnit = (unit: PeriodUnit, config: ResolvedDateConfig): dayjs.OpUnitType => {
-  if (unit === 'week')
-    return (config.weekStart === 'sunday' ? 'week' : 'isoWeek') as dayjs.OpUnitType;
-  return unit as dayjs.OpUnitType;
+const wallPeriodBounds = (
+  wall: Date,
+  unit: PeriodUnit,
+  config: ResolvedDateConfig,
+): [Date, Date] => {
+  const y = wall.getUTCFullYear();
+  const m = wall.getUTCMonth();
+  const d = wall.getUTCDate();
+  const h = wall.getUTCHours();
+  const min = wall.getUTCMinutes();
+  const s = wall.getUTCSeconds();
+
+  switch (unit) {
+    case 'year':
+      return [utcDate(y, 0, 1, 0, 0, 0, 0), utcDate(y, 11, 31, 23, 59, 59, 999)];
+    case 'quarter': {
+      const qStart = Math.floor(m / 3) * 3;
+      return [utcDate(y, qStart, 1, 0, 0, 0, 0), utcDate(y, qStart + 3, 0, 23, 59, 59, 999)];
+    }
+    case 'month':
+      return [utcDate(y, m, 1, 0, 0, 0, 0), utcDate(y, m + 1, 0, 23, 59, 59, 999)];
+    case 'week':
+    case 'isoWeek': {
+      const mondayStart = unit === 'isoWeek' || config.weekStart !== 'sunday';
+      const dow = wall.getUTCDay();
+      const offset = mondayStart ? (dow + 6) % 7 : dow;
+      return [
+        utcDate(y, m, d - offset, 0, 0, 0, 0),
+        utcDate(y, m, d - offset + 6, 23, 59, 59, 999),
+      ];
+    }
+    case 'day':
+      return [utcDate(y, m, d, 0, 0, 0, 0), utcDate(y, m, d, 23, 59, 59, 999)];
+    case 'hour':
+      return [utcDate(y, m, d, h, 0, 0, 0), utcDate(y, m, d, h, 59, 59, 999)];
+    case 'minute':
+      return [utcDate(y, m, d, h, min, 0, 0), utcDate(y, m, d, h, min, 59, 999)];
+    case 'second':
+      return [utcDate(y, m, d, h, min, s, 0), utcDate(y, m, d, h, min, s, 999)];
+  }
 };
 
 /** Resolve a calendar period (this/last/next) to its [start, end] boundaries. */
-const resolvePeriodRange = (
-  expr: PeriodExpr,
-  config: ResolvedDateConfig,
-): [dayjs.Dayjs, dayjs.Dayjs] => {
-  const now = requireNow(config);
+const resolvePeriodRange = (expr: PeriodExpr, config: ResolvedDateConfig): [Date, Date] => {
   const unit = periodUnit(expr);
+  const step = 'last' in expr ? -1 : 'next' in expr ? 1 : 0;
+  const now = requireNow(config);
+  const nowWall = wallUtcOf(now, config.timeZone);
+
+  // Sub-day periods keep `now`'s exact offset so `{ this: 'hour' }` always contains `now`
+  // during a repeated fall-back hour.
+  if (unit === 'hour' || unit === 'minute' || unit === 'second') {
+    const unitMs = unit === 'hour' ? HOUR_MS : unit === 'minute' ? MINUTE_MS : 1000;
+    const within =
+      (unit === 'hour' ? nowWall.getUTCMinutes() * MINUTE_MS : 0) +
+      (unit !== 'second' ? nowWall.getUTCSeconds() * 1000 : 0) +
+      nowWall.getUTCMilliseconds();
+    const startMs = now.getTime() - within + step * unitMs;
+    return [new Date(startMs), new Date(startMs + unitMs - 1)];
+  }
+
   // Step whole periods first, then snap — robust to month-length clamping.
-  const stepUnit = (unit === 'isoWeek' ? 'week' : unit) as dayjs.QUnitType;
-  let base = now;
-  if ('last' in expr) base = now.subtract(1, stepUnit);
-  else if ('next' in expr) base = now.add(1, stepUnit);
-  const eff = effectivePeriodUnit(unit, config);
-  return [base.startOf(eff), base.endOf(eff)];
+  const relativeKey = `${PERIOD_CLOCK_UNITS[unit]}s` as RelativeUnit;
+  const stepped = step === 0 ? nowWall : shiftWall(nowWall, { [relativeKey]: 1 }, step);
+  const [startWall, endWall] = wallPeriodBounds(stepped, unit, config);
+  return [fromWallUtc(startWall, config.timeZone), fromWallUtc(endWall, config.timeZone)];
 };
+
+/**
+ * Resolve any date expression to a single instant (for value expressions):
+ * Rolling → the offset instant; edge → its boundary; bare period → its start boundary.
+ */
+export const resolveDateExprInstant = (expr: DateExpr<number>, config: ResolvedDateConfig): Date =>
+  isPeriodExpr(expr) ? resolvePeriodRange(expr, config)[0] : resolveDateExpr(expr, config);
 
 /**
  * Resolve a point expression (for before/after/onOrBefore/onOrAfter).
  * Rolling → the offset instant; edge → the named boundary of a period.
  */
-export const resolveDateExpr = (
-  expr: DateExpr<number>,
-  config: ResolvedDateConfig,
-): dayjs.Dayjs => {
+export const resolveDateExpr = (expr: DateExpr<number>, config: ResolvedDateConfig): Date => {
   const rolling = rollingShift(expr);
   if (rolling) return shiftByUnits(requireNow(config), ...rolling, config.timeZone);
   if (isEdgeExpr(expr)) {
-    const period = 'start' in expr ? expr.start : expr.end;
-    const [start, end] = resolvePeriodRange(period, config);
+    const [start, end] = resolvePeriodRange(edgePeriod(expr) as PeriodExpr, config);
     return 'start' in expr ? start : end;
   }
   throw new Error(
@@ -170,7 +398,7 @@ export const resolvePointForOperator = (
   expr: DateExpr<number>,
   operator: string,
   config: ResolvedDateConfig,
-): dayjs.Dayjs => {
+): Date => {
   if (isPeriodExpr(expr)) {
     const [start, end] = resolvePeriodRange(expr, config);
     // An upper bound anchors at the start; a negation at its positive form's edge.
@@ -187,7 +415,7 @@ export const resolvePointForOperator = (
 export const resolveDateExprRange = (
   expr: DateExpr<number>,
   config: ResolvedDateConfig,
-): [dayjs.Dayjs, dayjs.Dayjs] => {
+): [Date, Date] => {
   if (isPeriodExpr(expr)) return resolvePeriodRange(expr, config);
   const rolling = rollingShift(expr);
   if (rolling) {

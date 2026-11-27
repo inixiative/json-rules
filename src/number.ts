@@ -17,6 +17,10 @@ export const toNumber = (raw: unknown): unknown => {
   if (typeof raw === 'bigint') return bigIntToNumber(raw);
   if (typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw)))
     return Number(raw);
+  if (typeof raw === 'object' && raw !== null && !(raw instanceof Date) && !Array.isArray(raw)) {
+    const text = String(raw).trim();
+    if (text !== '' && Number.isFinite(Number(text))) return Number(text);
+  }
   return raw;
 };
 

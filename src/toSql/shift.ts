@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import { resolveMagnitude, resolveUnits } from '../amount';
 import { shiftByUnits } from '../dateExpr';
 import type { FieldShape } from '../fieldMap/shape';
@@ -96,7 +95,7 @@ export const shiftDate = (
     if (rhs.value === null || rhs.value === undefined || resolved === null) return NO_VALUE;
     return {
       type: 'value',
-      value: shiftByUnits(dayjs(rhs.value as Date), resolved, direction, zone).toDate(),
+      value: shiftByUnits(rhs.value as Date, resolved, direction, zone),
     };
   }
   const base =

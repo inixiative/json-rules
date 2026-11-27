@@ -3,6 +3,7 @@
 export { bindRule, type ListBindingsOptions, listBindings, listFields } from './src/bindings';
 export { type CheckOptions, check } from './src/check';
 export { clockUnit } from './src/clock';
+export { type FormatDateOptions, formatDate, validateDateFormat } from './src/date';
 export {
   type EngineGlobalDefaults,
   type EngineGlobalPath,
@@ -243,6 +244,7 @@ export type {
   TimeZoneConfig,
   ValueAggregateMode,
   ValueExpression,
+  ValueOffset,
   ValueSourceFields,
   ValueSourceOf,
   ValueType,

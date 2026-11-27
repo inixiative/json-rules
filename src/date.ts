@@ -1,23 +1,21 @@
-import dayjs from 'dayjs';
-import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js';
-import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
-import timezone from 'dayjs/plugin/timezone.js';
-import utc from 'dayjs/plugin/utc.js';
-import { resolveExpr, resolveUnits } from './amount';
+import { tz } from '@date-fns/tz';
+import { format as formatDateFns, isValid } from 'date-fns';
+import { resolveExpr } from './amount';
 import type { EvalOptions } from './check';
 import { clockFloorError } from './clock';
 import {
   DEFAULT_ZONE,
   isDateExpr,
+  parseDateValue,
   type ResolvedDateConfig,
   resolveDateExpr,
   resolveDateExprRange,
   resolvePointForOperator,
-  shiftByUnits,
+  wallUtcOf,
 } from './dateExpr';
 import { rangeExprRequired, UsageError, unknownOperator } from './errors';
 import { isOrderedValue, orderPair, readPair } from './number';
-import { offsetShift } from './offset';
+import { applyDateOffset, offsetShift } from './offset';
 import { DateOperator } from './operator';
 import {
   DATE_RANGE_OPERATORS,
@@ -29,12 +27,96 @@ import {
 } from './operatorCatalog';
 import { readField, type Scopes } from './scope';
 import type { DateConfig, DateExpr, DateInputValue, DateRule, RuleValue } from './types';
+import { type ValidationResult, validationResult } from './validate';
 import { type ReadSource, readValueSource, rowRef } from './valueSource';
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-dayjs.extend(isSameOrBefore);
-dayjs.extend(isSameOrAfter);
+export { parseDateValue };
+
+export type FormatDateOptions = {
+  /** A date-fns format string (e.g. `'MMM d, h:mm a zzz'`). Defaults to ISO 8601 (`"yyyy-MM-dd'T'HH:mm:ssXXX"`). */
+  format?: string;
+  /** An IANA time zone id (e.g. `'America/New_York'`). Defaults to UTC. */
+  timeZone?: string;
+};
+
+const ISO_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ssXXX";
+
+const zoneNameAt = (date: Date, zone: string, style: 'short' | 'long'): string =>
+  new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: style })
+    .formatToParts(date)
+    .find((part) => part.type === 'timeZoneName')?.value ?? zone;
+
+// date-fns v4 prints GMT±H for `z..zzzz`; substitute unescaped `z{1,4}` with IANA zone names
+// while leaving quoted literals and invalid `z{5,}` runs untouched for date-fns validation.
+const expandZoneTokens = (format: string, date: Date, zone: string): string => {
+  if (!format.includes('z')) return format;
+  let out = '';
+  let inQuote = false;
+  let i = 0;
+  while (i < format.length) {
+    const ch = format[i];
+    if (ch === "'") {
+      out += ch;
+      if (inQuote && format[i + 1] === "'") {
+        out += "'";
+        i += 2;
+        continue;
+      }
+      inQuote = !inQuote;
+      i += 1;
+      continue;
+    }
+    if (!inQuote && ch === 'z') {
+      let end = i;
+      while (end < format.length && format[end] === 'z') end += 1;
+      const run = end - i;
+      if (run <= 4) {
+        const name = zoneNameAt(date, zone, run === 4 ? 'long' : 'short');
+        out += `'${name.replace(/'/g, "''")}'`;
+      } else {
+        out += format.slice(i, end);
+      }
+      i = end;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+};
+
+/**
+ * Format a date (Date, ISO string, naive date string anchored in `timeZone`, or epoch ms) in an
+ * IANA time zone using date-fns. Defaults to UTC and ISO 8601 (`"yyyy-MM-dd'T'HH:mm:ssXXX"`).
+ * Throws `UsageError` on an invalid date, time zone, or format string.
+ */
+export const formatDate = (value: DateInputValue, options: FormatDateOptions = {}): string => {
+  const zone = knownZone(options.timeZone ?? DEFAULT_ZONE);
+  const date = parseDateValue(value, zone);
+  if (!isValid(date)) throw new UsageError(`invalid date value: ${String(value)}`);
+  const format = options.format ?? ISO_DATE_FORMAT;
+  if (typeof format !== 'string' || format.length === 0)
+    throw new UsageError('Date format must be a non-empty string');
+  try {
+    return formatDateFns(date, expandZoneTokens(format, date, zone), { in: tz(zone) });
+  } catch (error) {
+    if (error instanceof RangeError)
+      throw new UsageError(`invalid date format '${format}': ${error.message}`);
+    throw error;
+  }
+};
+
+/** Check whether a date-fns format string is accepted by `formatDate`. */
+export const validateDateFormat = (format: unknown): ValidationResult => {
+  try {
+    formatDate(0, { format: format as string });
+    return validationResult([]);
+  } catch (error) {
+    if (error instanceof UsageError)
+      return validationResult([{ path: '$', code: 'invalid_date_format', message: error.message }]);
+    throw error;
+  }
+};
 
 export const checkDate = (
   condition: DateRule,
@@ -49,7 +131,7 @@ export const checkDate = (
   const exprConfig = resolveDateConfig(config, (source) =>
     readValueSource(source, scopes, bindings),
   );
-  const tz = exprConfig.timeZone;
+  const zone = exprConfig.timeZone;
 
   // Null: non-match for positive operators, match for negated ones (2.19.0 negation
   // ruling) — the compilers carry the same split. `== null`, not falsy: epoch 0 is a
@@ -61,8 +143,8 @@ export const checkDate = (
   // A naive field string is anchored in the resolved zone (default UTC); an absolute
   // instant (Date/number/zone-stamped string) is used as-is. Consistent with the
   // engine's config.timeZone policy used by dateExpr and both compilers.
-  const fieldDate = isOrderedValue(fieldValue) ? parseDateValue(fieldValue, tz) : null;
-  if (!fieldDate?.isValid())
+  const fieldDate = isOrderedValue(fieldValue) ? parseDateValue(fieldValue, zone) : null;
+  if (!fieldDate || !isValid(fieldDate))
     throw new Error(`${condition.field} is not a valid date: ${String(fieldValue)}`);
 
   const getError = (op: string) => condition.error || `${condition.field} ${op}`;
@@ -71,80 +153,68 @@ export const checkDate = (
   if (DAY_LIST_OPERATORS.includes(condition.dateOperator)) {
     const days = dayNumbers(readValueSource(condition, scopes, bindings));
     if (days === null) return condition.error || `${condition.field} has no comparison value`;
-    const listed = days.includes(fieldDate.tz(tz).day());
+    const listed = days.includes(wallUtcOf(fieldDate, zone).getUTCDay());
     const names = days.map((day) => DAY_NAMES[day]).join(' or ');
     return condition.dateOperator === DateOperator.dayIn
       ? listed || getError(`must be on ${names}`)
       : !listed || getError(`must not be on ${names}`);
   }
 
-  const dates = parseCompareDates(condition, scopes, exprConfig, tz, bindings);
+  const dates = parseCompareDates(condition, scopes, exprConfig, zone, bindings);
   // Nothing to compare against — a null path, bind or magnitude: no operator matches, as SQL's
   // comparison with NULL never does. A null field was already decided above.
   if (dates === null) return condition.error || `${condition.field} has no comparison value`;
   // A window or range operator always reads a pair; the others read one point.
   const [compareDate, endDate = compareDate] = dates;
+  const fieldMs = fieldDate.getTime();
+  const compareMs = compareDate.getTime();
+  const endMs = endDate.getTime();
+  const show = (date: Date) => formatDate(date, { timeZone: zone });
 
   switch (condition.dateOperator) {
     case DateOperator.before:
-      return fieldDate.isBefore(compareDate) || getError(`must be before ${compareDate.format()}`);
+      return fieldMs < compareMs || getError(`must be before ${show(compareDate)}`);
 
     case DateOperator.after:
-      return fieldDate.isAfter(compareDate) || getError(`must be after ${compareDate.format()}`);
+      return fieldMs > compareMs || getError(`must be after ${show(compareDate)}`);
 
     case DateOperator.onOrBefore:
-      return (
-        fieldDate.isSameOrBefore(compareDate) ||
-        getError(`must be on or before ${compareDate.format()}`)
-      );
+      return fieldMs <= compareMs || getError(`must be on or before ${show(compareDate)}`);
 
     case DateOperator.onOrAfter:
-      return (
-        fieldDate.isSameOrAfter(compareDate) ||
-        getError(`must be on or after ${compareDate.format()}`)
-      );
+      return fieldMs >= compareMs || getError(`must be on or after ${show(compareDate)}`);
 
-    case DateOperator.within: {
+    case DateOperator.within:
       return (
-        (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate)) ||
-        getError(`must be within ${compareDate.format()} and ${endDate.format()}`)
+        (fieldMs >= compareMs && fieldMs <= endMs) ||
+        getError(`must be within ${show(compareDate)} and ${show(endDate)}`)
       );
-    }
 
     case DateOperator.notBefore:
-      return (
-        fieldDate.isSameOrAfter(compareDate) ||
-        getError(`must not be before ${compareDate.format()}`)
-      );
+      return fieldMs >= compareMs || getError(`must not be before ${show(compareDate)}`);
 
     case DateOperator.notAfter:
+      return fieldMs <= compareMs || getError(`must not be after ${show(compareDate)}`);
+
+    case DateOperator.notWithin:
       return (
-        fieldDate.isSameOrBefore(compareDate) ||
-        getError(`must not be after ${compareDate.format()}`)
+        fieldMs < compareMs ||
+        fieldMs > endMs ||
+        getError(`must not be within ${show(compareDate)} and ${show(endDate)}`)
       );
 
-    case DateOperator.notWithin: {
+    case DateOperator.between:
       return (
-        fieldDate.isBefore(compareDate) ||
-        fieldDate.isAfter(endDate) ||
-        getError(`must not be within ${compareDate.format()} and ${endDate.format()}`)
+        (fieldMs >= compareMs && fieldMs <= endMs) ||
+        getError(`must be between ${show(compareDate)} and ${show(endDate)}`)
       );
-    }
 
-    case DateOperator.between: {
+    case DateOperator.notBetween:
       return (
-        (fieldDate.isSameOrAfter(compareDate) && fieldDate.isSameOrBefore(endDate)) ||
-        getError(`must be between ${compareDate.format()} and ${endDate.format()}`)
+        fieldMs < compareMs ||
+        fieldMs > endMs ||
+        getError(`must not be between ${show(compareDate)} and ${show(endDate)}`)
       );
-    }
-
-    case DateOperator.notBetween: {
-      return (
-        fieldDate.isBefore(compareDate) ||
-        fieldDate.isAfter(endDate) ||
-        getError(`must not be between ${compareDate.format()} and ${endDate.format()}`)
-      );
-    }
 
     default:
       throw unknownOperator((condition as { dateOperator?: unknown }).dateOperator, 'date');
@@ -155,9 +225,9 @@ const parseCompareDates = (
   condition: DateRule,
   scopes: Scopes,
   config: ResolvedDateConfig,
-  tz: string,
+  zone: string,
   bindings?: Record<string, RuleValue>,
-): [dayjs.Dayjs] | [dayjs.Dayjs, dayjs.Dayjs] | null => {
+): [Date] | [Date, Date] | null => {
   const operator = condition.dateOperator;
 
   const read: ReadSource = (source) => readValueSource(source, scopes, bindings);
@@ -166,13 +236,9 @@ const parseCompareDates = (
   const offset = condition.offset === undefined ? undefined : read(condition.offset);
   const clockError = clockFloorError(raw, offset);
   if (clockError) throw clockError;
-  const move = offset === undefined ? undefined : offsetShift(offset);
-  if (move === null) return null;
-  const shift = (point: dayjs.Dayjs): dayjs.Dayjs | null => {
-    if (move === undefined) return point;
-    const units = resolveUnits(move[0], read);
-    return units && shiftByUnits(point, units, move[1], tz);
-  };
+  if (condition.offset !== undefined && offsetShift(offset) === null) return null;
+  const shift = (point: Date): Date | null =>
+    condition.offset === undefined ? point : applyDateOffset(point, offset, read, zone);
 
   if (WINDOW_OPERATORS.includes(operator)) {
     if (!isDateExpr(raw)) throw rangeExprRequired(operator);
@@ -180,14 +246,14 @@ const parseCompareDates = (
     return expr && resolveDateExprRange(expr, config);
   }
 
-  const toPoint = (value: unknown, label: string): dayjs.Dayjs | null => {
+  const toPoint = (value: unknown, label: string): Date | null => {
     if (value === null || value === undefined) return null;
     if (isDateExpr(value)) {
       const expr = resolveExpr(value, read);
       return expr && resolveDateExpr(expr, config);
     }
-    const date = parseDateValue(value as DateInputValue, tz);
-    if (!date.isValid()) throw new Error(`Invalid ${label}: ${String(value)}`);
+    const date = parseDateValue(value as DateInputValue, zone);
+    if (!isValid(date)) throw new Error(`Invalid ${label}: ${String(value)}`);
     return date;
   };
 
@@ -205,7 +271,7 @@ const parseCompareDates = (
   if (Array.isArray(raw)) throw new Error(`${operator} operator requires a single date value`);
   // Bare period + before/after ⇒ implied edge (before→start, after→end); the one anchoring
   // rule all three rails share.
-  const pointOf = (expr: DateExpr): dayjs.Dayjs | null => {
+  const pointOf = (expr: DateExpr): Date | null => {
     const resolved = resolveExpr(expr, read);
     return resolved && resolvePointForOperator(resolved, operator, config);
   };
@@ -257,42 +323,13 @@ const knownZone = (zone: string): string => {
   return zone;
 };
 
-// Whether a date STRING names its own zone (never String(Date), whose render is host-locale-
-// dependent): a `Z` / `z`, or a `±HH`, `±HHMM` or `±HH:MM` offset after the time (with `T` or a
-// space — Postgres renders timestamptz as `2026-10-05 08:00:00+00`), or a GMT / UTC token
-// (RFC 2822, Date#toString). Anything else is zoneless and anchors in the evaluation zone.
-const ZONED_TIME = /\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:[zZ]|[+-]\d{2}(?::?\d{2})?)$/;
-const hasExplicitZone = (value: string): boolean =>
-  ZONED_TIME.test(value.trim()) || /\b(?:GMT|UTC)\b/.test(value);
-
-/**
- * Parse a comparison/field value into an instant, given the already-resolved anchor zone.
- * - Date object / epoch number → absolute instant, used as-is (never anchored).
- * - String with an explicit zone (`Z` or `±HH:MM` after a time) → absolute.
- * - Naive string (date-only or zoneless datetime) → anchored in `tz` via dayjs.tz; a
- *   date-only string becomes midnight in that zone.
- */
-export const parseDateValue = (value: DateInputValue | undefined, tz: string): dayjs.Dayjs => {
-  // A string of digits is epoch milliseconds, as a number is.
-  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) return dayjs(Number(value));
-  if (typeof value === 'string' && !hasExplicitZone(value)) {
-    // dayjs.tz throws on an unparseable string; return the (invalid) base parse instead
-    // so callers' isValid() checks surface the friendly "not a valid date" error.
-    const base = dayjs(value);
-    if (!base.isValid()) return base;
-    return dayjs.tz(value, tz);
-  }
-  // An absolute instant in any of the forms above; the Date parser reads them all.
-  return typeof value === 'string' ? dayjs(new Date(value.trim())) : dayjs(value);
-};
-
 // Literal and bound date values compile to concrete Dates through the same parse-and-anchor
 // seam check() uses (naive strings → midnight in the zone; instants as-is): a raw 'YYYY-MM-DD'
 // is rejected by Prisma and would carry different zone semantics than check().
 export const coerceDateLiteral = (value: unknown, zone: string): Date => {
-  const parsed = isOrderedValue(value) ? parseDateValue(value, zone) : dayjs(Number.NaN);
-  if (!parsed.isValid()) throw new Error(`Invalid date value: ${String(value)}`);
-  return parsed.toDate();
+  const parsed = isOrderedValue(value) ? parseDateValue(value, zone) : new Date(Number.NaN);
+  if (!isValid(parsed)) throw new Error(`Invalid date value: ${String(value)}`);
+  return parsed;
 };
 
 /** A weekday list as `EXTRACT(DOW)` numbers (sunday 0); null when it reads nothing. */

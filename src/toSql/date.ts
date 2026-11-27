@@ -118,7 +118,7 @@ export const buildDateRule = (rule: DateRule, state: BuilderState): string => {
 
 const nowOperand = (state: BuilderState): ResolvedRhs => ({
   type: 'value',
-  value: requireNow(dateConfigOf(state)).toDate(),
+  value: requireNow(dateConfigOf(state)),
 });
 
 const expressionPoint = (expr: DateExpr, operator: string, state: BuilderState): ResolvedRhs => {
@@ -128,7 +128,7 @@ const expressionPoint = (expr: DateExpr, operator: string, state: BuilderState):
   if (resolved === null) return NO_VALUE;
   return {
     type: 'value',
-    value: resolvePointForOperator(resolved, operator, dateConfigOf(state)).toDate(),
+    value: resolvePointForOperator(resolved, operator, dateConfigOf(state)),
   };
 };
 
@@ -162,8 +162,8 @@ const resolveWindow = (rule: DateRule, state: BuilderState): [ResolvedRhs, Resol
   if (resolved === null) return null;
   const ends = resolveDateExprRange(resolved, dateConfigOf(state));
   return [
-    { type: 'value', value: ends[0].toDate() },
-    { type: 'value', value: ends[1].toDate() },
+    { type: 'value', value: ends[0] },
+    { type: 'value', value: ends[1] },
   ];
 };
 

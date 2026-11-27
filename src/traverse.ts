@@ -344,6 +344,7 @@ export const anyOf = (conditions: readonly Condition[]): Condition =>
 
 export const ValueExpressionShape = {
   literal: 'literal',
+  date: 'date',
   list: 'list',
   if: 'if',
   aggregate: 'aggregate',
@@ -370,14 +371,15 @@ export const listItems = (expr: unknown): unknown[] => {
 export const isCoercedLiteral = (expr: unknown): expr is CoercedLiteral =>
   isPlainObject(expr) && 'value' in (expr as object) && 'coerceType' in (expr as object);
 
-/** What a value expression node is — a bare literal, a list, if / then / else, an aggregate, or a
- *  value source — or null when it is none of them or names more than one. */
+/** What a value expression node is — a bare literal, a date expression, a list, if / then / else,
+ *  an aggregate, or a value source — or null when it is none of them or names more than one. */
 export const valueExpressionShape = (expr: unknown): ValueExpressionShape | null => {
   if (Array.isArray(expr)) return 'list';
   if (isBareLiteral(expr)) return 'literal';
   if (!isPlainObject(expr)) return null;
   const node = expr as ConditionNode;
   const shapes: ValueExpressionShape[] = [];
+  if (isDateExpr(node)) shapes.push('date');
   if ('list' in node) shapes.push('list');
   if (isIfNode(node)) shapes.push('if');
   if ('aggregate' in node) shapes.push('aggregate');
@@ -385,18 +387,24 @@ export const valueExpressionShape = (expr: unknown): ValueExpressionShape | null
   return shapes.length === 1 ? shapes[0] : null;
 };
 
+const pathConditions = (paths: string[]): Condition =>
+  allOf(paths.map((path) => ({ field: path, operator: 'exists' }) as Condition));
+
 /**
  * Everything a value expression reads, as one condition reading the same things — the one
  * structural walk over a value expression's slots (list items, `if` / `then` / `else`, an
- * aggregate's `filter` / `condition` / `orderBy` / `aggregate.field`). A path read is an `exists`
+ * aggregate's `filter` / `condition` / `orderBy` / `aggregate.field`, a date expression's
+ * unit paths, and a source's path and offset paths). A path read is an `exists`
  * on its field; an aggregate is itself (an aggregate node without a comparison: the walkers read
  * its field, window and `aggregate.field`, never its mode); a literal or a binding reads nothing
- * (`true`). For the walkers that describe what a rule reads — `clockUnit`, `readPaths`,
+ * (`true`). For the walkers that describe what a rule reads — `readPaths`, `collectModelVisits`,
  * `validateRuleInLens` — never to evaluate or validate.
  */
 export const valueReads = (expr: unknown): Condition => {
   const node = expr as ConditionNode;
   switch (valueExpressionShape(expr)) {
+    case 'date':
+      return pathConditions(valueRefs({ dateOperator: '', value: expr }));
     case 'list':
       return allOf(listItems(expr).map(valueReads));
     case 'if':
@@ -408,9 +416,11 @@ export const valueReads = (expr: unknown): Condition => {
     case 'aggregate':
       return node as Condition;
     case 'source':
-      return hasPath(node as never)
-        ? ({ field: node.path, operator: 'exists' } as Condition)
-        : true;
+      return pathConditions(
+        valueRefs(
+          node.offset !== undefined ? { dateOperator: '', ...node } : { operator: '', ...node },
+        ),
+      );
     default:
       return true;
   }

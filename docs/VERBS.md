@@ -9,7 +9,8 @@ modules allowed to implement it, and every exported function must appear in this
 | Verb | Name | What it does |
 | --- | --- | --- |
 | evaluate | `check` | Evaluate a rule against data. |
-| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal (a `{ value, coerceType }` one read as that kind), a path, a binding, an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` / `pick` through its window), the branch an `if` picks, a list (experimental). |
+| evaluate | `evaluateValue` | Compute a value expression from a row, in memory, with check()'s options: a literal (a `{ value, coerceType }` one read as that kind), a date expression (`{ ahead }`, `{ ago }`, `{ this/last/next }` — its start instant — or `{ start/end }`), a path, a binding — each source optionally shifted by `offset` (a rolling date shift or a number) — an aggregate (`count` / `sum` / `avg` / `min` / `max` / `distinct` / `pick` through its window), the branch an `if` picks, a list (experimental). |
+| format | `formatDate` | Format a date (Date, ISO string, naive date string anchored in `timeZone`, or epoch ms) in an IANA time zone with a date-fns format string; defaults to UTC and ISO 8601 (`"yyyy-MM-dd'T'HH:mm:ssXXX"`). |
 | categorize | `categorize` | Put a row in a category: the value of the first case whose rule holds (or, with `match: 'all'`, of every one), else the default. |
 | compile | `toSql`, `toPrisma` | Compile a rule to a SQL WHERE, or a Prisma query plan; with `{ lens }`, narrowed by it against its base lens. |
 | compile | `toLensSelect` | Compile what a lens shows — the relations turned on, and the columns its clamps read — to Prisma `findMany` select args, to-many clamps as relation `where`s, and each `orderBy` the lens gives (the root's beside `select`). |
@@ -19,8 +20,9 @@ modules allowed to implement it, and every exported function must appear in this
 | compose | `andWhere`, `orWhere`, `matchAll`, `matchNothing` | AND / OR compiled WHEREs with a consumer's own filters, folding the boolean constants the way the compiler does — Prisma drops `{ OR: [] }` as an AND arm, so a hand-written `AND: [x, { OR: [] }]` is just `x`, not match-nothing. |
 | validate | `validateRule`, `validateRuleInLens`, `validateNarrowing`, `validateFieldMaps` | Return `{ ok, errors: { path, message, code }[] }`. |
 | validate | `validateValue` | A value expression's shape: return `{ ok, errors }` like the rule validators. |
+| validate | `validateDateFormat` | Check whether a date-fns format string is accepted by `formatDate`; return `{ ok, errors }`. |
 | validate | `validateCategorization` | A categorization's shape: its cases' rules and values, `match`, `default`; `{ ok, errors }`. |
-| validate | `assertValidRule`, `assertValidNarrowing`, `assertValidFieldMaps`, `assertValidValue`, `assertValidCategorization` | The throwing form of each validator. |
+| validate | `assertValidRule`, `assertValidNarrowing`, `assertValidFieldMaps`, `assertValidValue`, `assertValidCategorization` | The throwing form of each rule/schema/value/categorization validator (`formatDate` throws `UsageError` directly on invalid format strings). |
 | bind | `bindRule`, `bindLens` | Substitute supplied bindings into a rule, or a lens's narrowing conditions. |
 | bind | `listBindings`, `listLensBindings` | The bind names a rule or lens reads, sorted (`{ required }` drops `bindOptional`). |
 | list fields | `listFields` | The paths a rule reads from the row it is checked on, sorted: leaf fields and value-side `{ path }`s; a relation node's inner rule is relative to its rows and not listed. |
@@ -39,10 +41,10 @@ modules allowed to implement it, and every exported function must appear in this
 | describe | `describeRule` | A rule's sources, bridge crossings, compile targets and `modelVisits` (`{ mapName, model, path }`) under a lens. |
 | describe | `clockUnit` | The finest clock unit (`CLOCK_UNITS`) any relative date in a rule names, at any depth; null when it reads no clock. |
 | describe | `inferValueType` | The type a value expression returns (`{ kind, isList, nullable }`), from the lens where it reads a column; throws when it has none. |
-| describe | `valueClockUnit` | `clockUnit` over every condition a value expression holds. |
+| describe | `valueClockUnit` | The finest clock unit over every date expression and condition a value expression holds. |
 | describe | `describeValue` | A value expression under a lens: its type, the dotted paths and `modelVisits` (`{ mapName, model, path }`) it reads, its clock unit, and every issue (shape, lens gate, type), without throwing. |
 | describe | `describeCategorization` | A categorization under a lens, as `describeValue` describes a value: the type `categorize` returns (every case's value and the default unified, a list under `match: 'all'`, nullable with no default), the paths and `modelVisits` it reads, its clock unit, and every issue at the case it is in. |
-| describe | `valueExpressionShape` | Which value-expression shape a node is: `literal`, `source`, `aggregate`, `if`, `list`, or null. |
+| describe | `valueExpressionShape` | Which value-expression shape a node is: `literal`, `date`, `source`, `aggregate`, `if`, `list`, or null. |
 | describe | `listItems` | A list value's items, bare or `{ list }`. |
 | describe | `describeRuleSources` | The literal values a rule names at each source the lens declares. |
 | materialize | `materializeSources`, `materializeSourceQuery` | Turn fetched rows into source option sets — sorted by value, or (`materializeSourceQuery` with `order: SourceOptionOrder.query`) in the order the query returned its rows. |
@@ -76,7 +78,7 @@ tells them apart):
   source a compile can't hold, a link a source's path can't carry. It carries a `code`;
   `validateNarrowing` reports the same refusal as an issue before anything runs.
 - `UsageError` — the caller's input missing or malformed: no `now` for a relative date, an invalid
-  `now` or time zone, a bind that was never bound.
+  `now`, date value, date format or time zone, a bind that was never bound.
 
 Any other Error is a rule-shape problem the validators report (`validateRule`).
 
@@ -97,7 +99,8 @@ Any other Error is a rule-shape problem the validators report (`validateRule`).
 | recurse into a child condition | `src/toSql/recurse.ts`, `src/toPrisma/recurse.ts` | One forward declaration per rail. |
 | build a Prisma logical constant | `src/toPrisma/logical.ts` | — |
 | default the time zone | `src/dateExpr.ts` (`DEFAULT_ZONE`) | `'UTC'` nowhere else. |
-| parse a date | `src/date.ts`, `src/dateExpr.ts` | No `Date.parse` / `dayjs.tz` elsewhere. |
+| parse a date | `src/date.ts`, `src/dateExpr.ts` | No `Date.parse` / `fromWallUtc` elsewhere. |
+| format a date | `src/date.ts` | No `formatDateFns` / `ISO_DATE_FORMAT` elsewhere. |
 | shape a rolling expression | `src/dateExpr.ts` (`rollingShift`, `rollingExpr`), `src/types.ts` | No `'ago' in` / `{ ago: … }` elsewhere. |
 | re-export a module | — | No `export * from`: every public name is listed. |
 | compare (SQL) | `src/toSql/compare.ts` | — |

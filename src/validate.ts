@@ -1,3 +1,4 @@
+import { isValid } from 'date-fns';
 import { isPlainObject as isPlainObjectLodash } from 'lodash-es';
 import { unitAmountProblem } from './amount';
 import { clockFloorError, writtenOffset } from './clock';
@@ -5,6 +6,7 @@ import { columnCompareProblem } from './columnCompare';
 import { parseDateValue } from './date';
 import {
   DEFAULT_ZONE,
+  edgePeriod,
   isDateExpr,
   isEdgeExpr,
   isPeriodExpr,
@@ -204,6 +206,24 @@ export const validateAggregateValue = (node: unknown): ValidationResult => {
 export const validateValueSource = (source: unknown): ValidationResult => {
   const context = newContext();
   if (isPlainObject(source)) validateSource(source, '$', context, 1);
+  return validationResult(context.errors);
+};
+
+/** One date expression (`{ ago }`, `{ ahead }`, `{ this/last/next }`, `{ start/end }`) as a value. */
+export const validateDateExprValue = (expr: unknown): ValidationResult => {
+  const context = newContext();
+  validateDateExpr(expr as DateExpr, undefined, '$', context, 1);
+  const clockError = clockFloorError(expr);
+  if (clockError) pushIssue(context, '$', 'clock_unit_below_floor', clockError.message);
+  return validationResult(context.errors);
+};
+
+/** An offset on a value-expression source: a number or a rolling `{ ago }` / `{ ahead }`. */
+export const validateValueOffset = (offset: unknown, baseValue?: unknown): ValidationResult => {
+  const context = newContext();
+  validateOffsetSource(offset, 'value', '$', context, 1);
+  const clockError = clockFloorError(baseValue, writtenOffset(offset));
+  if (clockError) pushIssue(context, '$', 'clock_unit_below_floor', clockError.message);
   return validationResult(context.errors);
 };
 
@@ -516,6 +536,67 @@ const validateSource = (
 };
 
 // An offset moves the comparison value by what its own value source reads: a number on a field
+const validateOffsetSource = (
+  offset: unknown,
+  kind: 'field' | 'date' | 'value',
+  at: string,
+  context: ValidationContext,
+  depth: number,
+): void => {
+  if (!isPlainObject(offset)) {
+    pushIssue(context, at, 'invalid_offset', 'An offset is one of { value }, { path } or { bind }');
+    return;
+  }
+  const form = validateSource(offset, at, context, depth);
+  if (form === 'path') {
+    const ref = offset.path as string;
+    const scoped = rowRef(offset);
+    if (kind === 'date' && scoped && scoped.depth <= 1 && context.target === 'toSql')
+      pushIssue(
+        context,
+        `${at}.path`,
+        'unsupported_sql_path',
+        `A row path on a date offset ('${ref}') is not supported by toSql()`,
+      );
+    return;
+  }
+  if (form !== 'value') return;
+  const value = offset.value;
+  if (kind === 'field' || (kind === 'value' && typeof value === 'number')) {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+      pushIssue(
+        context,
+        `${at}.value`,
+        'invalid_offset',
+        kind === 'field'
+          ? 'A field offset value is a number'
+          : 'A numeric offset value must be finite',
+      );
+    return;
+  }
+  const rolling =
+    isPlainObject(value) && Object.keys(value).length === 1 && isDateExpr(value)
+      ? rollingShift(value)
+      : null;
+  if (!rolling) {
+    pushIssue(
+      context,
+      `${at}.value`,
+      'invalid_offset',
+      kind === 'date'
+        ? 'A date offset value is { ago } or { ahead }'
+        : 'An offset value is a finite number or { ago } / { ahead }',
+    );
+    return;
+  }
+  validateRelativeUnits(
+    rolling[0],
+    `${at}.value.${Object.keys(value as object)[0]}`,
+    context,
+    depth,
+  );
+};
+
 // rule, a rolling `{ ago }` / `{ ahead }` on a date rule. A date offset read per row is check-only.
 const validateOffset = (
   rule: Record<string, unknown>,
@@ -537,49 +618,7 @@ const validateOffset = (
     );
     return;
   }
-  if (!isPlainObject(offset)) {
-    pushIssue(context, at, 'invalid_offset', 'An offset is one of { value }, { path } or { bind }');
-    return;
-  }
-  const form = validateSource(offset, at, context, depth);
-  if (form === 'path') {
-    const ref = offset.path as string;
-    const scoped = rowRef(offset);
-    if (kind === 'date' && scoped && scoped.depth <= 1 && context.target === 'toSql')
-      pushIssue(
-        context,
-        `${at}.path`,
-        'unsupported_sql_path',
-        `A row path on a date offset ('${ref}') is not supported by toSql()`,
-      );
-    return;
-  }
-  if (form !== 'value') return;
-  const value = offset.value;
-  if (kind === 'field') {
-    if (typeof value !== 'number' || !Number.isFinite(value))
-      pushIssue(context, `${at}.value`, 'invalid_offset', 'A field offset value is a number');
-    return;
-  }
-  const rolling =
-    isPlainObject(value) && Object.keys(value).length === 1 && isDateExpr(value)
-      ? rollingShift(value)
-      : null;
-  if (!rolling) {
-    pushIssue(
-      context,
-      `${at}.value`,
-      'invalid_offset',
-      'A date offset value is { ago } or { ahead }',
-    );
-    return;
-  }
-  validateRelativeUnits(
-    rolling[0],
-    `${at}.value.${Object.keys(value as object)[0]}`,
-    context,
-    depth,
-  );
+  validateOffsetSource(offset, kind, at, context, depth);
 };
 
 // A range read from a row column is a scalar, not a pair: toSql has no form for it.
@@ -1248,7 +1287,7 @@ const validateDateRule = (
     (rule.value as unknown[]).forEach((item, i) => {
       if (isDateExpr(item)) {
         validateDateExpr(item, operator, `${path}.value[${i}]`, context, depth);
-      } else if (isOrderedValue(item) && !parseDateValue(item, DEFAULT_ZONE).isValid()) {
+      } else if (isOrderedValue(item) && !isValid(parseDateValue(item, DEFAULT_ZONE))) {
         pushIssue(
           context,
           `${path}.value[${i}]`,
@@ -1272,7 +1311,7 @@ const validateDateRule = (
 
   // A date-like value must actually parse — a string that survives validation but
   // fails the compilers/check() would persist clean and then fail at evaluation.
-  if (!parseDateValue(rule.value, DEFAULT_ZONE).isValid()) {
+  if (!isValid(parseDateValue(rule.value, DEFAULT_ZONE))) {
     pushIssue(
       context,
       `${path}.value`,
@@ -1327,12 +1366,21 @@ const validatePeriodUnit = (unit: unknown, path: string, context: ValidationCont
 
 const validateDateExpr = (
   expr: DateExpr,
-  operator: DateOperator,
+  operator: DateOperator | undefined,
   path: string,
   context: ValidationContext,
   depth: number,
 ): void => {
-  const isRange = WINDOW_OPERATORS.includes(operator);
+  if (Object.keys(expr).length !== 1) {
+    pushIssue(
+      context,
+      path,
+      'invalid_date_expression',
+      'A date expression takes one key (ago, ahead, this, last, next, start, or end)',
+    );
+    return;
+  }
+  const isRange = operator !== undefined && WINDOW_OPERATORS.includes(operator);
 
   const rolling = rollingShift(expr);
   if (rolling) {
@@ -1350,8 +1398,8 @@ const validateDateExpr = (
       pushIssue(context, path, 'invalid_date_range', rangeExprRequired(operator).message);
       return;
     }
-    const period = 'start' in expr ? expr.start : expr.end;
-    if (!isPlainObject(period) || !isPeriodExpr(period)) {
+    const period = edgePeriod(expr);
+    if (!isPlainObject(period) || !isPeriodExpr(period) || Object.keys(period).length !== 1) {
       pushIssue(context, path, 'invalid_period_unit', `start/end requires a this/last/next period`);
       return;
     }

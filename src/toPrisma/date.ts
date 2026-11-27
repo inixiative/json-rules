@@ -62,7 +62,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
     if (value === null || value === undefined) return null;
     if (!isDateExpr(value)) return coerceDateLiteral(value, config.timeZone);
     const expr = resolveExpr(value, read);
-    return expr && resolvePointForOperator(expr, rule.dateOperator, config).toDate();
+    return expr && resolvePointForOperator(expr, rule.dateOperator, config);
   };
   const source = () => {
     const value = readSource(rule);
@@ -87,8 +87,7 @@ const buildDateLeafFilter = (rule: DateRule, options?: ToPrismaOptions): unknown
     if (!isDateExpr(v)) throw rangeExprRequired(rule.dateOperator);
     const expr = resolveExpr(v, read);
     if (!expr) return null;
-    const [start, end] = resolveDateExprRange(expr, config);
-    return [start.toDate(), end.toDate()];
+    return resolveDateExprRange(expr, config);
   };
   const one = (key: 'lt' | 'gt' | 'lte' | 'gte') => {
     const at = point();

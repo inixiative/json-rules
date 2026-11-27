@@ -1,6 +1,8 @@
-import { isDateExpr, rollingShift } from './dateExpr';
+import { resolveUnits } from './amount';
+import { isDateExpr, rollingShift, shiftByUnits } from './dateExpr';
 import { readNumber, toNumber } from './number';
 import type { RelativeUnits } from './types';
+import type { ReadSource } from './valueSource';
 
 // An offset moves a leaf's comparison value. It reads its own value source: a number on a field
 // rule, a rolling `{ ago }` / `{ ahead }` on a date rule.
@@ -31,4 +33,18 @@ export const offsetShift = (raw: unknown): [RelativeUnits, 1 | -1] | null => {
   if (!rolling)
     throw new Error(`a date offset reads { ago } or { ahead } (got ${JSON.stringify(raw)})`);
   return rolling;
+};
+
+/** Shift `instant` by a raw date offset (`{ ago }` / `{ ahead }`); null when the offset or any
+ *  unit magnitude reads nothing. */
+export const applyDateOffset = (
+  instant: Date,
+  rawOffset: unknown,
+  read: ReadSource,
+  zone: string,
+): Date | null => {
+  const move = offsetShift(rawOffset);
+  if (!move) return null;
+  const units = resolveUnits(move[0], read);
+  return units ? shiftByUnits(instant, units, move[1], zone) : null;
 };

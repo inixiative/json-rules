@@ -1,5 +1,8 @@
-## Unreleased — model visits a rule reads, and finding root rows with related rows
+## 4.8.0 — date-fns + @date-fns/tz, date math in value expressions, formatDate, and modelVisits
 
+- **Internal date runtime:** replaced `dayjs` with `date-fns`, `@date-fns/tz`, and host-TZ-independent `Intl` wall-clock arithmetic across all date parsing, wall-clock DST shifting (matching Postgres `AT TIME ZONE`), and period boundary evaluation.
+- **Date expressions & offsets in value expressions:** `evaluateValue`, `validateValue`, `inferValueType`, `valueClockUnit`, `describeValue`, and `describeCategorization` now accept `DateExpr` (`{ ago }`, `{ ahead }`, `{ this/last/next }` → start of period, `{ start/end }`) and optional `offset` (`ValueOffset = DateOffset | NumberOffset`) on value sources (`{ path, offset }`, `{ value, offset }`, `{ bind, offset }`), honoring `now`, `timeZone`, `weekStart`, and `clock.finestUnit`.
+- **`formatDate` & `validateDateFormat`:** format any `DateInputValue` (Date, ISO string, naive string anchored in `timeZone`, or epoch ms) in an IANA time zone with a date-fns format string (defaulting to UTC and ISO 8601 `"yyyy-MM-dd'T'HH:mm:ssXXX"`), throwing `UsageError` on invalid dates, time zones, or format strings.
 - **`describeRule(...).modelVisits`**, **`describeValue(...).modelVisits`** and
   **`describeCategorization(...).modelVisits`**: every model visit (`{ mapName, model, path }`,
   with `''` for the lens root itself) a rule, value expression or categorization reads through the

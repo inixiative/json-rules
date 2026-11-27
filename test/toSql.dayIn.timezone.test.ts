@@ -6,7 +6,7 @@ import { scratchDatabase } from './rails/scratchDatabase';
 
 // dayIn/dayNotIn compiled to a bare EXTRACT(DOW FROM col): the weekday was decided by
 // the DB session's TimeZone GUC, not the evaluation's timezone policy, and diverged
-// from checkDate's fieldDate.tz(tz). The emission now anchors the column as a UTC
+// from checkDate's zoned weekday check. The emission now anchors the column as a UTC
 // instant (the Prisma convention: DateTime columns store UTC wall time) and converts
 // to the resolved zone, ending NAIVE — so extraction never consults the session zone.
 

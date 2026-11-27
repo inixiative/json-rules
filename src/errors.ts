@@ -91,7 +91,7 @@ export const unknownValueAggregateMode = (mode: unknown): Error =>
 /** A node that is not exactly one kind of value expression. */
 export const invalidValueExpression = (path: string): Error =>
   new Error(
-    `${path}: a value expression is exactly one of: { value }, { path }, { bind }, an aggregate ({ field, aggregate }), if / then [/ else], or a list`,
+    `${path}: a value expression is exactly one of: { value }, { path }, { bind }, a date expression ({ ago } / { ahead } / { this/last/next } / { start/end }), an aggregate ({ field, aggregate }), if / then [/ else], or a list`,
   );
 
 /** An aggregate value written with a comparison: the aggregate itself is the value. */

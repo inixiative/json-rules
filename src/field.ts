@@ -1,3 +1,4 @@
+import { isValid } from 'date-fns';
 import { isEqual } from 'lodash-es';
 import { parseDateValue, resolveDateConfig } from './date';
 import { DEFAULT_ZONE } from './dateExpr';
@@ -107,7 +108,7 @@ const coerceScalar = (value: unknown, kind: FieldKind, zone: string): unknown =>
       if (typeof value === 'number') return value;
       if (typeof value !== 'string') return value;
       const parsed = parseDateValue(value, zone);
-      return parsed.isValid() ? parsed.valueOf() : value;
+      return isValid(parsed) ? parsed.getTime() : value;
     }
     case 'Boolean':
       if (value === 'true') return true;
